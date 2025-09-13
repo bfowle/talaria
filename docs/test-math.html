@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Math Test</title>
+    <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']],
+        processEscapes: true
+      }
+    };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body>
+    <h1>Math Rendering Test</h1>
+    
+    <h2>Inline Math</h2>
+    <p>Using dollar signs: $S_1$ of length $m$ and $S_2$ of length $n$</p>
+    <p>Using parentheses: \(S_1\) of length \(m\) and \(S_2\) of length \(n\)</p>
+    
+    <h2>Display Math</h2>
+    <p>Using double dollars:</p>
+    $$
+    \sigma(a, b) = \begin{cases}
+        s_{match} & \text{if } a = b \\
+        s_{mismatch} & \text{if } a \neq b \\
+        s_{gap} & \text{if } a = - \text{ or } b = -
+    \end{cases}
+    $$
+    
+    <p>Using brackets:</p>
+    \[
+    F[i][j] = \max \begin{cases}
+        F[i-1][j-1] + \sigma(S_1[i], S_2[j]) & \text{(match/mismatch)} \\
+        F[i-1][j] + s_{gap} & \text{(deletion)} \\
+        F[i][j-1] + s_{gap} & \text{(insertion)}
+    \end{cases}
+    \]
+    
+    <h2>Complex Expression</h2>
+    $$
+    E = K \cdot m \cdot n \cdot e^{-\lambda S}
+    $$
+    
+    <p>Where: \(K, \lambda\) = Karlin-Altschul parameters</p>
+</body>
+</html>

@@ -1,0 +1,49 @@
+:root {
+  --content-max-width: 80%;
+}
+
+.chapter li.part-title {
+  color: var(--sidebar-fg);
+  margin-bottom: -5px;
+  margin-top: 11px;
+  font-weight: bold;
+}
+
+.chapter li.chapter-item {
+  line-height: 1.5em;
+  margin-left: 0.5em;
+  margin-top: 0.6em;
+}
+
+/* MathJax styling */
+.MathJax {
+  font-size: 1em !important;
+}
+
+.MathJax_Display {
+  margin: 1em 0 !important;
+}
+
+/* Ensure inline math doesn't break line height */
+mjx-container[jax="CHTML"][display="false"] {
+  display: inline-block !important;
+  vertical-align: middle;
+}
+
+/* Style for display math */
+mjx-container[jax="CHTML"][display="true"] {
+  display: block !important;
+  margin: 1em 0 !important;
+  text-align: center;
+}
+
+/* Fallback for older MathJax versions */
+.MathJax_SVG_Display {
+  text-align: center !important;
+  margin: 1em 0 !important;
+}
+
+.MathJax_SVG {
+  display: inline-block !important;
+  vertical-align: middle;
+}

@@ -1,0 +1,51 @@
+[book]
+title = "Talaria Documentation"
+authors = ["Andromeda Tech, LLC"]
+description = "Intelligent FASTA reduction for aligner index optimization"
+language = "en"
+multilingual = false
+src = "src"
+
+[build]
+build-dir = "book"
+
+[preprocessor.katex]
+after = ["links"]
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
+[output.html]
+theme = "theme"
+default-theme = "rust"
+preferred-dark-theme = "ayu" # navy
+git-repository-url = "https://github.com/Andromeda-Tech/talaria"
+git-repository-icon = "fa-github"
+edit-url-template = "https://github.com/Andromeda-Tech/talaria/edit/main/docs/{path}"
+site-url = "/talaria/"
+cname = ""
+smart-punctuation = true
+mathjax-support = false
+copy-fonts = true
+additional-css = ["custom.css"]
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
+no-section-label = false
+fold.enable = false
+fold.level = 0
+playground.editable = false
+playground.copyable = true
+
+[output.html.print]
+enable = true
+
+[output.html.search]
+enable = true
+limit-results = 30
+teaser-word-count = 30
+use-boolean-and = true
+boost-title = 2
+boost-hierarchy = 1
+boost-paragraph = 1
+expand = true
+heading-split-level = 3
+copy-js = true

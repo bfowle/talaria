@@ -1,0 +1,517 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Quick Start - Talaria Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- MathJax Configuration -->
+        <script>
+        window.MathJax = {
+          tex2jax: {
+            inlineMath: [['$','$'], ['\\(','\\)']],
+            displayMath: [['$$','$$'], ['\\[','\\]']],
+            processEscapes: true,
+            processEnvironments: true
+          },
+          TeX: {
+            equationNumbers: { autoNumber: "AMS" },
+            extensions: ["AMSmath.js", "AMSsymbols.js"]
+          }
+        };
+        </script>
+        <meta name="description" content="Intelligent FASTA reduction for aligner index optimization">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../custom.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Talaria Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria/edit/main/docs/src/user-guide/quick-start.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
+<h1 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h1>
+<p>Get up and running with Talaria in minutes!</p>
+<h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
+<pre><code class="language-bash"># Quick install via cargo
+cargo install talaria
+
+# Or download pre-built binary
+curl -L https://github.com/Andromeda-Tech/talaria/releases/latest/download/talaria-$(uname -s)-$(uname -m) -o talaria
+chmod +x talaria
+sudo mv talaria /usr/local/bin/
+</code></pre>
+<h2 id="your-first-reduction"><a class="header" href="#your-first-reduction">Your First Reduction</a></h2>
+<h3 id="1-download-sample-data"><a class="header" href="#1-download-sample-data">1. Download Sample Data</a></h3>
+<pre><code class="language-bash"># Download a small UniProt dataset
+talaria download --database uniprot --dataset swissprot --output .
+
+# Or use the interactive mode
+talaria interactive
+# Select: Download databases → UniProt → SwissProt
+</code></pre>
+<h3 id="2-reduce-the-database"><a class="header" href="#2-reduce-the-database">2. Reduce the Database</a></h3>
+<pre><code class="language-bash"># Basic reduction for LAMBDA aligner
+talaria reduce \
+    -i uniprot_sprot.fasta \
+    -o sprot_reduced.fasta \
+    --aligner lambda
+
+# View statistics
+talaria stats sprot_reduced.fasta
+</code></pre>
+<h3 id="3-compare-results"><a class="header" href="#3-compare-results">3. Compare Results</a></h3>
+<pre><code class="language-bash"># Original size
+ls -lh uniprot_sprot.fasta
+
+# Reduced size
+ls -lh sprot_reduced.fasta
+
+# Validate quality
+talaria validate \
+    --original uniprot_sprot.fasta \
+    --reduced sprot_reduced.fasta
+</code></pre>
+<h2 id="interactive-mode"><a class="header" href="#interactive-mode">Interactive Mode</a></h2>
+<p>Talaria features a rich interactive CLI similar to Claude Code:</p>
+<pre><code class="language-bash"># Launch interactive mode
+talaria interactive
+</code></pre>
+<p>Navigate with:</p>
+<ul>
+<li><code>↑/↓</code> or <code>j/k</code> - Move selection</li>
+<li><code>Enter</code> - Select option</li>
+<li><code>Tab</code> - Switch tabs</li>
+<li><code>Esc</code> or <code>q</code> - Exit</li>
+</ul>
+<h2 id="common-workflows"><a class="header" href="#common-workflows">Common Workflows</a></h2>
+<h3 id="for-blast-users"><a class="header" href="#for-blast-users">For BLAST Users</a></h3>
+<pre><code class="language-bash"># Optimize for BLAST with taxonomy preservation
+talaria reduce \
+    -i nr.fasta \
+    -o nr_reduced.fasta \
+    --aligner blast \
+    --preserve-taxonomy \
+    --clustering-threshold 0.95
+    
+# Build BLAST database
+makeblastdb -in nr_reduced.fasta -dbtype prot -out nr_reduced
+</code></pre>
+<h3 id="for-diamond-users"><a class="header" href="#for-diamond-users">For Diamond Users</a></h3>
+<pre><code class="language-bash"># Diamond-optimized reduction
+talaria reduce \
+    -i uniprot.fasta \
+    -o uniprot_diamond.fasta \
+    --aligner diamond \
+    --seed-coverage 0.9
+    
+# Build Diamond database
+diamond makedb --in uniprot_diamond.fasta --db uniprot_diamond
+</code></pre>
+<h3 id="for-kraken-users"><a class="header" href="#for-kraken-users">For Kraken Users</a></h3>
+<pre><code class="language-bash"># Taxonomic-aware reduction for Kraken
+talaria reduce \
+    -i bacterial_genomes.fasta \
+    -o bacteria_kraken.fasta \
+    --aligner kraken \
+    --preserve-taxonomy \
+    --min-taxa-per-cluster 5
+    
+# Build Kraken database
+kraken2-build --add-to-library bacteria_kraken.fasta --db kraken_db
+</code></pre>
+<h2 id="configuration-file"><a class="header" href="#configuration-file">Configuration File</a></h2>
+<p>Create a <code>talaria.toml</code> for persistent settings:</p>
+<pre><code class="language-toml"># ~/.config/talaria/config.toml
+[general]
+threads = 8
+verbose = true
+log_level = "info"
+
+[reduction]
+default_aligner = "lambda"
+clustering_threshold = 0.9
+min_sequence_length = 50
+preserve_taxonomy = true
+
+[performance]
+memory_limit_gb = 16
+use_mmap = true
+chunk_size_mb = 100
+
+[output]
+compression = "gzip"
+format = "fasta"
+</code></pre>
+<p>Use with:</p>
+<pre><code class="language-bash">talaria reduce -i input.fasta -o output.fasta --config ~/.config/talaria/config.toml
+</code></pre>
+<h2 id="real-world-example"><a class="header" href="#real-world-example">Real-World Example</a></h2>
+<h3 id="reducing-uniref90-for-mmseqs2"><a class="header" href="#reducing-uniref90-for-mmseqs2">Reducing UniRef90 for MMseqs2</a></h3>
+<pre><code class="language-bash"># Download UniRef90 (warning: ~15GB compressed)
+talaria download --database uniprot --dataset uniref90
+
+# Reduce with MMseqs2 optimization
+talaria reduce \
+    -i uniref90.fasta \
+    -o uniref90_mmseqs.fasta \
+    --aligner mmseqs2 \
+    --clustering-steps 0.9,0.7,0.5 \
+    --profile-mode \
+    --threads 16 \
+    --verbose
+
+# Statistics
+echo "Original:"
+talaria stats uniref90.fasta
+
+echo "Reduced:"
+talaria stats uniref90_mmseqs.fasta
+
+# Build MMseqs2 database
+mmseqs createdb uniref90_mmseqs.fasta uniref90_mmseqs_db
+mmseqs createindex uniref90_mmseqs_db tmp
+</code></pre>
+<p>Expected results:</p>
+<ul>
+<li><strong>Size reduction</strong>: 40-60%</li>
+<li><strong>Speed improvement</strong>: 2-3x faster searches</li>
+<li><strong>Quality</strong>: &gt;95% sensitivity retained</li>
+</ul>
+<h2 id="tips-for-best-results"><a class="header" href="#tips-for-best-results">Tips for Best Results</a></h2>
+<h3 id="1-choose-the-right-aligner-mode"><a class="header" href="#1-choose-the-right-aligner-mode">1. Choose the Right Aligner Mode</a></h3>
+<ul>
+<li><code>lambda</code> - Fast protein searches</li>
+<li><code>blast</code> - Traditional NCBI BLAST</li>
+<li><code>diamond</code> - Ultra-fast protein alignment</li>
+<li><code>mmseqs2</code> - Sensitive sequence searching</li>
+<li><code>kraken</code> - Taxonomic classification</li>
+<li><code>generic</code> - General-purpose reduction</li>
+</ul>
+<h3 id="2-adjust-parameters"><a class="header" href="#2-adjust-parameters">2. Adjust Parameters</a></h3>
+<pre><code class="language-bash"># More aggressive reduction (faster, less sensitive)
+--clustering-threshold 0.8 --min-identity 0.7
+
+# Conservative reduction (slower, more sensitive)
+--clustering-threshold 0.95 --min-identity 0.9
+</code></pre>
+<h3 id="3-memory-management"><a class="header" href="#3-memory-management">3. Memory Management</a></h3>
+<pre><code class="language-bash"># For large files (&gt;50GB)
+--optimize-memory --chunk-size 1000
+
+# For many small files
+--batch-mode --parallel
+</code></pre>
+<h3 id="4-validation"><a class="header" href="#4-validation">4. Validation</a></h3>
+<p>Always validate your reduced database:</p>
+<pre><code class="language-bash">talaria validate \
+    --original original.fasta \
+    --reduced reduced.fasta \
+    --sample-size 1000
+</code></pre>
+<h2 id="monitoring-progress"><a class="header" href="#monitoring-progress">Monitoring Progress</a></h2>
+<p>Talaria provides rich progress information:</p>
+<pre><code class="language-bash"># Verbose output with timing
+talaria reduce -i input.fasta -o output.fasta -vv
+
+# JSON output for scripting
+talaria reduce -i input.fasta -o output.fasta --output-format json
+
+# Real-time statistics
+talaria reduce -i input.fasta -o output.fasta --stats-interval 10
+</code></pre>
+<h2 id="integration-examples"><a class="header" href="#integration-examples">Integration Examples</a></h2>
+<h3 id="snakemake-pipeline"><a class="header" href="#snakemake-pipeline">Snakemake Pipeline</a></h3>
+<pre><code class="language-python">rule reduce_database:
+    input:
+        "data/{database}.fasta"
+    output:
+        "reduced/{database}_reduced.fasta"
+    params:
+        aligner="lambda",
+        threads=8
+    shell:
+        """
+        talaria reduce \
+            -i {input} \
+            -o {output} \
+            --aligner {params.aligner} \
+            --threads {params.threads}
+        """
+</code></pre>
+<h3 id="nextflow-pipeline"><a class="header" href="#nextflow-pipeline">Nextflow Pipeline</a></h3>
+<pre><code class="language-groovy">process reduceDatabase {
+    input:
+    path fasta_file
+    
+    output:
+    path "${fasta_file.baseName}_reduced.fasta"
+    
+    script:
+    """
+    talaria reduce \
+        -i ${fasta_file} \
+        -o ${fasta_file.baseName}_reduced.fasta \
+        --aligner lambda \
+        --threads ${task.cpus}
+    """
+}
+</code></pre>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<ul>
+<li>Explore <a href="basic-usage.html">Basic Usage</a> for detailed commands</li>
+<li>Read about <a href="../workflows/">specific workflows</a> for your aligner</li>
+<li>Learn about <a href="configuration.html">configuration options</a></li>
+<li>Understand the <a href="../algorithms/">algorithms</a> behind Talaria</li>
+</ul>
+<h2 id="getting-help"><a class="header" href="#getting-help">Getting Help</a></h2>
+<pre><code class="language-bash"># Built-in help
+talaria --help
+talaria reduce --help
+
+# Interactive help
+talaria interactive
+# Press 'h' for help
+
+# Online resources
+# Documentation: https://andromeda-tech.github.io/talaria/
+# Issues: https://github.com/Andromeda-Tech/talaria/issues
+</code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../introduction.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../user-guide/installation.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../introduction.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../user-guide/installation.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../mermaid.min.js"></script>
+        <script src="../mermaid-init.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

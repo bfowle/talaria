@@ -1,0 +1,989 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Custom Aligners - Talaria Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- MathJax Configuration -->
+        <script>
+        window.MathJax = {
+          tex2jax: {
+            inlineMath: [['$','$'], ['\\(','\\)']],
+            displayMath: [['$$','$$'], ['\\[','\\]']],
+            processEscapes: true,
+            processEnvironments: true
+          },
+          TeX: {
+            equationNumbers: { autoNumber: "AMS" },
+            extensions: ["AMSmath.js", "AMSsymbols.js"]
+          }
+        };
+        </script>
+        <meta name="description" content="Intelligent FASTA reduction for aligner index optimization">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../custom.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Talaria Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria/edit/main/docs/src/advanced/custom-aligners.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
+<h1 id="custom-aligners"><a class="header" href="#custom-aligners">Custom Aligners</a></h1>
+<p>Guide to implementing and integrating custom alignment algorithms and third-party aligners with Talaria.</p>
+<h2 id="aligner-interface"><a class="header" href="#aligner-interface">Aligner Interface</a></h2>
+<h3 id="core-trait-definition"><a class="header" href="#core-trait-definition">Core Trait Definition</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+
+/// Core trait that all aligners must implement
+#[async_trait]
+pub trait Aligner: Send + Sync {
+    /// Unique identifier for the aligner
+    fn name(&amp;self) -&gt; &amp;str;
+    
+    /// Version information
+    fn version(&amp;self) -&gt; &amp;str;
+    
+    /// Check if aligner is available on system
+    async fn is_available(&amp;self) -&gt; bool;
+    
+    /// Initialize the aligner
+    async fn initialize(&amp;mut self, config: AlignerConfig) -&gt; Result&lt;()&gt;;
+    
+    /// Perform alignment
+    async fn align(
+        &amp;self,
+        query: &amp;Sequence,
+        reference: &amp;Sequence,
+        params: AlignmentParams,
+    ) -&gt; Result&lt;Alignment&gt;;
+    
+    /// Batch alignment for efficiency
+    async fn align_batch(
+        &amp;self,
+        queries: &amp;[Sequence],
+        references: &amp;[Sequence],
+        params: AlignmentParams,
+    ) -&gt; Result&lt;Vec&lt;Alignment&gt;&gt;;
+    
+    /// Get optimization hints for reduction
+    fn optimization_hints(&amp;self) -&gt; OptimizationHints;
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="configuration-structure"><a class="header" href="#configuration-structure">Configuration Structure</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlignerConfig {
+    /// Path to aligner executable (if external)
+    pub executable_path: Option&lt;PathBuf&gt;,
+    
+    /// Number of threads to use
+    pub threads: usize,
+    
+    /// Memory limit in MB
+    pub memory_limit: Option&lt;usize&gt;,
+    
+    /// Temporary directory for intermediate files
+    pub temp_dir: PathBuf,
+    
+    /// Custom parameters
+    pub custom_params: HashMap&lt;String, String&gt;,
+}
+
+#[derive(Debug, Clone)]
+pub struct OptimizationHints {
+    /// Preferred k-mer size
+    pub kmer_size: Option&lt;usize&gt;,
+    
+    /// Minimum sequence length
+    pub min_sequence_length: usize,
+    
+    /// Whether aligner benefits from sorted input
+    pub prefers_sorted: bool,
+    
+    /// Whether aligner can use indexed references
+    pub supports_indexing: bool,
+    
+    /// Optimal chunk size for batch processing
+    pub optimal_batch_size: usize,
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="implementing-custom-aligners"><a class="header" href="#implementing-custom-aligners">Implementing Custom Aligners</a></h2>
+<h3 id="basic-implementation"><a class="header" href="#basic-implementation">Basic Implementation</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct MyCustomAligner {
+    name: String,
+    config: AlignerConfig,
+    initialized: bool,
+}
+
+#[async_trait]
+impl Aligner for MyCustomAligner {
+    fn name(&amp;self) -&gt; &amp;str {
+        &amp;self.name
+    }
+    
+    fn version(&amp;self) -&gt; &amp;str {
+        "1.0.0"
+    }
+    
+    async fn is_available(&amp;self) -&gt; bool {
+        // Check if required dependencies are available
+        if let Some(ref exe) = self.config.executable_path {
+            exe.exists()
+        } else {
+            true // Built-in aligner
+        }
+    }
+    
+    async fn initialize(&amp;mut self, config: AlignerConfig) -&gt; Result&lt;()&gt; {
+        self.config = config;
+        
+        // Perform any initialization steps
+        self.setup_working_directory()?;
+        self.validate_parameters()?;
+        
+        self.initialized = true;
+        Ok(())
+    }
+    
+    async fn align(
+        &amp;self,
+        query: &amp;Sequence,
+        reference: &amp;Sequence,
+        params: AlignmentParams,
+    ) -&gt; Result&lt;Alignment&gt; {
+        if !self.initialized {
+            return Err(anyhow!("Aligner not initialized"));
+        }
+        
+        // Implement alignment logic
+        let score = self.calculate_alignment_score(query, reference, &amp;params)?;
+        
+        Ok(Alignment {
+            query_id: query.id.clone(),
+            reference_id: reference.id.clone(),
+            score,
+            identity: self.calculate_identity(query, reference),
+            alignment_length: query.len().max(reference.len()),
+            gaps: self.count_gaps(query, reference),
+        })
+    }
+    
+    async fn align_batch(
+        &amp;self,
+        queries: &amp;[Sequence],
+        references: &amp;[Sequence],
+        params: AlignmentParams,
+    ) -&gt; Result&lt;Vec&lt;Alignment&gt;&gt; {
+        // Parallel batch processing
+        use rayon::prelude::*;
+        
+        queries.par_iter()
+            .flat_map(|query| {
+                references.par_iter()
+                    .map(|reference| {
+                        futures::executor::block_on(
+                            self.align(query, reference, params.clone())
+                        )
+                    })
+                    .collect::&lt;Vec&lt;_&gt;&gt;()
+            })
+            .collect::&lt;Result&lt;Vec&lt;_&gt;&gt;&gt;()
+    }
+    
+    fn optimization_hints(&amp;self) -&gt; OptimizationHints {
+        OptimizationHints {
+            kmer_size: Some(21),
+            min_sequence_length: 50,
+            prefers_sorted: false,
+            supports_indexing: true,
+            optimal_batch_size: 1000,
+        }
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="external-tool-integration"><a class="header" href="#external-tool-integration">External Tool Integration</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use tokio::process::Command;
+
+pub struct ExternalAligner {
+    executable: PathBuf,
+    work_dir: PathBuf,
+    config: AlignerConfig,
+}
+
+impl ExternalAligner {
+    async fn run_external_command(
+        &amp;self,
+        query_file: &amp;Path,
+        reference_file: &amp;Path,
+        output_file: &amp;Path,
+        params: &amp;AlignmentParams,
+    ) -&gt; Result&lt;()&gt; {
+        let mut cmd = Command::new(&amp;self.executable);
+        
+        // Add standard arguments
+        cmd.arg("-query").arg(query_file)
+           .arg("-subject").arg(reference_file)
+           .arg("-out").arg(output_file)
+           .arg("-num_threads").arg(self.config.threads.to_string());
+        
+        // Add custom parameters
+        for (key, value) in &amp;params.custom_params {
+            cmd.arg(format!("-{}", key)).arg(value);
+        }
+        
+        // Execute command
+        let output = cmd.output().await?;
+        
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&amp;output.stderr);
+            return Err(anyhow!("External aligner failed: {}", stderr));
+        }
+        
+        Ok(())
+    }
+    
+    async fn parse_output(&amp;self, output_file: &amp;Path) -&gt; Result&lt;Vec&lt;Alignment&gt;&gt; {
+        let content = tokio::fs::read_to_string(output_file).await?;
+        
+        // Parse aligner-specific output format
+        let alignments = content.lines()
+            .filter_map(|line| self.parse_alignment_line(line).ok())
+            .collect();
+        
+        Ok(alignments)
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="plugin-system"><a class="header" href="#plugin-system">Plugin System</a></h2>
+<h3 id="plugin-architecture"><a class="header" href="#plugin-architecture">Plugin Architecture</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use libloading::{Library, Symbol};
+
+pub struct PluginManager {
+    plugins: HashMap&lt;String, Box&lt;dyn Aligner&gt;&gt;,
+    libraries: Vec&lt;Library&gt;,
+}
+
+impl PluginManager {
+    pub fn load_plugin(&amp;mut self, path: &amp;Path) -&gt; Result&lt;()&gt; {
+        unsafe {
+            let lib = Library::new(path)?;
+            
+            // Get plugin metadata
+            let get_metadata: Symbol&lt;fn() -&gt; PluginMetadata&gt; = 
+                lib.get(b"get_plugin_metadata")?;
+            let metadata = get_metadata();
+            
+            // Create aligner instance
+            let create_aligner: Symbol&lt;fn() -&gt; Box&lt;dyn Aligner&gt;&gt; = 
+                lib.get(b"create_aligner")?;
+            let aligner = create_aligner();
+            
+            // Register plugin
+            self.plugins.insert(metadata.name.clone(), aligner);
+            self.libraries.push(lib);
+            
+            Ok(())
+        }
+    }
+    
+    pub fn get_aligner(&amp;self, name: &amp;str) -&gt; Option&lt;&amp;dyn Aligner&gt; {
+        self.plugins.get(name).map(|b| b.as_ref())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PluginMetadata {
+    pub name: String,
+    pub version: String,
+    pub author: String,
+    pub description: String,
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="writing-plugins"><a class="header" href="#writing-plugins">Writing Plugins</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// my_plugin/src/lib.rs
+
+use talaria_plugin_api::*;
+
+pub struct MyAligner {
+    // Implementation
+}
+
+impl Aligner for MyAligner {
+    // Implement trait methods
+}
+
+#[no_mangle]
+pub extern "C" fn get_plugin_metadata() -&gt; PluginMetadata {
+    PluginMetadata {
+        name: "my_aligner".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        author: "Your Name".to_string(),
+        description: "Custom alignment algorithm".to_string(),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn create_aligner() -&gt; Box&lt;dyn Aligner&gt; {
+    Box::new(MyAligner::new())
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="advanced-features"><a class="header" href="#advanced-features">Advanced Features</a></h2>
+<h3 id="gpu-acceleration"><a class="header" href="#gpu-acceleration">GPU Acceleration</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct GpuAligner {
+    device: GpuDevice,
+    kernels: HashMap&lt;String, GpuKernel&gt;,
+}
+
+impl GpuAligner {
+    pub async fn align_gpu(
+        &amp;self,
+        queries: &amp;[Sequence],
+        references: &amp;[Sequence],
+    ) -&gt; Result&lt;Vec&lt;Alignment&gt;&gt; {
+        // Transfer data to GPU
+        let d_queries = self.device.upload(queries)?;
+        let d_references = self.device.upload(references)?;
+        
+        // Allocate output buffer
+        let d_output = self.device.allocate::&lt;Alignment&gt;(
+            queries.len() * references.len()
+        )?;
+        
+        // Launch kernel
+        let kernel = &amp;self.kernels["alignment"];
+        kernel.launch(
+            &amp;[&amp;d_queries, &amp;d_references, &amp;d_output],
+            queries.len() as u32,
+            references.len() as u32,
+        )?;
+        
+        // Download results
+        self.device.download(&amp;d_output)
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="adaptive-algorithm-selection"><a class="header" href="#adaptive-algorithm-selection">Adaptive Algorithm Selection</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct AdaptiveAligner {
+    aligners: Vec&lt;Box&lt;dyn Aligner&gt;&gt;,
+    selector: AlgorithmSelector,
+}
+
+impl AdaptiveAligner {
+    pub async fn select_best_aligner(
+        &amp;self,
+        sequences: &amp;[Sequence],
+    ) -&gt; &amp;dyn Aligner {
+        let features = self.extract_features(sequences);
+        let aligner_idx = self.selector.predict(&amp;features);
+        &amp;*self.aligners[aligner_idx]
+    }
+    
+    fn extract_features(&amp;self, sequences: &amp;[Sequence]) -&gt; Features {
+        Features {
+            avg_length: sequences.iter().map(|s| s.len()).sum::&lt;usize&gt;() 
+                / sequences.len(),
+            gc_content: self.calculate_gc_content(sequences),
+            complexity: self.calculate_complexity(sequences),
+            similarity: self.estimate_similarity(sequences),
+        }
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="custom-scoring-matrices"><a class="header" href="#custom-scoring-matrices">Custom Scoring Matrices</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct CustomScoringMatrix {
+    matrix: ndarray::Array2&lt;i32&gt;,
+    alphabet: Vec&lt;u8&gt;,
+}
+
+impl CustomScoringMatrix {
+    pub fn from_file(path: &amp;Path) -&gt; Result&lt;Self&gt; {
+        let content = std::fs::read_to_string(path)?;
+        let mut lines = content.lines();
+        
+        // Parse alphabet
+        let alphabet: Vec&lt;u8&gt; = lines.next()
+            .ok_or_else(|| anyhow!("Empty scoring matrix file"))?
+            .split_whitespace()
+            .map(|s| s.as_bytes()[0])
+            .collect();
+        
+        // Parse matrix
+        let size = alphabet.len();
+        let mut matrix = ndarray::Array2::zeros((size, size));
+        
+        for (i, line) in lines.enumerate() {
+            for (j, value) in line.split_whitespace().enumerate() {
+                matrix[[i, j]] = value.parse()?;
+            }
+        }
+        
+        Ok(Self { matrix, alphabet })
+    }
+    
+    pub fn score(&amp;self, a: u8, b: u8) -&gt; i32 {
+        let i = self.alphabet.iter().position(|&amp;x| x == a).unwrap_or(0);
+        let j = self.alphabet.iter().position(|&amp;x| x == b).unwrap_or(0);
+        self.matrix[[i, j]]
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="integration-examples"><a class="header" href="#integration-examples">Integration Examples</a></h2>
+<h3 id="mafft-integration"><a class="header" href="#mafft-integration">MAFFT Integration</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct MafftAligner {
+    executable: PathBuf,
+    threads: usize,
+}
+
+impl MafftAligner {
+    pub async fn align_multiple(
+        &amp;self,
+        sequences: &amp;[Sequence],
+    ) -&gt; Result&lt;MultipleAlignment&gt; {
+        // Write sequences to temporary file
+        let input_file = self.write_temp_fasta(sequences).await?;
+        let output_file = self.temp_file("mafft_output.fasta");
+        
+        // Run MAFFT
+        let output = Command::new(&amp;self.executable)
+            .arg("--thread").arg(self.threads.to_string())
+            .arg("--auto")
+            .arg(input_file.path())
+            .stdout(Stdio::piped())
+            .output()
+            .await?;
+        
+        // Parse aligned sequences
+        let aligned = self.parse_fasta(&amp;output.stdout)?;
+        
+        Ok(MultipleAlignment {
+            sequences: aligned,
+            score: self.calculate_alignment_score(&amp;aligned),
+        })
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="minimap2-integration"><a class="header" href="#minimap2-integration">Minimap2 Integration</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct Minimap2Aligner {
+    executable: PathBuf,
+    preset: String,
+}
+
+impl Minimap2Aligner {
+    pub async fn align_long_reads(
+        &amp;self,
+        reads: &amp;[Sequence],
+        reference: &amp;Path,
+    ) -&gt; Result&lt;Vec&lt;Alignment&gt;&gt; {
+        let reads_file = self.write_temp_fastq(reads).await?;
+        
+        let output = Command::new(&amp;self.executable)
+            .arg("-x").arg(&amp;self.preset)
+            .arg("-t").arg(self.threads.to_string())
+            .arg(reference)
+            .arg(reads_file.path())
+            .output()
+            .await?;
+        
+        self.parse_paf(&amp;output.stdout)
+    }
+    
+    fn parse_paf(&amp;self, data: &amp;[u8]) -&gt; Result&lt;Vec&lt;Alignment&gt;&gt; {
+        let content = std::str::from_utf8(data)?;
+        
+        content.lines()
+            .map(|line| {
+                let fields: Vec&lt;&amp;str&gt; = line.split('\t').collect();
+                Ok(Alignment {
+                    query_id: fields[0].to_string(),
+                    reference_id: fields[5].to_string(),
+                    score: fields[11].parse()?,
+                    identity: fields[9].parse::&lt;f64&gt;()? / fields[10].parse::&lt;f64&gt;()?,
+                    alignment_length: fields[10].parse()?,
+                    gaps: 0, // PAF doesn't directly report gaps
+                })
+            })
+            .collect()
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="performance-optimization"><a class="header" href="#performance-optimization">Performance Optimization</a></h2>
+<h3 id="caching-layer"><a class="header" href="#caching-layer">Caching Layer</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct CachedAligner&lt;A: Aligner&gt; {
+    inner: A,
+    cache: Arc&lt;DashMap&lt;(String, String), Alignment&gt;&gt;,
+    max_cache_size: usize,
+}
+
+impl&lt;A: Aligner&gt; CachedAligner&lt;A&gt; {
+    pub async fn align_with_cache(
+        &amp;self,
+        query: &amp;Sequence,
+        reference: &amp;Sequence,
+        params: AlignmentParams,
+    ) -&gt; Result&lt;Alignment&gt; {
+        let key = (query.id.clone(), reference.id.clone());
+        
+        // Check cache
+        if let Some(cached) = self.cache.get(&amp;key) {
+            return Ok(cached.clone());
+        }
+        
+        // Compute alignment
+        let alignment = self.inner.align(query, reference, params).await?;
+        
+        // Store in cache if under size limit
+        if self.cache.len() &lt; self.max_cache_size {
+            self.cache.insert(key, alignment.clone());
+        }
+        
+        Ok(alignment)
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="parallel-pipeline"><a class="header" href="#parallel-pipeline">Parallel Pipeline</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct PipelinedAligner {
+    stages: Vec&lt;Box&lt;dyn AlignmentStage&gt;&gt;,
+}
+
+#[async_trait]
+trait AlignmentStage: Send + Sync {
+    async fn process(
+        &amp;self,
+        input: AlignmentData,
+    ) -&gt; Result&lt;AlignmentData&gt;;
+}
+
+impl PipelinedAligner {
+    pub async fn align_pipeline(
+        &amp;self,
+        sequences: Vec&lt;Sequence&gt;,
+    ) -&gt; Result&lt;Vec&lt;Alignment&gt;&gt; {
+        let (tx, mut rx) = mpsc::channel(100);
+        
+        // Start pipeline
+        let mut data = AlignmentData::new(sequences);
+        
+        for stage in &amp;self.stages {
+            data = stage.process(data).await?;
+        }
+        
+        Ok(data.alignments)
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
+<h3 id="aligner-registry"><a class="header" href="#aligner-registry">Aligner Registry</a></h3>
+<pre><code class="language-toml">[aligners.custom]
+# Custom aligner configuration
+name = "my_custom_aligner"
+type = "plugin"
+path = "/usr/local/lib/talaria/plugins/my_aligner.so"
+
+[aligners.custom.params]
+kmer_size = 21
+min_score = 0.8
+use_gpu = true
+
+[aligners.external]
+# External tool configuration
+name = "blast"
+type = "external"
+executable = "/usr/bin/blastn"
+version_check = "blastn -version"
+
+[aligners.external.defaults]
+evalue = "1e-5"
+word_size = 11
+num_threads = 8
+</code></pre>
+<h3 id="dynamic-loading"><a class="header" href="#dynamic-loading">Dynamic Loading</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct AlignerRegistry {
+    aligners: HashMap&lt;String, Box&lt;dyn Aligner&gt;&gt;,
+    config: RegistryConfig,
+}
+
+impl AlignerRegistry {
+    pub fn load_from_config(&amp;mut self, config: &amp;Config) -&gt; Result&lt;()&gt; {
+        for (name, aligner_config) in &amp;config.aligners {
+            let aligner = match aligner_config.aligner_type.as_str() {
+                "builtin" =&gt; self.load_builtin(name)?,
+                "plugin" =&gt; self.load_plugin(&amp;aligner_config.path)?,
+                "external" =&gt; self.load_external(aligner_config)?,
+                _ =&gt; return Err(anyhow!("Unknown aligner type")),
+            };
+            
+            self.register(name.clone(), aligner);
+        }
+        
+        Ok(())
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="testing-custom-aligners"><a class="header" href="#testing-custom-aligners">Testing Custom Aligners</a></h2>
+<h3 id="unit-tests"><a class="header" href="#unit-tests">Unit Tests</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[tokio::test]
+    async fn test_custom_aligner() {
+        let mut aligner = MyCustomAligner::new();
+        aligner.initialize(Default::default()).await.unwrap();
+        
+        let query = Sequence::new("query", b"ACGTACGT");
+        let reference = Sequence::new("ref", b"ACGTACGT");
+        
+        let alignment = aligner.align(
+            &amp;query,
+            &amp;reference,
+            Default::default()
+        ).await.unwrap();
+        
+        assert_eq!(alignment.identity, 1.0);
+        assert_eq!(alignment.gaps, 0);
+    }
+    
+    #[tokio::test]
+    async fn test_batch_alignment() {
+        let aligner = MyCustomAligner::new();
+        let queries = vec![
+            Sequence::new("q1", b"ACGT"),
+            Sequence::new("q2", b"GCTA"),
+        ];
+        let references = vec![
+            Sequence::new("r1", b"ACGT"),
+            Sequence::new("r2", b"GCTA"),
+        ];
+        
+        let alignments = aligner.align_batch(
+            &amp;queries,
+            &amp;references,
+            Default::default()
+        ).await.unwrap();
+        
+        assert_eq!(alignments.len(), 4);
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="benchmarking"><a class="header" href="#benchmarking">Benchmarking</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use criterion::{criterion_group, criterion_main, Criterion};
+
+fn benchmark_aligners(c: &amp;mut Criterion) {
+    let mut group = c.benchmark_group("aligners");
+    
+    let sequences = generate_test_sequences(1000);
+    
+    group.bench_function("custom_aligner", |b| {
+        let aligner = MyCustomAligner::new();
+        b.iter(|| {
+            futures::executor::block_on(
+                aligner.align_batch(&amp;sequences, &amp;sequences, Default::default())
+            )
+        });
+    });
+    
+    group.bench_function("external_aligner", |b| {
+        let aligner = ExternalAligner::new();
+        b.iter(|| {
+            futures::executor::block_on(
+                aligner.align_batch(&amp;sequences, &amp;sequences, Default::default())
+            )
+        });
+    });
+    
+    group.finish();
+}
+
+criterion_group!(benches, benchmark_aligners);
+criterion_main!(benches);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<ol>
+<li><strong>Interface Compliance</strong>: Always implement the full Aligner trait</li>
+<li><strong>Error Handling</strong>: Provide detailed error messages</li>
+<li><strong>Resource Management</strong>: Clean up temporary files and memory</li>
+<li><strong>Thread Safety</strong>: Ensure aligners are thread-safe</li>
+<li><strong>Documentation</strong>: Document parameters and behavior</li>
+<li><strong>Testing</strong>: Comprehensive unit and integration tests</li>
+<li><strong>Benchmarking</strong>: Compare performance with standard aligners</li>
+<li><strong>Compatibility</strong>: Support standard file formats</li>
+</ol>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="../api/aligners.html">API Reference</a> - Aligner API documentation</li>
+<li><a href="performance.html">Performance</a> - Optimization techniques</li>
+<li><a href="parallel.html">Parallel Processing</a> - Parallel alignment strategies</li>
+<li><a href="../user-guide/configuration.html">Configuration</a> - Aligner configuration</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../advanced/distributed-processing.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../benchmarks/performance.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../advanced/distributed-processing.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../benchmarks/performance.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../mermaid.min.js"></script>
+        <script src="../mermaid-init.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

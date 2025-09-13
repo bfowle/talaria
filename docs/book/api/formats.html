@@ -1,0 +1,1003 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>File Formats - Talaria Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- MathJax Configuration -->
+        <script>
+        window.MathJax = {
+          tex2jax: {
+            inlineMath: [['$','$'], ['\\(','\\)']],
+            displayMath: [['$$','$$'], ['\\[','\\]']],
+            processEscapes: true,
+            processEnvironments: true
+          },
+          TeX: {
+            equationNumbers: { autoNumber: "AMS" },
+            extensions: ["AMSmath.js", "AMSsymbols.js"]
+          }
+        };
+        </script>
+        <meta name="description" content="Intelligent FASTA reduction for aligner index optimization">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../custom.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Talaria Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria/edit/main/docs/src/api/formats.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
+<h1 id="file-formats-api-reference"><a class="header" href="#file-formats-api-reference">File Formats API Reference</a></h1>
+<p>Talaria supports multiple input and output file formats for biological sequence data, metadata, and configuration. This document provides comprehensive format specifications, validation rules, and usage examples for all supported formats.</p>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>Talaria processes three main categories of files:</p>
+<ul>
+<li><strong>Sequence Files:</strong> FASTA, FASTQ, and other sequence formats</li>
+<li><strong>Metadata Files:</strong> Delta encoding, taxonomic mapping, and statistics</li>
+<li><strong>Configuration Files:</strong> TOML configuration and validation schemas</li>
+</ul>
+<hr />
+<h2 id="fasta-format"><a class="header" href="#fasta-format">FASTA Format</a></h2>
+<h3 id="standard-fasta"><a class="header" href="#standard-fasta">Standard FASTA</a></h3>
+<p>Talaria uses standard FASTA format with enhanced header parsing for biological metadata.</p>
+<h4 id="basic-structure"><a class="header" href="#basic-structure">Basic Structure</a></h4>
+<pre><code class="language-fasta">&gt;sequence_identifier optional description
+SEQUENCE_DATA_LINE_1
+SEQUENCE_DATA_LINE_2
+...
+&gt;next_sequence_identifier optional description
+NEXT_SEQUENCE_DATA
+</code></pre>
+<h4 id="header-format-specifications"><a class="header" href="#header-format-specifications">Header Format Specifications</a></h4>
+<p><strong>Standard Headers:</strong></p>
+<pre><code class="language-fasta">&gt;gi|123456|ref|NP_001234.1| hypothetical protein [Organism name]
+</code></pre>
+<p><strong>UniProt Headers:</strong></p>
+<pre><code class="language-fasta">&gt;sp|P12345|PROT_HUMAN Protein name OS=Homo sapiens OX=9606 GN=GENE PE=1 SV=2
+</code></pre>
+<p><strong>Custom Headers:</strong></p>
+<pre><code class="language-fasta">&gt;sequence_001|taxonomy:9606|length:254 Description of sequence function
+</code></pre>
+<h4 id="supported-header-patterns"><a class="header" href="#supported-header-patterns">Supported Header Patterns</a></h4>
+<p>Talaria automatically extracts metadata from common header formats:</p>
+<div class="table-wrapper"><table><thead><tr><th>Pattern</th><th>Example</th><th>Extracted Data</th></tr></thead><tbody>
+<tr><td><strong>NCBI GenBank</strong></td><td><code>&gt;gi|123|gb|ABC123|</code></td><td>GI number, accession</td></tr>
+<tr><td><strong>NCBI RefSeq</strong></td><td><code>&gt;gi|456|ref|NP_001234|</code></td><td>GI number, RefSeq ID</td></tr>
+<tr><td><strong>UniProt SwissProt</strong></td><td><code>&gt;sp|P12345|PROT_HUMAN</code></td><td>Accession, entry name</td></tr>
+<tr><td><strong>UniProt TrEMBL</strong></td><td><code>&gt;tr|Q67890|Q67890_MOUSE</code></td><td>Accession, entry name</td></tr>
+<tr><td><strong>EMBL</strong></td><td><code>&gt;embl|CAA12345|</code></td><td>EMBL accession</td></tr>
+<tr><td><strong>PDB</strong></td><td><code>&gt;pdb|1ABC|A</code></td><td>PDB ID, chain</td></tr>
+</tbody></table>
+</div>
+<h4 id="taxonomy-extraction"><a class="header" href="#taxonomy-extraction">Taxonomy Extraction</a></h4>
+<p>Talaria recognizes multiple taxonomy annotation patterns:</p>
+<pre><code class="language-fasta"># NCBI taxonomy ID
+&gt;sequence_id [taxid:9606]
+
+# UniProt organism code  
+&gt;sp|P12345|PROT_HUMAN ... OX=9606
+
+# Custom taxonomy tags
+&gt;seq_001|taxonomy:9606|species:Homo_sapiens
+
+# Organism name in brackets
+&gt;sequence_id hypothetical protein [Homo sapiens]
+</code></pre>
+<h4 id="sequence-data-rules"><a class="header" href="#sequence-data-rules">Sequence Data Rules</a></h4>
+<p><strong>Valid Characters:</strong></p>
+<ul>
+<li><strong>Proteins:</strong> A-Z amino acid codes, X (unknown), * (stop), - (gap)</li>
+<li><strong>Nucleotides:</strong> A, T, G, C, U, N (unknown), - (gap)</li>
+<li><strong>Ambiguous:</strong> IUPAC ambiguity codes (R, Y, S, W, K, M, etc.)</li>
+</ul>
+<p><strong>Line Length:</strong></p>
+<ul>
+<li>Default: 80 characters per line</li>
+<li>Range: 50-200 characters (configurable)</li>
+<li>No maximum line length enforced during parsing</li>
+</ul>
+<p><strong>Case Handling:</strong></p>
+<ul>
+<li>Input: Case-insensitive (converted to uppercase)</li>
+<li>Output: Uppercase by default (configurable)</li>
+</ul>
+<h4 id="example-valid-fasta"><a class="header" href="#example-valid-fasta">Example Valid FASTA</a></h4>
+<pre><code class="language-fasta">&gt;sp|P12345|INSULIN_HUMAN Insulin OS=Homo sapiens OX=9606 GN=INS PE=1 SV=1
+MALWMRLLPLLALLALWGPDPAAAFVNQHLCGSHLVEALYLVCGERGFFYTPKTRREAEDL
+QVGQVELGGGPGAGSLQPLALEGSLQKRGIVEQCCTSICSLYQLENYCN
+
+&gt;gi|987654|ref|NP_000207.1| insulin [Homo sapiens]  
+MALWMRLLPLLALLALWGPDPAAAFVNQHLCGSHLVEALYLVCGERGFFYTPKTRREAEDL
+QVGQVELGGGPGAGSLQPLALEGSLQKRGIVEQCCTSICSLYQLENYCN
+</code></pre>
+<h4 id="fasta-validation"><a class="header" href="#fasta-validation">FASTA Validation</a></h4>
+<p><strong>Required Elements:</strong></p>
+<ul>
+<li>Header line starting with <code>&gt;</code></li>
+<li>Non-empty sequence identifier</li>
+<li>At least one sequence line with valid characters</li>
+</ul>
+<p><strong>Common Errors:</strong></p>
+<pre><code class="language-bash"># Missing header
+ATCGATCGATCG    # ERROR: No header line
+
+# Empty identifier  
+&gt; description only    # ERROR: No sequence ID
+
+# Invalid characters
+&gt;seq1
+ATCGXYZ123    # ERROR: Invalid nucleotide characters
+
+# Mixed sequence types in same file
+&gt;prot1
+MALW...       # Protein sequence
+&gt;nucl1  
+ATCG...       # ERROR: Mixed protein/nucleotide
+</code></pre>
+<h4 id="fasta-performance-optimizations"><a class="header" href="#fasta-performance-optimizations">FASTA Performance Optimizations</a></h4>
+<p><strong>Memory-Mapped Parsing:</strong></p>
+<ul>
+<li>Files &gt;100MB automatically use memory mapping</li>
+<li>Reduces memory usage for large files</li>
+<li>Faster random access to sequences</li>
+</ul>
+<p><strong>Parallel Processing:</strong></p>
+<ul>
+<li>Large files split into chunks for parallel parsing</li>
+<li>Chunk boundaries respect sequence boundaries</li>
+<li>Configurable chunk size (default: 10K sequences)</li>
+</ul>
+<hr />
+<h2 id="delta-file-format"><a class="header" href="#delta-file-format">Delta File Format</a></h2>
+<h3 id="delta-metadata-format-dat"><a class="header" href="#delta-metadata-format-dat">Delta Metadata Format (.dat)</a></h3>
+<p>Delta files store compressed representations of sequences similar to reference sequences. This format enables efficient storage and reconstruction of large sequence databases.</p>
+<h4 id="file-structure"><a class="header" href="#file-structure">File Structure</a></h4>
+<pre><code># Talaria Delta Format v1.0
+# Reference: reference_sequence_id
+# Target: target_sequence_id  
+# Distance: edit_distance
+# Operations: insertion(I), deletion(D), substitution(S), match(M)
+
+reference_id    target_id    edit_distance    operations
+seq_ref_001     seq_del_002  5               3M,1I,2M,1D,1S,10M
+seq_ref_001     seq_del_003  8               1S,15M,2I,1D,5M  
+seq_ref_004     seq_del_005  12              2M,3D,1I,8M,1S,4M
+</code></pre>
+<h4 id="delta-operations-format"><a class="header" href="#delta-operations-format">Delta Operations Format</a></h4>
+<p>Operations are encoded as comma-separated tuples:</p>
+<div class="table-wrapper"><table><thead><tr><th>Operation</th><th>Format</th><th>Description</th><th>Example</th></tr></thead><tbody>
+<tr><td><strong>Match</strong></td><td><code>nM</code></td><td>n identical characters</td><td><code>10M</code> = 10 matches</td></tr>
+<tr><td><strong>Substitution</strong></td><td><code>nS</code></td><td>n substitutions</td><td><code>2S</code> = 2 substitutions</td></tr>
+<tr><td><strong>Insertion</strong></td><td><code>nI</code></td><td>n insertions in target</td><td><code>3I</code> = insert 3 chars</td></tr>
+<tr><td><strong>Deletion</strong></td><td><code>nD</code></td><td>n deletions from reference</td><td><code>1D</code> = delete 1 char</td></tr>
+</tbody></table>
+</div>
+<h4 id="detailed-delta-format"><a class="header" href="#detailed-delta-format">Detailed Delta Format</a></h4>
+<p>For complex delta encoding with actual sequence data:</p>
+<pre><code># Extended Delta Format
+reference_id:seq_ref_001
+target_id:seq_del_002
+reference_length:245
+target_length:248
+edit_distance:5
+operations:
+  3M    # Positions 1-3 match
+  1I:T  # Insert T at position 4
+  2M    # Positions 4-5 match (in reference)
+  1D    # Delete position 6 from reference  
+  1S:A&gt;G # Substitute A with G at position 7
+  10M   # Positions 8-17 match
+---
+</code></pre>
+<h4 id="delta-file-validation"><a class="header" href="#delta-file-validation">Delta File Validation</a></h4>
+<p><strong>Consistency Checks:</strong></p>
+<ul>
+<li>Edit distance matches operation count</li>
+<li>All referenced sequences exist</li>
+<li>Operations don’t exceed sequence boundaries</li>
+</ul>
+<p><strong>Common Errors:</strong></p>
+<pre><code class="language-bash"># Inconsistent edit distance
+seq_ref_001  seq_del_002  5  3M,1I,2M,1D,1S,10M,2I  # ERROR: Distance=5, actual=8
+
+# Missing reference
+missing_ref  seq_del_002  3  1M,1I,1M  # ERROR: Reference not found
+
+# Invalid operations  
+seq_ref_001  seq_del_002  2  5M,3X,1M  # ERROR: Unknown operation 'X'
+</code></pre>
+<h4 id="delta-reconstruction-algorithm"><a class="header" href="#delta-reconstruction-algorithm">Delta Reconstruction Algorithm</a></h4>
+<ol>
+<li><strong>Load Reference:</strong> Read reference sequence into memory</li>
+<li><strong>Parse Operations:</strong> Split operation string by commas</li>
+<li><strong>Apply Operations:</strong> Process each operation sequentially</li>
+<li><strong>Validate Result:</strong> Check final sequence length and consistency</li>
+</ol>
+<pre><code class="language-python">def reconstruct_sequence(reference_seq, operations):
+    result = []
+    ref_pos = 0
+    
+    for op in operations.split(','):
+        if op.endswith('M'):  # Match
+            count = int(op[:-1])
+            result.extend(reference_seq[ref_pos:ref_pos+count])
+            ref_pos += count
+        elif op.endswith('I'):  # Insertion
+            # Insert from operation or separate data
+            pass
+        # ... handle other operations
+    
+    return ''.join(result)
+</code></pre>
+<hr />
+<h2 id="reference-to-children-mapping-ref2child"><a class="header" href="#reference-to-children-mapping-ref2child">Reference-to-Children Mapping (.ref2child)</a></h2>
+<h3 id="format-specification"><a class="header" href="#format-specification">Format Specification</a></h3>
+<p>Maps reference sequences to their derived (child) sequences for efficient lookup during reconstruction.</p>
+<pre><code># Reference-to-children mapping
+# Format: reference_id&lt;TAB&gt;child_id1&lt;TAB&gt;child_id2&lt;TAB&gt;...
+
+sp|P12345|INSULIN_HUMAN	sp|P12346|INSULIN_RAT	sp|P12347|INSULIN_MOUSE	tr|Q12345|INSULIN_CHIMP
+gi|123456|ref|NP_001234	gi|123457|ref|NP_001235	gi|123458|ref|NP_001236
+seq_reference_001	seq_delta_002	seq_delta_003	seq_delta_004	seq_delta_005
+</code></pre>
+<h4 id="file-structure-rules"><a class="header" href="#file-structure-rules">File Structure Rules</a></h4>
+<ul>
+<li><strong>Delimiter:</strong> Tab character (<code>\t</code>)</li>
+<li><strong>First Column:</strong> Reference sequence identifier</li>
+<li><strong>Subsequent Columns:</strong> Child sequence identifiers (space-separated if multiple per column)</li>
+<li><strong>Comments:</strong> Lines starting with <code>#</code> are ignored</li>
+<li><strong>Empty Lines:</strong> Ignored</li>
+</ul>
+<h4 id="usage-examples"><a class="header" href="#usage-examples">Usage Examples</a></h4>
+<pre><code class="language-bash"># Create reference mapping
+talaria reduce -i input.fasta -o ref.fasta --ref2child mapping.ref2child
+
+# Use mapping for reconstruction
+talaria reconstruct -r ref.fasta -d deltas.dat --mapping mapping.ref2child
+</code></pre>
+<hr />
+<h2 id="taxonomic-data-formats"><a class="header" href="#taxonomic-data-formats">Taxonomic Data Formats</a></h2>
+<h3 id="ncbi-taxonomy-format"><a class="header" href="#ncbi-taxonomy-format">NCBI Taxonomy Format</a></h3>
+<p>Talaria can import and use NCBI taxonomy data for taxonomy-aware reduction.</p>
+<h4 id="nodesdmp-format"><a class="header" href="#nodesdmp-format">nodes.dmp Format</a></h4>
+<p>Standard NCBI taxonomy nodes format:</p>
+<pre><code># Format: tax_id | parent_tax_id | rank | embl_code | ...
+1	1	no rank	-	8	0	1	0	0	1	0	0		
+2	131567	superkingdom	-	0	0	11	0	0	1	0	0		
+6	335928	genus	-	0	1	11	1	0	1	1	0		
+9	32199	species	-	0	1	11	1	0	1	1	0		
+</code></pre>
+<h4 id="namesdmp-format"><a class="header" href="#namesdmp-format">names.dmp Format</a></h4>
+<p>Taxonomy names and classifications:</p>
+<pre><code># Format: tax_id | name_txt | unique_name | name_class
+1	all	-	synonym
+1	root	-	scientific name  
+2	Bacteria	Bacteria &lt;prokaryote&gt;	scientific name
+2	bacteria	-	genbank common name
+</code></pre>
+<h4 id="custom-taxonomy-format"><a class="header" href="#custom-taxonomy-format">Custom Taxonomy Format</a></h4>
+<p>Simplified taxonomy format for custom databases:</p>
+<pre><code class="language-toml"># taxonomy.toml
+[taxa]
+9606 = { name = "Homo sapiens", rank = "species", parent = 9605 }
+9605 = { name = "Homo", rank = "genus", parent = 9604 }
+9604 = { name = "Hominidae", rank = "family", parent = 314146 }
+</code></pre>
+<hr />
+<h2 id="statistics-and-report-formats"><a class="header" href="#statistics-and-report-formats">Statistics and Report Formats</a></h2>
+<h3 id="json-statistics-format"><a class="header" href="#json-statistics-format">JSON Statistics Format</a></h3>
+<p>Comprehensive statistics output in machine-readable JSON:</p>
+<pre><code class="language-json">{
+  "file_info": {
+    "filename": "database.fasta",
+    "file_size": 1024000000,
+    "parsed_at": "2024-01-15T10:30:00Z",
+    "format": "fasta"
+  },
+  "sequence_metrics": {
+    "total_sequences": 1500000,
+    "total_length": 750000000,
+    "average_length": 500.0,
+    "median_length": 425,
+    "min_length": 50,
+    "max_length": 35000,
+    "n50": 680,
+    "n90": 1200,
+    "length_distribution": {
+      "0-100": 50000,
+      "101-500": 800000,  
+      "501-1000": 450000,
+      "1001+": 200000
+    }
+  },
+  "composition_analysis": {
+    "sequence_type": "protein",
+    "amino_acid_frequencies": {
+      "A": 8.2, "R": 5.1, "N": 4.3, "D": 5.5,
+      "C": 1.4, "Q": 3.9, "E": 6.7, "G": 7.1
+    },
+    "low_complexity_percentage": 12.5,
+    "ambiguous_residues": 1250
+  },
+  "complexity_metrics": {
+    "shannon_entropy": 1.85,
+    "simpson_diversity": 0.92,
+    "sequence_diversity": 0.875
+  },
+  "reduction_statistics": {
+    "original_sequences": 1500000,
+    "reference_sequences": 450000,
+    "delta_encoded_sequences": 1050000,
+    "compression_ratio": 0.30,
+    "space_savings": 3.33,
+    "taxonomic_coverage": 0.98
+  }
+}
+</code></pre>
+<h3 id="csv-statistics-format"><a class="header" href="#csv-statistics-format">CSV Statistics Format</a></h3>
+<p>Tabular format for spreadsheet analysis:</p>
+<pre><code class="language-csv">metric,value,unit,description
+total_sequences,1500000,count,Total number of sequences
+total_length,750000000,bp,Total sequence length
+average_length,500.0,bp,Mean sequence length
+median_length,425,bp,Median sequence length
+min_length,50,bp,Shortest sequence length
+max_length,35000,bp,Longest sequence length
+n50,680,bp,N50 assembly statistic
+n90,1200,bp,N90 assembly statistic
+gc_content,42.5,percent,GC content (nucleotides only)
+shannon_entropy,1.85,bits,Sequence complexity measure
+compression_ratio,0.30,ratio,Reduction compression ratio
+taxonomic_coverage,0.98,fraction,Preserved taxonomic diversity
+</code></pre>
+<h3 id="html-report-format"><a class="header" href="#html-report-format">HTML Report Format</a></h3>
+<p>Rich HTML reports with interactive visualizations:</p>
+<pre><code class="language-html">&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+    &lt;title&gt;Talaria Analysis Report&lt;/title&gt;
+    &lt;script src="https://d3js.org/d3.v7.min.js"&gt;&lt;/script&gt;
+    &lt;style&gt;/* Embedded CSS styles */&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;h1&gt;FASTA Analysis Report&lt;/h1&gt;
+    
+    &lt;div class="summary-section"&gt;
+        &lt;h2&gt;● Summary Statistics&lt;/h2&gt;
+        &lt;table class="stats-table"&gt;
+            &lt;tr&gt;&lt;td&gt;Total Sequences&lt;/td&gt;&lt;td&gt;1,500,000&lt;/td&gt;&lt;/tr&gt;
+            &lt;tr&gt;&lt;td&gt;Total Length&lt;/td&gt;&lt;td&gt;750 Mbp&lt;/td&gt;&lt;/tr&gt;
+            &lt;tr&gt;&lt;td&gt;Average Length&lt;/td&gt;&lt;td&gt;500 bp&lt;/td&gt;&lt;/tr&gt;
+        &lt;/table&gt;
+    &lt;/div&gt;
+    
+    &lt;div class="visualization-section"&gt;  
+        &lt;h2&gt;▶ Length Distribution&lt;/h2&gt;
+        &lt;div id="length-histogram"&gt;&lt;/div&gt;
+        &lt;script&gt;/* D3.js visualization code */&lt;/script&gt;
+    &lt;/div&gt;
+    
+    &lt;div class="reduction-section"&gt;
+        &lt;h2&gt;■ Reduction Analysis&lt;/h2&gt;
+        &lt;div class="reduction-metrics"&gt;
+            &lt;div class="metric"&gt;
+                &lt;span class="label"&gt;Compression Ratio&lt;/span&gt;
+                &lt;span class="value"&gt;30%&lt;/span&gt;
+            &lt;/div&gt;
+        &lt;/div&gt;
+    &lt;/div&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+<hr />
+<h2 id="configuration-file-formats"><a class="header" href="#configuration-file-formats">Configuration File Formats</a></h2>
+<h3 id="toml-configuration"><a class="header" href="#toml-configuration">TOML Configuration</a></h3>
+<p>Primary configuration format using TOML (Tom’s Obvious, Minimal Language):</p>
+<pre><code class="language-toml"># Talaria Configuration File
+# https://toml.io/en/
+
+[reduction]
+target_ratio = 0.3
+min_sequence_length = 50
+max_delta_distance = 100
+similarity_threshold = 0.9
+taxonomy_aware = true
+
+[alignment]
+gap_penalty = -11
+gap_extension = -1  
+algorithm = "needleman-wunsch"
+
+# Scoring matrix (optional)
+[alignment.matrix]
+type = "BLOSUM62"
+
+[output]
+format = "fasta"
+include_metadata = true
+compress_output = false
+line_length = 80
+header_format = "standard"
+
+[performance]
+chunk_size = 10000
+batch_size = 1000
+cache_alignments = true
+parallel_io = true
+memory_limit = "auto"
+temp_directory = "/tmp/talaria"
+</code></pre>
+<h3 id="yaml-configuration-alternative"><a class="header" href="#yaml-configuration-alternative">YAML Configuration (Alternative)</a></h3>
+<p>Alternative YAML format for configuration:</p>
+<pre><code class="language-yaml"># Talaria Configuration (YAML)
+reduction:
+  target_ratio: 0.3
+  min_sequence_length: 50
+  max_delta_distance: 100
+  similarity_threshold: 0.9
+  taxonomy_aware: true
+
+alignment:
+  gap_penalty: -11
+  gap_extension: -1
+  algorithm: needleman-wunsch
+  matrix:
+    type: BLOSUM62
+
+output:
+  format: fasta
+  include_metadata: true
+  compress_output: false
+  line_length: 80
+  header_format: standard
+
+performance:
+  chunk_size: 10000
+  batch_size: 1000
+  cache_alignments: true
+  parallel_io: true
+  memory_limit: auto
+  temp_directory: /tmp/talaria
+</code></pre>
+<h3 id="json-schema-for-validation"><a class="header" href="#json-schema-for-validation">JSON Schema for Validation</a></h3>
+<p>Configuration validation schema:</p>
+<pre><code class="language-json">{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Talaria Configuration Schema",
+  "type": "object",
+  "properties": {
+    "reduction": {
+      "type": "object",
+      "properties": {
+        "target_ratio": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "min_sequence_length": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "similarity_threshold": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "taxonomy_aware": {
+          "type": "boolean"
+        }
+      },
+      "required": ["target_ratio"],
+      "additionalProperties": false
+    }
+  }
+}
+</code></pre>
+<hr />
+<h2 id="compressed-file-support"><a class="header" href="#compressed-file-support">Compressed File Support</a></h2>
+<h3 id="automatic-compression-detection"><a class="header" href="#automatic-compression-detection">Automatic Compression Detection</a></h3>
+<p>Talaria automatically detects and handles compressed files:</p>
+<div class="table-wrapper"><table><thead><tr><th>Extension</th><th>Format</th><th>Compression</th></tr></thead><tbody>
+<tr><td><code>.fasta</code></td><td>FASTA</td><td>None</td></tr>
+<tr><td><code>.fasta.gz</code></td><td>FASTA</td><td>Gzip</td></tr>
+<tr><td><code>.fasta.bz2</code></td><td>FASTA</td><td>Bzip2</td></tr>
+<tr><td><code>.fasta.xz</code></td><td>FASTA</td><td>XZ/LZMA</td></tr>
+<tr><td><code>.fa.gz</code></td><td>FASTA</td><td>Gzip</td></tr>
+</tbody></table>
+</div>
+<h3 id="compression-examples"><a class="header" href="#compression-examples">Compression Examples</a></h3>
+<pre><code class="language-bash"># Input automatically decompressed
+talaria reduce -i database.fasta.gz -o reduced.fasta
+
+# Output automatically compressed (with config)
+talaria reduce -i input.fasta -o output.fasta.gz --compress
+
+# Mixed compression formats
+talaria reduce -i input.fasta.bz2 -o output.fasta.xz
+</code></pre>
+<h3 id="performance-considerations"><a class="header" href="#performance-considerations">Performance Considerations</a></h3>
+<ul>
+<li><strong>Gzip:</strong> Fast decompression, good compression ratio</li>
+<li><strong>Bzip2:</strong> Slower, better compression ratio</li>
+<li><strong>XZ/LZMA:</strong> Slowest, best compression ratio</li>
+<li><strong>Automatic:</strong> Based on available CPU cores and I/O speed</li>
+</ul>
+<hr />
+<h2 id="format-validation-and-error-handling"><a class="header" href="#format-validation-and-error-handling">Format Validation and Error Handling</a></h2>
+<h3 id="input-validation"><a class="header" href="#input-validation">Input Validation</a></h3>
+<p>Talaria performs comprehensive format validation:</p>
+<pre><code class="language-bash"># Validate FASTA format
+talaria validate-format --input sequences.fasta --format fasta
+
+# Check for common issues
+talaria validate-format --input sequences.fasta --strict --report issues.json
+</code></pre>
+<h3 id="common-format-errors"><a class="header" href="#common-format-errors">Common Format Errors</a></h3>
+<h4 id="fasta-format-errors"><a class="header" href="#fasta-format-errors">FASTA Format Errors</a></h4>
+<pre><code class="language-bash"># Error: Missing sequence data
+&gt;sequence_id_without_data
+
+# Error: Invalid characters
+&gt;seq1  
+ATCGXYZ123
+
+# Error: Truncated file
+&gt;seq1
+ATCGATCG
+&gt;seq2
+ATCG[EOF - file truncated]
+</code></pre>
+<h4 id="delta-format-errors"><a class="header" href="#delta-format-errors">Delta Format Errors</a></h4>
+<pre><code class="language-bash"># Error: Malformed operations
+seq_ref seq_tgt 5 3M,1Z,2M  # Unknown operation 'Z'
+
+# Error: Inconsistent distances  
+seq_ref seq_tgt 3 1M,1I,1D,1S,1M  # Distance=3, actual=4
+
+# Error: Missing reference
+missing_ref seq_tgt 2 1M,1I  # Reference 'missing_ref' not found
+</code></pre>
+<h4 id="configuration-format-errors"><a class="header" href="#configuration-format-errors">Configuration Format Errors</a></h4>
+<pre><code class="language-toml"># Error: Invalid TOML syntax
+[reduction]
+target_ratio = 0.3
+invalid syntax here
+
+# Error: Out of range values
+[reduction]
+target_ratio = 1.5  # Must be ≤ 1.0
+
+# Error: Type mismatch
+[performance]  
+chunk_size = "invalid"  # Must be integer
+</code></pre>
+<h3 id="error-recovery"><a class="header" href="#error-recovery">Error Recovery</a></h3>
+<p>Talaria includes error recovery mechanisms:</p>
+<ul>
+<li><strong>Partial parsing:</strong> Continue processing valid sequences</li>
+<li><strong>Format auto-detection:</strong> Try alternative parsers</li>
+<li><strong>Validation warnings:</strong> Non-fatal issues reported</li>
+<li><strong>Repair suggestions:</strong> Automatic fixes for common problems</li>
+</ul>
+<hr />
+<h2 id="format-conversion"><a class="header" href="#format-conversion">Format Conversion</a></h2>
+<h3 id="built-in-converters"><a class="header" href="#built-in-converters">Built-in Converters</a></h3>
+<p>Convert between supported formats:</p>
+<pre><code class="language-bash"># FASTA to FASTQ (with quality scores)
+talaria convert --input seqs.fasta --output seqs.fastq --format fastq --quality-default 40
+
+# Add metadata to headers
+talaria convert --input basic.fasta --output annotated.fasta --add-taxonomy --add-length
+
+# Change line length
+talaria convert --input input.fasta --output output.fasta --line-length 60
+
+# Compress output
+talaria convert --input input.fasta --output output.fasta.gz --compress
+</code></pre>
+<h3 id="custom-format-support"><a class="header" href="#custom-format-support">Custom Format Support</a></h3>
+<p>Extend Talaria with custom format plugins:</p>
+<pre><code class="language-toml"># Add custom format plugin
+[plugins]
+enabled = ["custom_format_parser"]
+
+[plugins.custom_format_parser]
+name = "phylip_parser"
+input_extensions = [".phy", ".phylip"]
+output_extensions = [".phy"]
+</code></pre>
+<hr />
+<h2 id="performance-and-optimization"><a class="header" href="#performance-and-optimization">Performance and Optimization</a></h2>
+<h3 id="large-file-handling"><a class="header" href="#large-file-handling">Large File Handling</a></h3>
+<p>Optimizations for processing large sequence databases:</p>
+<h4 id="memory-management"><a class="header" href="#memory-management">Memory Management</a></h4>
+<ul>
+<li><strong>Streaming:</strong> Process sequences without loading entire file</li>
+<li><strong>Memory mapping:</strong> Virtual memory for random access</li>
+<li><strong>Chunking:</strong> Split large files into manageable pieces</li>
+<li><strong>Compression:</strong> On-the-fly decompression</li>
+</ul>
+<h4 id="parallel-processing"><a class="header" href="#parallel-processing">Parallel Processing</a></h4>
+<ul>
+<li><strong>Multi-threaded parsing:</strong> Parse multiple chunks simultaneously</li>
+<li><strong>Parallel I/O:</strong> Overlapped reading and processing</li>
+<li><strong>NUMA awareness:</strong> Optimize for multi-socket systems</li>
+</ul>
+<h3 id="format-specific-optimizations"><a class="header" href="#format-specific-optimizations">Format-Specific Optimizations</a></h3>
+<h4 id="fasta-optimization"><a class="header" href="#fasta-optimization">FASTA Optimization</a></h4>
+<pre><code class="language-bash"># Use memory mapping for files &gt;100MB
+talaria reduce --mmap --input large.fasta --output reduced.fasta
+
+# Parallel parsing with custom chunk size
+talaria reduce --chunk-size 50000 --input huge.fasta --output reduced.fasta
+
+# Disable validation for trusted files
+talaria reduce --no-validation --input trusted.fasta --output reduced.fasta
+</code></pre>
+<h4 id="delta-optimization"><a class="header" href="#delta-optimization">Delta Optimization</a></h4>
+<pre><code class="language-bash"># Use binary delta format for speed
+talaria reduce --delta-format binary --metadata deltas.bin
+
+# Compress delta files
+talaria reduce --compress-deltas --metadata deltas.dat.gz
+</code></pre>
+<hr />
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<h3 id="file-organization"><a class="header" href="#file-organization">File Organization</a></h3>
+<pre><code class="language-bash"># Recommended project structure
+project/
+├── input/
+│   ├── original.fasta.gz      # Original data (compressed)
+│   └── taxonomy.dat           # Taxonomy mapping
+├── reduced/
+│   ├── references.fasta       # Reference sequences
+│   ├── deltas.dat             # Delta encodings  
+│   └── mapping.ref2child      # Reference mapping
+├── config/
+│   ├── production.toml        # Production config
+│   └── test.toml             # Testing config
+└── output/
+    ├── stats.json            # Analysis statistics
+    └── report.html           # HTML report
+</code></pre>
+<h3 id="naming-conventions"><a class="header" href="#naming-conventions">Naming Conventions</a></h3>
+<ul>
+<li>
+<p><strong>Sequence Files:</strong> <code>database_version_type.format</code></p>
+<ul>
+<li><code>uniprot_2024_01_swissprot.fasta.gz</code></li>
+<li><code>ncbi_nr_2024_02_proteins.fasta.gz</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Metadata Files:</strong> <code>database_version_metadata.format</code></p>
+<ul>
+<li><code>uniprot_2024_01_deltas.dat</code></li>
+<li><code>uniprot_2024_01_taxonomy.tsv</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Configuration Files:</strong> <code>purpose_settings.toml</code></p>
+<ul>
+<li><code>lambda_aggressive.toml</code></li>
+<li><code>blast_conservative.toml</code></li>
+</ul>
+</li>
+</ul>
+<h3 id="validation-workflow"><a class="header" href="#validation-workflow">Validation Workflow</a></h3>
+<pre><code class="language-bash"># 1. Validate input format
+talaria validate-format --input raw_data.fasta --strict
+
+# 2. Check sequence quality  
+talaria stats --input raw_data.fasta --format json &gt; quality_check.json
+
+# 3. Test configuration
+talaria reduce --config test.toml --dry-run --input sample.fasta
+
+# 4. Process with validation
+talaria reduce --config production.toml --validate --input raw_data.fasta --output reduced.fasta
+
+# 5. Verify output integrity
+talaria validate --original raw_data.fasta --reduced reduced.fasta --deltas deltas.dat
+</code></pre>
+<h3 id="backup-and-recovery"><a class="header" href="#backup-and-recovery">Backup and Recovery</a></h3>
+<ul>
+<li><strong>Atomic operations:</strong> Temporary files renamed on completion</li>
+<li><strong>Checksum validation:</strong> Verify file integrity</li>
+<li><strong>Incremental processing:</strong> Resume interrupted operations</li>
+<li><strong>Metadata preservation:</strong> Maintain provenance information</li>
+</ul>
+<hr />
+<h2 id="troubleshooting-formats"><a class="header" href="#troubleshooting-formats">Troubleshooting Formats</a></h2>
+<h3 id="common-issues-and-solutions"><a class="header" href="#common-issues-and-solutions">Common Issues and Solutions</a></h3>
+<h4 id="memory-issues-with-large-files"><a class="header" href="#memory-issues-with-large-files">Memory Issues with Large Files</a></h4>
+<pre><code class="language-bash"># Problem: Out of memory with huge FASTA file
+# Solution: Use streaming mode
+talaria reduce --stream --chunk-size 5000 --input huge.fasta
+
+# Problem: Delta reconstruction uses too much RAM  
+# Solution: Process in batches
+talaria reconstruct --batch-size 1000 --r refs.fasta --d deltas.dat
+</code></pre>
+<h4 id="format-detection-issues"><a class="header" href="#format-detection-issues">Format Detection Issues</a></h4>
+<pre><code class="language-bash"># Problem: Format not auto-detected
+# Solution: Specify format explicitly  
+talaria reduce --input-format fasta --input ambiguous_file
+
+# Problem: Compressed file not recognized
+# Solution: Check file extensions and magic numbers
+file suspicious_file.fasta
+hexdump -C suspicious_file.fasta | head
+</code></pre>
+<h4 id="character-encoding-issues"><a class="header" href="#character-encoding-issues">Character Encoding Issues</a></h4>
+<pre><code class="language-bash"># Problem: Non-ASCII characters in sequence
+# Solution: Clean and validate input
+talaria convert --input messy.fasta --output clean.fasta --ascii-only --validate
+
+# Problem: Mixed line endings (Windows/Unix)
+# Solution: Normalize line endings
+dos2unix input.fasta
+</code></pre>
+<h3 id="debug-mode"><a class="header" href="#debug-mode">Debug Mode</a></h3>
+<p>Enable detailed format debugging:</p>
+<pre><code class="language-bash"># Show format detection process
+TALARIA_LOG=debug talaria reduce --input unknown_format.file
+
+# Validate specific format components
+talaria debug --check-headers --check-sequences --input sequences.fasta
+
+# Export parsing internals
+talaria debug --dump-parser-state --input problematic.fasta &gt; debug.json
+</code></pre>
+<h3 id="format-migration"><a class="header" href="#format-migration">Format Migration</a></h3>
+<p>When upgrading between Talaria versions:</p>
+<pre><code class="language-bash"># Check format compatibility
+talaria check-compatibility --input old_deltas.dat --version 0.2
+
+# Migrate to new format
+talaria migrate --input old_format.dat --output new_format.dat --from v0.1 --to v0.2
+
+# Validate migration
+talaria validate --original old_format.dat --migrated new_format.dat
+</code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../api/configuration.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../development/building.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../api/configuration.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../development/building.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../mermaid.min.js"></script>
+        <script src="../mermaid-init.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

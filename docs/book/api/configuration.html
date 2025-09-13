@@ -1,0 +1,956 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Configuration Reference - Talaria Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- MathJax Configuration -->
+        <script>
+        window.MathJax = {
+          tex2jax: {
+            inlineMath: [['$','$'], ['\\(','\\)']],
+            displayMath: [['$$','$$'], ['\\[','\\]']],
+            processEscapes: true,
+            processEnvironments: true
+          },
+          TeX: {
+            equationNumbers: { autoNumber: "AMS" },
+            extensions: ["AMSmath.js", "AMSsymbols.js"]
+          }
+        };
+        </script>
+        <meta name="description" content="Intelligent FASTA reduction for aligner index optimization">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../custom.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Talaria Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria/edit/main/docs/src/api/configuration.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
+<h1 id="configuration-api-reference"><a class="header" href="#configuration-api-reference">Configuration API Reference</a></h1>
+<p>Talaria uses TOML format configuration files to customize behavior for reduction algorithms, alignment parameters, output formats, and performance settings. This document provides complete reference for all configuration options, validation rules, and usage patterns.</p>
+<h2 id="configuration-file-location"><a class="header" href="#configuration-file-location">Configuration File Location</a></h2>
+<p>Talaria searches for configuration files in the following order:</p>
+<ol>
+<li><strong>Command line specified:</strong> <code>-c/--config</code> flag</li>
+<li><strong>Environment variable:</strong> <code>TALARIA_CONFIG</code></li>
+<li><strong>User config directory:</strong> <code>~/.config/talaria/config.toml</code></li>
+<li><strong>System config directory:</strong> <code>/etc/talaria/config.toml</code></li>
+<li><strong>Current directory:</strong> <code>./talaria.toml</code></li>
+</ol>
+<h2 id="configuration-structure"><a class="header" href="#configuration-structure">Configuration Structure</a></h2>
+<p>The configuration file is organized into four main sections:</p>
+<pre><code class="language-toml">[reduction]     # Sequence reduction parameters
+[alignment]     # Alignment scoring and algorithms  
+[output]        # Output format and metadata options
+[performance]   # Performance tuning and caching
+</code></pre>
+<hr />
+<h2 id="reduction-section"><a class="header" href="#reduction-section">[reduction] Section</a></h2>
+<p>Controls the core sequence reduction algorithms and thresholds.</p>
+<h3 id="target_ratio"><a class="header" href="#target_ratio"><code>target_ratio</code></a></h3>
+<p><strong>Type:</strong> Float<br />
+<strong>Range:</strong> 0.0 to 1.0<br />
+<strong>Default:</strong> <code>0.3</code><br />
+<strong>Description:</strong> Target reduction ratio where 0.3 means retain 30% of original sequences.</p>
+<pre><code class="language-toml">[reduction]
+target_ratio = 0.25    # Reduce to 25% of original size
+</code></pre>
+<p><strong>Validation:</strong></p>
+<ul>
+<li>Must be greater than 0.0 and less than or equal to 1.0</li>
+<li>Values below 0.1 may result in significant information loss</li>
+<li>Values above 0.8 provide minimal compression benefit</li>
+</ul>
+<h3 id="min_sequence_length"><a class="header" href="#min_sequence_length"><code>min_sequence_length</code></a></h3>
+<p><strong>Type:</strong> Integer<br />
+<strong>Range:</strong> 1 to 100,000<br />
+<strong>Default:</strong> <code>50</code><br />
+<strong>Description:</strong> Minimum sequence length (amino acids/nucleotides) to include in reduction.</p>
+<pre><code class="language-toml">[reduction]
+min_sequence_length = 100    # Only consider sequences ≥100 residues
+</code></pre>
+<p><strong>Validation:</strong></p>
+<ul>
+<li>Must be a positive integer</li>
+<li>Typical range: 30-500 for proteins, 100-10000 for nucleotides</li>
+<li>Very low values (&lt;20) may include low-quality sequences</li>
+</ul>
+<h3 id="max_delta_distance"><a class="header" href="#max_delta_distance"><code>max_delta_distance</code></a></h3>
+<p><strong>Type:</strong> Integer<br />
+<strong>Range:</strong> 1 to 10,000<br />
+<strong>Default:</strong> <code>100</code><br />
+<strong>Description:</strong> Maximum edit distance for delta encoding between similar sequences.</p>
+<pre><code class="language-toml">[reduction]
+max_delta_distance = 150    # Allow larger deltas for more compression
+</code></pre>
+<p><strong>Validation:</strong></p>
+<ul>
+<li>Must be positive integer</li>
+<li>Higher values increase compression but reduce reconstruction speed</li>
+<li>Should be less than typical sequence length / 4</li>
+</ul>
+<h3 id="similarity_threshold"><a class="header" href="#similarity_threshold"><code>similarity_threshold</code></a></h3>
+<p><strong>Type:</strong> Float<br />
+<strong>Range:</strong> 0.0 to 1.0<br />
+<strong>Default:</strong> <code>0.9</code><br />
+<strong>Description:</strong> Similarity threshold for clustering sequences (0.9 = 90% similarity).</p>
+<pre><code class="language-toml">[reduction]
+similarity_threshold = 0.95    # More stringent clustering
+</code></pre>
+<p><strong>Validation:</strong></p>
+<ul>
+<li>Must be between 0.0 and 1.0</li>
+<li>Higher values create smaller clusters (less compression)</li>
+<li>Values below 0.5 may cluster dissimilar sequences</li>
+</ul>
+<h3 id="taxonomy_aware"><a class="header" href="#taxonomy_aware"><code>taxonomy_aware</code></a></h3>
+<p><strong>Type:</strong> Boolean<br />
+<strong>Default:</strong> <code>true</code><br />
+<strong>Description:</strong> Preserve taxonomic diversity during reduction.</p>
+<pre><code class="language-toml">[reduction]
+taxonomy_aware = false    # Ignore taxonomic information
+</code></pre>
+<p><strong>Effect:</strong></p>
+<ul>
+<li><code>true</code>: Ensures representative sequences from each taxonomic group</li>
+<li><code>false</code>: Purely similarity-based reduction (may lose taxonomic coverage)</li>
+</ul>
+<h3 id="complete-reduction-example"><a class="header" href="#complete-reduction-example">Complete Reduction Example</a></h3>
+<pre><code class="language-toml">[reduction]
+target_ratio = 0.2
+min_sequence_length = 75
+max_delta_distance = 120
+similarity_threshold = 0.92
+taxonomy_aware = true
+</code></pre>
+<hr />
+<h2 id="alignment-section"><a class="header" href="#alignment-section">[alignment] Section</a></h2>
+<p>Configuration for sequence alignment algorithms and scoring matrices.</p>
+<h3 id="gap_penalty"><a class="header" href="#gap_penalty"><code>gap_penalty</code></a></h3>
+<p><strong>Type:</strong> Integer<br />
+<strong>Range:</strong> -100 to 0<br />
+<strong>Default:</strong> <code>-11</code><br />
+<strong>Description:</strong> Gap opening penalty for sequence alignments (negative values).</p>
+<pre><code class="language-toml">[alignment]
+gap_penalty = -15    # More stringent gap penalty
+</code></pre>
+<p><strong>Guidelines:</strong></p>
+<ul>
+<li>More negative values discourage gaps</li>
+<li>Typical protein values: -8 to -15</li>
+<li>Typical nucleotide values: -5 to -12</li>
+</ul>
+<h3 id="gap_extension"><a class="header" href="#gap_extension"><code>gap_extension</code></a></h3>
+<p><strong>Type:</strong> Integer<br />
+<strong>Range:</strong> -50 to 0<br />
+<strong>Default:</strong> <code>-1</code><br />
+<strong>Description:</strong> Gap extension penalty for continuing existing gaps.</p>
+<pre><code class="language-toml">[alignment]
+gap_extension = -2    # Higher penalty for long gaps
+</code></pre>
+<p><strong>Guidelines:</strong></p>
+<ul>
+<li>Usually less penalized than gap opening</li>
+<li>Typical values: -1 to -4</li>
+<li>Must be less negative than gap_penalty</li>
+</ul>
+<h3 id="algorithm"><a class="header" href="#algorithm"><code>algorithm</code></a></h3>
+<p><strong>Type:</strong> String<br />
+<strong>Values:</strong> <code>needleman-wunsch</code>, <code>smith-waterman</code>, <code>banded</code>, <code>diagonal</code><br />
+<strong>Default:</strong> <code>needleman-wunsch</code><br />
+<strong>Description:</strong> Alignment algorithm to use for similarity calculations.</p>
+<pre><code class="language-toml">[alignment]
+algorithm = "smith-waterman"    # Local alignment
+</code></pre>
+<p><strong>Algorithm Details:</strong></p>
+<ul>
+<li><strong><code>needleman-wunsch</code></strong>: Global alignment, best for full-length sequences</li>
+<li><strong><code>smith-waterman</code></strong>: Local alignment, good for partial matches</li>
+<li><strong><code>banded</code></strong>: Faster global alignment with restricted search space</li>
+<li><strong><code>diagonal</code></strong>: Fastest, approximate alignment for large datasets</li>
+</ul>
+<h3 id="matrix-selection-advanced"><a class="header" href="#matrix-selection-advanced">Matrix Selection (Advanced)</a></h3>
+<p>For protein sequences, you can specify scoring matrices:</p>
+<pre><code class="language-toml">[alignment]
+algorithm = "needleman-wunsch"
+gap_penalty = -11
+gap_extension = -1
+matrix = "BLOSUM62"    # Optional: BLOSUM45, BLOSUM80, PAM250
+</code></pre>
+<p><strong>Matrix Options:</strong></p>
+<ul>
+<li><strong><code>BLOSUM62</code></strong>: Default, good general purpose</li>
+<li><strong><code>BLOSUM45</code></strong>: Distant homologs</li>
+<li><strong><code>BLOSUM80</code></strong>: Close homologs</li>
+<li><strong><code>PAM250</code></strong>: Evolutionary distances</li>
+</ul>
+<h3 id="complete-alignment-example"><a class="header" href="#complete-alignment-example">Complete Alignment Example</a></h3>
+<pre><code class="language-toml">[alignment]
+gap_penalty = -12
+gap_extension = -2
+algorithm = "needleman-wunsch"
+matrix = "BLOSUM62"
+</code></pre>
+<hr />
+<h2 id="output-section"><a class="header" href="#output-section">[output] Section</a></h2>
+<p>Controls output file formats, metadata inclusion, and compression options.</p>
+<h3 id="format"><a class="header" href="#format"><code>format</code></a></h3>
+<p><strong>Type:</strong> String<br />
+<strong>Values:</strong> <code>fasta</code>, <code>fastq</code>, <code>phylip</code>, <code>nexus</code><br />
+<strong>Default:</strong> <code>fasta</code><br />
+<strong>Description:</strong> Output file format for reduced sequences.</p>
+<pre><code class="language-toml">[output]
+format = "fasta"    # Standard FASTA format
+</code></pre>
+<p><strong>Format Details:</strong></p>
+<ul>
+<li><strong><code>fasta</code></strong>: Standard sequence format, widely compatible</li>
+<li><strong><code>fastq</code></strong>: Includes quality scores (if available)</li>
+<li><strong><code>phylip</code></strong>: Phylogenetic analysis format</li>
+<li><strong><code>nexus</code></strong>: Nexus format for phylogenetic software</li>
+</ul>
+<h3 id="include_metadata"><a class="header" href="#include_metadata"><code>include_metadata</code></a></h3>
+<p><strong>Type:</strong> Boolean<br />
+<strong>Default:</strong> <code>true</code><br />
+<strong>Description:</strong> Include metadata in output headers (taxonomy, source database, etc.).</p>
+<pre><code class="language-toml">[output]
+include_metadata = false    # Minimal headers
+</code></pre>
+<p><strong>Effect:</strong></p>
+<ul>
+<li><code>true</code>: Rich headers with taxonomy, source, etc.</li>
+<li><code>false</code>: Simple sequence ID only</li>
+</ul>
+<h3 id="compress_output"><a class="header" href="#compress_output"><code>compress_output</code></a></h3>
+<p><strong>Type:</strong> Boolean<br />
+<strong>Default:</strong> <code>false</code><br />
+<strong>Description:</strong> Compress output files using gzip.</p>
+<pre><code class="language-toml">[output]
+compress_output = true    # Automatic compression
+</code></pre>
+<p><strong>Benefits:</strong></p>
+<ul>
+<li>Reduces file size by 70-90%</li>
+<li>Supported by most bioinformatics tools</li>
+<li>Slight performance overhead</li>
+</ul>
+<h3 id="line_length"><a class="header" href="#line_length"><code>line_length</code></a></h3>
+<p><strong>Type:</strong> Integer<br />
+<strong>Range:</strong> 50 to 200<br />
+<strong>Default:</strong> <code>80</code><br />
+<strong>Description:</strong> Number of characters per line in FASTA output.</p>
+<pre><code class="language-toml">[output]
+line_length = 60    # Shorter lines for readability
+</code></pre>
+<h3 id="header_format"><a class="header" href="#header_format"><code>header_format</code></a></h3>
+<p><strong>Type:</strong> String<br />
+<strong>Values:</strong> <code>standard</code>, <code>ncbi</code>, <code>uniprot</code>, <code>custom</code><br />
+<strong>Default:</strong> <code>standard</code><br />
+<strong>Description:</strong> Header format style for output sequences.</p>
+<pre><code class="language-toml">[output]
+header_format = "uniprot"    # UniProt-style headers
+</code></pre>
+<p><strong>Header Formats:</strong></p>
+<ul>
+<li><strong><code>standard</code></strong>: <code>&gt;ID description</code></li>
+<li><strong><code>ncbi</code></strong>: <code>&gt;gi|number|db|accession| description</code></li>
+<li><strong><code>uniprot</code></strong>: <code>&gt;sp|accession|name description</code></li>
+<li><strong><code>custom</code></strong>: User-defined template</li>
+</ul>
+<h3 id="custom-header-template"><a class="header" href="#custom-header-template">Custom Header Template</a></h3>
+<pre><code class="language-toml">[output]
+header_format = "custom"
+header_template = "&gt;{id}|{taxonomy}|{length} {description}"
+</code></pre>
+<p><strong>Template Variables:</strong></p>
+<ul>
+<li><code>{id}</code>: Sequence identifier</li>
+<li><code>{description}</code>: Sequence description</li>
+<li><code>{taxonomy}</code>: Taxonomic classification</li>
+<li><code>{length}</code>: Sequence length</li>
+<li><code>{source}</code>: Source database</li>
+</ul>
+<h3 id="complete-output-example"><a class="header" href="#complete-output-example">Complete Output Example</a></h3>
+<pre><code class="language-toml">[output]
+format = "fasta"
+include_metadata = true
+compress_output = true
+line_length = 80
+header_format = "uniprot"
+</code></pre>
+<hr />
+<h2 id="performance-section"><a class="header" href="#performance-section">[performance] Section</a></h2>
+<p>Performance tuning options for large-scale processing.</p>
+<h3 id="chunk_size"><a class="header" href="#chunk_size"><code>chunk_size</code></a></h3>
+<p><strong>Type:</strong> Integer<br />
+<strong>Range:</strong> 1,000 to 1,000,000<br />
+<strong>Default:</strong> <code>10000</code><br />
+<strong>Description:</strong> Number of sequences to process in parallel chunks.</p>
+<pre><code class="language-toml">[performance]
+chunk_size = 50000    # Larger chunks for big datasets
+</code></pre>
+<p><strong>Guidelines:</strong></p>
+<ul>
+<li>Larger chunks: Better throughput, more memory usage</li>
+<li>Smaller chunks: More responsive progress, less memory</li>
+<li>Optimal range: 5,000-50,000 sequences</li>
+</ul>
+<h3 id="batch_size"><a class="header" href="#batch_size"><code>batch_size</code></a></h3>
+<p><strong>Type:</strong> Integer<br />
+<strong>Range:</strong> 100 to 100,000<br />
+<strong>Default:</strong> <code>1000</code><br />
+<strong>Description:</strong> Number of sequences per alignment batch.</p>
+<pre><code class="language-toml">[performance]
+batch_size = 5000    # Larger batches for efficiency
+</code></pre>
+<p><strong>Guidelines:</strong></p>
+<ul>
+<li>Affects memory usage during alignment</li>
+<li>Larger batches improve vectorization</li>
+<li>Should be smaller than chunk_size</li>
+</ul>
+<h3 id="cache_alignments"><a class="header" href="#cache_alignments"><code>cache_alignments</code></a></h3>
+<p><strong>Type:</strong> Boolean<br />
+<strong>Default:</strong> <code>true</code><br />
+<strong>Description:</strong> Cache alignment results to avoid recomputation.</p>
+<pre><code class="language-toml">[performance]
+cache_alignments = false    # Disable caching to save memory
+</code></pre>
+<p><strong>Trade-offs:</strong></p>
+<ul>
+<li><code>true</code>: Faster repeated operations, uses more memory</li>
+<li><code>false</code>: Lower memory usage, may recompute alignments</li>
+</ul>
+<h3 id="parallel_io"><a class="header" href="#parallel_io"><code>parallel_io</code></a></h3>
+<p><strong>Type:</strong> Boolean<br />
+<strong>Default:</strong> <code>true</code><br />
+<strong>Description:</strong> Enable parallel file I/O operations.</p>
+<pre><code class="language-toml">[performance]
+parallel_io = false    # Sequential I/O for slow storage
+</code></pre>
+<p><strong>Guidelines:</strong></p>
+<ul>
+<li><code>true</code>: Faster on SSDs and high-bandwidth storage</li>
+<li><code>false</code>: Better for spinning disks or network storage</li>
+</ul>
+<h3 id="memory_limit"><a class="header" href="#memory_limit"><code>memory_limit</code></a></h3>
+<p><strong>Type:</strong> String<br />
+<strong>Format:</strong> <code>&lt;number&gt;&lt;unit&gt;</code> (e.g., “4GB”, “512MB”)<br />
+<strong>Default:</strong> <code>"auto"</code><br />
+<strong>Description:</strong> Maximum memory usage limit.</p>
+<pre><code class="language-toml">[performance]
+memory_limit = "8GB"    # Limit to 8 gigabytes
+</code></pre>
+<p><strong>Units:</strong></p>
+<ul>
+<li><code>MB</code>: Megabytes</li>
+<li><code>GB</code>: Gigabytes</li>
+<li><code>auto</code>: Automatic based on system memory</li>
+</ul>
+<h3 id="temp_directory"><a class="header" href="#temp_directory"><code>temp_directory</code></a></h3>
+<p><strong>Type:</strong> String<br />
+<strong>Default:</strong> System temporary directory<br />
+<strong>Description:</strong> Directory for temporary files during processing.</p>
+<pre><code class="language-toml">[performance]
+temp_directory = "/fast/scratch/talaria"    # Use fast storage
+</code></pre>
+<p><strong>Guidelines:</strong></p>
+<ul>
+<li>Use fastest available storage (SSD, ramdisk)</li>
+<li>Ensure sufficient space (2-3x input file size)</li>
+<li>Clean up automatically on completion</li>
+</ul>
+<h3 id="complete-performance-example"><a class="header" href="#complete-performance-example">Complete Performance Example</a></h3>
+<pre><code class="language-toml">[performance]
+chunk_size = 25000
+batch_size = 2000
+cache_alignments = true
+parallel_io = true
+memory_limit = "16GB"
+temp_directory = "/tmp/talaria"
+</code></pre>
+<hr />
+<h2 id="configuration-templates"><a class="header" href="#configuration-templates">Configuration Templates</a></h2>
+<h3 id="high-performance-template"><a class="header" href="#high-performance-template">High-Performance Template</a></h3>
+<p>Optimized for large databases and powerful hardware:</p>
+<pre><code class="language-toml">[reduction]
+target_ratio = 0.2
+min_sequence_length = 50
+max_delta_distance = 150
+similarity_threshold = 0.9
+taxonomy_aware = true
+
+[alignment]
+gap_penalty = -11
+gap_extension = -1
+algorithm = "banded"
+
+[output]
+format = "fasta"
+include_metadata = true
+compress_output = true
+line_length = 80
+header_format = "standard"
+
+[performance]
+chunk_size = 50000
+batch_size = 5000
+cache_alignments = true
+parallel_io = true
+memory_limit = "auto"
+</code></pre>
+<h3 id="memory-constrained-template"><a class="header" href="#memory-constrained-template">Memory-Constrained Template</a></h3>
+<p>Optimized for limited memory environments:</p>
+<pre><code class="language-toml">[reduction]
+target_ratio = 0.3
+min_sequence_length = 75
+max_delta_distance = 100
+similarity_threshold = 0.9
+taxonomy_aware = true
+
+[alignment]
+gap_penalty = -11
+gap_extension = -1
+algorithm = "diagonal"
+
+[output]
+format = "fasta"
+include_metadata = false
+compress_output = true
+line_length = 80
+header_format = "standard"
+
+[performance]
+chunk_size = 5000
+batch_size = 500
+cache_alignments = false
+parallel_io = false
+memory_limit = "4GB"
+</code></pre>
+<h3 id="taxonomic-classification-template"><a class="header" href="#taxonomic-classification-template">Taxonomic Classification Template</a></h3>
+<p>Optimized for maintaining taxonomic diversity:</p>
+<pre><code class="language-toml">[reduction]
+target_ratio = 0.4
+min_sequence_length = 100
+max_delta_distance = 80
+similarity_threshold = 0.95
+taxonomy_aware = true
+
+[alignment]
+gap_penalty = -12
+gap_extension = -2
+algorithm = "needleman-wunsch"
+
+[output]
+format = "fasta"
+include_metadata = true
+compress_output = false
+line_length = 80
+header_format = "uniprot"
+header_template = "&gt;{id}|taxid:{taxonomy} {description}"
+
+[performance]
+chunk_size = 10000
+batch_size = 1000
+cache_alignments = true
+parallel_io = true
+memory_limit = "auto"
+</code></pre>
+<hr />
+<h2 id="environment-variable-overrides"><a class="header" href="#environment-variable-overrides">Environment Variable Overrides</a></h2>
+<p>Configuration values can be overridden using environment variables with the pattern <code>TALARIA_&lt;SECTION&gt;_&lt;OPTION&gt;</code>:</p>
+<pre><code class="language-bash"># Override reduction target ratio
+export TALARIA_REDUCTION_TARGET_RATIO=0.25
+
+# Override performance chunk size  
+export TALARIA_PERFORMANCE_CHUNK_SIZE=20000
+
+# Override alignment algorithm
+export TALARIA_ALIGNMENT_ALGORITHM=smith-waterman
+
+# Override output compression
+export TALARIA_OUTPUT_COMPRESS_OUTPUT=true
+</code></pre>
+<h3 id="boolean-values"><a class="header" href="#boolean-values">Boolean Values</a></h3>
+<p>Use <code>true</code>/<code>false</code> or <code>1</code>/<code>0</code>:</p>
+<pre><code class="language-bash">export TALARIA_REDUCTION_TAXONOMY_AWARE=false
+export TALARIA_PERFORMANCE_CACHE_ALIGNMENTS=0
+</code></pre>
+<h3 id="precedence-order"><a class="header" href="#precedence-order">Precedence Order</a></h3>
+<p>Configuration values are resolved in this order:</p>
+<ol>
+<li><strong>Command line arguments</strong> (highest priority)</li>
+<li><strong>Environment variables</strong></li>
+<li><strong>Configuration file</strong></li>
+<li><strong>Default values</strong> (lowest priority)</li>
+</ol>
+<hr />
+<h2 id="validation-and-error-handling"><a class="header" href="#validation-and-error-handling">Validation and Error Handling</a></h2>
+<h3 id="configuration-validation"><a class="header" href="#configuration-validation">Configuration Validation</a></h3>
+<p>Talaria validates all configuration values on startup:</p>
+<pre><code class="language-bash"># Validate configuration without processing
+talaria reduce --config my_config.toml --dry-run
+</code></pre>
+<h3 id="common-validation-errors"><a class="header" href="#common-validation-errors">Common Validation Errors</a></h3>
+<h4 id="invalid-range-values"><a class="header" href="#invalid-range-values">Invalid Range Values</a></h4>
+<pre><code class="language-toml">[reduction]
+target_ratio = 1.5    # ERROR: Must be ≤ 1.0
+</code></pre>
+<p><strong>Error Message:</strong></p>
+<pre><code>Configuration error: reduction.target_ratio must be between 0.0 and 1.0, got 1.5
+</code></pre>
+<h4 id="incompatible-settings"><a class="header" href="#incompatible-settings">Incompatible Settings</a></h4>
+<pre><code class="language-toml">[alignment]
+gap_penalty = -5
+gap_extension = -10   # ERROR: Extension must be less negative than opening
+</code></pre>
+<p><strong>Error Message:</strong></p>
+<pre><code>Configuration error: alignment.gap_extension (-10) must be greater than gap_penalty (-5)
+</code></pre>
+<h4 id="missing-required-dependencies"><a class="header" href="#missing-required-dependencies">Missing Required Dependencies</a></h4>
+<pre><code class="language-toml">[performance]
+memory_limit = "invalid_format"    # ERROR: Invalid memory format
+</code></pre>
+<p><strong>Error Message:</strong></p>
+<pre><code>Configuration error: performance.memory_limit must be in format '&lt;number&gt;&lt;unit&gt;' (e.g., '4GB')
+</code></pre>
+<h3 id="configuration-testing"><a class="header" href="#configuration-testing">Configuration Testing</a></h3>
+<p>Test configuration changes with dry-run mode:</p>
+<pre><code class="language-bash"># Test configuration without processing data
+talaria --config test_config.toml reduce \
+    --input small_test.fasta \
+    --output /dev/null \
+    --dry-run
+</code></pre>
+<hr />
+<h2 id="advanced-configuration"><a class="header" href="#advanced-configuration">Advanced Configuration</a></h2>
+<h3 id="custom-scoring-matrices"><a class="header" href="#custom-scoring-matrices">Custom Scoring Matrices</a></h3>
+<p>Define custom scoring matrices for specialized applications:</p>
+<pre><code class="language-toml">[alignment]
+algorithm = "needleman-wunsch"
+gap_penalty = -11
+gap_extension = -1
+
+# Custom matrix definition
+[alignment.matrix]
+type = "custom"
+file = "path/to/custom_matrix.txt"
+
+# Or inline definition
+[alignment.matrix.scores]
+AA = 4
+AC = -2
+AG = 0
+AT = -2
+# ... more amino acid pairs
+</code></pre>
+<h3 id="conditional-configuration"><a class="header" href="#conditional-configuration">Conditional Configuration</a></h3>
+<p>Use different settings based on input characteristics:</p>
+<pre><code class="language-toml"># Default settings
+[reduction]
+target_ratio = 0.3
+
+# Override for large databases (&gt;1M sequences)
+[reduction.large_database]
+target_ratio = 0.2
+chunk_size = 100000
+
+# Override for small databases (&lt;10K sequences)  
+[reduction.small_database]
+target_ratio = 0.5
+chunk_size = 1000
+</code></pre>
+<h3 id="plugin-configuration"><a class="header" href="#plugin-configuration">Plugin Configuration</a></h3>
+<p>Configure external plugins and algorithms:</p>
+<pre><code class="language-toml">[plugins]
+enabled = ["custom_clusterer", "taxonomy_enhancer"]
+
+[plugins.custom_clusterer]
+algorithm = "graph_based"
+min_cluster_size = 5
+max_cluster_size = 1000
+
+[plugins.taxonomy_enhancer]
+database_path = "/opt/taxonomy/nodes.dmp"
+prefer_species_level = true
+</code></pre>
+<hr />
+<h2 id="configuration-management"><a class="header" href="#configuration-management">Configuration Management</a></h2>
+<h3 id="version-control"><a class="header" href="#version-control">Version Control</a></h3>
+<p>Store configuration files in version control with your analysis workflows:</p>
+<pre><code class="language-bash"># Project structure
+project/
+├── configs/
+│   ├── production.toml
+│   ├── development.toml  
+│   └── testing.toml
+├── scripts/
+│   └── run_reduction.sh
+└── data/
+    └── input.fasta
+</code></pre>
+<h3 id="configuration-profiles"><a class="header" href="#configuration-profiles">Configuration Profiles</a></h3>
+<p>Manage multiple configurations with profiles:</p>
+<pre><code class="language-bash"># Production profile
+talaria --config configs/production.toml reduce ...
+
+# Development profile with more verbose output
+talaria -vv --config configs/development.toml reduce ...
+
+# Testing profile with validation
+talaria --config configs/testing.toml reduce ... --validate
+</code></pre>
+<h3 id="configuration-generation"><a class="header" href="#configuration-generation">Configuration Generation</a></h3>
+<p>Generate configuration files from command line:</p>
+<pre><code class="language-bash"># Generate default configuration
+talaria config --generate &gt; default.toml
+
+# Generate optimized configuration for specific use case
+talaria config --optimize-for lambda --target-ratio 0.25 &gt; lambda.toml
+
+# Generate configuration template with comments
+talaria config --template &gt; template.toml
+</code></pre>
+<hr />
+<h2 id="troubleshooting-configuration"><a class="header" href="#troubleshooting-configuration">Troubleshooting Configuration</a></h2>
+<h3 id="common-issues"><a class="header" href="#common-issues">Common Issues</a></h3>
+<h4 id="configuration-not-found"><a class="header" href="#configuration-not-found">Configuration Not Found</a></h4>
+<pre><code class="language-bash">ERROR: Configuration file not found: /path/to/config.toml
+</code></pre>
+<p><strong>Solution:</strong></p>
+<ul>
+<li>Verify file path and permissions</li>
+<li>Use absolute paths</li>
+<li>Check environment variables</li>
+</ul>
+<h4 id="invalid-toml-syntax"><a class="header" href="#invalid-toml-syntax">Invalid TOML Syntax</a></h4>
+<pre><code class="language-bash">ERROR: Failed to parse configuration: expected '=' at line 15
+</code></pre>
+<p><strong>Solution:</strong></p>
+<ul>
+<li>Validate TOML syntax online</li>
+<li>Check for missing quotes, brackets</li>
+<li>Ensure proper indentation</li>
+</ul>
+<h4 id="performance-issues"><a class="header" href="#performance-issues">Performance Issues</a></h4>
+<p>If configuration causes performance problems:</p>
+<pre><code class="language-bash"># Reset to default configuration
+talaria config --reset
+
+# Generate minimal configuration
+talaria config --minimal &gt; minimal.toml
+
+# Profile with different settings
+time talaria --config test.toml reduce ...
+</code></pre>
+<h3 id="debug-configuration-loading"><a class="header" href="#debug-configuration-loading">Debug Configuration Loading</a></h3>
+<p>Enable configuration debugging:</p>
+<pre><code class="language-bash"># Show configuration loading process
+TALARIA_LOG=debug talaria --config my.toml reduce ...
+
+# Show final resolved configuration
+talaria --config my.toml --show-config reduce ...
+</code></pre>
+<hr />
+<h2 id="migration-guide"><a class="header" href="#migration-guide">Migration Guide</a></h2>
+<h3 id="upgrading-from-version-01"><a class="header" href="#upgrading-from-version-01">Upgrading from Version 0.1</a></h3>
+<p>Configuration format changes in version 0.2:</p>
+<p><strong>Old Format:</strong></p>
+<pre><code class="language-toml">threshold = 0.9
+target_size = 0.3
+use_taxonomy = true
+</code></pre>
+<p><strong>New Format:</strong></p>
+<pre><code class="language-toml">[reduction]
+similarity_threshold = 0.9
+target_ratio = 0.3
+taxonomy_aware = true
+</code></pre>
+<p><strong>Migration Command:</strong></p>
+<pre><code class="language-bash">talaria config --migrate-from v0.1 old_config.toml &gt; new_config.toml
+</code></pre>
+<h3 id="configuration-schema-updates"><a class="header" href="#configuration-schema-updates">Configuration Schema Updates</a></h3>
+<p>Check configuration schema compatibility:</p>
+<pre><code class="language-bash"># Validate against current schema
+talaria config --validate my_config.toml
+
+# Update to latest schema
+talaria config --update-schema my_config.toml &gt; updated_config.toml
+</code></pre>
+<hr />
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<h3 id="configuration-organization"><a class="header" href="#configuration-organization">Configuration Organization</a></h3>
+<ol>
+<li><strong>Use descriptive filenames:</strong> <code>lambda_aggressive.toml</code>, <code>blast_conservative.toml</code></li>
+<li><strong>Include comments:</strong> Document why specific settings were chosen</li>
+<li><strong>Version configurations:</strong> Track changes in version control</li>
+<li><strong>Test configurations:</strong> Validate on small datasets first</li>
+<li><strong>Profile performance:</strong> Measure impact of configuration changes</li>
+</ol>
+<h3 id="security-considerations"><a class="header" href="#security-considerations">Security Considerations</a></h3>
+<ol>
+<li><strong>File permissions:</strong> Restrict access to configuration files containing sensitive paths</li>
+<li><strong>Path validation:</strong> Use absolute paths to prevent directory traversal</li>
+<li><strong>Environment isolation:</strong> Use separate configurations for different environments</li>
+</ol>
+<h3 id="performance-optimization"><a class="header" href="#performance-optimization">Performance Optimization</a></h3>
+<ol>
+<li><strong>Start conservative:</strong> Begin with higher ratios and proven settings</li>
+<li><strong>Benchmark systematically:</strong> Test one parameter at a time</li>
+<li><strong>Monitor resources:</strong> Watch memory and CPU usage during tuning</li>
+<li><strong>Document results:</strong> Keep records of what works for different datasets</li>
+</ol>
+<h3 id="configuration-documentation"><a class="header" href="#configuration-documentation">Configuration Documentation</a></h3>
+<p>Always document your configuration choices:</p>
+<pre><code class="language-toml"># Lambda-optimized configuration for bacterial proteomes
+# Tested with datasets up to 50M sequences
+# Last updated: 2024-01-15
+# Performance: ~4 hours for 10M sequences on 32-core machine
+
+[reduction]
+target_ratio = 0.2        # Aggressive reduction for fast indexing
+similarity_threshold = 0.9 # Balanced clustering
+taxonomy_aware = true     # Preserve species diversity
+</code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../api/cli.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../api/formats.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../api/cli.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../api/formats.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../mermaid.min.js"></script>
+        <script src="../mermaid-init.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

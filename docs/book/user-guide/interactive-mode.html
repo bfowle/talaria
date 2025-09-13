@@ -1,0 +1,535 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Interactive Mode - Talaria Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- MathJax Configuration -->
+        <script>
+        window.MathJax = {
+          tex2jax: {
+            inlineMath: [['$','$'], ['\\(','\\)']],
+            displayMath: [['$$','$$'], ['\\[','\\]']],
+            processEscapes: true,
+            processEnvironments: true
+          },
+          TeX: {
+            equationNumbers: { autoNumber: "AMS" },
+            extensions: ["AMSmath.js", "AMSsymbols.js"]
+          }
+        };
+        </script>
+        <meta name="description" content="Intelligent FASTA reduction for aligner index optimization">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../custom.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Talaria Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria/edit/main/docs/src/user-guide/interactive-mode.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
+<h1 id="interactive-mode"><a class="header" href="#interactive-mode">Interactive Mode</a></h1>
+<p>Talaria provides a powerful Terminal User Interface (TUI) for interactive operations, making complex tasks more accessible through guided wizards and visual interfaces.</p>
+<h2 id="starting-interactive-mode"><a class="header" href="#starting-interactive-mode">Starting Interactive Mode</a></h2>
+<pre><code class="language-bash"># Launch interactive mode
+talaria interactive
+
+# Or use shorthand
+talaria -i
+</code></pre>
+<h2 id="main-menu"><a class="header" href="#main-menu">Main Menu</a></h2>
+<p>The interactive mode presents a main menu with the following options:</p>
+<ol>
+<li><strong>Download databases</strong> - Download biological databases with progress tracking</li>
+<li><strong>Reduce a FASTA file</strong> - Intelligently reduce FASTA files with guided configuration</li>
+<li><strong>View statistics</strong> - Analyze FASTA files and view detailed statistics</li>
+<li><strong>Setup wizard</strong> - Configure Talaria for first-time use</li>
+<li><strong>Configure settings</strong> - Edit configuration with a visual editor</li>
+<li><strong>View documentation</strong> - Browse built-in documentation</li>
+<li><strong>Exit</strong> - Exit interactive mode</li>
+</ol>
+<h3 id="navigation"><a class="header" href="#navigation">Navigation</a></h3>
+<ul>
+<li><strong>↑/↓</strong> or <strong>j/k</strong>: Navigate menu items</li>
+<li><strong>Enter</strong>: Select item</li>
+<li><strong>q</strong> or <strong>Esc</strong>: Exit/go back</li>
+</ul>
+<h2 id="features"><a class="header" href="#features">Features</a></h2>
+<h3 id="1-database-download-wizard"><a class="header" href="#1-database-download-wizard">1. Database Download Wizard</a></h3>
+<p>Interactive database downloading with real-time progress:</p>
+<pre><code>┌─ Database Download Wizard ─────────────┐
+│                                        │
+│  Select Source:                        │
+│  &gt; UniProt - Protein sequences         │
+│    NCBI - Comprehensive databases      │
+│    Custom - Local file                 │
+│                                        │
+└────────────────────────────────────────┘
+</code></pre>
+<p>Features:</p>
+<ul>
+<li>Database source selection (UniProt, NCBI)</li>
+<li>Dataset selection with size information</li>
+<li>Real-time download progress</li>
+<li>Automatic decompression</li>
+<li>Checksum verification</li>
+</ul>
+<h3 id="2-fasta-reduction-wizard"><a class="header" href="#2-fasta-reduction-wizard">2. FASTA Reduction Wizard</a></h3>
+<p>Step-by-step FASTA reduction with visual feedback:</p>
+<pre><code>┌─ FASTA Reduction Wizard ───────────────┐
+│                                        │
+│  Select Target Aligner:                │
+│  &gt; LAMBDA - Fast protein aligner       │
+│    BLAST - Traditional aligner         │
+│    Diamond - Ultra-fast aligner        │
+│    MMseqs2 - Sensitive search          │
+│    Kraken - Taxonomic classifier       │
+│                                        │
+└────────────────────────────────────────┘
+</code></pre>
+<p>Steps:</p>
+<ol>
+<li>Input file selection</li>
+<li>Target aligner selection</li>
+<li>Configuration options (threshold, identity, taxonomy)</li>
+<li>Review settings</li>
+<li>Processing with progress bar</li>
+<li>Results summary</li>
+</ol>
+<p>Configuration options:</p>
+<ul>
+<li><strong>Clustering threshold</strong>: 0.0-1.0 (similarity threshold)</li>
+<li><strong>Min identity</strong>: 0.0-1.0 (minimum sequence identity)</li>
+<li><strong>Preserve taxonomy</strong>: Yes/No (maintain taxonomic diversity)</li>
+<li><strong>Remove redundant</strong>: Yes/No (remove duplicate sequences)</li>
+<li><strong>Optimize for memory</strong>: Yes/No (memory-efficient processing)</li>
+</ul>
+<h3 id="3-statistics-viewer"><a class="header" href="#3-statistics-viewer">3. Statistics Viewer</a></h3>
+<p>Interactive FASTA file analysis with multiple views:</p>
+<pre><code>┌─ Database Statistics ──────────────────┐
+│ Overview | Distributions | Analysis   │
+├────────────────────────────────────────┤
+│ Total Sequences:      12,543          │
+│ Total Bases:          4,567,890        │
+│ Avg Length:           364.2 bp         │
+│ GC Content:           52.3%            │
+│ Redundancy:           15.7%            │
+│ Taxonomy Div:         78.4%            │
+│ Compression:          1.2x             │
+└────────────────────────────────────────┘
+</code></pre>
+<p>Tabs:</p>
+<ul>
+<li><strong>Overview</strong>: Key metrics, GC content gauge, sequence count trends</li>
+<li><strong>Distributions</strong>: Length distribution chart, composition analysis</li>
+<li><strong>Analysis</strong>: Recommendations, memory requirements, optimization suggestions</li>
+</ul>
+<p>Navigation:</p>
+<ul>
+<li><strong>Tab/Shift-Tab</strong>: Switch between tabs</li>
+<li><strong>↑/↓</strong>: Scroll content</li>
+<li><strong>q</strong>: Exit viewer</li>
+</ul>
+<h3 id="4-setup-wizard"><a class="header" href="#4-setup-wizard">4. Setup Wizard</a></h3>
+<p>First-time configuration wizard:</p>
+<ol>
+<li><strong>Aligner selection</strong>: Choose your primary aligner</li>
+<li><strong>Input/output paths</strong>: Set default directories</li>
+<li><strong>Reduction parameters</strong>: Configure thresholds</li>
+<li><strong>Save configuration</strong>: Optionally save for future use</li>
+</ol>
+<p>The wizard creates a configuration file at <code>~/.config/talaria/config.toml</code>.</p>
+<h3 id="5-configuration-editor"><a class="header" href="#5-configuration-editor">5. Configuration Editor</a></h3>
+<p>Visual configuration editor with field validation:</p>
+<pre><code>┌─ Talaria Configuration Editor ─────────┐
+│ File: ~/.config/talaria/config.toml   │
+├────────────────────────────────────────┤
+│ ▶ Target Ratio              0.30      │
+│   Min Sequence Length       50        │
+│   Max Delta Distance        100       │
+│   Similarity Threshold      0.90      │
+│   Taxonomy Aware            [✓]       │
+│   Gap Penalty               -11       │
+│   Gap Extension             -1        │
+│   Algorithm                 nw        │
+│   Output Format             fasta     │
+│   Include Metadata          [✓]       │
+│   Compress Output           [ ]       │
+│   Chunk Size                10000     │
+└────────────────────────────────────────┘
+[s]ave [l]oad [r]eset [q]uit
+</code></pre>
+<p>Features:</p>
+<ul>
+<li>Edit all configuration parameters</li>
+<li>Boolean toggles with Space/Enter</li>
+<li>Numeric validation</li>
+<li>Save/load configurations</li>
+<li>Reset to defaults</li>
+</ul>
+<p>Keyboard shortcuts:</p>
+<ul>
+<li><strong>↑/↓</strong> or <strong>j/k</strong>: Navigate fields</li>
+<li><strong>Enter</strong>: Edit field (or toggle boolean)</li>
+<li><strong>Space</strong>: Toggle boolean fields</li>
+<li><strong>s</strong>: Save configuration</li>
+<li><strong>l</strong>: Load configuration</li>
+<li><strong>r</strong>: Reset to defaults</li>
+<li><strong>q</strong> or <strong>Esc</strong>: Exit editor</li>
+</ul>
+<h3 id="6-documentation-viewer"><a class="header" href="#6-documentation-viewer">6. Documentation Viewer</a></h3>
+<p>Built-in documentation browser:</p>
+<pre><code>┌─ Documentation ─────────────────────────┐
+│ Quick Start | Algorithms | Examples    │
+├────────────────────────────────────────┤
+│ # Quick Start Guide                    │
+│                                        │
+│ Welcome to Talaria! This tool         │
+│ intelligently reduces FASTA databases │
+│ for optimal indexing.                 │
+│                                        │
+│ ## Basic Usage                         │
+│                                        │
+│ 1. Reduce a FASTA file:               │
+│    talaria reduce -i input.fasta ...  │
+│                                        │
+└────────────────────────────────────────┘
+Tab: Switch section | ↑/↓: Scroll | q: Quit
+</code></pre>
+<p>Sections:</p>
+<ul>
+<li><strong>Quick Start</strong>: Getting started guide</li>
+<li><strong>Reduction Algorithm</strong>: Technical details</li>
+<li><strong>Aligner Optimizations</strong>: Aligner-specific strategies</li>
+<li><strong>Configuration</strong>: Configuration guide</li>
+<li><strong>Examples</strong>: Common use cases</li>
+<li><strong>FAQ</strong>: Frequently asked questions</li>
+</ul>
+<p>Navigation:</p>
+<ul>
+<li><strong>Tab/Shift-Tab</strong> or <strong>←/→</strong>: Switch sections</li>
+<li><strong>↑/↓</strong> or <strong>j/k</strong>: Scroll content</li>
+<li><strong>PgUp/PgDn</strong>: Fast scroll</li>
+<li><strong>q</strong>: Exit viewer</li>
+</ul>
+<h2 id="color-themes"><a class="header" href="#color-themes">Color Themes</a></h2>
+<p>The interface uses color coding for clarity:</p>
+<ul>
+<li><strong>Cyan</strong>: Headers and titles</li>
+<li><strong>Yellow</strong>: Selected items and highlights</li>
+<li><strong>Green</strong>: Success messages and positive values</li>
+<li><strong>Red</strong>: Errors and warnings</li>
+<li><strong>White</strong>: Normal text</li>
+<li><strong>Gray</strong>: Help text and descriptions</li>
+</ul>
+<h2 id="terminal-requirements"><a class="header" href="#terminal-requirements">Terminal Requirements</a></h2>
+<ul>
+<li>Minimum terminal size: 80x24</li>
+<li>Unicode support for box drawing characters</li>
+<li>256-color terminal recommended</li>
+<li>Works in: iTerm2, Terminal.app, GNOME Terminal, Windows Terminal, etc.</li>
+</ul>
+<h2 id="tips-and-tricks"><a class="header" href="#tips-and-tricks">Tips and Tricks</a></h2>
+<ol>
+<li><strong>Quick navigation</strong>: Use vim-style keys (j/k) for faster navigation</li>
+<li><strong>Escape anywhere</strong>: Press Esc to go back or cancel operations</li>
+<li><strong>Tab completion</strong>: In file dialogs, use Tab for path completion</li>
+<li><strong>Progress monitoring</strong>: All long operations show real-time progress</li>
+<li><strong>Configuration persistence</strong>: Settings are saved automatically</li>
+</ol>
+<h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
+<h3 id="terminal-issues"><a class="header" href="#terminal-issues">Terminal Issues</a></h3>
+<p>If the interface appears corrupted:</p>
+<pre><code class="language-bash"># Reset terminal
+reset
+
+# Or clear and restart
+clear &amp;&amp; talaria interactive
+</code></pre>
+<h3 id="color-problems"><a class="header" href="#color-problems">Color Problems</a></h3>
+<p>If colors don’t display correctly:</p>
+<pre><code class="language-bash"># Check terminal color support
+echo $TERM
+
+# Set to 256-color mode
+export TERM=xterm-256color
+</code></pre>
+<h3 id="unicode-issues"><a class="header" href="#unicode-issues">Unicode Issues</a></h3>
+<p>If box characters appear as question marks:</p>
+<pre><code class="language-bash"># Check locale
+locale
+
+# Set UTF-8 locale
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+</code></pre>
+<h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
+<h3 id="complete-reduction-workflow"><a class="header" href="#complete-reduction-workflow">Complete Reduction Workflow</a></h3>
+<ol>
+<li>Start interactive mode: <code>talaria interactive</code></li>
+<li>Select “Download databases”</li>
+<li>Choose UniProt → SwissProt</li>
+<li>Wait for download to complete</li>
+<li>Select “Reduce a FASTA file”</li>
+<li>Enter the downloaded file path</li>
+<li>Choose target aligner (e.g., LAMBDA)</li>
+<li>Configure options</li>
+<li>Review and start reduction</li>
+<li>View statistics on the reduced file</li>
+</ol>
+<h3 id="quick-configuration"><a class="header" href="#quick-configuration">Quick Configuration</a></h3>
+<ol>
+<li>Start interactive mode: <code>talaria interactive</code></li>
+<li>Select “Configure settings”</li>
+<li>Navigate to desired field with arrow keys</li>
+<li>Press Enter to edit</li>
+<li>Type new value and press Enter</li>
+<li>Press ‘s’ to save</li>
+<li>Press ‘q’ to exit</li>
+</ol>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="configuration.html">Configuration</a> - Detailed configuration options</li>
+<li><a href="basic-usage.html">Basic Usage</a> - Command-line usage</li>
+<li><a href="../databases/downloading.html">Downloading Databases</a> - Database download guide</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../user-guide/basic-usage.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../user-guide/configuration.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../user-guide/basic-usage.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../user-guide/configuration.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../mermaid.min.js"></script>
+        <script src="../mermaid-init.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

@@ -1,0 +1,651 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Basic Usage - Talaria Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- MathJax Configuration -->
+        <script>
+        window.MathJax = {
+          tex2jax: {
+            inlineMath: [['$','$'], ['\\(','\\)']],
+            displayMath: [['$$','$$'], ['\\[','\\]']],
+            processEscapes: true,
+            processEnvironments: true
+          },
+          TeX: {
+            equationNumbers: { autoNumber: "AMS" },
+            extensions: ["AMSmath.js", "AMSsymbols.js"]
+          }
+        };
+        </script>
+        <meta name="description" content="Intelligent FASTA reduction for aligner index optimization">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../custom.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Talaria Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria/edit/main/docs/src/user-guide/basic-usage.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
+<h1 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h1>
+<p>A practical guide to using Talaria for common sequence database reduction tasks.</p>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
+<h3 id="basic-reduction"><a class="header" href="#basic-reduction">Basic Reduction</a></h3>
+<p>Reduce a FASTA file with default settings:</p>
+<pre><code class="language-bash">talaria reduce -i sequences.fasta -o reduced.fasta
+</code></pre>
+<p>This command:</p>
+<ul>
+<li>Reduces the input file by ~70% (default: 30% of original size)</li>
+<li>Uses simple length-based selection (matches original db-reduce)</li>
+<li>Outputs reference sequences and auto-generates delta file</li>
+</ul>
+<h3 id="view-statistics"><a class="header" href="#view-statistics">View Statistics</a></h3>
+<p>Analyze your FASTA files:</p>
+<pre><code class="language-bash"># Basic statistics
+talaria stats -i sequences.fasta
+
+# Visual statistics with charts
+talaria stats -i sequences.fasta --visual
+
+# Compare original vs reduced
+talaria stats -i reduced.fasta -d deltas.tal
+</code></pre>
+<h3 id="interactive-mode"><a class="header" href="#interactive-mode">Interactive Mode</a></h3>
+<p>Launch the interactive TUI:</p>
+<pre><code class="language-bash">talaria interactive
+</code></pre>
+<p>Navigate menus to:</p>
+<ul>
+<li>Download databases</li>
+<li>Run reduction wizard</li>
+<li>View statistics</li>
+<li>Configure settings</li>
+</ul>
+<h2 id="default-vs-optional-features"><a class="header" href="#default-vs-optional-features">Default vs Optional Features</a></h2>
+<h3 id="default-behavior-matches-original-db-reduce"><a class="header" href="#default-behavior-matches-original-db-reduce">Default Behavior (Matches Original db-reduce)</a></h3>
+<p>By default, Talaria uses simple, fast reduction:</p>
+<ul>
+<li><strong>Selection</strong>: Length-based greedy selection</li>
+<li><strong>No similarity calculations</strong>: Pure length-based</li>
+<li><strong>No taxonomy</strong>: Taxonomic information ignored</li>
+<li><strong>Fast processing</strong>: Minimal computational overhead</li>
+</ul>
+<h3 id="optional-advanced-features"><a class="header" href="#optional-advanced-features">Optional Advanced Features</a></h3>
+<p>Enable these features with specific flags:</p>
+<div class="table-wrapper"><table><thead><tr><th>Feature</th><th>Flag</th><th>Description</th></tr></thead><tbody>
+<tr><td>Similarity-based selection</td><td><code>--similarity-threshold &lt;value&gt;</code></td><td>Use k-mer similarity for clustering</td></tr>
+<tr><td>Alignment-based selection</td><td><code>--align-select</code></td><td>Use full sequence alignment</td></tr>
+<tr><td>Taxonomy awareness</td><td><code>--taxonomy-aware</code></td><td>Consider taxonomic IDs (simple proximity)</td></tr>
+<tr><td>Low complexity filter</td><td><code>--low-complexity-filter</code></td><td>Filter repetitive sequences</td></tr>
+<tr><td>Skip delta encoding</td><td><code>--no-deltas</code></td><td>Faster, no reconstruction possible</td></tr>
+</tbody></table>
+</div>
+<h2 id="common-use-cases"><a class="header" href="#common-use-cases">Common Use Cases</a></h2>
+<h3 id="1-reducing-a-protein-database"><a class="header" href="#1-reducing-a-protein-database">1. Reducing a Protein Database</a></h3>
+<pre><code class="language-bash"># Download UniProt SwissProt
+talaria download uniprot --dataset swissprot
+
+# Reduce with default settings (recommended)
+talaria reduce \
+    -i uniprot_sprot.fasta \
+    -o sprot_reduced.fasta \
+    -a diamond
+
+# Optional: Enable similarity-based selection
+talaria reduce \
+    -i uniprot_sprot.fasta \
+    -o sprot_reduced.fasta \
+    --similarity-threshold 0.70 \
+    -a diamond
+</code></pre>
+<h3 id="2-preparing-blast-database"><a class="header" href="#2-preparing-blast-database">2. Preparing BLAST Database</a></h3>
+<pre><code class="language-bash"># Reduce nucleotide database with default settings
+talaria reduce \
+    -i genomes.fasta \
+    -o genomes_reduced.fasta \
+    -a blast
+
+# Optional: Enable high similarity threshold
+talaria reduce \
+    -i genomes.fasta \
+    -o genomes_reduced.fasta \
+    -a blast \
+    --similarity-threshold 0.95
+
+# Create BLAST database
+makeblastdb -in genomes_reduced.fasta -dbtype nucl
+</code></pre>
+<h3 id="3-optimizing-kraken-database"><a class="header" href="#3-optimizing-kraken-database">3. Optimizing Kraken Database</a></h3>
+<pre><code class="language-bash"># Default reduction (recommended)
+talaria reduce \
+    -i refseq_bacteria.fasta \
+    -o bacteria_reduced.fasta \
+    -a kraken
+
+# Optional: Enable taxonomy-aware reduction
+# Note: Uses simple taxon ID proximity, not true taxonomic distance
+talaria reduce \
+    -i refseq_bacteria.fasta \
+    -o bacteria_reduced.fasta \
+    -a kraken \
+    --taxonomy-aware
+
+# Build Kraken database
+kraken2-build --add-to-library bacteria_reduced.fasta --db kraken_db
+</code></pre>
+<h3 id="4-clustering-similar-sequences"><a class="header" href="#4-clustering-similar-sequences">4. Clustering Similar Sequences</a></h3>
+<pre><code class="language-bash"># Default reduction
+talaria reduce \
+    -i amplicons.fasta \
+    -o representatives.fasta \
+    -r 0.1  # Keep 10% as representatives
+
+# Optional: High similarity clustering
+talaria reduce \
+    -i amplicons.fasta \
+    -o representatives.fasta \
+    --similarity-threshold 0.97 \
+    --min-length 200
+</code></pre>
+<h3 id="5-fast-processing-without-deltas"><a class="header" href="#5-fast-processing-without-deltas">5. Fast Processing Without Deltas</a></h3>
+<pre><code class="language-bash"># Skip delta encoding for maximum speed
+talaria reduce \
+    -i large_database.fasta \
+    -o reduced.fasta \
+    -r 0.3 \
+    --no-deltas \
+    --skip-validation
+</code></pre>
+<h3 id="6-handling-long-sequences"><a class="header" href="#6-handling-long-sequences">6. Handling Long Sequences</a></h3>
+<pre><code class="language-bash"># Limit alignment length for genomes
+talaria reduce \
+    -i whole_genomes.fasta \
+    -o genomes_reduced.fasta \
+    --max-align-length 5000 \
+    -r 0.4
+</code></pre>
+<h2 id="input-and-output"><a class="header" href="#input-and-output">Input and Output</a></h2>
+<h3 id="input-formats"><a class="header" href="#input-formats">Input Formats</a></h3>
+<p>Talaria accepts:</p>
+<ul>
+<li><strong>FASTA</strong> (.fa, .fasta, .fna, .faa)</li>
+<li><strong>Compressed FASTA</strong> (.fa.gz, .fasta.gz)</li>
+<li><strong>Multi-FASTA</strong> (multiple sequences per file)</li>
+</ul>
+<h3 id="output-files"><a class="header" href="#output-files">Output Files</a></h3>
+<p>Default output includes:</p>
+<ol>
+<li>
+<p><strong>Reduced FASTA</strong> (<code>output.fasta</code>)</p>
+<ul>
+<li>Contains reference sequences</li>
+<li>Full sequence data preserved</li>
+<li>Original headers maintained</li>
+</ul>
+</li>
+<li>
+<p><strong>Delta File</strong> (<code>output.deltas.fasta</code> or as specified with <code>-m</code>)</p>
+<ul>
+<li>Auto-generated based on output filename</li>
+<li>Contains delta-encoded sequences</li>
+<li>Required for reconstruction</li>
+</ul>
+</li>
+<li>
+<p><strong>Statistics</strong> (shown in terminal)</p>
+<ul>
+<li>Reduction statistics</li>
+<li>Sequence coverage</li>
+<li>Size reduction achieved</li>
+</ul>
+</li>
+</ol>
+<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
+<h3 id="using-config-files"><a class="header" href="#using-config-files">Using Config Files</a></h3>
+<p>Create <code>talaria.toml</code>:</p>
+<pre><code class="language-toml">[reduction]
+target_ratio = 0.3
+min_sequence_length = 100
+similarity_threshold = 0.0  # Disabled by default
+taxonomy_aware = false       # Disabled by default
+
+[alignment]
+gap_penalty = 20
+gap_extension = 10
+algorithm = "needleman-wunsch"
+
+[output]
+format = "fasta"
+compress_output = false
+include_metadata = true
+
+[performance]
+chunk_size = 10000
+batch_size = 1000
+cache_alignments = true
+</code></pre>
+<p>Use with:</p>
+<pre><code class="language-bash">talaria reduce -c talaria.toml -i input.fa -o output.fa
+</code></pre>
+<h3 id="environment-variables"><a class="header" href="#environment-variables">Environment Variables</a></h3>
+<pre><code class="language-bash"># Set default threads
+export TALARIA_THREADS=16
+
+# Set config location
+export TALARIA_CONFIG=$HOME/.talaria/config.toml
+</code></pre>
+<h2 id="command-reference"><a class="header" href="#command-reference">Command Reference</a></h2>
+<h3 id="global-options"><a class="header" href="#global-options">Global Options</a></h3>
+<pre><code class="language-bash">talaria [GLOBAL OPTIONS] &lt;COMMAND&gt; [ARGS]
+
+Global Options:
+  -v, --verbose     Increase verbosity (can repeat)
+  -j, --threads N   Number of threads (0=auto)
+  -h, --help        Show help message
+</code></pre>
+<h3 id="reduce-command"><a class="header" href="#reduce-command">Reduce Command</a></h3>
+<pre><code class="language-bash">talaria reduce [OPTIONS] -i INPUT -o OUTPUT
+
+Required:
+  -i, --input FILE          Input FASTA file
+  -o, --output FILE         Output FASTA file
+
+Common Options:
+  -a, --target-aligner NAME Target aligner (blast|lambda|kraken|diamond|mmseqs2|generic)
+  -r, --reduction-ratio N   Target reduction ratio (0.0-1.0) [default: 0.3]
+  --min-length N            Minimum sequence length [default: 50]
+  -m, --metadata FILE       Delta metadata file (auto-generated if not specified)
+  --skip-validation         Skip validation step
+
+Optional Advanced Features:
+  --similarity-threshold N  Enable similarity clustering (0.0-1.0)
+  --align-select           Use alignment-based selection
+  --taxonomy-aware         Enable taxonomy-aware clustering
+  --low-complexity-filter  Filter low complexity sequences
+  --no-deltas             Skip delta encoding (faster, no reconstruction)
+  --max-align-length N    Max sequence length for alignment [default: 10000]
+</code></pre>
+<h3 id="stats-command"><a class="header" href="#stats-command">Stats Command</a></h3>
+<pre><code class="language-bash">talaria stats [OPTIONS] -i INPUT
+
+Options:
+  -i, --input FILE          Input FASTA file
+  -d, --deltas FILE         Delta file (if analyzing reduction)
+  --detailed                Show detailed statistics
+  --format FORMAT           Output format (text|json|csv)
+  --visual                  Show visual charts
+  --interactive             Launch interactive viewer
+</code></pre>
+<h3 id="download-command"><a class="header" href="#download-command">Download Command</a></h3>
+<pre><code class="language-bash">talaria download [DATABASE] [OPTIONS]
+
+Arguments:
+  DATABASE                  Database source (uniprot|ncbi|pdb|pfam|silva|kegg)
+
+Options:
+  -d, --dataset NAME        Specific dataset to download
+  -o, --output DIR          Output directory [default: .]
+  -t, --taxonomy            Download taxonomy data
+  -r, --resume              Resume incomplete download
+  -i, --interactive         Interactive selection mode
+  --skip-verify             Skip checksum verification
+</code></pre>
+<h3 id="reconstruct-command"><a class="header" href="#reconstruct-command">Reconstruct Command</a></h3>
+<pre><code class="language-bash">talaria reconstruct [OPTIONS] -r REFERENCES -d DELTAS -o OUTPUT
+
+Options:
+  -r, --references FILE     Reference FASTA file
+  -d, --deltas FILE         Delta metadata file
+  -o, --output FILE         Reconstructed output file
+  --sequences ID...         Reconstruct specific sequences only
+</code></pre>
+<h2 id="performance-tips"><a class="header" href="#performance-tips">Performance Tips</a></h2>
+<h3 id="memory-optimization"><a class="header" href="#memory-optimization">Memory Optimization</a></h3>
+<pre><code class="language-bash"># Use fewer threads for lower memory
+talaria reduce -i large.fasta -o reduced.fasta -j 4
+
+# Skip delta encoding to reduce memory usage
+talaria reduce -i huge.fasta -o reduced.fasta --no-deltas
+
+# Limit alignment length
+talaria reduce -i input.fasta -o output.fasta --max-align-length 1000
+</code></pre>
+<h3 id="speed-optimization"><a class="header" href="#speed-optimization">Speed Optimization</a></h3>
+<pre><code class="language-bash"># Maximum threads
+talaria reduce -i input.fasta -o output.fasta -j 0
+
+# Skip delta encoding for speed
+talaria reduce -i input.fasta -o output.fasta --no-deltas
+
+# Skip validation
+talaria reduce -i input.fasta -o output.fasta --skip-validation
+</code></pre>
+<h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
+<h3 id="common-issues"><a class="header" href="#common-issues">Common Issues</a></h3>
+<h4 id="out-of-memory"><a class="header" href="#out-of-memory">Out of Memory</a></h4>
+<pre><code class="language-bash"># Solution 1: Use fewer threads
+talaria reduce -i input.fasta -o output.fasta -j 4
+
+# Solution 2: Skip delta encoding
+talaria reduce -i input.fasta -o output.fasta --no-deltas
+
+# Solution 3: Reduce max alignment length
+talaria reduce -i input.fasta -o output.fasta --max-align-length 500
+</code></pre>
+<h4 id="poor-compression"><a class="header" href="#poor-compression">Poor Compression</a></h4>
+<pre><code class="language-bash"># Solution 1: Adjust similarity threshold
+talaria reduce -i input.fasta -o output.fasta --similarity-threshold 0.8
+
+# Solution 2: Check sequence diversity
+talaria stats -i input.fasta --detailed
+
+# Solution 3: Try alignment-based selection
+talaria reduce -i input.fasta -o output.fasta --align-select
+</code></pre>
+<h4 id="slow-performance"><a class="header" href="#slow-performance">Slow Performance</a></h4>
+<pre><code class="language-bash"># Solution 1: Skip delta encoding
+talaria reduce -i input.fasta -o output.fasta --no-deltas
+
+# Solution 2: Use more threads
+talaria reduce -i input.fasta -o output.fasta -j 0
+
+# Solution 3: Reduce max alignment length
+talaria reduce -i input.fasta -o output.fasta --max-align-length 1000
+</code></pre>
+<h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
+<h3 id="example-1-bacterial-genome-database"><a class="header" href="#example-1-bacterial-genome-database">Example 1: Bacterial Genome Database</a></h3>
+<pre><code class="language-bash"># Download bacterial genomes
+talaria download ncbi --dataset bacteria
+
+# Reduce with taxonomy preservation
+talaria reduce \
+    -i bacteria.fasta \
+    -o bacteria_reduced.fasta \
+    --similarity-threshold 0.95 \
+    --taxonomy-aware
+
+# Create BLAST database
+makeblastdb -in bacteria_reduced.fasta -dbtype nucl
+
+# Search
+blastn -query my_sequences.fasta -db bacteria_reduced.fasta
+</code></pre>
+<h3 id="example-2-protein-family-analysis"><a class="header" href="#example-2-protein-family-analysis">Example 2: Protein Family Analysis</a></h3>
+<pre><code class="language-bash"># Reduce protein family
+talaria reduce \
+    -i protein_family.fasta \
+    -o representatives.fasta \
+    --similarity-threshold 0.6
+
+# Analyze results
+talaria stats -i representatives.fasta --detailed
+</code></pre>
+<h3 id="example-3-metagenome-processing"><a class="header" href="#example-3-metagenome-processing">Example 3: Metagenome Processing</a></h3>
+<pre><code class="language-bash"># Reduce reference database
+talaria reduce \
+    -i reference_genomes.fasta \
+    -o reference_reduced.fasta \
+    -a kraken \
+    --taxonomy-aware
+
+# Map reads to reduced database
+minimap2 -ax sr reference_reduced.fasta reads.fastq &gt; alignments.sam
+</code></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<ol>
+<li><strong>Always Validate</strong>: Run validation on a subset before production use</li>
+<li><strong>Choose Appropriate Thresholds</strong>: Higher for similar sequences, lower for diverse</li>
+<li><strong>Monitor Metrics</strong>: Track compression ratio and search sensitivity</li>
+<li><strong>Regular Updates</strong>: Re-reduce databases periodically as they grow</li>
+<li><strong>Backup Originals</strong>: Keep original files until validated</li>
+<li><strong>Document Settings</strong>: Record parameters used for reproducibility</li>
+</ol>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="installation.html">Installation</a> - Setup instructions</li>
+<li><a href="configuration.html">Configuration</a> - Detailed configuration options</li>
+<li><a href="../advanced/performance.html">Advanced Usage</a> - Performance optimization</li>
+<li><a href="../api/cli.html">API Reference</a> - Complete command reference</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../user-guide/installation.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../user-guide/interactive-mode.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../user-guide/installation.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../user-guide/interactive-mode.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../mermaid.min.js"></script>
+        <script src="../mermaid-init.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

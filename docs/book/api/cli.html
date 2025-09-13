@@ -1,0 +1,874 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>CLI Reference - Talaria Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- MathJax Configuration -->
+        <script>
+        window.MathJax = {
+          tex2jax: {
+            inlineMath: [['$','$'], ['\\(','\\)']],
+            displayMath: [['$$','$$'], ['\\[','\\]']],
+            processEscapes: true,
+            processEnvironments: true
+          },
+          TeX: {
+            equationNumbers: { autoNumber: "AMS" },
+            extensions: ["AMSmath.js", "AMSsymbols.js"]
+          }
+        };
+        </script>
+        <meta name="description" content="Intelligent FASTA reduction for aligner index optimization">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../custom.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Talaria Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria/edit/main/docs/src/api/cli.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
+<h1 id="command-line-interface-api-reference"><a class="header" href="#command-line-interface-api-reference">Command Line Interface API Reference</a></h1>
+<p>Talaria provides a comprehensive command-line interface for intelligent FASTA reduction and bioinformatics processing. This document provides complete API reference for all commands, options, and usage patterns.</p>
+<h2 id="global-options"><a class="header" href="#global-options">Global Options</a></h2>
+<p>These options are available for all commands and control global behavior:</p>
+<h3 id="-v---verbose"><a class="header" href="#-v---verbose"><code>-v, --verbose</code></a></h3>
+<p><strong>Type:</strong> Flag (repeatable)<br />
+<strong>Default:</strong> None<br />
+<strong>Description:</strong> Increase verbosity level. Can be repeated multiple times for more detailed output.</p>
+<pre><code class="language-bash">talaria -v reduce ...           # Basic verbose output
+talaria -vv reduce ...          # More detailed output  
+talaria -vvv reduce ...         # Debug-level output
+</code></pre>
+<h3 id="-j---threads-number"><a class="header" href="#-j---threads-number"><code>-j, --threads &lt;NUMBER&gt;</code></a></h3>
+<p><strong>Type:</strong> Integer<br />
+<strong>Default:</strong> <code>0</code> (auto-detect all available cores)<br />
+<strong>Description:</strong> Number of threads to use for parallel processing.</p>
+<pre><code class="language-bash">talaria -j 4 reduce ...         # Use 4 threads
+talaria -j 0 reduce ...         # Use all available cores
+</code></pre>
+<hr />
+<h2 id="commands"><a class="header" href="#commands">Commands</a></h2>
+<h3 id="reduce"><a class="header" href="#reduce">reduce</a></h3>
+<p>Intelligently reduce a FASTA file for optimal aligner indexing by selecting representative sequences and encoding similar sequences as deltas.</p>
+<h4 id="usage"><a class="header" href="#usage">Usage</a></h4>
+<pre><code class="language-bash">talaria reduce [OPTIONS] -i &lt;INPUT&gt; -o &lt;OUTPUT&gt;
+</code></pre>
+<h4 id="required-arguments"><a class="header" href="#required-arguments">Required Arguments</a></h4>
+<p><strong><code>-i, --input &lt;FILE&gt;</code></strong><br />
+Path to input FASTA file to be reduced.</p>
+<p><strong><code>-o, --output &lt;FILE&gt;</code></strong><br />
+Path for output reduced FASTA file.</p>
+<h4 id="optional-arguments"><a class="header" href="#optional-arguments">Optional Arguments</a></h4>
+<h5 id="core-options"><a class="header" href="#core-options">Core Options</a></h5>
+<p><strong><code>-a, --target-aligner &lt;ALIGNER&gt;</code></strong><br />
+<strong>Default:</strong> <code>generic</code><br />
+<strong>Values:</strong> <code>lambda</code>, <code>blast</code>, <code>kraken</code>, <code>diamond</code>, <code>mmseqs2</code>, <code>generic</code><br />
+Target aligner for optimization. Different aligners have different indexing characteristics.</p>
+<pre><code class="language-bash"># Optimize for LAMBDA aligner
+talaria reduce -i input.fasta -o output.fasta -a lambda
+
+# Optimize for BLAST+ 
+talaria reduce -i input.fasta -o output.fasta -a blast
+
+# Generic optimization (works with most aligners)
+talaria reduce -i input.fasta -o output.fasta -a generic
+</code></pre>
+<p><strong><code>-r, --reduction-ratio &lt;RATIO&gt;</code></strong><br />
+<strong>Type:</strong> Float (0.0-1.0)<br />
+<strong>Default:</strong> <code>0.3</code><br />
+Target reduction ratio where 0.3 means 30% of original size.</p>
+<pre><code class="language-bash"># Reduce to 20% of original size (aggressive)
+talaria reduce -i input.fasta -o output.fasta -r 0.2
+
+# Reduce to 50% of original size (conservative)  
+talaria reduce -i input.fasta -o output.fasta -r 0.5
+</code></pre>
+<p><strong><code>--min-length &lt;LENGTH&gt;</code></strong><br />
+<strong>Type:</strong> Integer<br />
+<strong>Default:</strong> <code>50</code><br />
+Minimum sequence length to consider for reduction. Sequences shorter than this are excluded.</p>
+<p><strong><code>-m, --metadata &lt;FILE&gt;</code></strong><br />
+<strong>Type:</strong> Path<br />
+<strong>Default:</strong> None<br />
+Output path for delta metadata file. Required for reconstruction.</p>
+<pre><code class="language-bash">talaria reduce -i input.fasta -o output.fasta -m deltas.dat
+</code></pre>
+<p><strong><code>-c, --config &lt;FILE&gt;</code></strong><br />
+<strong>Type:</strong> Path<br />
+<strong>Default:</strong> None<br />
+Path to TOML configuration file for advanced settings.</p>
+<p><strong><code>--protein</code></strong><br />
+<strong>Type:</strong> Flag<br />
+Force protein sequence scoring. By default, sequence type is auto-detected.</p>
+<p><strong><code>--nucleotide</code></strong><br />
+<strong>Type:</strong> Flag<br />
+Force nucleotide sequence scoring. By default, sequence type is auto-detected.</p>
+<p><strong><code>--skip-validation</code></strong><br />
+<strong>Type:</strong> Flag<br />
+Skip the validation step after reduction for faster processing.</p>
+<h5 id="optional-advanced-features"><a class="header" href="#optional-advanced-features">Optional Advanced Features</a></h5>
+<p>These features are disabled by default to match the original db-reduce behavior:</p>
+<p><strong><code>--similarity-threshold &lt;THRESHOLD&gt;</code></strong> (Optional)<br />
+<strong>Type:</strong> Float (0.0-1.0)<br />
+<strong>Default:</strong> <code>0.0</code> (disabled)<br />
+Enable similarity-based clustering with specified threshold. When set, sequences with similarity above this threshold will be grouped together using k-mer Jaccard similarity.</p>
+<p><strong><code>--low-complexity-filter</code></strong> (Optional)<br />
+<strong>Type:</strong> Flag<br />
+<strong>Default:</strong> Disabled<br />
+Filter out low-complexity sequences before reduction.</p>
+<p><strong><code>--align-select</code></strong> (Optional)<br />
+<strong>Type:</strong> Flag<br />
+<strong>Default:</strong> Disabled<br />
+Use full alignment-based selection instead of simple length-based selection. Much slower but potentially more accurate.</p>
+<p><strong><code>--taxonomy-aware</code></strong> (Optional)<br />
+<strong>Type:</strong> Flag<br />
+<strong>Default:</strong> Disabled<br />
+Consider taxonomic IDs when selecting references. Note: Currently uses simple taxon ID proximity, not true taxonomic distance.</p>
+<p><strong><code>--no-deltas</code></strong> (Optional)<br />
+<strong>Type:</strong> Flag<br />
+<strong>Default:</strong> Disabled<br />
+Skip delta encoding entirely. Much faster but reconstruction will not be possible.</p>
+<p><strong><code>--max-align-length &lt;LENGTH&gt;</code></strong> (Optional)<br />
+<strong>Type:</strong> Integer<br />
+<strong>Default:</strong> <code>10000</code><br />
+Maximum sequence length for alignment. Sequences longer than this skip delta encoding to prevent excessive memory usage.</p>
+<h4 id="examples"><a class="header" href="#examples">Examples</a></h4>
+<h5 id="basic-reduction"><a class="header" href="#basic-reduction">Basic reduction</a></h5>
+<pre><code class="language-bash"># Simple 30% reduction with generic optimization
+talaria reduce -i database.fasta -o reduced.fasta
+</code></pre>
+<h5 id="blast-optimization-with-metadata"><a class="header" href="#blast-optimization-with-metadata">BLAST optimization with metadata</a></h5>
+<pre><code class="language-bash"># Optimize for BLAST with 25% reduction and save metadata
+talaria reduce \
+    -i nr.fasta \
+    -o nr_reduced.fasta \
+    -a blast \
+    -r 0.25 \
+    -m nr_deltas.dat
+</code></pre>
+<h5 id="high-performance-reduction"><a class="header" href="#high-performance-reduction">High-performance reduction</a></h5>
+<pre><code class="language-bash"># Use all cores for large database processing
+talaria -j 0 reduce \
+    -i uniprot_trembl.fasta \
+    -o trembl_reduced.fasta \
+    -a lambda \
+    -r 0.2 \
+    --min-length 100 \
+    --skip-validation
+</code></pre>
+<h5 id="fast-reduction-without-delta-encoding"><a class="header" href="#fast-reduction-without-delta-encoding">Fast reduction without delta encoding</a></h5>
+<pre><code class="language-bash"># Skip delta encoding for maximum speed
+talaria reduce \
+    -i large_database.fasta \
+    -o reduced.fasta \
+    -r 0.3 \
+    --no-deltas \
+    --skip-validation
+</code></pre>
+<h5 id="quality-focused-reduction"><a class="header" href="#quality-focused-reduction">Quality-focused reduction</a></h5>
+<pre><code class="language-bash"># Use alignment-based selection for better quality
+talaria reduce \
+    -i sequences.fasta \
+    -o high_quality_reduced.fasta \
+    --align-select \
+    --similarity-threshold 0.8 \
+    --taxonomy-aware
+</code></pre>
+<h5 id="large-sequence-handling"><a class="header" href="#large-sequence-handling">Large sequence handling</a></h5>
+<pre><code class="language-bash"># Handle databases with very long sequences
+talaria reduce \
+    -i genomes.fasta \
+    -o genomes_reduced.fasta \
+    --max-align-length 5000 \
+    -r 0.4
+</code></pre>
+<h5 id="custom-configuration"><a class="header" href="#custom-configuration">Custom configuration</a></h5>
+<pre><code class="language-bash"># Use custom configuration file
+talaria reduce \
+    -i input.fasta \
+    -o output.fasta \
+    -c custom_config.toml \
+    -m deltas.dat
+</code></pre>
+<h4 id="output-format"><a class="header" href="#output-format">Output Format</a></h4>
+<p>Upon completion, the reduce command displays statistics:</p>
+<pre><code>╔════════════════════════════════════════╗
+║        Reduction Statistics            ║
+╠════════════════════════════════════════╣
+║ Original sequences:             565928 ║
+║ Reference sequences:            169778 ║
+║ Child sequences:                396150 ║
+║ Sequence coverage:               99.8% ║
+║ Size reduction:                  70.0% ║
+║ Avg deltas/child:                 12.3 ║
+╚════════════════════════════════════════╝
+Reduction complete: 70.0% size reduction, 99.8% sequence coverage
+</code></pre>
+<h4 id="error-conditions"><a class="header" href="#error-conditions">Error Conditions</a></h4>
+<div class="table-wrapper"><table><thead><tr><th>Error</th><th>Description</th><th>Solution</th></tr></thead><tbody>
+<tr><td><strong>Input file not found</strong></td><td><code>Input file does not exist: path/to/file.fasta</code></td><td>Verify input path and file permissions</td></tr>
+<tr><td><strong>Invalid reduction ratio</strong></td><td><code>Reduction ratio must be between 0.0 and 1.0</code></td><td>Use ratio between 0.0 and 1.0</td></tr>
+<tr><td><strong>Empty FASTA file</strong></td><td><code>No valid sequences found in input file</code></td><td>Check FASTA format and content</td></tr>
+<tr><td><strong>Insufficient memory</strong></td><td><code>Out of memory during processing</code></td><td>Reduce thread count, use <code>--no-deltas</code>, or reduce <code>--max-align-length</code></td></tr>
+<tr><td><strong>Long sequence warning</strong></td><td><code>Sequences longer than max_align_length detected</code></td><td>Increase <code>--max-align-length</code> or use <code>--no-deltas</code> for faster processing</td></tr>
+</tbody></table>
+</div>
+<hr />
+<h3 id="reconstruct"><a class="header" href="#reconstruct">reconstruct</a></h3>
+<p>Reconstruct original sequences from reference FASTA and delta metadata files.</p>
+<h4 id="usage-1"><a class="header" href="#usage-1">Usage</a></h4>
+<pre><code class="language-bash">talaria reconstruct [OPTIONS] -r &lt;REFERENCES&gt; -d &lt;DELTAS&gt; -o &lt;OUTPUT&gt;
+</code></pre>
+<h4 id="required-arguments-1"><a class="header" href="#required-arguments-1">Required Arguments</a></h4>
+<p><strong><code>-r, --references &lt;FILE&gt;</code></strong><br />
+Path to reference FASTA file (output from reduce command).</p>
+<p><strong><code>-d, --deltas &lt;FILE&gt;</code></strong><br />
+Path to delta metadata file (from reduce command).</p>
+<p><strong><code>-o, --output &lt;FILE&gt;</code></strong><br />
+Path for output reconstructed FASTA file.</p>
+<h4 id="optional-arguments-1"><a class="header" href="#optional-arguments-1">Optional Arguments</a></h4>
+<p><strong><code>--sequences &lt;ID&gt;...</code></strong><br />
+<strong>Type:</strong> String array<br />
+Only reconstruct specific sequences by ID. Can be repeated multiple times.</p>
+<pre><code class="language-bash"># Reconstruct specific sequences only
+talaria reconstruct \
+    -r references.fasta \
+    -d deltas.dat \
+    -o reconstructed.fasta \
+    --sequences seq1 --sequences seq2 --sequences seq3
+</code></pre>
+<h4 id="examples-1"><a class="header" href="#examples-1">Examples</a></h4>
+<h5 id="full-reconstruction"><a class="header" href="#full-reconstruction">Full reconstruction</a></h5>
+<pre><code class="language-bash"># Reconstruct all sequences from reduction
+talaria reconstruct \
+    -r reduced.fasta \
+    -d deltas.dat \
+    -o original_reconstructed.fasta
+</code></pre>
+<h5 id="selective-reconstruction"><a class="header" href="#selective-reconstruction">Selective reconstruction</a></h5>
+<pre><code class="language-bash"># Reconstruct only specific sequences of interest
+talaria reconstruct \
+    -r reduced.fasta \
+    -d deltas.dat \
+    -o subset.fasta \
+    --sequences "sp|P12345|PROTEIN1" \
+    --sequences "sp|Q67890|PROTEIN2"
+</code></pre>
+<h4 id="error-conditions-1"><a class="header" href="#error-conditions-1">Error Conditions</a></h4>
+<div class="table-wrapper"><table><thead><tr><th>Error</th><th>Description</th><th>Solution</th></tr></thead><tbody>
+<tr><td><strong>Reference file missing</strong></td><td><code>Reference file not found</code></td><td>Ensure reference file exists and is readable</td></tr>
+<tr><td><strong>Delta file invalid</strong></td><td><code>Failed to parse delta metadata</code></td><td>Verify delta file format and integrity</td></tr>
+<tr><td><strong>Sequence not found</strong></td><td><code>Sequence ID not found in references</code></td><td>Check sequence IDs exist in reference file</td></tr>
+</tbody></table>
+</div>
+<hr />
+<h3 id="stats"><a class="header" href="#stats">stats</a></h3>
+<p>Display comprehensive statistics about FASTA files and reduction results.</p>
+<h4 id="usage-2"><a class="header" href="#usage-2">Usage</a></h4>
+<pre><code class="language-bash">talaria stats [OPTIONS] -i &lt;INPUT&gt;
+</code></pre>
+<h4 id="required-arguments-2"><a class="header" href="#required-arguments-2">Required Arguments</a></h4>
+<p><strong><code>-i, --input &lt;FILE&gt;</code></strong><br />
+Path to input FASTA file to analyze.</p>
+<h4 id="optional-arguments-2"><a class="header" href="#optional-arguments-2">Optional Arguments</a></h4>
+<p><strong><code>-d, --deltas &lt;FILE&gt;</code></strong><br />
+<strong>Type:</strong> Path<br />
+Path to delta metadata file for reduction analysis.</p>
+<p><strong><code>--detailed</code></strong><br />
+<strong>Type:</strong> Flag<br />
+Show detailed statistics including nucleotide frequencies and complexity metrics.</p>
+<p><strong><code>--format &lt;FORMAT&gt;</code></strong><br />
+<strong>Type:</strong> String<br />
+<strong>Default:</strong> <code>text</code><br />
+<strong>Values:</strong> <code>text</code>, <code>json</code>, <code>csv</code><br />
+Output format for statistics.</p>
+<p><strong><code>--visual</code></strong><br />
+<strong>Type:</strong> Flag<br />
+Show visual charts, graphs, and progress bars in text output.</p>
+<p><strong><code>--interactive</code></strong><br />
+<strong>Type:</strong> Flag<br />
+Launch interactive TUI (Text User Interface) statistics viewer.</p>
+<h4 id="examples-2"><a class="header" href="#examples-2">Examples</a></h4>
+<h5 id="basic-statistics"><a class="header" href="#basic-statistics">Basic statistics</a></h5>
+<pre><code class="language-bash"># Simple text statistics
+talaria stats -i database.fasta
+</code></pre>
+<h5 id="detailed-visual-analysis"><a class="header" href="#detailed-visual-analysis">Detailed visual analysis</a></h5>
+<pre><code class="language-bash"># Comprehensive analysis with visual elements
+talaria stats -i database.fasta --detailed --visual
+</code></pre>
+<h5 id="machine-readable-output"><a class="header" href="#machine-readable-output">Machine-readable output</a></h5>
+<pre><code class="language-bash"># JSON output for processing
+talaria stats -i database.fasta --format json &gt; stats.json
+
+# CSV output for spreadsheet analysis  
+talaria stats -i database.fasta --format csv &gt; stats.csv
+</code></pre>
+<h5 id="reduction-analysis"><a class="header" href="#reduction-analysis">Reduction analysis</a></h5>
+<pre><code class="language-bash"># Analyze reduction effectiveness
+talaria stats -i reduced.fasta -d deltas.dat --visual
+</code></pre>
+<h5 id="interactive-exploration"><a class="header" href="#interactive-exploration">Interactive exploration</a></h5>
+<pre><code class="language-bash"># Launch TUI for interactive analysis
+talaria stats -i database.fasta --interactive
+</code></pre>
+<h4 id="output-metrics"><a class="header" href="#output-metrics">Output Metrics</a></h4>
+<h5 id="basic-metrics"><a class="header" href="#basic-metrics">Basic Metrics</a></h5>
+<ul>
+<li><strong>Total Sequences:</strong> Number of sequences in file</li>
+<li><strong>Total Bases:</strong> Total nucleotides/amino acids</li>
+<li><strong>Average Length:</strong> Mean sequence length</li>
+<li><strong>Median Length:</strong> 50th percentile length</li>
+<li><strong>Min/Max Length:</strong> Shortest and longest sequences</li>
+<li><strong>N50/N90:</strong> Assembly statistics for length distribution</li>
+</ul>
+<h5 id="composition-analysis"><a class="header" href="#composition-analysis">Composition Analysis</a></h5>
+<ul>
+<li><strong>GC Content:</strong> Percentage of G+C nucleotides (nucleotide sequences)</li>
+<li><strong>AT Content:</strong> Percentage of A+T nucleotides (nucleotide sequences)</li>
+<li><strong>Nucleotide Frequencies:</strong> Distribution of A, T, G, C, N</li>
+<li><strong>Amino Acid Frequencies:</strong> Distribution of 20 amino acids (protein sequences)</li>
+</ul>
+<h5 id="complexity-metrics"><a class="header" href="#complexity-metrics">Complexity Metrics</a></h5>
+<ul>
+<li><strong>Shannon Entropy:</strong> Information content measure</li>
+<li><strong>Simpson Diversity:</strong> Species diversity index</li>
+<li><strong>Low Complexity:</strong> Percentage of low-complexity regions</li>
+<li><strong>Ambiguous Bases:</strong> Count of N, X, and other ambiguous characters</li>
+<li><strong>Gaps:</strong> Count of gap characters (-)</li>
+</ul>
+<h5 id="reduction-statistics-with-deltas"><a class="header" href="#reduction-statistics-with-deltas">Reduction Statistics (with –deltas)</a></h5>
+<ul>
+<li><strong>References:</strong> Number of reference sequences retained</li>
+<li><strong>Delta-encoded:</strong> Number of sequences encoded as deltas</li>
+<li><strong>Compression Ratio:</strong> Percentage size reduction</li>
+<li><strong>Space Savings:</strong> Compression factor (e.g., 3.3x smaller)</li>
+</ul>
+<hr />
+<h3 id="validate"><a class="header" href="#validate">validate</a></h3>
+<p>Validate reduction quality by comparing original and reduced databases for coverage and alignment performance.</p>
+<h4 id="usage-3"><a class="header" href="#usage-3">Usage</a></h4>
+<pre><code class="language-bash">talaria validate [OPTIONS] -o &lt;ORIGINAL&gt; -r &lt;REDUCED&gt; -d &lt;DELTAS&gt;
+</code></pre>
+<h4 id="required-arguments-3"><a class="header" href="#required-arguments-3">Required Arguments</a></h4>
+<p><strong><code>-o, --original &lt;FILE&gt;</code></strong><br />
+Path to original FASTA file before reduction.</p>
+<p><strong><code>-r, --reduced &lt;FILE&gt;</code></strong><br />
+Path to reduced FASTA file.</p>
+<p><strong><code>-d, --deltas &lt;FILE&gt;</code></strong><br />
+Path to delta metadata file.</p>
+<h4 id="optional-arguments-3"><a class="header" href="#optional-arguments-3">Optional Arguments</a></h4>
+<p><strong><code>--original-results &lt;FILE&gt;</code></strong><br />
+<strong>Type:</strong> Path<br />
+Alignment results from original database (for alignment comparison).</p>
+<p><strong><code>--reduced-results &lt;FILE&gt;</code></strong><br />
+<strong>Type:</strong> Path<br />
+Alignment results from reduced database (for alignment comparison).</p>
+<p><strong><code>--report &lt;FILE&gt;</code></strong><br />
+<strong>Type:</strong> Path<br />
+Output detailed validation report to JSON file.</p>
+<h4 id="examples-3"><a class="header" href="#examples-3">Examples</a></h4>
+<h5 id="basic-validation"><a class="header" href="#basic-validation">Basic validation</a></h5>
+<pre><code class="language-bash"># Validate reduction coverage and quality
+talaria validate \
+    -o original.fasta \
+    -r reduced.fasta \
+    -d deltas.dat
+</code></pre>
+<h5 id="alignment-performance-comparison"><a class="header" href="#alignment-performance-comparison">Alignment performance comparison</a></h5>
+<pre><code class="language-bash"># Compare alignment results between original and reduced
+talaria validate \
+    -o original.fasta \
+    -r reduced.fasta \
+    -d deltas.dat \
+    --original-results original_blast.out \
+    --reduced-results reduced_blast.out
+</code></pre>
+<h5 id="detailed-reporting"><a class="header" href="#detailed-reporting">Detailed reporting</a></h5>
+<pre><code class="language-bash"># Generate comprehensive validation report
+talaria validate \
+    -o original.fasta \
+    -r reduced.fasta \
+    -d deltas.dat \
+    --report validation_report.json
+</code></pre>
+<h4 id="output-format-1"><a class="header" href="#output-format-1">Output Format</a></h4>
+<p>The validate command shows progress for each step and then displays results:</p>
+<pre><code>✔ Loading original FASTA file...
+✔ Loaded 565928 original sequences
+✔ Loading reduced FASTA file...
+✔ Loaded 169778 reference sequences
+✔ Loading delta metadata...
+✔ Loaded 396150 delta records
+✔ Calculating validation metrics...
+
+╔════════════════════════════════════════╗
+║       Validation Results               ║
+╠════════════════════════════════════════╣
+║ Sequence coverage:              97.75% ║
+║ Taxonomic coverage:             51.06% ║
+║ Size reduction:                 42.69% ║
+║ Reference sequences:            169778 ║
+║ Child sequences:                396150 ║
+║ Avg delta size:                   12.3 ║
+╚════════════════════════════════════════╝
+</code></pre>
+<h4 id="validation-metrics"><a class="header" href="#validation-metrics">Validation Metrics</a></h4>
+<ul>
+<li><strong>Sequence Coverage:</strong> Percentage of original sequences represented (references + deltas)</li>
+<li><strong>Taxonomic Coverage:</strong> Percentage of unique taxonomic IDs preserved</li>
+<li><strong>Size Reduction:</strong> Actual file size reduction achieved</li>
+<li><strong>Reference/Child counts:</strong> Distribution of sequences</li>
+<li><strong>Avg delta size:</strong> Average number of differences per child sequence</li>
+<li><strong>Alignment Similarity:</strong> (if comparison files provided) Correlation between results</li>
+</ul>
+<hr />
+<h3 id="download"><a class="header" href="#download">download</a></h3>
+<p>Download and manage biological sequence databases from various sources.</p>
+<h4 id="usage-4"><a class="header" href="#usage-4">Usage</a></h4>
+<pre><code class="language-bash">talaria download [OPTIONS] [DATABASE]
+</code></pre>
+<h4 id="optional-arguments-4"><a class="header" href="#optional-arguments-4">Optional Arguments</a></h4>
+<p><strong><code>&lt;DATABASE&gt;</code></strong><br />
+<strong>Type:</strong> Enum<br />
+<strong>Values:</strong> <code>uniprot</code>, <code>ncbi</code>, <code>pdb</code> <em>(not yet implemented)</em>, <code>pfam</code> <em>(not yet implemented)</em>, <code>silva</code> <em>(not yet implemented)</em>, <code>kegg</code> <em>(not yet implemented)</em><br />
+Database source to download from.</p>
+<p><strong>Note:</strong> Currently only <code>uniprot</code> and <code>ncbi</code> databases are fully implemented. Other databases will provide instructions for manual download.</p>
+<p><strong><code>-o, --output &lt;DIR&gt;</code></strong><br />
+<strong>Type:</strong> Path<br />
+<strong>Default:</strong> <code>.</code> (current directory)<br />
+Output directory for downloaded files.</p>
+<p><strong><code>-d, --dataset &lt;NAME&gt;</code></strong><br />
+<strong>Type:</strong> String<br />
+Specific dataset to download from the selected database.</p>
+<p><strong><code>-t, --taxonomy</code></strong><br />
+<strong>Type:</strong> Flag<br />
+Download taxonomy data along with sequence data.</p>
+<p><strong><code>-r, --resume</code></strong><br />
+<strong>Type:</strong> Flag<br />
+Resume incomplete download from previous attempt. Downloads are saved to temporary <code>.gz.tmp</code> files and resumed if the server supports partial content requests.</p>
+<p><strong><code>-i, --interactive</code></strong><br />
+<strong>Type:</strong> Flag<br />
+Launch interactive download manager.</p>
+<p><strong><code>--skip-verify</code></strong><br />
+<strong>Type:</strong> Flag<br />
+Skip MD5 checksum verification of downloaded files. By default, the tool attempts to download and verify checksums when available.</p>
+<h4 id="database-options"><a class="header" href="#database-options">Database Options</a></h4>
+<h5 id="uniprot"><a class="header" href="#uniprot">UniProt</a></h5>
+<ul>
+<li><code>swissprot</code>: Manually reviewed sequences (~570K sequences, ~200MB)</li>
+<li><code>trembl</code>: Unreviewed sequences (~250M sequences, ~100GB)</li>
+<li><code>uniref90</code>: Clustered at 90% identity (~100M sequences)</li>
+<li><code>uniref50</code>: Clustered at 50% identity (~50M sequences)</li>
+<li><code>uniref100</code>: Clustered at 100% identity (~300M sequences)</li>
+</ul>
+<h5 id="ncbi"><a class="header" href="#ncbi">NCBI</a></h5>
+<ul>
+<li><code>nr</code>: Non-redundant protein sequences (~90GB)</li>
+<li><code>nt</code>: Nucleotide sequences (~70GB)</li>
+<li><code>refseq-protein</code>: RefSeq protein database (~20GB)</li>
+<li><code>refseq-genomic</code>: RefSeq complete genomes</li>
+<li><code>taxonomy</code>: NCBI taxonomy dump (~50MB)</li>
+</ul>
+<h4 id="examples-4"><a class="header" href="#examples-4">Examples</a></h4>
+<h5 id="interactive-download"><a class="header" href="#interactive-download">Interactive download</a></h5>
+<pre><code class="language-bash"># Launch interactive download manager
+talaria download --interactive
+</code></pre>
+<h5 id="direct-uniprot-download"><a class="header" href="#direct-uniprot-download">Direct UniProt download</a></h5>
+<pre><code class="language-bash"># Download SwissProt with taxonomy
+talaria download uniprot \
+    --dataset swissprot \
+    --taxonomy \
+    --output ./databases/
+</code></pre>
+<h5 id="ncbi-database-download"><a class="header" href="#ncbi-database-download">NCBI database download</a></h5>
+<pre><code class="language-bash"># Download non-redundant protein database
+talaria download ncbi \
+    --dataset nr \
+    --output ./ncbi/ \
+    --resume
+</code></pre>
+<h5 id="large-database-download"><a class="header" href="#large-database-download">Large database download</a></h5>
+<pre><code class="language-bash"># Download TrEMBL database with resume capability
+talaria download uniprot \
+    --dataset trembl \
+    --output ./uniprot/ \
+    --resume \
+    --skip-verify
+</code></pre>
+<hr />
+<h3 id="interactive"><a class="header" href="#interactive">interactive</a></h3>
+<p>Launch interactive Text User Interface (TUI) mode for guided operations.</p>
+<h4 id="usage-5"><a class="header" href="#usage-5">Usage</a></h4>
+<pre><code class="language-bash">talaria interactive [OPTIONS]
+</code></pre>
+<h4 id="optional-arguments-5"><a class="header" href="#optional-arguments-5">Optional Arguments</a></h4>
+<p><strong><code>--mode &lt;MODE&gt;</code></strong><br />
+<strong>Type:</strong> String<br />
+Start in specific interactive mode (e.g., “download”, “stats”).</p>
+<h4 id="interactive-features"><a class="header" href="#interactive-features">Interactive Features</a></h4>
+<p>The interactive mode provides a menu-driven interface with:</p>
+<ul>
+<li><strong>▼ Download databases:</strong> Interactive database download manager</li>
+<li><strong>▶ Reduce a FASTA file:</strong> Guided FASTA reduction wizard</li>
+<li><strong>■ View statistics:</strong> Interactive statistics explorer</li>
+<li><strong>◆ Setup wizard:</strong> First-time user configuration</li>
+<li><strong>● Configure settings:</strong> Settings editor</li>
+<li><strong>□ View documentation:</strong> Built-in documentation browser</li>
+<li><strong>× Exit:</strong> Exit interactive mode</li>
+</ul>
+<h4 id="navigation"><a class="header" href="#navigation">Navigation</a></h4>
+<ul>
+<li><strong>↑↓ Arrow keys:</strong> Navigate menu items</li>
+<li><strong>Enter:</strong> Select current item</li>
+<li><strong>q/Esc:</strong> Exit current screen or application</li>
+<li><strong>Tab:</strong> Switch between interface elements</li>
+<li><strong>Space:</strong> Toggle checkboxes and options</li>
+</ul>
+<h4 id="examples-5"><a class="header" href="#examples-5">Examples</a></h4>
+<pre><code class="language-bash"># Launch interactive mode
+talaria interactive
+
+# Start in download mode
+talaria interactive --mode download
+
+# Launch with specific configuration
+talaria -j 8 interactive
+</code></pre>
+<hr />
+<h2 id="exit-codes"><a class="header" href="#exit-codes">Exit Codes</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Code</th><th>Description</th></tr></thead><tbody>
+<tr><td><strong>0</strong></td><td>Success</td></tr>
+<tr><td><strong>1</strong></td><td>General error (invalid arguments, file not found, etc.)</td></tr>
+<tr><td><strong>2</strong></td><td>Configuration error (invalid config file, settings)</td></tr>
+<tr><td><strong>3</strong></td><td>Input/Output error (file permissions, disk space)</td></tr>
+<tr><td><strong>4</strong></td><td>Processing error (algorithm failure, insufficient memory)</td></tr>
+<tr><td><strong>5</strong></td><td>Validation error (corrupt data, format issues)</td></tr>
+</tbody></table>
+</div>
+<hr />
+<h2 id="environment-variables"><a class="header" href="#environment-variables">Environment Variables</a></h2>
+<h3 id="talaria_threads"><a class="header" href="#talaria_threads"><code>TALARIA_THREADS</code></a></h3>
+<p><strong>Type:</strong> Integer<br />
+<strong>Description:</strong> Default number of threads (overridden by <code>-j</code> flag).</p>
+<h3 id="talaria_config"><a class="header" href="#talaria_config"><code>TALARIA_CONFIG</code></a></h3>
+<p><strong>Type:</strong> Path<br />
+<strong>Description:</strong> Default configuration file path. If set, will be used when <code>-c/--config</code> is not specified.</p>
+<h3 id="talaria_log"><a class="header" href="#talaria_log"><code>TALARIA_LOG</code></a></h3>
+<p><strong>Type:</strong> String<br />
+<strong>Values:</strong> <code>error</code>, <code>warn</code>, <code>info</code>, <code>debug</code>, <code>trace</code><br />
+<strong>Description:</strong> Default log level (overridden by <code>-v</code> flags).</p>
+<h3 id="talaria_cache_dir"><a class="header" href="#talaria_cache_dir"><code>TALARIA_CACHE_DIR</code></a></h3>
+<p><strong>Type:</strong> Path<br />
+<strong>Description:</strong> <em>(Not yet implemented)</em> Directory for temporary and cache files.</p>
+<hr />
+<h2 id="performance-guidelines"><a class="header" href="#performance-guidelines">Performance Guidelines</a></h2>
+<h3 id="memory-usage"><a class="header" href="#memory-usage">Memory Usage</a></h3>
+<ul>
+<li><strong>Small databases (&lt;1GB):</strong> Use default settings</li>
+<li><strong>Medium databases (1-10GB):</strong> Consider reducing threads (<code>-j 4</code>)</li>
+<li><strong>Large databases (&gt;10GB):</strong> Use streaming mode and lower thread count</li>
+</ul>
+<h3 id="thread-scaling"><a class="header" href="#thread-scaling">Thread Scaling</a></h3>
+<ul>
+<li><strong>CPU-bound tasks:</strong> Use all cores (<code>-j 0</code>)</li>
+<li><strong>I/O-bound tasks:</strong> Use 2-4 threads to avoid disk saturation</li>
+<li><strong>Memory-constrained systems:</strong> Use fewer threads to reduce memory pressure</li>
+</ul>
+<h3 id="disk-space"><a class="header" href="#disk-space">Disk Space</a></h3>
+<ul>
+<li><strong>Reduction:</strong> Requires ~1.5x input file size for temporary files</li>
+<li><strong>Downloads:</strong> Requires 2x final file size during download and extraction</li>
+<li><strong>Statistics:</strong> Minimal additional space required</li>
+</ul>
+<hr />
+<h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
+<h3 id="common-issues"><a class="header" href="#common-issues">Common Issues</a></h3>
+<h4 id="out-of-memory-errors"><a class="header" href="#out-of-memory-errors">“Out of memory” errors</a></h4>
+<pre><code class="language-bash"># Reduce thread count
+talaria -j 2 reduce -i large.fasta -o reduced.fasta
+
+# Use streaming for very large files  
+talaria reduce -i huge.fasta -o reduced.fasta --skip-validation
+</code></pre>
+<h4 id="permission-denied-errors"><a class="header" href="#permission-denied-errors">“Permission denied” errors</a></h4>
+<pre><code class="language-bash"># Check file permissions
+ls -la input.fasta
+
+# Use different output directory
+talaria reduce -i input.fasta -o ~/output/reduced.fasta
+</code></pre>
+<h4 id="invalid-fasta-format-errors"><a class="header" href="#invalid-fasta-format-errors">“Invalid FASTA format” errors</a></h4>
+<pre><code class="language-bash"># Validate FASTA format first
+talaria stats -i suspicious.fasta
+
+# Check for binary or corrupted data
+file suspicious.fasta
+head suspicious.fasta
+</code></pre>
+<h4 id="network-download-failures"><a class="header" href="#network-download-failures">Network download failures</a></h4>
+<pre><code class="language-bash"># Resume interrupted downloads
+talaria download uniprot --dataset swissprot --resume
+
+# Skip checksum verification if having issues
+talaria download uniprot --dataset swissprot --skip-verify
+</code></pre>
+<h3 id="debug-mode"><a class="header" href="#debug-mode">Debug Mode</a></h3>
+<pre><code class="language-bash"># Enable detailed logging for troubleshooting
+talaria -vvv reduce -i input.fasta -o output.fasta
+
+# Capture logs to file
+talaria -vvv reduce -i input.fasta -o output.fasta 2&gt; debug.log
+</code></pre>
+<h3 id="performance-profiling"><a class="header" href="#performance-profiling">Performance Profiling</a></h3>
+<pre><code class="language-bash"># Time command execution
+time talaria reduce -i input.fasta -o output.fasta
+
+# Monitor resource usage
+top -p $(pgrep talaria)
+
+# Check disk usage during processing
+watch -n 1 df -h
+</code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../benchmarks/quality.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../api/configuration.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../benchmarks/quality.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../api/configuration.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../mermaid.min.js"></script>
+        <script src="../mermaid-init.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

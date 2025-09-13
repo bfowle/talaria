@@ -1,0 +1,496 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Reduction Algorithm - Talaria Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- MathJax Configuration -->
+        <script>
+        window.MathJax = {
+          tex2jax: {
+            inlineMath: [['$','$'], ['\\(','\\)']],
+            displayMath: [['$$','$$'], ['\\[','\\]']],
+            processEscapes: true,
+            processEnvironments: true
+          },
+          TeX: {
+            equationNumbers: { autoNumber: "AMS" },
+            extensions: ["AMSmath.js", "AMSsymbols.js"]
+          }
+        };
+        </script>
+        <meta name="description" content="Intelligent FASTA reduction for aligner index optimization">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../custom.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Talaria Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria/edit/main/docs/src/algorithms/reduction.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
+<h1 id="reduction-algorithm"><a class="header" href="#reduction-algorithm">Reduction Algorithm</a></h1>
+<p>The core of Talaria is its intelligent reduction algorithm that selects representative sequences and encodes similar sequences as deltas.</p>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>The reduction process consists of four main phases:</p>
+<pre class="mermaid">graph TD
+    A[Input FASTA] --&gt; B[Parse &amp; Validate]
+    B --&gt; C[Reference Selection]
+    C --&gt; D[Alignment &amp; Delta Encoding]
+    D --&gt; E[Output Generation]
+    E --&gt; F[Reduced FASTA]
+    E --&gt; G[Delta Metadata]
+    
+    style A stroke:#1976d2,stroke-width:2px
+    style F stroke:#388e3c,stroke-width:2px
+    style G stroke:#388e3c,stroke-width:2px
+</pre>
+<h2 id="phase-1-parse-and-validate"><a class="header" href="#phase-1-parse-and-validate">Phase 1: Parse and Validate</a></h2>
+<p>The input FASTA file is parsed with these steps:</p>
+<ol>
+<li><strong>Memory-mapped I/O</strong> for efficient reading</li>
+<li><strong>Parallel parsing</strong> for large files</li>
+<li><strong>Sequence validation</strong> and sanitization</li>
+<li><strong>Taxonomy extraction</strong> from headers</li>
+</ol>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Efficient parallel parsing
+let sequences = parse_fasta_parallel(input_path, chunk_size)?;
+
+// Validate sequences
+sequences.par_iter()
+    .filter(|seq| seq.len() &gt;= min_length)
+    .collect()
+<span class="boring">}</span></code></pre></pre>
+<h2 id="phase-2-reference-selection"><a class="header" href="#phase-2-reference-selection">Phase 2: Reference Selection</a></h2>
+<h3 id="default-behavior"><a class="header" href="#default-behavior">Default Behavior</a></h3>
+<p>By default, references are selected using a simple greedy algorithm based on sequence length (matching original db-reduce):</p>
+<pre class="mermaid">graph LR
+    A[Sort by Length] --&gt; B[Select Top N%]
+    B --&gt; C[Assign Remaining to Closest Reference]
+    
+    style A stroke:#1976d2,stroke-width:2px
+    style B stroke:#388e3c,stroke-width:2px
+    style C stroke:#388e3c,stroke-width:2px
+</pre>
+<h3 id="optional-advanced-selection"><a class="header" href="#optional-advanced-selection">Optional: Advanced Selection</a></h3>
+<p>With optional flags, more sophisticated selection is available:</p>
+<pre class="mermaid">graph LR
+    A[Sort by Length] --&gt; B[Process Sequences]
+    B --&gt; C{Already Processed?}
+    C --&gt;|No| D[Check Similarity&lt;br/&gt;Optional]
+    C --&gt;|Yes| B
+    D -.-&gt;|Optional| E{Similar to Reference?}
+    E --&gt;|Yes| F[Mark as Child]
+    E --&gt;|No| G[Mark as Reference]
+    F --&gt; B
+    G --&gt; B
+    
+    D --&gt;|Default| G
+    
+    style D stroke:#f57c00,stroke-width:2px,stroke-dasharray: 5 5
+    style E stroke:#f57c00,stroke-width:2px,stroke-dasharray: 5 5
+</pre>
+<h3 id="selection-strategy"><a class="header" href="#selection-strategy">Selection Strategy</a></h3>
+<h4 id="default-simple-greedy"><a class="header" href="#default-simple-greedy">Default (Simple Greedy)</a></h4>
+<ol>
+<li><strong>Sort sequences</strong> by length (descending)</li>
+<li><strong>Select top N%</strong> as references (based on reduction ratio)</li>
+<li><strong>Assign remaining</strong> sequences to closest reference by length</li>
+</ol>
+<h4 id="optional-advanced"><a class="header" href="#optional-advanced">Optional (Advanced)</a></h4>
+<p>Enable with <code>--similarity-threshold</code> or <code>--align-select</code> flags:</p>
+<ol>
+<li><strong>Sort sequences</strong> by length (descending)</li>
+<li><strong>Iterate through sequences</strong>:
+<ul>
+<li>Skip if already processed</li>
+<li>Check similarity to existing references (Optional)</li>
+<li>If similar: mark as child of reference</li>
+<li>If unique: mark as new reference</li>
+</ul>
+</li>
+<li><strong>Continue until</strong> target reduction ratio achieved</li>
+</ol>
+<h3 id="similarity-metrics"><a class="header" href="#similarity-metrics">Similarity Metrics</a></h3>
+<h4 id="default"><a class="header" href="#default">Default</a></h4>
+<ul>
+<li><strong>Sequence length</strong> - Only metric used by default</li>
+</ul>
+<h4 id="optional-metrics"><a class="header" href="#optional-metrics">Optional Metrics</a></h4>
+<p>Enable with specific flags:</p>
+<ul>
+<li><strong>K-mer Jaccard similarity</strong> for fast screening (Optional: <code>--similarity-threshold</code>)</li>
+<li><strong>Sequence length ratio</strong> for quick filtering (Optional: used with similarity)</li>
+<li><strong>Full alignment</strong> for accurate similarity (Optional: <code>--align-select</code>)</li>
+<li><strong>Taxonomic ID proximity</strong> (Optional: <code>--taxonomy-aware</code>)
+<ul>
+<li>Note: Currently uses simple ID difference, not true taxonomic distance</li>
+<li>Requires taxon IDs in FASTA headers (e.g., <code>OX=9606</code>)</li>
+</ul>
+</li>
+</ul>
+<h2 id="phase-3-alignment-and-delta-encoding"><a class="header" href="#phase-3-alignment-and-delta-encoding">Phase 3: Alignment and Delta Encoding</a></h2>
+<p>Once references are selected, child sequences are aligned and encoded:</p>
+<pre class="mermaid">sequenceDiagram
+    participant R as Reference
+    participant C as Child
+    participant A as Aligner
+    participant E as Encoder
+    
+    C-&gt;&gt;A: Request alignment
+    A-&gt;&gt;R: Get reference sequence
+    A-&gt;&gt;A: Needleman-Wunsch
+    A-&gt;&gt;E: Alignment result
+    E-&gt;&gt;E: Extract deltas
+    E-&gt;&gt;E: Compress ranges
+    E--&gt;&gt;C: Delta record
+</pre>
+<h3 id="needleman-wunsch-algorithm"><a class="header" href="#needleman-wunsch-algorithm">Needleman-Wunsch Algorithm</a></h3>
+<p>The alignment uses Needleman-Wunsch with:</p>
+<ul>
+<li><strong>Affine gap penalties</strong>: Gap open = 20, extend = 10</li>
+<li><strong>BLOSUM62</strong> for proteins</li>
+<li><strong>Custom matrix</strong> for nucleotides</li>
+<li><strong>Semi-global mode</strong> for partial alignments</li>
+</ul>
+<h3 id="delta-compression"><a class="header" href="#delta-compression">Delta Compression</a></h3>
+<p>Consecutive mutations are compressed into ranges:</p>
+<pre><code>Original deltas: [10:A→T], [11:C→T], [12:G→T]
+Compressed: [10-12:ACG→TTT]
+</code></pre>
+<p>This reduces metadata size significantly.</p>
+<h2 id="phase-4-output-generation"><a class="header" href="#phase-4-output-generation">Phase 4: Output Generation</a></h2>
+<p>The final phase generates output files:</p>
+<ol>
+<li><strong>Reduced FASTA</strong>: Contains only reference sequences</li>
+<li><strong>Delta metadata</strong>: Compact representation of children</li>
+<li><strong>Reference mapping</strong>: Links references to children</li>
+<li><strong>Statistics report</strong>: Reduction metrics</li>
+</ol>
+<h2 id="optimization-strategies"><a class="header" href="#optimization-strategies">Optimization Strategies</a></h2>
+<h3 id="parallelization"><a class="header" href="#parallelization">Parallelization</a></h3>
+<ul>
+<li><strong>Batch processing</strong> of sequences</li>
+<li><strong>Parallel alignment</strong> using Rayon</li>
+<li><strong>Concurrent I/O</strong> operations</li>
+<li><strong>Lock-free data structures</strong> (DashMap)</li>
+</ul>
+<h3 id="memory-efficiency"><a class="header" href="#memory-efficiency">Memory Efficiency</a></h3>
+<ul>
+<li><strong>Streaming architecture</strong> for large files</li>
+<li><strong>Memory-mapped I/O</strong> reduces RAM usage</li>
+<li><strong>Incremental processing</strong> prevents memory bloat</li>
+<li><strong>Cache management</strong> for alignments</li>
+</ul>
+<h3 id="aligner-specific-optimizations"><a class="header" href="#aligner-specific-optimizations">Aligner-Specific Optimizations</a></h3>
+<p>Different aligners benefit from different strategies:</p>
+<div class="table-wrapper"><table><thead><tr><th>Aligner</th><th>Default Strategy</th><th>Similarity Threshold</th><th>Taxonomy-Aware</th></tr></thead><tbody>
+<tr><td>LAMBDA</td><td>Simple greedy</td><td>0.0 (disabled)</td><td>No</td></tr>
+<tr><td>BLAST</td><td>Simple greedy</td><td>0.0 (disabled)</td><td>No</td></tr>
+<tr><td>Kraken</td><td>Simple greedy</td><td>0.0 (disabled)</td><td>No</td></tr>
+<tr><td>Diamond</td><td>Simple greedy</td><td>0.0 (disabled)</td><td>No</td></tr>
+<tr><td>MMseqs2</td><td>Simple greedy</td><td>0.0 (disabled)</td><td>No</td></tr>
+<tr><td>Generic</td><td>Simple greedy</td><td>0.0 (disabled)</td><td>No</td></tr>
+</tbody></table>
+</div>
+<p><strong>Note</strong>: Advanced features can be enabled with flags:</p>
+<ul>
+<li><code>--similarity-threshold 0.9</code> - Enable similarity-based clustering</li>
+<li><code>--align-select</code> - Use full alignment for selection</li>
+<li><code>--taxonomy-aware</code> - Consider taxonomic IDs (Optional)</li>
+</ul>
+<h2 id="performance-characteristics"><a class="header" href="#performance-characteristics">Performance Characteristics</a></h2>
+<h3 id="time-complexity"><a class="header" href="#time-complexity">Time Complexity</a></h3>
+<ul>
+<li><strong>Parsing</strong>: O(n) where n = sequence count</li>
+<li><strong>Selection</strong>: O(n log n) for sorting + O(n²) worst case</li>
+<li><strong>Alignment</strong>: O(m×l²) where m = children, l = sequence length</li>
+<li><strong>Total</strong>: O(n² × l²) worst case, O(n log n × l²) typical</li>
+</ul>
+<h3 id="space-complexity"><a class="header" href="#space-complexity">Space Complexity</a></h3>
+<ul>
+<li><strong>Memory usage</strong>: O(n × l) for sequences</li>
+<li><strong>Cache</strong>: O(k) for k cached alignments</li>
+<li><strong>Output</strong>: O(r + d) for r references + d deltas</li>
+</ul>
+<h2 id="configuration-parameters"><a class="header" href="#configuration-parameters">Configuration Parameters</a></h2>
+<p>Key parameters affecting reduction:</p>
+<pre><code class="language-toml">[reduction]
+target_ratio = 0.3          # Target size (30% of original)
+min_sequence_length = 50    # Minimum sequence length
+max_delta_distance = 100    # Maximum alignment distance
+similarity_threshold = 0.0  # Default: disabled (0.0 = no similarity check)
+taxonomy_aware = false      # Default: disabled (Optional feature)
+</code></pre>
+<p>To enable optional features:</p>
+<pre><code class="language-toml">[reduction]
+similarity_threshold = 0.9  # Optional: Enable similarity clustering
+taxonomy_aware = true       # Optional: Use taxonomic IDs
+</code></pre>
+<h2 id="quality-metrics"><a class="header" href="#quality-metrics">Quality Metrics</a></h2>
+<p>The algorithm maintains quality through:</p>
+<ol>
+<li><strong>Sequence coverage</strong>: &gt;95% of original sequences represented</li>
+<li><strong>Taxonomic coverage</strong>: All major taxa preserved</li>
+<li><strong>Alignment accuracy</strong>: Minimal information loss</li>
+<li><strong>K-mer preservation</strong>: Critical for classification tools</li>
+</ol>
+<h2 id="example-results"><a class="header" href="#example-results">Example Results</a></h2>
+<p>Typical reduction on UniProt/SwissProt:</p>
+<ul>
+<li><strong>Input</strong>: 565,928 sequences, 204 MB</li>
+<li><strong>Output</strong>: 169,778 references (30%), 61 MB</li>
+<li><strong>Deltas</strong>: 396,150 children encoded</li>
+<li><strong>Sequence coverage</strong>: 99.8% (references + deltas cover input)</li>
+<li><strong>Taxonomic coverage</strong>: 98.5% of unique taxa preserved</li>
+<li><strong>Size reduction</strong>: 70% (file size reduced by 70%)</li>
+<li><strong>Time</strong>: 12 minutes on 16 cores</li>
+<li><strong>Memory</strong>: Peak 4.2 GB</li>
+</ul>
+<h2 id="further-reading"><a class="header" href="#further-reading">Further Reading</a></h2>
+<ul>
+<li><a href="./reference-selection.html">Reference Selection</a> - Detailed selection algorithms</li>
+<li><a href="./delta-encoding.html">Delta Encoding</a> - Compression techniques</li>
+<li><a href="../advanced/performance.html">Performance Optimization</a> - Tuning for speed</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../workflows/mmseqs2-workflow.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../algorithms/reference-selection.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../workflows/mmseqs2-workflow.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../algorithms/reference-selection.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../mermaid.min.js"></script>
+        <script src="../mermaid-init.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

@@ -1,0 +1,463 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Downloading Databases - Talaria Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- MathJax Configuration -->
+        <script>
+        window.MathJax = {
+          tex2jax: {
+            inlineMath: [['$','$'], ['\\(','\\)']],
+            displayMath: [['$$','$$'], ['\\[','\\]']],
+            processEscapes: true,
+            processEnvironments: true
+          },
+          TeX: {
+            equationNumbers: { autoNumber: "AMS" },
+            extensions: ["AMSmath.js", "AMSsymbols.js"]
+          }
+        };
+        </script>
+        <meta name="description" content="Intelligent FASTA reduction for aligner index optimization">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../custom.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Talaria Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria/edit/main/docs/src/databases/downloading.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
+<h1 id="database-downloading-guide"><a class="header" href="#database-downloading-guide">Database Downloading Guide</a></h1>
+<p>Talaria includes built-in support for downloading and managing biological sequence databases from major sources.</p>
+<h2 id="interactive-download-mode"><a class="header" href="#interactive-download-mode">Interactive Download Mode</a></h2>
+<p>The easiest way to download databases is using the interactive mode:</p>
+<pre><code class="language-bash">talaria download --interactive
+# or
+talaria interactive  # Then select "Download databases"
+</code></pre>
+<p>This will guide you through:</p>
+<ol>
+<li>Selecting a database source (UniProt, NCBI, etc.)</li>
+<li>Choosing specific datasets</li>
+<li>Configuring download options</li>
+<li>Automatic decompression and verification</li>
+</ol>
+<h2 id="command-line-download"><a class="header" href="#command-line-download">Command-Line Download</a></h2>
+<h3 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h3>
+<pre><code class="language-bash"># Download UniProt SwissProt
+talaria download --database uniprot --dataset swissprot
+
+# Download NCBI nr database
+talaria download --database ncbi --dataset nr
+
+# Download with taxonomy
+talaria download --database uniprot --dataset swissprot --taxonomy
+
+# Specify output directory
+talaria download --database ncbi --dataset nr --output /data/databases/
+</code></pre>
+<h2 id="supported-databases"><a class="header" href="#supported-databases">Supported Databases</a></h2>
+<h3 id="uniprot"><a class="header" href="#uniprot">UniProt</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Dataset</th><th>Size</th><th>Description</th><th>Command</th></tr></thead><tbody>
+<tr><td>SwissProt</td><td>~200MB</td><td>Manually reviewed sequences</td><td><code>--dataset swissprot</code></td></tr>
+<tr><td>TrEMBL</td><td>~100GB</td><td>Unreviewed sequences</td><td><code>--dataset trembl</code></td></tr>
+<tr><td>UniRef100</td><td>~50GB</td><td>Clustered at 100% identity</td><td><code>--dataset uniref100</code></td></tr>
+<tr><td>UniRef90</td><td>~20GB</td><td>Clustered at 90% identity</td><td><code>--dataset uniref90</code></td></tr>
+<tr><td>UniRef50</td><td>~8GB</td><td>Clustered at 50% identity</td><td><code>--dataset uniref50</code></td></tr>
+</tbody></table>
+</div>
+<p><strong>Example: Download SwissProt with taxonomy mapping</strong></p>
+<pre><code class="language-bash">talaria download \
+  --database uniprot \
+  --dataset swissprot \
+  --taxonomy \
+  --output ./databases/
+</code></pre>
+<h3 id="ncbi"><a class="header" href="#ncbi">NCBI</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Dataset</th><th>Size</th><th>Description</th><th>Command</th></tr></thead><tbody>
+<tr><td>nr</td><td>~90GB</td><td>Non-redundant proteins</td><td><code>--dataset nr</code></td></tr>
+<tr><td>nt</td><td>~70GB</td><td>Nucleotide sequences</td><td><code>--dataset nt</code></td></tr>
+<tr><td>RefSeq Proteins</td><td>~20GB</td><td>RefSeq protein database</td><td><code>--dataset refseq-protein</code></td></tr>
+<tr><td>RefSeq Genomes</td><td>Varies</td><td>Complete genomes</td><td><code>--dataset refseq-genomic</code></td></tr>
+<tr><td>Taxonomy</td><td>~50MB</td><td>NCBI taxonomy dump</td><td><code>--dataset taxonomy</code></td></tr>
+</tbody></table>
+</div>
+<p><strong>Example: Download nr with taxonomy</strong></p>
+<pre><code class="language-bash"># Download nr database
+talaria download --database ncbi --dataset nr
+
+# Download taxonomy separately
+talaria download --database ncbi --dataset taxonomy
+</code></pre>
+<h3 id="pdb-pfam-silva-kegg"><a class="header" href="#pdb-pfam-silva-kegg">PDB, PFAM, Silva, KEGG</a></h3>
+<p>These databases are recognized but not yet fully implemented. Coming in future versions.</p>
+<h2 id="advanced-download-options"><a class="header" href="#advanced-download-options">Advanced Download Options</a></h2>
+<h3 id="resume-interrupted-downloads"><a class="header" href="#resume-interrupted-downloads">Resume Interrupted Downloads</a></h3>
+<pre><code class="language-bash">talaria download \
+  --database uniprot \
+  --dataset trembl \
+  --resume
+</code></pre>
+<h3 id="parallel-downloads"><a class="header" href="#parallel-downloads">Parallel Downloads</a></h3>
+<p><em>Note: Parallel download of multiple datasets is planned for a future version.</em></p>
+<h3 id="checksum-verification"><a class="header" href="#checksum-verification">Checksum Verification</a></h3>
+<pre><code class="language-bash"># Skip checksum verification (faster but less safe)
+talaria download \
+  --database uniprot \
+  --dataset swissprot \
+  --skip-verify
+</code></pre>
+<h2 id="automatic-processing"><a class="header" href="#automatic-processing">Automatic Processing</a></h2>
+<p><em>Note: Automatic processing pipelines are planned for a future version. For now, download and process in separate steps:</em></p>
+<pre><code class="language-bash"># Step 1: Download
+talaria download --database uniprot --dataset swissprot
+
+# Step 2: Reduce
+talaria reduce -i swissprot.fasta -o swissprot_reduced.fasta -a lambda
+</code></pre>
+<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
+<p>Database download settings are currently hardcoded. Custom configuration support is planned for a future version.</p>
+<h2 id="database-urls"><a class="header" href="#database-urls">Database URLs</a></h2>
+<h3 id="current-uniprot-urls-auto-updated"><a class="header" href="#current-uniprot-urls-auto-updated">Current UniProt URLs (auto-updated)</a></h3>
+<ul>
+<li>SwissProt: <code>https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz</code></li>
+<li>TrEMBL: <code>https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_trembl.fasta.gz</code></li>
+<li>Taxonomy mapping: <code>https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/idmapping.dat.gz</code></li>
+</ul>
+<h3 id="current-ncbi-urls"><a class="header" href="#current-ncbi-urls">Current NCBI URLs</a></h3>
+<ul>
+<li>nr: <code>https://ftp.ncbi.nlm.nih.gov/blast/db/FASTA/nr.gz</code></li>
+<li>nt: <code>https://ftp.ncbi.nlm.nih.gov/blast/db/FASTA/nt.gz</code></li>
+<li>Taxonomy: <code>https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz</code></li>
+<li>Accession2Taxid: <code>https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/accession2taxid/prot.accession2taxid.gz</code></li>
+</ul>
+<h2 id="taxonomy-setup"><a class="header" href="#taxonomy-setup">Taxonomy Setup</a></h2>
+<h3 id="for-lambda"><a class="header" href="#for-lambda">For LAMBDA</a></h3>
+<pre><code class="language-bash"># Download required files
+talaria download --database ncbi --dataset taxdump.tar.gz
+talaria download --database uniprot --dataset idmapping.dat.gz
+
+# Extract taxonomy files
+tar -xzf taxdump.tar.gz nodes.dmp names.dmp
+
+# Build LAMBDA index with taxonomy
+lambda2 mkindexp \
+  -d reduced.fasta \
+  --acc-tax-map idmapping.dat.gz \
+  --tax-dump-dir ./
+</code></pre>
+<h3 id="for-diamond"><a class="header" href="#for-diamond">For Diamond</a></h3>
+<pre><code class="language-bash"># Download NCBI taxonomy
+talaria download --database ncbi --dataset taxdump.tar.gz
+talaria download --database ncbi --dataset prot.accession2taxid.gz
+
+# Extract files
+tar -xzf taxdump.tar.gz
+gunzip prot.accession2taxid.gz
+
+# Build Diamond database with taxonomy
+diamond makedb --in sequences.fasta --db sequences \
+  --taxonmap prot.accession2taxid \
+  --taxonnodes nodes.dmp \
+  --taxonnames names.dmp
+</code></pre>
+<h3 id="for-kraken2"><a class="header" href="#for-kraken2">For Kraken2</a></h3>
+<pre><code class="language-bash"># Kraken2 has its own database download system
+kraken2-build --download-taxonomy --db kraken2_db
+kraken2-build --download-library bacteria --db kraken2_db
+
+# Or use Talaria to download and convert
+talaria download --database ncbi --dataset nr.gz
+talaria convert --input nr.gz --output kraken2_format --format kraken2
+</code></pre>
+<h2 id="storage-recommendations"><a class="header" href="#storage-recommendations">Storage Recommendations</a></h2>
+<h3 id="directory-structure"><a class="header" href="#directory-structure">Directory Structure</a></h3>
+<pre><code>/data/databases/
+├── uniprot/
+│   ├── 2024.01/          # Version-specific
+│   │   ├── uniprot_sprot.fasta
+│   │   ├── uniprot_sprot_reduced.fasta
+│   │   └── uniprot_sprot.lambda
+│   └── current -&gt; 2024.01/  # Symlink to current
+├── ncbi/
+│   ├── nr/
+│   ├── nt/
+│   └── taxonomy/
+└── cache/                 # Download cache
+    └── checksums/
+</code></pre>
+<h3 id="disk-space-planning"><a class="header" href="#disk-space-planning">Disk Space Planning</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Database</th><th>Original</th><th>After Reduction (30%)</th><th>With Index</th></tr></thead><tbody>
+<tr><td>SwissProt</td><td>200 MB</td><td>60 MB</td><td>150 MB</td></tr>
+<tr><td>nr</td><td>90 GB</td><td>27 GB</td><td>40 GB</td></tr>
+<tr><td>nt</td><td>70 GB</td><td>21 GB</td><td>35 GB</td></tr>
+<tr><td>UniRef90</td><td>20 GB</td><td>6 GB</td><td>10 GB</td></tr>
+</tbody></table>
+</div>
+<h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
+<h3 id="slow-downloads"><a class="header" href="#slow-downloads">Slow Downloads</a></h3>
+<pre><code class="language-bash"># Downloads use default settings
+talaria download --database uniprot --dataset swissprot
+</code></pre>
+<h3 id="checksum-failures"><a class="header" href="#checksum-failures">Checksum Failures</a></h3>
+<pre><code class="language-bash"># Re-download (overwrites existing)
+talaria download --database uniprot --dataset swissprot
+
+# Checksums are automatically verified when available
+</code></pre>
+<h3 id="disk-space-issues"><a class="header" href="#disk-space-issues">Disk Space Issues</a></h3>
+<pre><code class="language-bash"># Download to external drive
+talaria download --database ncbi --dataset nr \
+  --output /mnt/external/databases/
+
+# For very large files, ensure sufficient disk space
+# Streaming/chunked processing is planned for future versions
+</code></pre>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="./uniprot-guide.html">UniProt Guide</a></li>
+<li><a href="./ncbi-guide.html">NCBI Guide</a></li>
+<li><a href="./taxonomy-setup.html">Taxonomy Setup</a></li>
+<li><a href="./management.html">Database Management</a></li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../user-guide/configuration.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../workflows/lambda-workflow.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../user-guide/configuration.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../workflows/lambda-workflow.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../mermaid.min.js"></script>
+        <script src="../mermaid-init.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

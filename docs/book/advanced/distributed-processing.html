@@ -1,0 +1,538 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Distributed Processing - Talaria Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- MathJax Configuration -->
+        <script>
+        window.MathJax = {
+          tex2jax: {
+            inlineMath: [['$','$'], ['\\(','\\)']],
+            displayMath: [['$$','$$'], ['\\[','\\]']],
+            processEscapes: true,
+            processEnvironments: true
+          },
+          TeX: {
+            equationNumbers: { autoNumber: "AMS" },
+            extensions: ["AMSmath.js", "AMSsymbols.js"]
+          }
+        };
+        </script>
+        <meta name="description" content="Intelligent FASTA reduction for aligner index optimization">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../custom.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Talaria Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria/edit/main/docs/src/advanced/distributed-processing.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
+<h1 id="distributed-processing-design"><a class="header" href="#distributed-processing-design">Distributed Processing Design</a></h1>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>Processing massive FASTA files (200GB+) requires distributed computing strategies that respect biological constraints. Unlike generic data processing, biological sequence databases cannot be arbitrarily sharded without affecting alignment accuracy and statistical significance.</p>
+<h2 id="the-challenge"><a class="header" href="#the-challenge">The Challenge</a></h2>
+<h3 id="scale-issues"><a class="header" href="#scale-issues">Scale Issues</a></h3>
+<ul>
+<li><strong>Memory constraints</strong>: A 200GB FASTA file may expand to 500GB+ in memory during processing</li>
+<li><strong>Index size</strong>: LAMBDA/BLAST indices can be 2-3x the size of input data</li>
+<li><strong>Processing time</strong>: Single-node processing may take days for large databases</li>
+</ul>
+<h3 id="biological-constraints"><a class="header" href="#biological-constraints">Biological Constraints</a></h3>
+<ul>
+<li><strong>Taxonomic balance</strong>: Random sharding creates severe imbalances
+<ul>
+<li>Example: Shard A gets 90% E. coli sequences, Shard B gets 0.0001%</li>
+<li>This skews E-values, bit scores, and statistical significance</li>
+</ul>
+</li>
+<li><strong>Sequence similarity clusters</strong>: Related sequences should ideally stay together</li>
+<li><strong>Database composition affects scoring</strong>: BLAST E-values depend on database size and composition</li>
+</ul>
+<h2 id="proposed-solution-biology-aware-sharding"><a class="header" href="#proposed-solution-biology-aware-sharding">Proposed Solution: Biology-Aware Sharding</a></h2>
+<h3 id="1-taxonomic-balanced-sharding"><a class="header" href="#1-taxonomic-balanced-sharding">1. Taxonomic-Balanced Sharding</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct TaxonomicShardStrategy {
+    // Ensure each shard has representative taxonomic diversity
+    target_shards: usize,
+    min_taxa_per_shard: usize,
+    balance_threshold: f64, // Max deviation from uniform distribution
+}
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Algorithm:</strong></p>
+<ol>
+<li>Pre-scan: Build taxonomic profile of entire database</li>
+<li>Create taxonomic bins at appropriate level (genus/family)</li>
+<li>Distribute bins across shards maintaining diversity</li>
+<li>Use consistent hashing for deterministic shard assignment</li>
+</ol>
+<h3 id="2-similarity-preserving-sharding"><a class="header" href="#2-similarity-preserving-sharding">2. Similarity-Preserving Sharding</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct SimilarityShardStrategy {
+    // Keep similar sequences together for better compression
+    clustering_threshold: f64,
+    min_cluster_size: usize,
+    max_shard_size: usize,
+}
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Benefits:</strong></p>
+<ul>
+<li>Better delta encoding within shards</li>
+<li>Improved cache locality during alignment</li>
+<li>Reduced redundancy across shards</li>
+</ul>
+<h3 id="3-statistical-correction-framework"><a class="header" href="#3-statistical-correction-framework">3. Statistical Correction Framework</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct ShardedStatistics {
+    // Maintain global statistics across all shards
+    global_db_size: u64,
+    global_composition: HashMap&lt;TaxonId, f64&gt;,
+    shard_correction_factors: Vec&lt;f64&gt;,
+}
+<span class="boring">}</span></code></pre></pre>
+<p><strong>E-value Correction:</strong></p>
+<pre><code>E_corrected = E_shard * (N_global / N_shard) * composition_factor
+</code></pre>
+<h2 id="implementation-architecture"><a class="header" href="#implementation-architecture">Implementation Architecture</a></h2>
+<h3 id="phase-1-distributed-scanning"><a class="header" href="#phase-1-distributed-scanning">Phase 1: Distributed Scanning</a></h3>
+<pre class="mermaid">graph LR
+    A[200GB FASTA] --&gt; B[Distributed Scanner]
+    B --&gt; C1[Worker 1: Scan chunk 1]
+    B --&gt; C2[Worker 2: Scan chunk 2]
+    B --&gt; CN[Worker N: Scan chunk N]
+    C1 --&gt; D[Global Statistics Aggregator]
+    C2 --&gt; D
+    CN --&gt; D
+    D --&gt; E[Sharding Plan]
+</pre>
+<h3 id="phase-2-smart-sharding"><a class="header" href="#phase-2-smart-sharding">Phase 2: Smart Sharding</a></h3>
+<pre class="mermaid">graph TD
+    A[Sharding Plan] --&gt; B[Shard Assigner]
+    B --&gt; C[Taxonomic Balance Check]
+    B --&gt; D[Size Balance Check]
+    B --&gt; E[Similarity Clustering]
+    C --&gt; F[Shard 1: Balanced subset]
+    D --&gt; G[Shard 2: Balanced subset]
+    E --&gt; H[Shard N: Balanced subset]
+</pre>
+<h3 id="phase-3-parallel-processing"><a class="header" href="#phase-3-parallel-processing">Phase 3: Parallel Processing</a></h3>
+<pre class="mermaid">graph LR
+    A[Shard 1] --&gt; B1[Node 1: Process]
+    A2[Shard 2] --&gt; B2[Node 2: Process]
+    AN[Shard N] --&gt; BN[Node N: Process]
+    B1 --&gt; C1[Index 1]
+    B2 --&gt; C2[Index 2]
+    BN --&gt; CN[Index N]
+    C1 --&gt; D[Distributed Query Router]
+    C2 --&gt; D
+    CN --&gt; D
+</pre>
+<h2 id="shard-assignment-strategies"><a class="header" href="#shard-assignment-strategies">Shard Assignment Strategies</a></h2>
+<h3 id="1-minhash-based-assignment"><a class="header" href="#1-minhash-based-assignment">1. MinHash-based Assignment</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn assign_sequence_to_shard(seq: &amp;Sequence, k: usize, num_shards: usize) -&gt; ShardId {
+    let sketch = minhash_sketch(seq, k, 128);
+    let shard = consistent_hash(sketch) % num_shards;
+    
+    // Check balance constraints
+    if shard_is_overloaded(shard) {
+        find_next_available_shard(sketch, num_shards)
+    } else {
+        shard
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="2-taxonomic-round-robin"><a class="header" href="#2-taxonomic-round-robin">2. Taxonomic Round-Robin</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn distribute_by_taxonomy(sequences: &amp;[Sequence], num_shards: usize) -&gt; Vec&lt;ShardAssignment&gt; {
+    // Group by taxonomy
+    let mut taxon_groups = group_by_taxonomy(sequences);
+    
+    // Sort by group size (largest first)
+    taxon_groups.sort_by_key(|g| g.len()).reverse();
+    
+    // Round-robin assignment with load balancing
+    let mut assignments = Vec::new();
+    let mut shard_sizes = vec![0; num_shards];
+    
+    for group in taxon_groups {
+        let target_shard = shard_sizes.iter().position_min().unwrap();
+        assignments.push(ShardAssignment {
+            sequences: group,
+            shard_id: target_shard,
+        });
+        shard_sizes[target_shard] += group.len();
+    }
+    
+    assignments
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="query-processing-in-sharded-environment"><a class="header" href="#query-processing-in-sharded-environment">Query Processing in Sharded Environment</a></h2>
+<h3 id="distributed-query-coordination"><a class="header" href="#distributed-query-coordination">Distributed Query Coordination</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct DistributedQueryCoordinator {
+    shard_indices: Vec&lt;ShardIndex&gt;,
+    statistics_aggregator: StatisticsAggregator,
+}
+
+impl DistributedQueryCoordinator {
+    pub async fn search(&amp;self, query: &amp;Sequence) -&gt; Vec&lt;Alignment&gt; {
+        // Parallel search across all shards
+        let shard_results = futures::future::join_all(
+            self.shard_indices.iter().map(|shard| {
+                shard.search_async(query)
+            })
+        ).await;
+        
+        // Merge and re-score with global statistics
+        let merged = self.merge_results(shard_results);
+        self.apply_statistical_correction(merged)
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="challenges-and-solutions"><a class="header" href="#challenges-and-solutions">Challenges and Solutions</a></h2>
+<h3 id="challenge-1-shard-boundary-effects"><a class="header" href="#challenge-1-shard-boundary-effects">Challenge 1: Shard Boundary Effects</a></h3>
+<p><strong>Problem</strong>: Sequences at shard boundaries may miss potential alignments.
+<strong>Solution</strong>: Implement overlap regions or cross-shard verification for boundary sequences.</p>
+<h3 id="challenge-2-load-imbalance"><a class="header" href="#challenge-2-load-imbalance">Challenge 2: Load Imbalance</a></h3>
+<p><strong>Problem</strong>: Some taxonomic groups are much larger than others.
+<strong>Solution</strong>: Implement dynamic shard splitting for oversized groups.</p>
+<h3 id="challenge-3-statistical-accuracy"><a class="header" href="#challenge-3-statistical-accuracy">Challenge 3: Statistical Accuracy</a></h3>
+<p><strong>Problem</strong>: Local E-values don’t reflect global database properties.
+<strong>Solution</strong>: Maintain global statistics service that all shards query.</p>
+<h2 id="configuration-example"><a class="header" href="#configuration-example">Configuration Example</a></h2>
+<pre><code class="language-toml">[distributed]
+enabled = true
+num_shards = 16
+max_shard_size_gb = 20
+
+[sharding]
+strategy = "taxonomic-balanced"
+min_taxa_per_shard = 100
+balance_threshold = 0.2
+overlap_size_mb = 100
+
+[statistics]
+maintain_global = true
+correction_method = "compositional"
+cache_statistics = true
+
+[cluster]
+coordinator = "node1.cluster.local:8080"
+workers = [
+    "node2.cluster.local:8081",
+    "node3.cluster.local:8082",
+    "node4.cluster.local:8083",
+]
+</code></pre>
+<h2 id="performance-considerations"><a class="header" href="#performance-considerations">Performance Considerations</a></h2>
+<h3 id="expected-improvements"><a class="header" href="#expected-improvements">Expected Improvements</a></h3>
+<ul>
+<li><strong>Memory</strong>: 200GB / 16 shards = ~12.5GB per node (manageable)</li>
+<li><strong>Speed</strong>: Near-linear scaling with proper load balancing</li>
+<li><strong>Accuracy</strong>: Maintained through statistical correction</li>
+</ul>
+<h3 id="trade-offs"><a class="header" href="#trade-offs">Trade-offs</a></h3>
+<ul>
+<li><strong>Complexity</strong>: Significant infrastructure requirements</li>
+<li><strong>Network overhead</strong>: Cross-shard communication for statistics</li>
+<li><strong>Storage</strong>: Temporary storage for intermediate results</li>
+</ul>
+<h2 id="future-research-directions"><a class="header" href="#future-research-directions">Future Research Directions</a></h2>
+<ol>
+<li><strong>Adaptive Sharding</strong>: Dynamically adjust shard boundaries based on query patterns</li>
+<li><strong>Hierarchical Indices</strong>: Multi-level sharding for extremely large databases (TB+)</li>
+<li><strong>GPU Acceleration</strong>: Combine distributed CPU processing with GPU acceleration</li>
+<li><strong>Streaming Processing</strong>: Process sequences in streaming fashion without full materialization</li>
+<li><strong>Cloud-Native Design</strong>: Kubernetes operators for automatic scaling</li>
+</ol>
+<h2 id="implementation-roadmap"><a class="header" href="#implementation-roadmap">Implementation Roadmap</a></h2>
+<h3 id="phase-1-foundation-v020"><a class="header" href="#phase-1-foundation-v020">Phase 1: Foundation (v0.2.0)</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+Basic sharding infrastructure</li>
+<li><input disabled="" type="checkbox"/>
+Simple round-robin distribution</li>
+<li><input disabled="" type="checkbox"/>
+Local statistics tracking</li>
+</ul>
+<h3 id="phase-2-biology-aware-v030"><a class="header" href="#phase-2-biology-aware-v030">Phase 2: Biology-Aware (v0.3.0)</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+Taxonomic sharding</li>
+<li><input disabled="" type="checkbox"/>
+Global statistics service</li>
+<li><input disabled="" type="checkbox"/>
+E-value correction</li>
+</ul>
+<h3 id="phase-3-production-ready-v040"><a class="header" href="#phase-3-production-ready-v040">Phase 3: Production-Ready (v0.4.0)</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+Distributed query coordination</li>
+<li><input disabled="" type="checkbox"/>
+Fault tolerance</li>
+<li><input disabled="" type="checkbox"/>
+Auto-scaling</li>
+</ul>
+<h3 id="phase-4-advanced-features-v050"><a class="header" href="#phase-4-advanced-features-v050">Phase 4: Advanced Features (v0.5.0)</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+Similarity-based sharding</li>
+<li><input disabled="" type="checkbox"/>
+Cross-shard optimization</li>
+<li><input disabled="" type="checkbox"/>
+Real-time rebalancing</li>
+</ul>
+<h2 id="references"><a class="header" href="#references">References</a></h2>
+<ol>
+<li>Altschul, S.F., et al. (1997). “Gapped BLAST and PSI-BLAST”</li>
+<li>Buchfink, B., et al. (2021). “Sensitive protein alignments at tree-of-life scale using DIAMOND”</li>
+<li>Steinegger, M., Söding, J. (2017). “MMseqs2 enables sensitive protein sequence searching”</li>
+<li>Cloud-BLAST: Combining MapReduce and Virtualization on Distributed Resources</li>
+</ol>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../advanced/memory.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../advanced/custom-aligners.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../advanced/memory.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../advanced/custom-aligners.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../mermaid.min.js"></script>
+        <script src="../mermaid-init.js"></script>
+
+
+
+    </div>
+    </body>
+</html>
