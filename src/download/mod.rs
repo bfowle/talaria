@@ -171,6 +171,13 @@ pub async fn download_database_with_full_options(
                 UniProtDatabase::UniRef100 => {
                     downloader.download_uniref100(output_path, progress).await
                 }
+                UniProtDatabase::IdMapping => {
+                    if resume {
+                        downloader.download_idmapping_with_resume(output_path, progress, resume).await
+                    } else {
+                        downloader.download_idmapping(output_path, progress).await
+                    }
+                }
             }
         }
         DatabaseSource::NCBI(db) => {
@@ -213,17 +220,24 @@ pub async fn download_database_with_full_options(
                     downloader.download_taxonomy(output_dir, progress).await
                 }
                 NCBIDatabase::ProtAccession2TaxId => {
-                    downloader.download_prot_accession2taxid(output_path, progress).await
+                    if resume {
+                        downloader.download_compressed_with_resume(
+                            &format!("https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/accession2taxid/prot.accession2taxid.gz"),
+                            output_path, progress, resume
+                        ).await
+                    } else {
+                        downloader.download_prot_accession2taxid(output_path, progress).await
+                    }
                 }
                 NCBIDatabase::NuclAccession2TaxId => {
-                    downloader.download_nucl_accession2taxid(output_path, progress).await
-                }
-                NCBIDatabase::TaxonomyFull => {
-                    // Download all taxonomy files
-                    let output_dir = output_path.parent().unwrap_or(Path::new("."));
-                    downloader.download_taxonomy(output_dir, progress).await?;
-                    downloader.download_prot_accession2taxid(&output_dir.join("prot.accession2taxid"), progress).await?;
-                    downloader.download_nucl_accession2taxid(&output_dir.join("nucl.accession2taxid"), progress).await
+                    if resume {
+                        downloader.download_compressed_with_resume(
+                            &format!("https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/accession2taxid/nucl_gb.accession2taxid.gz"),
+                            output_path, progress, resume
+                        ).await
+                    } else {
+                        downloader.download_nucl_accession2taxid(output_path, progress).await
+                    }
                 }
             }
         }

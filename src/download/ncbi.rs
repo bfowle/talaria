@@ -24,7 +24,10 @@ impl NCBIDownloader {
         NCBIDownloader {
             client: Client::builder()
                 .user_agent("Talaria/0.1.0")
-                .timeout(std::time::Duration::from_secs(600))
+                // Increased timeout for large files (30 minutes)
+                .timeout(std::time::Duration::from_secs(1800))
+                // Add connection timeout separately
+                .connect_timeout(std::time::Duration::from_secs(30))
                 .build()
                 .unwrap(),
             base_url: "https://ftp.ncbi.nlm.nih.gov".to_string(),
@@ -137,7 +140,8 @@ impl NCBIDownloader {
             "{}/pub/taxonomy/accession2taxid/prot.accession2taxid.gz",
             self.base_url
         );
-        self.download_and_extract(&url, output_path, progress).await
+        // Keep compressed - these files are huge
+        self.download_compressed(&url, output_path, progress).await
     }
     
     pub async fn download_nucl_accession2taxid(
@@ -149,9 +153,99 @@ impl NCBIDownloader {
             "{}/pub/taxonomy/accession2taxid/nucl_gb.accession2taxid.gz",
             self.base_url
         );
-        self.download_and_extract(&url, output_path, progress).await
+        // Keep compressed - these files are huge
+        self.download_compressed(&url, output_path, progress).await
     }
     
+    /// Download a compressed file without extracting it, with resume support
+    pub async fn download_compressed(
+        &self,
+        url: &str,
+        output_path: &Path,
+        progress: &mut DownloadProgress,
+    ) -> Result<()> {
+        self.download_compressed_with_resume(url, output_path, progress, true).await
+    }
+
+    pub async fn download_compressed_with_resume(
+        &self,
+        url: &str,
+        output_path: &Path,
+        progress: &mut DownloadProgress,
+        resume: bool,
+    ) -> Result<()> {
+        progress.set_message(&format!("Downloading from {}", url));
+
+        // Use .tmp extension for temporary file
+        let temp_path = output_path.with_extension("tmp");
+
+        // Check if we can resume
+        let mut resume_from = 0u64;
+        if resume && temp_path.exists() {
+            resume_from = std::fs::metadata(&temp_path)?.len();
+            progress.set_message(&format!("Resuming download from {} bytes", resume_from));
+        }
+
+        // Build request with range header for resume
+        let mut request = self.client.get(url);
+        if resume_from > 0 {
+            request = request.header("Range", format!("bytes={}-", resume_from));
+        }
+
+        let response = request
+            .send()
+            .await
+            .context("Failed to start download")?;
+
+        // Check if server supports resume
+        let supports_resume = response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+        if resume_from > 0 && !supports_resume {
+            progress.set_message("Server doesn't support resume, starting from beginning");
+            resume_from = 0;
+            std::fs::remove_file(&temp_path).ok();
+        }
+
+        let total_size = response
+            .content_length()
+            .unwrap_or(0) + resume_from;
+
+        progress.set_total(total_size as usize);
+        progress.set_current(resume_from as usize);
+
+        let mut file = if resume_from > 0 && supports_resume {
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(&temp_path)
+                .context("Failed to open temporary file for resume")?
+        } else {
+            File::create(&temp_path)
+                .context("Failed to create temporary file")?
+        };
+
+        // Initialize downloaded to resume_from to track total bytes correctly
+        let mut downloaded = resume_from;
+        let mut stream = response.bytes_stream();
+
+        use futures_util::StreamExt;
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.context("Failed to read chunk")?;
+            file.write_all(&chunk)
+                .context("Failed to write chunk")?;
+
+            downloaded += chunk.len() as u64;
+            progress.set_current(downloaded as usize);
+        }
+
+        // Move to final location
+        std::fs::rename(&temp_path, output_path)
+            .context("Failed to move file to final location")?;
+
+        progress.set_message("Download complete!");
+        progress.finish();
+
+        Ok(())
+    }
+
     async fn download_and_extract(
         &self,
         url: &str,
@@ -282,10 +376,6 @@ impl NCBIDownloader {
                 "NCBI Nucleotide Accession to TaxID Mapping\n\
                  Maps nucleotide accessions to their taxonomic identifiers"
             }
-            NCBIDatabase::TaxonomyFull => {
-                "NCBI Full Taxonomy Database\n\
-                 Complete taxonomic data including names and lineages"
-            }
         };
         
         Ok(info.to_string())
@@ -301,7 +391,6 @@ pub enum NCBIDatabase {
     Taxonomy,
     ProtAccession2TaxId,
     NuclAccession2TaxId,
-    TaxonomyFull,
 }
 
 impl std::fmt::Display for NCBIDatabase {
@@ -314,7 +403,6 @@ impl std::fmt::Display for NCBIDatabase {
             NCBIDatabase::Taxonomy => write!(f, "NCBI Taxonomy"),
             NCBIDatabase::ProtAccession2TaxId => write!(f, "Protein Accession2TaxId"),
             NCBIDatabase::NuclAccession2TaxId => write!(f, "Nucleotide Accession2TaxId"),
-            NCBIDatabase::TaxonomyFull => write!(f, "Complete Taxonomy Package"),
         }
     }
 }
@@ -329,7 +417,6 @@ impl NCBIDatabase {
             NCBIDatabase::Taxonomy => "Taxonomic classification database",
             NCBIDatabase::ProtAccession2TaxId => "Protein accession to taxonomy ID mapping",
             NCBIDatabase::NuclAccession2TaxId => "Nucleotide accession to taxonomy ID mapping",
-            NCBIDatabase::TaxonomyFull => "Complete taxonomy with all mappings",
         }
     }
     
@@ -342,7 +429,6 @@ impl NCBIDatabase {
             NCBIDatabase::Taxonomy => "~50 MB compressed",
             NCBIDatabase::ProtAccession2TaxId => "~15 GB compressed",
             NCBIDatabase::NuclAccession2TaxId => "~8 GB compressed",
-            NCBIDatabase::TaxonomyFull => "~23 GB total",
         }
     }
 }

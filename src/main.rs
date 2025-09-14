@@ -62,6 +62,7 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         Commands::Validate(args) => talaria::cli::commands::validate::run(args),
         Commands::Stats(args) => talaria::cli::commands::stats::run(args),
         Commands::Database(args) => talaria::cli::commands::database::run(args),
+        Commands::Tools(args) => talaria::cli::commands::tools::run(args),
         Commands::Interactive(args) => talaria::cli::commands::interactive::run(args),
     }
 }

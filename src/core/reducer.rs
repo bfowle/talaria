@@ -20,11 +20,12 @@ pub struct Reducer {
     max_align_length: usize,
     input_file_size: u64,
     output_file_size: u64,
+    all_vs_all: bool,
 }
 
 impl Reducer {
     pub fn new(config: Config) -> Self {
-        Self { 
+        Self {
             config,
             progress_callback: None,
             use_similarity: false,
@@ -34,6 +35,7 @@ impl Reducer {
             max_align_length: 10000,
             input_file_size: 0,
             output_file_size: 0,
+            all_vs_all: false,
         }
     }
     
@@ -61,6 +63,11 @@ impl Reducer {
     pub fn with_file_sizes(mut self, input_size: u64, output_size: u64) -> Self {
         self.input_file_size = input_size;
         self.output_file_size = output_size;
+        self
+    }
+
+    pub fn with_all_vs_all(mut self, all_vs_all: bool) -> Self {
+        self.all_vs_all = all_vs_all;
         self
     }
     
@@ -102,10 +109,33 @@ impl Reducer {
         // Choose selection method based on configuration
         let selection_result = if reduction_ratio == 0.0 {
             // Auto-detection mode - no ratio specified
-            if !self.silent {
-                println!("Using auto-detection to determine optimal reduction...");
+            // Check if LAMBDA is available for more accurate alignment-based selection
+            if let Ok(manager) = crate::tools::ToolManager::new() {
+                if manager.is_installed(crate::tools::Tool::Lambda) {
+                    if !self.silent {
+                        println!("Using LAMBDA aligner for accurate auto-detection...");
+                    }
+                    match selector.select_references_with_lambda(sequences.clone()) {
+                        Ok(result) => result,
+                        Err(e) => {
+                            if !self.silent {
+                                eprintln!("LAMBDA alignment failed: {}, falling back to k-mer based auto-detection", e);
+                            }
+                            selector.select_references_auto(sequences.clone())
+                        }
+                    }
+                } else {
+                    if !self.silent {
+                        println!("Using k-mer based auto-detection (install LAMBDA for more accurate results)...");
+                    }
+                    selector.select_references_auto(sequences.clone())
+                }
+            } else {
+                if !self.silent {
+                    println!("Using k-mer based auto-detection...");
+                }
+                selector.select_references_auto(sequences.clone())
             }
-            selector.select_references_auto(sequences.clone())
         } else if self.use_alignment {
             // Use full alignment-based selection
             selector.select_references_with_alignment(sequences.clone(), reduction_ratio)
@@ -214,7 +244,8 @@ impl Reducer {
         let mut selector = ReferenceSelector::new()
             .with_min_length(self.config.reduction.min_sequence_length)
             .with_similarity_threshold(self.config.reduction.similarity_threshold)
-            .with_taxonomy_aware(self.config.reduction.taxonomy_aware);
+            .with_taxonomy_aware(self.config.reduction.taxonomy_aware)
+            .with_all_vs_all(self.all_vs_all);
         
         // Adjust selector based on target aligner
         match target_aligner {

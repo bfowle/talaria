@@ -72,10 +72,14 @@ pub struct ReduceArgs {
     /// Enable taxonomy-aware clustering
     #[arg(long)]
     pub taxonomy_aware: bool,
-    
+
     /// Skip delta encoding (much faster, but no reconstruction possible)
     #[arg(long)]
     pub no_deltas: bool,
+
+    /// Use all-vs-all alignment mode for Lambda (default: query-vs-reference)
+    #[arg(long)]
+    pub all_vs_all: bool,
     
     /// Maximum sequence length for alignment (longer sequences skip delta encoding)
     #[arg(long, default_value = "10000")]
@@ -245,6 +249,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         )
         .with_no_deltas(args.no_deltas)
         .with_max_align_length(args.max_align_length)
+        .with_all_vs_all(args.all_vs_all)
         .with_file_sizes(input_size, 0);  // Output size will be set later
     let (references, deltas, original_count) = reducer.reduce(
         sequences,

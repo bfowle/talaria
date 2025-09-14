@@ -13,8 +13,8 @@ pub struct DownloadArgs {
     pub output: PathBuf,
     
     /// Specific dataset to download
-    /// UniProt: swissprot, trembl, uniref50, uniref90, uniref100
-    /// NCBI: nr, nt, refseq-protein, refseq-genomic, taxonomy, prot-accession2taxid, nucl-accession2taxid, taxonomy-full
+    /// UniProt: swissprot, trembl, uniref50, uniref90, uniref100, idmapping
+    /// NCBI: nr, nt, refseq-protein, refseq-genomic, taxonomy, prot-accession2taxid, nucl-accession2taxid
     #[arg(short = 'd', long)]
     pub dataset: Option<String>,
 
@@ -117,6 +117,12 @@ fn list_available_datasets() {
         Cell::new("Clustered sequences at 100% identity"),
         Cell::new("~60 GB compressed"),
     ]);
+    table.add_row(vec![
+        Cell::new(""),
+        Cell::new("idmapping"),
+        Cell::new("UniProt accession to taxonomy mapping"),
+        Cell::new("~15 GB compressed"),
+    ]);
 
     // NCBI datasets
     table.add_row(vec![
@@ -160,12 +166,6 @@ fn list_available_datasets() {
         Cell::new("nucl-accession2taxid"),
         Cell::new("Nucleotide accession to taxonomy ID mapping"),
         Cell::new("~8 GB compressed"),
-    ]);
-    table.add_row(vec![
-        Cell::new(""),
-        Cell::new("taxonomy-full"),
-        Cell::new("Complete taxonomy with all mappings"),
-        Cell::new("~23 GB total"),
     ]);
 
     // Not yet implemented databases
@@ -284,7 +284,6 @@ fn download_ncbi_interactive(_output_dir: &PathBuf) -> anyhow::Result<()> {
         ("Taxonomy", "NCBI taxonomy dump (~50MB)", "taxdump.tar.gz"),
         ("Protein Accession2TaxId", "Protein accession mappings (~15GB)", "prot.accession2taxid.gz"),
         ("Nucleotide Accession2TaxId", "Nucleotide accession mappings (~8GB)", "nucl.accession2taxid.gz"),
-        ("Complete Taxonomy Package", "All taxonomy files (~23GB total)", "taxonomy_full"),
     ];
     
     let items: Vec<String> = datasets
@@ -331,7 +330,8 @@ fn run_direct_download(args: DownloadArgs) -> anyhow::Result<()> {
                 "uniref50" => DatabaseSource::UniProt(UniProtDatabase::UniRef50),
                 "uniref90" => DatabaseSource::UniProt(UniProtDatabase::UniRef90),
                 "uniref100" => DatabaseSource::UniProt(UniProtDatabase::UniRef100),
-                _ => anyhow::bail!("Unknown UniProt dataset: '{}'. Valid options are: swissprot, trembl, uniref50, uniref90, uniref100", dataset),
+                "idmapping" => DatabaseSource::UniProt(UniProtDatabase::IdMapping),
+                _ => anyhow::bail!("Unknown UniProt dataset: '{}'. Valid options are: swissprot, trembl, uniref50, uniref90, uniref100, idmapping", dataset),
             }
         }
         Some(Database::NCBI) => {
@@ -344,8 +344,7 @@ fn run_direct_download(args: DownloadArgs) -> anyhow::Result<()> {
                 "taxonomy" => DatabaseSource::NCBI(NCBIDatabase::Taxonomy),
                 "prot-accession2taxid" => DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId),
                 "nucl-accession2taxid" => DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId),
-                "taxonomy-full" => DatabaseSource::NCBI(NCBIDatabase::TaxonomyFull),
-                _ => anyhow::bail!("Unknown NCBI dataset: '{}'. Valid options are: nr, nt, refseq-protein, refseq-genomic, taxonomy, prot-accession2taxid, nucl-accession2taxid, taxonomy-full", dataset),
+                _ => anyhow::bail!("Unknown NCBI dataset: '{}'. Valid options are: nr, nt, refseq-protein, refseq-genomic, taxonomy, prot-accession2taxid, nucl-accession2taxid", dataset),
             }
         }
         Some(Database::PDB) => {
@@ -375,8 +374,14 @@ fn run_direct_download(args: DownloadArgs) -> anyhow::Result<()> {
                 UniProtDatabase::UniRef50 => "uniref50".to_string(),
                 UniProtDatabase::UniRef90 => "uniref90".to_string(),
                 UniProtDatabase::UniRef100 => "uniref100".to_string(),
+                UniProtDatabase::IdMapping => "idmapping".to_string(),
             };
-            ("uniprot".to_string(), dataset.clone(), format!("{}.fasta", dataset))
+            let filename = if matches!(db, UniProtDatabase::IdMapping) {
+                "idmapping.dat.gz".to_string()
+            } else {
+                format!("{}.fasta", dataset)
+            };
+            ("uniprot".to_string(), dataset, filename)
         }
         DatabaseSource::NCBI(db) => {
             // Use simple names for directories, not the Display format
@@ -388,13 +393,11 @@ fn run_direct_download(args: DownloadArgs) -> anyhow::Result<()> {
                 NCBIDatabase::Taxonomy => "taxonomy".to_string(),
                 NCBIDatabase::ProtAccession2TaxId => "prot-accession2taxid".to_string(),
                 NCBIDatabase::NuclAccession2TaxId => "nucl-accession2taxid".to_string(),
-                NCBIDatabase::TaxonomyFull => "taxonomy-full".to_string(),
             };
             let filename = match db {
                 NCBIDatabase::Taxonomy => "taxdump".to_string(),
-                NCBIDatabase::ProtAccession2TaxId => "prot.accession2taxid".to_string(),
-                NCBIDatabase::NuclAccession2TaxId => "nucl.accession2taxid".to_string(),
-                NCBIDatabase::TaxonomyFull => "taxonomy_full".to_string(),
+                NCBIDatabase::ProtAccession2TaxId => "prot.accession2taxid.gz".to_string(),
+                NCBIDatabase::NuclAccession2TaxId => "nucl.accession2taxid.gz".to_string(),
                 _ => format!("{}.fasta", dataset)
             };
             ("ncbi".to_string(), dataset, filename)
@@ -415,40 +418,91 @@ fn run_direct_download(args: DownloadArgs) -> anyhow::Result<()> {
         // Use user-specified directory
         (args.output.clone(), Local::now().format("%Y-%m-%d").to_string())
     };
-    
+
     let output_file = version_dir.join(&filename);
-    
+    let is_temp_dir = version_dir.file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| n.starts_with(".tmp_"))
+        .unwrap_or(false);
+
+    // Check if file already exists and is complete
+    if output_file.exists() && !is_temp_dir {
+        let file_size = std::fs::metadata(&output_file)?.len();
+        if file_size > 0 {
+            println!("✅ {} already downloaded ({}MB)", filename, file_size / 1_048_576);
+            println!("Use --force to re-download");
+            return Ok(());
+        }
+    }
+
     println!("Downloading {} to {}", database_source, output_file.display());
-    
-    runtime.block_on(async {
+
+    let download_result = runtime.block_on(async {
         let mut progress = DownloadProgress::new();
         crate::download::download_database_with_full_options(
-            database_source.clone(), 
-            &output_file, 
-            &mut progress, 
+            database_source.clone(),
+            &output_file,
+            &mut progress,
             args.skip_verify,
             args.resume
         ).await
-    })?;
-    
+    });
+
+    // Handle download errors with helpful messages
+    if let Err(e) = download_result {
+        // Check if temp file exists for resume
+        let temp_file = output_file.with_extension("tmp");
+        if temp_file.exists() && !args.resume {
+            let temp_size = std::fs::metadata(&temp_file)?.len();
+            eprintln!("\n❌ Download failed: {}", e);
+            eprintln!("💡 Partial download exists ({:.2} GB). Try resuming with:",
+                     temp_size as f64 / 1_073_741_824.0);
+            eprintln!("   talaria database download {} -d {} -r",
+                     source_name, dataset_name);
+            return Err(e);
+        }
+        return Err(e);
+    }
+
+    // Calculate checksum for integrity (skip for taxonomy which extracts to directory)
+    let (checksum, file_size) = if matches!(&database_source, DatabaseSource::NCBI(NCBIDatabase::Taxonomy)) {
+        // For taxonomy, we don't have a single file to checksum
+        println!("Taxonomy extracted to directory");
+        (None, 0)
+    } else if output_file.exists() {
+        println!("Calculating checksum...");
+        let checksum = DatabaseManager::calculate_checksum(&output_file)
+            .ok()
+            .or(None);
+        let size = std::fs::metadata(&output_file)?.len();
+        (checksum, size)
+    } else {
+        (None, 0)
+    };
+
     // Save metadata to versioned directory
     let metadata = DatabaseMetadata {
         source: source_name.clone(),
         dataset: dataset_name.clone(),
         version: version_date.clone(),
         download_date: Utc::now(),
-        file_size: std::fs::metadata(&output_file)?.len(),
-        checksum: None, // TODO: Calculate checksum
+        file_size,
+        checksum,
         url: None, // TODO: Track source URL
     };
-    
+
     let metadata_path = version_dir.join("metadata.json");
     metadata.save(&metadata_path)?;
-    
-    // Update the current symlink if using centralized directory
+
+    // Finalize download if using temp directory
     if args.output == PathBuf::from(".") {
+        if is_temp_dir {
+            println!("Finalizing download...");
+            db_manager.finalize_download(&source_name, &dataset_name, &version_date)?;
+        }
+
         db_manager.update_current_link(&source_name, &dataset_name, &version_date)?;
-        
+
         // Clean old versions if needed
         let removed = db_manager.clean_old_versions(&source_name, &dataset_name)?;
         if !removed.is_empty() {

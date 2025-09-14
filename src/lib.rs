@@ -5,6 +5,7 @@ pub mod download;
 pub mod index;
 pub mod report;
 pub mod storage;
+pub mod tools;
 pub mod utils;
 
 pub use crate::core::{reducer::Reducer, reference_selector::ReferenceSelector};

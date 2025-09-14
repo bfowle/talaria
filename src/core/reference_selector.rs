@@ -13,6 +13,7 @@ pub struct ReferenceSelector {
     min_length: usize,
     similarity_threshold: f64,
     taxonomy_aware: bool,
+    all_vs_all: bool,  // Use all-vs-all mode for Lambda alignments
 }
 
 #[derive(Debug, Clone)]
@@ -28,7 +29,13 @@ impl ReferenceSelector {
             min_length: 50,
             similarity_threshold: 0.9,
             taxonomy_aware: true,
+            all_vs_all: false,  // Default to query-vs-reference
         }
+    }
+
+    pub fn with_all_vs_all(mut self, all_vs_all: bool) -> Self {
+        self.all_vs_all = all_vs_all;
+        self
     }
     
     pub fn with_min_length(mut self, min_length: usize) -> Self {
@@ -339,84 +346,100 @@ impl ReferenceSelector {
                 .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} Auto-detecting references")
                 .unwrap(),
         );
-        
+
         // Sort by length (longest first)
         let mut sorted_sequences = sequences.clone();
         sorted_sequences.sort_by_key(|s| std::cmp::Reverse(s.len()));
-        
+
         let mut references = Vec::new();
         let mut children: HashMap<String, Vec<String>> = HashMap::new();
         let mut discarded = HashSet::new();
         let mut coverage_history = Vec::new();
-        
+
+        // Minimum thresholds for better coverage
+        const MIN_REFERENCES: usize = 100;
+        const MIN_COVERAGE: f64 = 0.10;  // At least 10% coverage
+
         for query in &sorted_sequences {
             if discarded.contains(&query.id) {
                 continue;
             }
-            
+
             if query.len() < self.min_length {
                 continue;
             }
-            
+
             let mut query_children = Vec::new();
             let mut new_coverage = 0;
-            
+
             // Find sequences similar to this potential reference
             for other in &sorted_sequences {
                 if other.id == query.id || discarded.contains(&other.id) {
                     continue;
                 }
-                
-                // Quick similarity check with relaxed threshold for auto-detection
-                // Use a more lenient check since we're trying to find natural clusters
+
+                // More relaxed length ratio for protein diversity
                 let len_ratio = other.len().min(query.len()) as f64 / other.len().max(query.len()) as f64;
-                if len_ratio >= 0.7 {
-                    // Check k-mer similarity with relaxed threshold
-                    let k = 3;
+                if len_ratio >= 0.5 {  // Relaxed from 0.7 to 0.5
+                    // Check k-mer similarity with more permissive settings
+                    let k = 2;  // Use 2-mers instead of 3-mers for proteins
                     let kmers1 = self.extract_kmers(&query.sequence, k);
                     let kmers2 = self.extract_kmers(&other.sequence, k);
-                    
+
                     let intersection: HashSet<_> = kmers1.intersection(&kmers2).collect();
                     let union_size = kmers1.len() + kmers2.len() - intersection.len();
-                    
+
                     if union_size > 0 {
                         let jaccard = intersection.len() as f64 / union_size as f64;
-                        // Use relaxed threshold for auto-detection (0.4 instead of 0.63)
-                        if jaccard >= 0.4 {
+                        // Much more relaxed threshold for proteins (0.2 instead of 0.4)
+                        if jaccard >= 0.2 {
                             query_children.push(other.id.clone());
                             new_coverage += 1;
                         }
                     }
                 }
             }
-            
+
             // Check if this reference provides enough value
             let total_covered = discarded.len() + new_coverage + 1;
             let coverage_ratio = total_covered as f64 / sequences.len() as f64;
-            
+
             // Add coverage to history
             coverage_history.push(coverage_ratio);
-            
-            // Stop if we're getting diminishing returns
-            if references.len() > 10 && coverage_history.len() > 3 {
-                let recent_improvement = coverage_history[coverage_history.len() - 1] 
-                    - coverage_history[coverage_history.len() - 3];
-                
-                // Stop if improvement over last 3 references is less than 1%
-                if recent_improvement < 0.01 {
-                    pb.finish_with_message(format!(
-                        "Auto-detected {} references (coverage: {:.1}%, plateau reached)",
-                        references.len(),
-                        coverage_ratio * 100.0
-                    ));
-                    break;
+
+            // Only check for diminishing returns after minimum thresholds are met
+            if references.len() >= MIN_REFERENCES && coverage_ratio >= MIN_COVERAGE {
+                // Check diminishing returns over last 10 references (not 3)
+                if coverage_history.len() > 10 {
+                    let recent_improvement = coverage_history[coverage_history.len() - 1]
+                        - coverage_history[coverage_history.len() - 10];
+
+                    // Stop if improvement over last 10 references is less than 0.1%
+                    if recent_improvement < 0.001 {
+                        pb.finish_with_message(format!(
+                            "Auto-detected {} references (coverage: {:.1}%, plateau reached)",
+                            references.len(),
+                            coverage_ratio * 100.0
+                        ));
+                        break;
+                    }
                 }
             }
             
-            // Stop if we've covered 95% of sequences
-            if coverage_ratio > 0.95 {
+            // Stop if we've covered 95% of sequences (but ensure minimum coverage first)
+            if coverage_ratio > 0.95 && references.len() >= MIN_REFERENCES {
                 pb.finish_with_message(format!(
                     "Auto-detected {} references (coverage: {:.1}%)",
+                    references.len(),
+                    coverage_ratio * 100.0
+                ));
+                break;
+            }
+
+            // Limit to reasonable number of references (e.g., 10% of sequences)
+            if references.len() >= sequences.len() / 10 && references.len() >= MIN_REFERENCES {
+                pb.finish_with_message(format!(
+                    "Auto-detected {} references (coverage: {:.1}%, max references reached)",
                     references.len(),
                     coverage_ratio * 100.0
                 ));
@@ -436,8 +459,19 @@ impl ReferenceSelector {
                                   references.len(), coverage_ratio * 100.0));
         }
         
-        pb.finish_with_message(format!("Auto-detected {} references", references.len()));
-        
+        // Calculate final coverage
+        let final_coverage = discarded.len() as f64 / sequences.len() as f64;
+
+        // If we found very few sequences, fall back to simple selection
+        if final_coverage < 0.01 && sequences.len() > 1000 {
+            pb.finish_with_message("Auto-detection found too few matches, falling back to length-based selection");
+            // Use simple selection with 10% ratio as fallback
+            return self.simple_select_references(sequences, 0.1);
+        }
+
+        pb.finish_with_message(format!("Auto-detected {} references (final coverage: {:.1}%)",
+                                      references.len(), final_coverage * 100.0));
+
         SelectionResult {
             references,
             children,
@@ -523,6 +557,146 @@ impl ReferenceSelector {
         } else {
             matches as f64 / total as f64
         }
+    }
+    
+    /// Select references using LAMBDA aligner for accurate alignments
+    /// This implements the original db-reduce algorithm
+    pub fn select_references_with_lambda(&self, sequences: Vec<Sequence>) -> anyhow::Result<SelectionResult> {
+        use crate::tools::{ToolManager, Tool};
+        use crate::tools::lambda::LambdaAligner;
+
+        // Check if LAMBDA is installed
+        let manager = ToolManager::new()?;
+        let lambda_path = manager.get_current_tool_path(Tool::Lambda)?;
+
+        let aligner = LambdaAligner::new(lambda_path)?;
+
+        // Run alignments with LAMBDA
+        let pb = ProgressBar::new(sequences.len() as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} Running LAMBDA alignments")
+                .unwrap(),
+        );
+
+        let alignments = if self.all_vs_all {
+            // All-vs-all mode: self-alignment within the dataset
+            aligner.search_all_vs_all(&sequences)?
+        } else {
+            // Default: Query-vs-reference mode
+            // Use a subset as reference (e.g., longest sequences)
+            let mut sorted_sequences = sequences.clone();
+            sorted_sequences.sort_by_key(|s| std::cmp::Reverse(s.len()));
+
+            // Take top 20% as reference sequences
+            let reference_count = std::cmp::max(10, sequences.len() / 5);
+            let reference_sequences: Vec<_> = sorted_sequences.iter()
+                .take(reference_count)
+                .cloned()
+                .collect();
+
+            // All sequences are queries
+            aligner.search(&sequences, &reference_sequences)?
+        };
+        pb.finish_with_message("LAMBDA alignments complete");
+        
+        // Build similarity matrix from alignments
+        let mut similarity_matrix: HashMap<(String, String), f64> = HashMap::new();
+        for alignment in alignments {
+            let key = (alignment.query_id.clone(), alignment.subject_id.clone());
+            similarity_matrix.insert(key, alignment.identity);
+        }
+        
+        // Greedy selection based on alignment coverage
+        let mut references = Vec::new();
+        let mut children: HashMap<String, Vec<String>> = HashMap::new();
+        let mut discarded = HashSet::new();
+        let mut uncovered: HashSet<String> = sequences.iter().map(|s| s.id.clone()).collect();
+        
+        let pb2 = ProgressBar::new(sequences.len() as u64);
+        pb2.set_style(
+            ProgressStyle::default_bar()
+                .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} Selecting references")
+                .unwrap(),
+        );
+        
+        // Sort sequences by length (longest first)
+        let mut sorted_sequences = sequences.clone();
+        sorted_sequences.sort_by_key(|s| std::cmp::Reverse(s.len()));
+        
+        // Iteratively select references that cover the most uncovered sequences
+        while !uncovered.is_empty() {
+            let mut best_reference = None;
+            let mut best_coverage = Vec::new();
+            let mut best_score = 0.0;
+            
+            // Find the sequence that covers the most uncovered sequences
+            for candidate in &sorted_sequences {
+                if discarded.contains(&candidate.id) {
+                    continue;
+                }
+                
+                let mut coverage = Vec::new();
+                let mut score = 0.0;
+                
+                for other_id in &uncovered {
+                    if other_id == &candidate.id {
+                        continue;
+                    }
+                    
+                    // Check similarity from alignment results
+                    let key = (candidate.id.clone(), other_id.clone());
+                    if let Some(&similarity) = similarity_matrix.get(&key) {
+                        if similarity >= 0.7 { // 70% identity threshold
+                            coverage.push(other_id.clone());
+                            score += similarity;
+                        }
+                    }
+                }
+                
+                if score > best_score {
+                    best_reference = Some(candidate.clone());
+                    best_coverage = coverage;
+                    best_score = score;
+                }
+            }
+            
+            // If no good reference found, break
+            if best_reference.is_none() || best_coverage.is_empty() {
+                // Add remaining sequences as their own references
+                for seq_id in uncovered.iter() {
+                    if let Some(seq) = sorted_sequences.iter().find(|s| &s.id == seq_id) {
+                        references.push(seq.clone());
+                    }
+                }
+                break;
+            }
+            
+            // Add the best reference and update coverage
+            let reference = best_reference.unwrap();
+            references.push(reference.clone());
+            children.insert(reference.id.clone(), best_coverage.clone());
+            
+            // Mark covered sequences as discarded
+            uncovered.remove(&reference.id);
+            for child_id in &best_coverage {
+                uncovered.remove(child_id);
+                discarded.insert(child_id.clone());
+            }
+            discarded.insert(reference.id.clone());
+            
+            pb2.set_position((sequences.len() - uncovered.len()) as u64);
+            pb2.set_message(format!("References: {}, Uncovered: {}", 
+                                   references.len(), uncovered.len()));
+        }
+        
+        pb2.finish_with_message(format!("Selected {} references using LAMBDA", references.len()));
+        
+        Ok(SelectionResult {
+            references,
+            children,
+            discarded,
+        })
     }
 }
 

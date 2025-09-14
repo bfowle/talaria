@@ -24,7 +24,10 @@ impl UniProtDownloader {
         UniProtDownloader {
             client: Client::builder()
                 .user_agent("Talaria/0.1.0")
-                .timeout(std::time::Duration::from_secs(300))
+                // Increased timeout for large files like idmapping (30 minutes)
+                .timeout(std::time::Duration::from_secs(1800))
+                // Add connection timeout separately
+                .connect_timeout(std::time::Duration::from_secs(30))
                 .build()
                 .unwrap(),
             // Using EBI mirror as it's more reliable for HTTPS access
@@ -102,10 +105,113 @@ impl UniProtDownloader {
             "{}/current_release/uniref/uniref100/uniref100.fasta.gz",
             self.base_url
         );
-        
+
         self.download_and_extract(&url, output_path, progress).await
     }
-    
+
+    pub async fn download_idmapping(
+        &self,
+        output_path: &Path,
+        progress: &mut DownloadProgress,
+    ) -> Result<()> {
+        self.download_idmapping_with_resume(output_path, progress, true).await
+    }
+
+    pub async fn download_idmapping_with_resume(
+        &self,
+        output_path: &Path,
+        progress: &mut DownloadProgress,
+        resume: bool,
+    ) -> Result<()> {
+        let url = format!(
+            "{}/current_release/knowledgebase/idmapping/idmapping.dat.gz",
+            self.base_url
+        );
+
+        // Use the compressed download method that supports resume
+        self.download_compressed_with_resume(&url, output_path, progress, resume).await
+    }
+
+    /// Download a compressed file without extracting it, with resume support
+    pub async fn download_compressed_with_resume(
+        &self,
+        url: &str,
+        output_path: &Path,
+        progress: &mut DownloadProgress,
+        resume: bool,
+    ) -> Result<()> {
+        progress.set_message(&format!("Downloading from {}", url));
+
+        // Use .tmp extension for temporary file
+        let temp_path = output_path.with_extension("tmp");
+
+        // Check if we can resume
+        let mut resume_from = 0u64;
+        if resume && temp_path.exists() {
+            resume_from = std::fs::metadata(&temp_path)?.len();
+            progress.set_message(&format!("Resuming download from {} bytes", resume_from));
+        }
+
+        // Build request with range header for resume
+        let mut request = self.client.get(url);
+        if resume_from > 0 {
+            request = request.header("Range", format!("bytes={}-", resume_from));
+        }
+
+        let response = request
+            .send()
+            .await
+            .context("Failed to start download")?;
+
+        // Check if server supports resume
+        let supports_resume = response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+        if resume_from > 0 && !supports_resume {
+            progress.set_message("Server doesn't support resume, starting from beginning");
+            resume_from = 0;
+            std::fs::remove_file(&temp_path).ok();
+        }
+
+        let total_size = response
+            .content_length()
+            .unwrap_or(0) + resume_from;
+
+        progress.set_total(total_size as usize);
+        progress.set_current(resume_from as usize);
+
+        let mut file = if resume_from > 0 && supports_resume {
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(&temp_path)
+                .context("Failed to open temporary file for resume")?
+        } else {
+            File::create(&temp_path)
+                .context("Failed to create temporary file")?
+        };
+
+        // Initialize downloaded to resume_from to track total bytes correctly
+        let mut downloaded = resume_from;
+        let mut stream = response.bytes_stream();
+
+        use futures_util::StreamExt;
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.context("Failed to read chunk")?;
+            file.write_all(&chunk)
+                .context("Failed to write chunk")?;
+
+            downloaded += chunk.len() as u64;
+            progress.set_current(downloaded as usize);
+        }
+
+        // Move to final location
+        std::fs::rename(&temp_path, output_path)
+            .context("Failed to move file to final location")?;
+
+        progress.set_message("Download complete!");
+        progress.finish();
+
+        Ok(())
+    }
+
     async fn download_and_extract(
         &self,
         url: &str,
@@ -292,6 +398,7 @@ pub enum UniProtDatabase {
     UniRef50,
     UniRef90,
     UniRef100,
+    IdMapping,
 }
 
 impl std::fmt::Display for UniProtDatabase {
@@ -302,6 +409,7 @@ impl std::fmt::Display for UniProtDatabase {
             UniProtDatabase::UniRef50 => write!(f, "UniRef50"),
             UniProtDatabase::UniRef90 => write!(f, "UniRef90"),
             UniProtDatabase::UniRef100 => write!(f, "UniRef100"),
+            UniProtDatabase::IdMapping => write!(f, "IdMapping"),
         }
     }
 }
@@ -314,6 +422,7 @@ impl UniProtDatabase {
             UniProtDatabase::UniRef50 => "Clustered sequences at 50% identity",
             UniProtDatabase::UniRef90 => "Clustered sequences at 90% identity",
             UniProtDatabase::UniRef100 => "Clustered sequences at 100% identity",
+            UniProtDatabase::IdMapping => "UniProt accession to taxonomy mapping",
         }
     }
     
@@ -324,6 +433,7 @@ impl UniProtDatabase {
             UniProtDatabase::UniRef50 => "~10 GB compressed",
             UniProtDatabase::UniRef90 => "~20 GB compressed",
             UniProtDatabase::UniRef100 => "~60 GB compressed",
+            UniProtDatabase::IdMapping => "~15 GB compressed",
         }
     }
 }

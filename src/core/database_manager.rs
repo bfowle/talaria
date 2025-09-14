@@ -3,6 +3,8 @@ use chrono::{DateTime, Local, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::io::{self, Read};
+use sha2::{Sha256, Digest};
 
 /// Manages the centralized database directory structure
 pub struct DatabaseManager {
@@ -69,7 +71,7 @@ impl DatabaseManager {
         self.get_database_dir(source, dataset).join("current")
     }
     
-    /// Download a database to the versioned directory structure
+    /// Download a database to the versioned directory structure with idempotency
     pub fn prepare_download(
         &self,
         source: &str,
@@ -77,12 +79,116 @@ impl DatabaseManager {
     ) -> Result<(PathBuf, String)> {
         let date = Local::now().format("%Y-%m-%d").to_string();
         let version_dir = self.get_version_dir(source, dataset, &date);
-        
-        // Create the version directory
-        fs::create_dir_all(&version_dir)
-            .context("Failed to create version directory")?;
-        
-        Ok((version_dir, date))
+        let temp_dir = self.get_database_dir(source, dataset).join(format!(".tmp_{}", date));
+
+        // Clean up any incomplete downloads first
+        self.cleanup_temp_downloads(source, dataset)?;
+
+        // Check if this version already exists and is complete
+        if version_dir.exists() {
+            if self.verify_download_complete(&version_dir)? {
+                println!("✅ Database version {} already downloaded and verified", date);
+                return Ok((version_dir, date));
+            } else {
+                println!("⚠ Incomplete download detected for {}, removing...", date);
+                fs::remove_dir_all(&version_dir)?;
+            }
+        }
+
+        // Create temporary directory for download
+        fs::create_dir_all(&temp_dir)
+            .context("Failed to create temporary download directory")?;
+
+        Ok((temp_dir, date))
+    }
+
+    /// Finalize a download by moving from temp to final location
+    pub fn finalize_download(
+        &self,
+        source: &str,
+        dataset: &str,
+        version: &str,
+    ) -> Result<()> {
+        let temp_dir = self.get_database_dir(source, dataset).join(format!(".tmp_{}", version));
+        let final_dir = self.get_version_dir(source, dataset, version);
+
+        if !temp_dir.exists() {
+            anyhow::bail!("Temporary download directory not found");
+        }
+
+        // Verify the download is complete before moving
+        if !self.verify_download_complete(&temp_dir)? {
+            anyhow::bail!("Download verification failed");
+        }
+
+        // Atomic move from temp to final
+        fs::rename(&temp_dir, &final_dir)
+            .context("Failed to move download to final location")?;
+
+        Ok(())
+    }
+
+    /// Clean up temporary download directories
+    fn cleanup_temp_downloads(&self, source: &str, dataset: &str) -> Result<()> {
+        let db_dir = self.get_database_dir(source, dataset);
+        if !db_dir.exists() {
+            return Ok(());
+        }
+
+        for entry in fs::read_dir(&db_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.starts_with(".tmp_") {
+                    println!("Cleaning up incomplete download: {}", name);
+                    fs::remove_dir_all(&path).ok();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Verify that a download is complete
+    fn verify_download_complete(&self, dir: &Path) -> Result<bool> {
+        // Check if metadata.json exists
+        let metadata_path = dir.join("metadata.json");
+        if !metadata_path.exists() {
+            return Ok(false);
+        }
+
+        // Check if at least one data file exists
+        let has_data_files = fs::read_dir(dir)?
+            .filter_map(|e| e.ok())
+            .any(|entry| {
+                let path = entry.path();
+                if path.is_file() {
+                    // Check for various database file types by extension
+                    let ext = path.extension().and_then(|s| s.to_str());
+                    // Include .gz files and taxonomy dumps
+                    matches!(ext, Some("fasta") | Some("gz") | Some("tar") | Some("dmp") | Some("prt") | Some("dat"))
+                } else {
+                    false
+                }
+            });
+
+        Ok(has_data_files)
+    }
+
+    /// Calculate checksum of a file
+    pub fn calculate_checksum(file_path: &Path) -> io::Result<String> {
+        let mut file = fs::File::open(file_path)?;
+        let mut hasher = Sha256::new();
+        let mut buffer = [0; 8192];
+
+        loop {
+            let bytes_read = file.read(&mut buffer)?;
+            if bytes_read == 0 {
+                break;
+            }
+            hasher.update(&buffer[..bytes_read]);
+        }
+
+        Ok(format!("{:x}", hasher.finalize()))
     }
     
     /// Update the "current" symlink to point to the latest version
