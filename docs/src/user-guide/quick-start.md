@@ -1,249 +1,162 @@
-# Quick Start
+# Quick Start - 3 Minutes to Success
 
-Get up and running with Talaria in minutes! This guide shows you how to use Talaria's powerful database management and reduction features.
+Get Talaria running and see results immediately. No complex setup, just dive right in!
 
-## Installation
+## Install (30 seconds)
 
 ```bash
-# Quick install via cargo
-cargo install talaria
-
-# Or build from source
-git clone https://github.com/yourusername/talaria
-cd talaria
+# From source (recommended)
 cargo build --release
-sudo cp target/release/talaria /usr/local/bin/
+./target/release/talaria --version
+
+# Or install globally
+cargo install talaria
 ```
 
-## Database Management Workflow (Recommended)
-
-Talaria provides a centralized database management system that makes working with biological databases effortless.
-
-### 1. Download a Database
+## Dive Right In (2.5 minutes)
 
 ```bash
-# Download UniProt SwissProt (automatically versioned and stored)
-talaria database download --database uniprot -d swissprot
+# 1. One-time setup (5 seconds)
+talaria casg init
 
-# Download NCBI NR with resume support
-talaria database download --database ncbi -d nr --resume
+# 2. Download SwissProt database (small, ~200MB, perfect for testing)
+talaria database download uniprot -d swissprot
 
-# List available databases
-talaria database download --list-datasets
+# 3. Reduce it intelligently (auto-detects optimal size)
+talaria reduce uniprot/swissprot -o reduced.fasta
+
+# Done! You've just reduced a database. Use it with any aligner:
+lambda3 mkindexp -d reduced.fasta
 ```
 
-### 2. Reduce the Database
+## What Just Happened?
+
+- **CASG initialized**: Smart storage system that only downloads changes in the future
+- **Downloaded SwissProt**: In chunks, ready for instant updates
+- **Intelligently reduced**: Auto-detected optimal representatives using alignment analysis
+- **Ready to use**: Works with LAMBDA, BLAST, Diamond, MMseqs2, etc.
+
+## Next: Real Workflows
+
+### For LAMBDA Users
+```bash
+# Auto-detection optimized for LAMBDA
+talaria reduce uniprot/swissprot -a lambda -o lambda_db.fasta
+lambda3 mkindexp -d lambda_db.fasta
+lambda3 searchp -q queries.fasta -d lambda_db.fasta
+```
+
+### For Large Databases (NCBI nr)
+```bash
+# Download nr (warning: ~100GB, but only downloaded once!)
+talaria database download ncbi -d nr
+
+# Later, check for updates (same command, only downloads changes ~1GB)
+talaria database download ncbi -d nr
+
+# Reduce intelligently for your aligner
+talaria reduce ncbi/nr -a diamond -o nr_reduced.fasta
+# Or specify exact size if needed: -r 0.25
+```
+
+### Custom Databases
+```bash
+talaria database add -i mysequences.fasta --source mylab --dataset proteins
+talaria reduce mylab/proteins -o my_reduced.fasta  # Auto-detects optimal reduction
+```
+
+
+## Common Commands
+
+### View What You Have
+```bash
+# List databases
+talaria database list
+
+# View database info
+talaria database info uniprot/swissprot
+
+# Check CASG storage
+talaria casg stats
+
+# List sequences
+talaria database list-sequences uniprot/swissprot --limit 10
+```
+
+### Optimize for Different Aligners
+```bash
+# Auto-detection adapts to each aligner's characteristics
+talaria reduce uniprot/swissprot -a blast -o blast_db.fasta
+talaria reduce uniprot/swissprot -a diamond -o diamond_db.fasta
+talaria reduce uniprot/swissprot -a mmseqs2 -o mmseqs_db.fasta
+
+# Or use fixed ratios for specific size requirements:
+# talaria reduce uniprot/swissprot -r 0.3 -a blast -o blast_db.fasta
+# talaria reduce uniprot/swissprot -r 0.25 -a diamond -o diamond_db.fasta
+```
+
+## Tips for Success
+
+### Start Small
+- Use SwissProt (~200MB) for testing, not nr (~100GB)
+- Let auto-detection find optimal reduction (no -r flag needed)
+- Use `-a <aligner>` to optimize for your specific tool
+- Add `-r 0.3` only if you need a specific target size
+
+### Storage Location
+```bash
+# Default location
+~/.talaria/databases/
+
+# Change it using environment variables
+export TALARIA_DATABASES_DIR=/fast/ssd/talaria-databases
+talaria casg init
+```
+
+### Use More Cores
+```bash
+# Use 16 threads
+talaria -j 16 reduce ncbi/nr -o output.fasta  # Auto-detection with 16 threads
+```
+
+## Why CASG? The Update Problem Solved
+
+Traditional approach downloads entire databases repeatedly:
+- **Day 1**: Download 100GB nr database
+- **Day 2**: Download 100GB again (99.9% unchanged!)
+- **Year**: 36.5TB bandwidth wasted
+
+CAGS approach:
+- **Day 1**: Download 100GB (once)
+- **Day 2**: Download 1GB of changes
+- **Year**: ~100GB total (365× less!)
 
 ```bash
-# Reduce stored database (auto-saves in database structure)
-talaria reduce uniprot/swissprot --profile blast-optimized -r 0.3
-
-# Create multiple reduction profiles for different use cases
-talaria reduce uniprot/swissprot --profile diamond-fast -a diamond -r 0.25
-talaria reduce uniprot/swissprot --profile sensitive-search -r 0.7
+# This command is smart:
+talaria database download ncbi -d nr
+# First run: Downloads everything
+# Future runs: Only downloads changes!
 ```
 
-### 3. List and Manage Databases
+## Full Example: SwissProt to LAMBDA
 
 ```bash
-# View all databases and their reductions
-talaria database list --show-reduced
+# Complete workflow in 5 commands
+talaria casg init
+talaria database download uniprot -d swissprot
+talaria reduce uniprot/swissprot -a lambda -o lambda_db.fasta  # Auto-detects optimal size
+lambda3 mkindexp -d lambda_db.fasta
+lambda3 searchp -q your_queries.fasta -d lambda_db.fasta -o results.m8
 
-# Example output:
-# ┌────────────────────┬──────────┬──────────┬──────────────────────┬──────────┐
-# │ Database           │ Version  │ Size     │ Modified             │ Versions │
-# ├────────────────────┼──────────┼──────────┼──────────────────────┼──────────┤
-# │ uniprot/swissprot  │ 2025-09-12 │ 268 MiB  │ 2025-09-12 14:30:00 │ 3        │
-# │   └─ blast-optimized │ 30%    │ 80 MiB   │                      │ 45K seqs │
-# │   └─ diamond-fast   │ 25%      │ 67 MiB   │                      │ 38K seqs │
-# └────────────────────┴──────────┴──────────┴──────────────────────┴──────────┘
+# Tomorrow, update with one command:
+talaria database download uniprot -d swissprot  # Only downloads changes!
 ```
 
-### 4. Validate Reduction Quality
+## Learn More
 
-```bash
-# Validate a stored reduction
-talaria validate uniprot/swissprot:blast-optimized
-
-# Generate detailed report
-talaria validate uniprot/swissprot:blast-optimized --report validation.json
-```
-
-### 5. Use in Alignment
-
-```bash
-# The reduced database is at a predictable location
-REDUCED_DB=~/.talaria/databases/data/uniprot/swissprot/current/reduced/blast-optimized/swissprot.fasta
-
-# Build BLAST database
-makeblastdb -in $REDUCED_DB -dbtype prot -out swissprot_blast
-
-# Run BLAST search
-blastp -db swissprot_blast -query queries.fasta -out results.txt
-```
-
-### 6. Reconstruct When Needed
-
-```bash
-# Reconstruct full sequences from reduction
-talaria reconstruct uniprot/swissprot:blast-optimized -o full_sequences.fasta
-
-# Reconstruct specific sequences only
-talaria reconstruct uniprot/swissprot:blast-optimized --sequences P12345,Q67890
-```
-
-## Traditional File-Based Workflow
-
-You can still use Talaria with individual files if preferred:
-
-### 1. Basic Reduction
-
-```bash
-# Simple 30% reduction
-talaria reduce -i database.fasta -o reduced.fasta
-
-# With metadata for reconstruction
-talaria reduce -i database.fasta -o reduced.fasta -m deltas.tal
-```
-
-### 2. Validate Quality
-
-```bash
-# Validate the reduction
-talaria validate \
-    -o database.fasta \
-    -r reduced.fasta \
-    -d deltas.tal
-```
-
-### 3. Reconstruct
-
-```bash
-# Reconstruct original sequences
-talaria reconstruct \
-    -r reduced.fasta \
-    -d deltas.tal \
-    -o reconstructed.fasta
-```
-
-## Common Use Cases
-
-### Team Collaboration
-
-Set up a shared database directory for your team:
-
-```bash
-# Configure shared directory
-export TALARIA_DATABASE_DIR=/shared/team/databases
-
-# Team member 1: Download and reduce
-talaria database download --database uniprot -d trembl
-talaria reduce uniprot/trembl --profile team-standard -r 0.3
-
-# Team member 2: Use the same reduction
-talaria search \
-    -d /shared/team/databases/uniprot/trembl/current/reduced/team-standard/trembl.fasta \
-    -q my_queries.fasta
-```
-
-### Multiple Aligner Support
-
-Create optimized reductions for different aligners:
-
-```bash
-# BLAST optimization
-talaria reduce ncbi/nr --profile blast-30 -a blast -r 0.3
-
-# DIAMOND optimization  
-talaria reduce ncbi/nr --profile diamond-25 -a diamond -r 0.25
-
-# MMseqs2 optimization
-talaria reduce ncbi/nr --profile mmseqs-40 -a mmseqs2 -r 0.4
-
-# List all reductions
-talaria database list --database ncbi/nr --show-reduced
-```
-
-### Version Management
-
-Track database changes over time:
-
-```bash
-# Compare current with previous version
-talaria database diff uniprot/swissprot
-
-# Compare specific versions
-talaria database diff \
-    uniprot/swissprot@2024-01-01 \
-    uniprot/swissprot@2024-02-01 \
-    --format html -o changes.html
-
-# Clean old versions (keeps 3 by default)
-talaria database clean uniprot/swissprot
-```
-
-## Interactive Mode
-
-For a guided experience, use interactive mode:
-
-```bash
-# Launch interactive interface
-talaria interactive
-```
-
-Navigate with:
-- `↑/↓` or `j/k` - Move selection
-- `Enter` - Select option
-- `Tab` - Switch tabs
-- `Esc` or `q` - Exit
-
-## Performance Tips
-
-1. **Use stored databases**: Avoid re-reading large files
-   ```bash
-   talaria reduce uniprot/swissprot --profile fast -r 0.2
-   ```
-
-2. **Parallel processing**: Use all available cores
-   ```bash
-   talaria -j 0 reduce ncbi/nr --profile parallel -r 0.3
-   ```
-
-3. **Skip validation for speed**: When you trust the process
-   ```bash
-   talaria reduce uniprot/trembl --profile quick --skip-validation
-   ```
-
-4. **No deltas for one-way reduction**: When reconstruction isn't needed
-   ```bash
-   talaria reduce ncbi/nt --profile one-way --no-deltas -r 0.2
-   ```
-
-## Configuration
-
-Create a configuration file for consistent settings:
-
-```toml
-# ~/.talaria/config.toml
-[database]
-database_dir = "/data/talaria/databases"
-retention_count = 5
-
-[reduction]
-min_sequence_length = 100
-similarity_threshold = 0.95
-
-[performance]
-max_memory_gb = 16
-parallel_io = true
-```
-
-## Next Steps
-
-- Read the [Basic Usage Guide](basic-usage.md) for detailed explanations
-- Explore [Workflow Examples](../workflows/) for specific aligners
-- Learn about [Team Collaboration](../../team-collaboration.md)
-- Check the [CLI Reference](../api/cli.md) for all options
+- [Basic Usage Guide](basic-usage.md) - Detailed explanations
+- [CLI Reference](../api/cli-reference.md) - All commands and options
+- [Troubleshooting](../casg/troubleshooting.md) - Common issues
 
 ## Getting Help
 

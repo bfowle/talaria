@@ -333,7 +333,7 @@ chmod 755 $SHARED_DIR
 chmod 775 $SHARED_DIR/data
 
 # Configure talaria
-cat > ~/.talaria/config.toml << EOF
+cat > $HOME/.talaria/config.toml << EOF
 [database]
 database_dir = "$SHARED_DIR/data"
 retention_count = 5

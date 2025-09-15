@@ -8,7 +8,7 @@ pub fn generate_text_report(result: &ComparisonResult, options: &ReportOptions) 
     let mut output = String::new();
 
     // Header
-    writeln!(&mut output, "\n📊 Database Comparison Report")?;
+    writeln!(&mut output, "\n● Database Comparison Report")?;
     writeln!(&mut output, "═══════════════════════════════")?;
     writeln!(&mut output)?;
 
@@ -40,7 +40,7 @@ pub fn generate_text_report(result: &ComparisonResult, options: &ReportOptions) 
     writeln!(&mut output)?;
 
     // Summary table
-    writeln!(&mut output, "📈 Summary of Changes")?;
+    writeln!(&mut output, "► Summary of Changes")?;
     writeln!(&mut output, "─────────────────────")?;
 
     let mut summary_table = Table::new();
@@ -58,22 +58,22 @@ pub fn generate_text_report(result: &ComparisonResult, options: &ReportOptions) 
     let total = result.old_count.max(result.new_count) as f64;
 
     summary_table.add_row(vec![
-        Cell::new("➕ Added").fg(Color::Green),
+        Cell::new("+ Added").fg(Color::Green),
         Cell::new(format_number(result.added.len())).fg(Color::Green),
         Cell::new(format!("{:.1}%", result.added.len() as f64 / total * 100.0)),
     ]);
     summary_table.add_row(vec![
-        Cell::new("➖ Removed").fg(Color::Red),
+        Cell::new("- Removed").fg(Color::Red),
         Cell::new(format_number(result.removed.len())).fg(Color::Red),
         Cell::new(format!("{:.1}%", result.removed.len() as f64 / total * 100.0)),
     ]);
     summary_table.add_row(vec![
-        Cell::new("✏️  Modified").fg(Color::Yellow),
+        Cell::new("~ Modified").fg(Color::Yellow),
         Cell::new(format_number(result.modified.len())).fg(Color::Yellow),
         Cell::new(format!("{:.1}%", result.modified.len() as f64 / total * 100.0)),
     ]);
     summary_table.add_row(vec![
-        Cell::new("🔄 Renamed").fg(Color::Cyan),
+        Cell::new("↻ Renamed").fg(Color::Cyan),
         Cell::new(format_number(result.renamed.len())).fg(Color::Cyan),
         Cell::new(format!("{:.1}%", result.renamed.len() as f64 / total * 100.0)),
     ]);
@@ -87,7 +87,7 @@ pub fn generate_text_report(result: &ComparisonResult, options: &ReportOptions) 
     writeln!(&mut output)?;
     
     // Statistics table
-    writeln!(&mut output, "📊 Database Statistics")?;
+    writeln!(&mut output, "● Database Statistics")?;
     writeln!(&mut output, "─────────────────────")?;
 
     let stats = &result.statistics;

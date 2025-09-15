@@ -1,0 +1,617 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Troubleshooting Guide - Talaria Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- MathJax Configuration -->
+        <script>
+        window.MathJax = {
+          tex2jax: {
+            inlineMath: [['$','$'], ['\\(','\\)']],
+            displayMath: [['$$','$$'], ['\\[','\\]']],
+            processEscapes: true,
+            processEnvironments: true
+          },
+          TeX: {
+            equationNumbers: { autoNumber: "AMS" },
+            extensions: ["AMSmath.js", "AMSsymbols.js"]
+          }
+        };
+        </script>
+        <meta name="description" content="Intelligent FASTA reduction for aligner index optimization">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../custom.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Talaria Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria/edit/main/docs/src/casg/troubleshooting.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
+<h1 id="casg-troubleshooting-guide"><a class="header" href="#casg-troubleshooting-guide">CASG Troubleshooting Guide</a></h1>
+<p>Common issues and solutions when working with the Content-Addressed Sequence Graph system.</p>
+<h2 id="common-issues"><a class="header" href="#common-issues">Common Issues</a></h2>
+<h3 id="1-database-re-downloading-on-every-run"><a class="header" href="#1-database-re-downloading-on-every-run">1. Database Re-downloading on Every Run</a></h3>
+<p><strong>Symptoms:</strong></p>
+<pre><code>No local CASG data found
+</code></pre>
+<p><strong>Causes:</strong></p>
+<ul>
+<li>CASG not initialized</li>
+<li>Manifest saved to wrong location</li>
+<li>Corrupt manifest file</li>
+</ul>
+<p><strong>Solutions:</strong></p>
+<pre><code class="language-bash"># Initialize CASG if needed
+talaria casg init
+
+# Check manifest exists
+ls ~/.talaria/databases/manifests/
+
+# Re-download to fix manifest
+talaria database download uniprot/swissprot
+</code></pre>
+<h3 id="2-database-download-failures"><a class="header" href="#2-database-download-failures">2. Database Download Failures</a></h3>
+<p><strong>Symptoms:</strong></p>
+<pre><code>Error: Failed to download database: Network error
+</code></pre>
+<p><strong>Causes:</strong></p>
+<ul>
+<li>Network connectivity issues</li>
+<li>Firewall blocking connections</li>
+<li>Source server is down</li>
+</ul>
+<p><strong>Solutions:</strong></p>
+<pre><code class="language-bash"># Retry download
+talaria database download uniprot -d swissprot
+
+# Use proxy if needed
+export HTTP_PROXY=http://proxy.example.com:8080
+talaria database download uniprot -d swissprot
+
+# Resume incomplete download
+talaria database download uniprot -d swissprot --resume
+</code></pre>
+<h3 id="2-chunk-storage-issues"><a class="header" href="#2-chunk-storage-issues">2. Chunk Storage Issues</a></h3>
+<p><strong>Symptoms:</strong></p>
+<pre><code>Error: Failed to store chunk: Disk full
+</code></pre>
+<p><strong>Causes:</strong></p>
+<ul>
+<li>Insufficient disk space</li>
+<li>Permission issues</li>
+<li>Corrupted chunk file</li>
+</ul>
+<p><strong>Solutions:</strong></p>
+<pre><code class="language-bash"># Check disk space
+df -h ~/.talaria/databases
+
+# Clean up old chunks manually
+find ~/.talaria/databases/chunks -type f -mtime +30 -delete
+
+# Check permissions
+ls -la ~/.talaria/databases/chunks/
+</code></pre>
+<h3 id="3-database-not-found"><a class="header" href="#3-database-not-found">3. Database Not Found</a></h3>
+<p><strong>Symptoms:</strong></p>
+<pre><code>Error: Database not found: uniprot/swissprot
+</code></pre>
+<p><strong>Causes:</strong></p>
+<ul>
+<li>Database not downloaded</li>
+<li>Incorrect path</li>
+<li>Wrong database name</li>
+</ul>
+<p><strong>Solutions:</strong></p>
+<pre><code class="language-bash"># List available databases
+talaria database list
+
+# Download the database
+talaria database download uniprot -d swissprot
+
+# Check database path
+ls ~/.talaria/databases/manifests/
+</code></pre>
+<h3 id="4-custom-database-issues"><a class="header" href="#4-custom-database-issues">4. Custom Database Issues</a></h3>
+<p><strong>Symptoms:</strong></p>
+<pre><code>Error: Failed to add custom database
+</code></pre>
+<p><strong>Causes:</strong></p>
+<ul>
+<li>Invalid FASTA format</li>
+<li>Database already exists</li>
+<li>CASG not initialized</li>
+</ul>
+<p><strong>Solutions:</strong></p>
+<pre><code class="language-bash"># Initialize CASG first
+talaria casg init
+
+# Replace existing database
+talaria database add -i sequences.fasta --source mylab --dataset proteins --replace
+
+# Validate FASTA format
+grep -c '^&gt;' sequences.fasta  # Count sequences
+
+# Check if database exists
+talaria database list
+</code></pre>
+<h3 id="5-storage-space-issues"><a class="header" href="#5-storage-space-issues">5. Storage Space Issues</a></h3>
+<p><strong>Symptoms:</strong></p>
+<pre><code>Error: No space left on device
+Warning: Storage usage at 95%
+</code></pre>
+<p><strong>Causes:</strong></p>
+<ul>
+<li>Large databases downloaded</li>
+<li>Multiple database versions</li>
+<li>Insufficient disk space</li>
+</ul>
+<p><strong>Solutions:</strong></p>
+<pre><code class="language-bash"># Check storage usage
+talaria casg stats
+du -sh ~/.talaria/databases/
+
+# Remove unused databases manually
+rm -rf ~/.talaria/databases/chunks/[hash_prefix]/
+
+# Move storage to larger disk using symlink
+mv ~/.talaria/databases /data/casg
+ln -s /data/casg ~/.talaria/databases
+
+# Future: Garbage collection will be added
+# talaria casg gc  # Not yet implemented
+</code></pre>
+<h3 id="6-memory-issues-during-reduction"><a class="header" href="#6-memory-issues-during-reduction">6. Memory Issues During Reduction</a></h3>
+<p><strong>Symptoms:</strong></p>
+<pre><code>Error: Out of memory during reduction
+Killed (OOM)
+</code></pre>
+<p><strong>Causes:</strong></p>
+<ul>
+<li>Large database</li>
+<li>Loading entire database in memory</li>
+<li>Insufficient RAM</li>
+</ul>
+<p><strong>Solutions:</strong></p>
+<pre><code class="language-bash"># Reduce memory usage
+export TALARIA_MAX_MEMORY=8G
+talaria reduce -d ncbi/nr -o reduced.fasta -r 0.3
+
+# Process smaller database
+talaria reduce -d uniprot/swissprot -o reduced.fasta -r 0.3
+
+# Use file-based reduction instead of CASG
+talaria reduce -i sequences.fasta -o reduced.fasta -r 0.3
+</code></pre>
+<h3 id="7-slow-performance"><a class="header" href="#7-slow-performance">7. Slow Performance</a></h3>
+<p><strong>Symptoms:</strong></p>
+<ul>
+<li>Downloads taking too long</li>
+<li>Assembly is slow</li>
+<li>Verification takes hours</li>
+</ul>
+<p><strong>Solutions:</strong></p>
+<pre><code class="language-bash"># Increase parallel downloads
+export TALARIA_PARALLEL_DOWNLOADS=10
+talaria database update ncbi/nr --use-casg --download
+
+# Use faster compression
+talaria casg config --compression lz4
+
+# Skip verification during assembly (faster but less safe)
+talaria casg assemble uniprot/swissprot --no-verify -o output.fasta
+
+# Enable chunk caching
+export TALARIA_CACHE_SIZE=4G
+talaria casg assemble ncbi/nr -o nr.fasta
+
+# Use SSD for chunk storage
+ln -s /ssd/casg ~/.talaria/databases
+</code></pre>
+<h3 id="8-manifest-issues"><a class="header" href="#8-manifest-issues">8. Manifest Issues</a></h3>
+<p><strong>Symptoms:</strong></p>
+<pre><code>Error: Invalid manifest format
+Warning: Manifest not found
+</code></pre>
+<p><strong>Causes:</strong></p>
+<ul>
+<li>Corrupted manifest file</li>
+<li>Missing manifest</li>
+<li>Wrong manifest location</li>
+</ul>
+<p><strong>Solutions:</strong></p>
+<pre><code class="language-bash"># Check manifest location (should be database-specific)
+ls ~/.talaria/databases/manifests/
+# Should see: uniprot-swissprot.json, ncbi-nr.json, etc.
+
+# Re-download database to fix manifest
+talaria database download uniprot -d swissprot
+
+# Check manifest format
+cat ~/.talaria/databases/manifests/uniprot-swissprot.json | python -m json.tool | head -20
+</code></pre>
+<h3 id="9-list-sequences-issues"><a class="header" href="#9-list-sequences-issues">9. List Sequences Issues</a></h3>
+<p><strong>Symptoms:</strong></p>
+<pre><code>Error: Failed to list sequences
+</code></pre>
+<p><strong>Causes:</strong></p>
+<ul>
+<li>Database not downloaded</li>
+<li>Corrupted chunks</li>
+<li>Invalid format specified</li>
+</ul>
+<p><strong>Solutions:</strong></p>
+<pre><code class="language-bash"># Verify database exists
+talaria database list
+
+# Try different output format
+talaria database list-sequences uniprot/swissprot --format text
+
+# Limit output
+talaria database list-sequences uniprot/swissprot --limit 10
+
+# Output only IDs
+talaria database list-sequences uniprot/swissprot --ids-only
+</code></pre>
+<h3 id="10-concurrent-access-issues"><a class="header" href="#10-concurrent-access-issues">10. Concurrent Access Issues</a></h3>
+<p><strong>Symptoms:</strong></p>
+<pre><code>Error: Lock file exists: ~/.talaria/databases/.lock
+Warning: Another process is accessing the repository
+</code></pre>
+<p><strong>Causes:</strong></p>
+<ul>
+<li>Multiple processes</li>
+<li>Stale lock file</li>
+<li>Crashed process</li>
+</ul>
+<p><strong>Solutions:</strong></p>
+<pre><code class="language-bash"># Check for running processes
+ps aux | grep talaria
+
+# Remove stale lock (if no other processes)
+rm ~/.talaria/databases/.lock
+
+# Use read-only mode
+talaria casg assemble uniprot/swissprot --read-only -o output.fasta
+
+# Wait for lock
+talaria casg assemble uniprot/swissprot --wait-lock -o output.fasta
+</code></pre>
+<h3 id="11-future-cloud-storage-support"><a class="header" href="#11-future-cloud-storage-support">11. Future: Cloud Storage Support</a></h3>
+<p><strong>Note</strong>: Cloud storage backends are planned for future releases. Currently, CASG operates with local storage only.</p>
+<p>When implemented, cloud storage will support:</p>
+<ul>
+<li>AWS S3</li>
+<li>Google Cloud Storage</li>
+<li>Azure Blob Storage</li>
+<li>S3-compatible storage (MinIO, Ceph)</li>
+</ul>
+<p>Planned environment variables:</p>
+<pre><code class="language-bash"># Future: Cloud manifest server
+export TALARIA_MANIFEST_SERVER=s3://bucket/manifests
+export TALARIA_CHUNK_SERVER=https://cdn.example.com/chunks
+</code></pre>
+<h2 id="debugging-commands"><a class="header" href="#debugging-commands">Debugging Commands</a></h2>
+<h3 id="enable-debug-logging"><a class="header" href="#enable-debug-logging">Enable Debug Logging</a></h3>
+<pre><code class="language-bash"># Verbose output
+export RUST_LOG=talaria::casg=debug
+talaria database download uniprot -d swissprot
+
+# Trace-level logging
+export RUST_LOG=talaria::casg=trace
+
+# Log to file
+export RUST_LOG=talaria::casg=debug
+talaria database download uniprot -d swissprot 2&gt; casg_debug.log
+</code></pre>
+<h3 id="check-system-status"><a class="header" href="#check-system-status">Check System Status</a></h3>
+<pre><code class="language-bash"># Check CASG repository statistics
+talaria casg stats
+
+# List databases
+talaria database list
+
+# Check specific database
+talaria database info uniprot/swissprot
+</code></pre>
+<h3 id="manual-recovery"><a class="header" href="#manual-recovery">Manual Recovery</a></h3>
+<pre><code class="language-bash"># Backup current state
+tar -czf casg_backup.tar.gz ~/.talaria/databases/
+
+# Manual reset (remove and reinitialize)
+rm -rf ~/.talaria/databases
+talaria casg init
+
+# Restore from backup
+tar -xzf casg_backup.tar.gz -C ~/
+</code></pre>
+<h2 id="performance-tuning"><a class="header" href="#performance-tuning">Performance Tuning</a></h2>
+<h3 id="current-configuration-options"><a class="header" href="#current-configuration-options">Current Configuration Options</a></h3>
+<pre><code class="language-bash"># Use more threads for parallel processing
+talaria database download uniprot -d swissprot -j 16
+
+# Move CASG storage to faster disk
+mv ~/.talaria/databases /fast/ssd/casg
+ln -s /fast/ssd/casg ~/.talaria/databases
+</code></pre>
+<h3 id="future-configuration-support"><a class="header" href="#future-configuration-support">Future Configuration Support</a></h3>
+<p>Configuration file support is planned for future releases:</p>
+<pre><code class="language-toml"># Future: ~/.talaria/config.toml
+[casg]
+compression = "zstd"
+compression_level = 3
+parallel_downloads = 8
+</code></pre>
+<h2 id="common-error-messages"><a class="header" href="#common-error-messages">Common Error Messages</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Error</th><th>Meaning</th><th>Solution</th></tr></thead><tbody>
+<tr><td><code>No local CASG data found</code></td><td>Manifest not found</td><td>Re-download database</td></tr>
+<tr><td><code>ChunkNotFound</code></td><td>Missing chunk in storage</td><td>Re-download database</td></tr>
+<tr><td><code>VerificationFailed</code></td><td>Hash mismatch</td><td>Re-download database</td></tr>
+<tr><td><code>NetworkTimeout</code></td><td>Download timeout</td><td>Retry with <code>--resume</code></td></tr>
+<tr><td><code>StorageFull</code></td><td>Disk space exhausted</td><td>Free space or move storage</td></tr>
+<tr><td><code>PermissionDenied</code></td><td>File permissions issue</td><td>Check <code>~/.talaria/databases/</code> permissions</td></tr>
+<tr><td><code>Database already exists</code></td><td>Custom database exists</td><td>Use <code>--replace</code> flag</td></tr>
+</tbody></table>
+</div>
+<h2 id="getting-help"><a class="header" href="#getting-help">Getting Help</a></h2>
+<pre><code class="language-bash"># Built-in help
+talaria --help
+talaria casg --help
+talaria database --help
+
+# Check version
+talaria --version
+
+# View statistics
+talaria casg stats
+
+# List available databases
+talaria database list
+</code></pre>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="overview.html">CASG Overview</a> - Understanding CASG concepts</li>
+<li><a href="architecture.html">Architecture</a> - System design details</li>
+<li><a href="api-reference.html">API Reference</a> - Programming interface</li>
+<li><a href="../api/cli-reference.html#casg">CLI Reference</a> - Command-line tools</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../casg/api-reference.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../workflows/lambda-workflow.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../casg/api-reference.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../workflows/lambda-workflow.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../mermaid.min.js"></script>
+        <script src="../mermaid-init.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

@@ -54,8 +54,35 @@ impl LambdaAligner {
 
     /// Find taxonomy files in the database directory
     fn find_taxonomy_files() -> (Option<PathBuf>, Option<PathBuf>) {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/brett".to_string());
-        let db_base = PathBuf::from(&home).join(".talaria/databases/data");
+        use crate::core::paths;
+
+        // First check CASG location for taxonomy
+        let casg_base = paths::talaria_casg_dir();
+        let casg_taxonomy_dir = casg_base.join("taxonomy/taxdump");
+
+        // Check if CASG has taxonomy files
+        if casg_taxonomy_dir.join("nodes.dmp").exists() &&
+           casg_taxonomy_dir.join("names.dmp").exists() {
+            // Check for idmapping support in CASG
+            let casg_taxonomy_base = casg_base.join("taxonomy");
+
+            // Look for UniProt idmapping in CASG
+            let uniprot_idmap = casg_taxonomy_base.join("uniprot_idmapping.dat.gz");
+            let ncbi_idmap = casg_taxonomy_base.join("prot.accession2taxid.gz");
+
+            let idmap_path = if uniprot_idmap.exists() {
+                Some(uniprot_idmap)
+            } else if ncbi_idmap.exists() {
+                Some(ncbi_idmap)
+            } else {
+                None
+            };
+
+            return (idmap_path, Some(casg_taxonomy_dir));
+        }
+
+        // Fall back to old database location
+        let db_base = paths::talaria_databases_dir();
 
         // Look for UniProt idmapping
         let acc_tax_map = Self::find_latest_file(&db_base.join("uniprot/idmapping"), "idmapping.dat.gz");

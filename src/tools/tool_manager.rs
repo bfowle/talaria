@@ -28,9 +28,8 @@ pub struct ToolManager {
 impl ToolManager {
     /// Create a new tool manager with the default tools directory
     pub fn new() -> Result<Self> {
-        let home = dirs::home_dir()
-            .context("Could not determine home directory")?;
-        let tools_dir = home.join(".talaria").join("tools");
+        use crate::core::paths;
+        let tools_dir = paths::talaria_tools_dir();
         
         Ok(Self {
             tools_dir,
@@ -353,7 +352,7 @@ impl ToolManager {
         // Set as current version
         self.set_current_version(Tool::Lambda, &version)?;
 
-        println!("✅ Successfully installed LAMBDA {}", version);
+        println!("✓ Successfully installed LAMBDA {}", version);
         Ok(())
     }
     

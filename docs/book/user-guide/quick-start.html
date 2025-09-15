@@ -197,252 +197,145 @@
                 <div id="content" class="content">
                     <main>
                         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
-<h1 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h1>
-<p>Get up and running with Talaria in minutes!</p>
-<h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
-<pre><code class="language-bash"># Quick install via cargo
+<h1 id="quick-start---3-minutes-to-success"><a class="header" href="#quick-start---3-minutes-to-success">Quick Start - 3 Minutes to Success</a></h1>
+<p>Get Talaria running and see results immediately. No complex setup, just dive right in!</p>
+<h2 id="install-30-seconds"><a class="header" href="#install-30-seconds">Install (30 seconds)</a></h2>
+<pre><code class="language-bash"># From source (recommended)
+cargo build --release
+./target/release/talaria --version
+
+# Or install globally
 cargo install talaria
-
-# Or download pre-built binary
-curl -L https://github.com/Andromeda-Tech/talaria/releases/latest/download/talaria-$(uname -s)-$(uname -m) -o talaria
-chmod +x talaria
-sudo mv talaria /usr/local/bin/
 </code></pre>
-<h2 id="your-first-reduction"><a class="header" href="#your-first-reduction">Your First Reduction</a></h2>
-<h3 id="1-download-sample-data"><a class="header" href="#1-download-sample-data">1. Download Sample Data</a></h3>
-<pre><code class="language-bash"># Download a small UniProt dataset
-talaria download --database uniprot --dataset swissprot --output .
+<h2 id="dive-right-in-25-minutes"><a class="header" href="#dive-right-in-25-minutes">Dive Right In (2.5 minutes)</a></h2>
+<pre><code class="language-bash"># 1. One-time setup (5 seconds)
+talaria casg init
 
-# Or use the interactive mode
-talaria interactive
-# Select: Download databases → UniProt → SwissProt
-</code></pre>
-<h3 id="2-reduce-the-database"><a class="header" href="#2-reduce-the-database">2. Reduce the Database</a></h3>
-<pre><code class="language-bash"># Basic reduction for LAMBDA aligner
-talaria reduce \
-    -i uniprot_sprot.fasta \
-    -o sprot_reduced.fasta \
-    --aligner lambda
+# 2. Download SwissProt database (small, ~200MB, perfect for testing)
+talaria database download uniprot -d swissprot
 
-# View statistics
-talaria stats sprot_reduced.fasta
-</code></pre>
-<h3 id="3-compare-results"><a class="header" href="#3-compare-results">3. Compare Results</a></h3>
-<pre><code class="language-bash"># Original size
-ls -lh uniprot_sprot.fasta
+# 3. Reduce it to 30% size
+talaria reduce uniprot/swissprot -r 0.3 -o reduced.fasta
 
-# Reduced size
-ls -lh sprot_reduced.fasta
-
-# Validate quality
-talaria validate \
-    --original uniprot_sprot.fasta \
-    --reduced sprot_reduced.fasta
+# Done! You've just reduced a database. Use it with any aligner:
+lambda3 mkindexp -d reduced.fasta
 </code></pre>
-<h2 id="interactive-mode"><a class="header" href="#interactive-mode">Interactive Mode</a></h2>
-<p>Talaria features a rich interactive CLI similar to Claude Code:</p>
-<pre><code class="language-bash"># Launch interactive mode
-talaria interactive
-</code></pre>
-<p>Navigate with:</p>
+<h2 id="what-just-happened"><a class="header" href="#what-just-happened">What Just Happened?</a></h2>
 <ul>
-<li><code>↑/↓</code> or <code>j/k</code> - Move selection</li>
-<li><code>Enter</code> - Select option</li>
-<li><code>Tab</code> - Switch tabs</li>
-<li><code>Esc</code> or <code>q</code> - Exit</li>
+<li><strong>CASG initialized</strong>: Smart storage system that only downloads changes in the future</li>
+<li><strong>Downloaded SwissProt</strong>: In chunks, ready for instant updates</li>
+<li><strong>Reduced to 30%</strong>: Maintains search sensitivity while shrinking 70%</li>
+<li><strong>Ready to use</strong>: Works with LAMBDA, BLAST, Diamond, MMseqs2, etc.</li>
 </ul>
-<h2 id="common-workflows"><a class="header" href="#common-workflows">Common Workflows</a></h2>
-<h3 id="for-blast-users"><a class="header" href="#for-blast-users">For BLAST Users</a></h3>
-<pre><code class="language-bash"># Optimize for BLAST with taxonomy preservation
-talaria reduce \
-    -i nr.fasta \
-    -o nr_reduced.fasta \
-    --aligner blast \
-    --preserve-taxonomy \
-    --clustering-threshold 0.95
-    
-# Build BLAST database
-makeblastdb -in nr_reduced.fasta -dbtype prot -out nr_reduced
+<h2 id="next-real-workflows"><a class="header" href="#next-real-workflows">Next: Real Workflows</a></h2>
+<h3 id="for-lambda-users"><a class="header" href="#for-lambda-users">For LAMBDA Users</a></h3>
+<pre><code class="language-bash">talaria reduce uniprot/swissprot -r 0.3 -a lambda -o lambda_db.fasta
+lambda3 mkindexp -d lambda_db.fasta
+lambda3 searchp -q queries.fasta -d lambda_db.fasta
 </code></pre>
-<h3 id="for-diamond-users"><a class="header" href="#for-diamond-users">For Diamond Users</a></h3>
-<pre><code class="language-bash"># Diamond-optimized reduction
-talaria reduce \
-    -i uniprot.fasta \
-    -o uniprot_diamond.fasta \
-    --aligner diamond \
-    --seed-coverage 0.9
-    
-# Build Diamond database
-diamond makedb --in uniprot_diamond.fasta --db uniprot_diamond
+<h3 id="for-large-databases-ncbi-nr"><a class="header" href="#for-large-databases-ncbi-nr">For Large Databases (NCBI nr)</a></h3>
+<pre><code class="language-bash"># Download nr (warning: ~100GB, but only downloaded once!)
+talaria database download ncbi -d nr
+
+# Later, check for updates (same command, only downloads changes ~1GB)
+talaria database download ncbi -d nr
+
+# Reduce for your aligner
+talaria reduce ncbi/nr -r 0.25 -a diamond -o nr_reduced.fasta
 </code></pre>
-<h3 id="for-kraken-users"><a class="header" href="#for-kraken-users">For Kraken Users</a></h3>
-<pre><code class="language-bash"># Taxonomic-aware reduction for Kraken
-talaria reduce \
-    -i bacterial_genomes.fasta \
-    -o bacteria_kraken.fasta \
-    --aligner kraken \
-    --preserve-taxonomy \
-    --min-taxa-per-cluster 5
-    
-# Build Kraken database
-kraken2-build --add-to-library bacteria_kraken.fasta --db kraken_db
+<h3 id="custom-databases"><a class="header" href="#custom-databases">Custom Databases</a></h3>
+<pre><code class="language-bash">talaria database add -i mysequences.fasta --source mylab --dataset proteins
+talaria reduce mylab/proteins -r 0.3 -o my_reduced.fasta
 </code></pre>
-<h2 id="configuration-file"><a class="header" href="#configuration-file">Configuration File</a></h2>
-<p>Create a <code>talaria.toml</code> for persistent settings:</p>
-<pre><code class="language-toml"># ~/.config/talaria/config.toml
-[general]
-threads = 8
-verbose = true
-log_level = "info"
+<h2 id="common-commands"><a class="header" href="#common-commands">Common Commands</a></h2>
+<h3 id="view-what-you-have"><a class="header" href="#view-what-you-have">View What You Have</a></h3>
+<pre><code class="language-bash"># List databases
+talaria database list
 
-[reduction]
-default_aligner = "lambda"
-clustering_threshold = 0.9
-min_sequence_length = 50
-preserve_taxonomy = true
+# View database info
+talaria database info uniprot/swissprot
 
-[performance]
-memory_limit_gb = 16
-use_mmap = true
-chunk_size_mb = 100
+# Check CASG storage
+talaria casg stats
 
-[output]
-compression = "gzip"
-format = "fasta"
+# List sequences
+talaria database list-sequences uniprot/swissprot --limit 10
 </code></pre>
-<p>Use with:</p>
-<pre><code class="language-bash">talaria reduce -i input.fasta -o output.fasta --config ~/.config/talaria/config.toml
+<h3 id="different-aligners-need-different-reductions"><a class="header" href="#different-aligners-need-different-reductions">Different Aligners Need Different Reductions</a></h3>
+<pre><code class="language-bash"># BLAST likes 30% reduction
+talaria reduce uniprot/swissprot -r 0.3 -a blast -o blast_db.fasta
+
+# Diamond can handle 25%
+talaria reduce uniprot/swissprot -r 0.25 -a diamond -o diamond_db.fasta
+
+# MMseqs2 works well at 40%
+talaria reduce uniprot/swissprot -r 0.4 -a mmseqs2 -o mmseqs_db.fasta
 </code></pre>
-<h2 id="real-world-example"><a class="header" href="#real-world-example">Real-World Example</a></h2>
-<h3 id="reducing-uniref90-for-mmseqs2"><a class="header" href="#reducing-uniref90-for-mmseqs2">Reducing UniRef90 for MMseqs2</a></h3>
-<pre><code class="language-bash"># Download UniRef90 (warning: ~15GB compressed)
-talaria download --database uniprot --dataset uniref90
-
-# Reduce with MMseqs2 optimization
-talaria reduce \
-    -i uniref90.fasta \
-    -o uniref90_mmseqs.fasta \
-    --aligner mmseqs2 \
-    --clustering-steps 0.9,0.7,0.5 \
-    --profile-mode \
-    --threads 16 \
-    --verbose
-
-# Statistics
-echo "Original:"
-talaria stats uniref90.fasta
-
-echo "Reduced:"
-talaria stats uniref90_mmseqs.fasta
-
-# Build MMseqs2 database
-mmseqs createdb uniref90_mmseqs.fasta uniref90_mmseqs_db
-mmseqs createindex uniref90_mmseqs_db tmp
-</code></pre>
-<p>Expected results:</p>
+<h2 id="tips-for-success"><a class="header" href="#tips-for-success">Tips for Success</a></h2>
+<h3 id="start-small"><a class="header" href="#start-small">Start Small</a></h3>
 <ul>
-<li><strong>Size reduction</strong>: 40-60%</li>
-<li><strong>Speed improvement</strong>: 2-3x faster searches</li>
-<li><strong>Quality</strong>: &gt;95% sensitivity retained</li>
+<li>Use SwissProt (~200MB) for testing, not nr (~100GB)</li>
+<li>Try 30% reduction first, adjust based on results</li>
+<li>Use <code>-a &lt;aligner&gt;</code> to optimize for your specific tool</li>
 </ul>
-<h2 id="tips-for-best-results"><a class="header" href="#tips-for-best-results">Tips for Best Results</a></h2>
-<h3 id="1-choose-the-right-aligner-mode"><a class="header" href="#1-choose-the-right-aligner-mode">1. Choose the Right Aligner Mode</a></h3>
+<h3 id="storage-location"><a class="header" href="#storage-location">Storage Location</a></h3>
+<pre><code class="language-bash"># Default location
+~/.talaria/databases/
+
+# Change it using environment variables
+export TALARIA_DATABASES_DIR=/fast/ssd/talaria-databases
+talaria casg init
+</code></pre>
+<h3 id="use-more-cores"><a class="header" href="#use-more-cores">Use More Cores</a></h3>
+<pre><code class="language-bash"># Use 16 threads
+talaria -j 16 reduce ncbi/nr -r 0.3 -o output.fasta
+</code></pre>
+<h2 id="why-casg-the-update-problem-solved"><a class="header" href="#why-casg-the-update-problem-solved">Why CASG? The Update Problem Solved</a></h2>
+<p>Traditional approach downloads entire databases repeatedly:</p>
 <ul>
-<li><code>lambda</code> - Fast protein searches</li>
-<li><code>blast</code> - Traditional NCBI BLAST</li>
-<li><code>diamond</code> - Ultra-fast protein alignment</li>
-<li><code>mmseqs2</code> - Sensitive sequence searching</li>
-<li><code>kraken</code> - Taxonomic classification</li>
-<li><code>generic</code> - General-purpose reduction</li>
+<li><strong>Day 1</strong>: Download 100GB nr database</li>
+<li><strong>Day 2</strong>: Download 100GB again (99.9% unchanged!)</li>
+<li><strong>Year</strong>: 36.5TB bandwidth wasted</li>
 </ul>
-<h3 id="2-adjust-parameters"><a class="header" href="#2-adjust-parameters">2. Adjust Parameters</a></h3>
-<pre><code class="language-bash"># More aggressive reduction (faster, less sensitive)
---clustering-threshold 0.8 --min-identity 0.7
-
-# Conservative reduction (slower, more sensitive)
---clustering-threshold 0.95 --min-identity 0.9
-</code></pre>
-<h3 id="3-memory-management"><a class="header" href="#3-memory-management">3. Memory Management</a></h3>
-<pre><code class="language-bash"># For large files (&gt;50GB)
---optimize-memory --chunk-size 1000
-
-# For many small files
---batch-mode --parallel
-</code></pre>
-<h3 id="4-validation"><a class="header" href="#4-validation">4. Validation</a></h3>
-<p>Always validate your reduced database:</p>
-<pre><code class="language-bash">talaria validate \
-    --original original.fasta \
-    --reduced reduced.fasta \
-    --sample-size 1000
-</code></pre>
-<h2 id="monitoring-progress"><a class="header" href="#monitoring-progress">Monitoring Progress</a></h2>
-<p>Talaria provides rich progress information:</p>
-<pre><code class="language-bash"># Verbose output with timing
-talaria reduce -i input.fasta -o output.fasta -vv
-
-# JSON output for scripting
-talaria reduce -i input.fasta -o output.fasta --output-format json
-
-# Real-time statistics
-talaria reduce -i input.fasta -o output.fasta --stats-interval 10
-</code></pre>
-<h2 id="integration-examples"><a class="header" href="#integration-examples">Integration Examples</a></h2>
-<h3 id="snakemake-pipeline"><a class="header" href="#snakemake-pipeline">Snakemake Pipeline</a></h3>
-<pre><code class="language-python">rule reduce_database:
-    input:
-        "data/{database}.fasta"
-    output:
-        "reduced/{database}_reduced.fasta"
-    params:
-        aligner="lambda",
-        threads=8
-    shell:
-        """
-        talaria reduce \
-            -i {input} \
-            -o {output} \
-            --aligner {params.aligner} \
-            --threads {params.threads}
-        """
-</code></pre>
-<h3 id="nextflow-pipeline"><a class="header" href="#nextflow-pipeline">Nextflow Pipeline</a></h3>
-<pre><code class="language-groovy">process reduceDatabase {
-    input:
-    path fasta_file
-    
-    output:
-    path "${fasta_file.baseName}_reduced.fasta"
-    
-    script:
-    """
-    talaria reduce \
-        -i ${fasta_file} \
-        -o ${fasta_file.baseName}_reduced.fasta \
-        --aligner lambda \
-        --threads ${task.cpus}
-    """
-}
-</code></pre>
-<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>CAGS approach:</p>
 <ul>
-<li>Explore <a href="basic-usage.html">Basic Usage</a> for detailed commands</li>
-<li>Read about <a href="../workflows/">specific workflows</a> for your aligner</li>
-<li>Learn about <a href="configuration.html">configuration options</a></li>
-<li>Understand the <a href="../algorithms/">algorithms</a> behind Talaria</li>
+<li><strong>Day 1</strong>: Download 100GB (once)</li>
+<li><strong>Day 2</strong>: Download 1GB of changes</li>
+<li><strong>Year</strong>: ~100GB total (365× less!)</li>
+</ul>
+<pre><code class="language-bash"># This command is smart:
+talaria database download ncbi -d nr
+# First run: Downloads everything
+# Future runs: Only downloads changes!
+</code></pre>
+<h2 id="full-example-swissprot-to-lambda"><a class="header" href="#full-example-swissprot-to-lambda">Full Example: SwissProt to LAMBDA</a></h2>
+<pre><code class="language-bash"># Complete workflow in 5 commands
+talaria casg init
+talaria database download uniprot -d swissprot
+talaria reduce uniprot/swissprot -r 0.3 -a lambda -o lambda_db.fasta
+lambda3 mkindexp -d lambda_db.fasta
+lambda3 searchp -q your_queries.fasta -d lambda_db.fasta -o results.m8
+
+# Tomorrow, update with one command:
+talaria database download uniprot -d swissprot  # Only downloads changes!
+</code></pre>
+<h2 id="learn-more"><a class="header" href="#learn-more">Learn More</a></h2>
+<ul>
+<li><a href="basic-usage.html">Basic Usage Guide</a> - Detailed explanations</li>
+<li><a href="../api/cli-reference.html">CLI Reference</a> - All commands and options</li>
+<li><a href="../casg/troubleshooting.html">Troubleshooting</a> - Common issues</li>
 </ul>
 <h2 id="getting-help"><a class="header" href="#getting-help">Getting Help</a></h2>
-<pre><code class="language-bash"># Built-in help
-talaria --help
+<pre><code class="language-bash"># View help for any command
+talaria help
 talaria reduce --help
+talaria database --help
 
-# Interactive help
-talaria interactive
-# Press 'h' for help
+# Check version
+talaria --version
 
-# Online resources
-# Documentation: https://andromeda-tech.github.io/talaria/
-# Issues: https://github.com/Andromeda-Tech/talaria/issues
+# Enable verbose output for debugging
+talaria -vv reduce uniprot/swissprot --profile debug
 </code></pre>
 
                     </main>
@@ -453,7 +346,7 @@ talaria interactive
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../user-guide/installation.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../user-guide/cheatsheet.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -467,7 +360,7 @@ talaria interactive
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../user-guide/installation.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../user-guide/cheatsheet.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

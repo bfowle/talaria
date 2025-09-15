@@ -38,20 +38,20 @@ pub fn run(args: InstallArgs) -> anyhow::Result<()> {
             })?;
 
             if let Some(new_ver) = new_version {
-                println!("🆕 New version available: {}", new_ver);
+                println!("[NEW] New version available: {}", new_ver);
                 println!("Upgrading {} from {} to {}...", tool, current, new_ver);
                 // Continue with installation of new version
             } else {
-                println!("✅ {} is up to date (version {})", tool, current);
+                println!("✓ {} is up to date (version {})", tool, current);
                 return Ok(());
             }
         } else {
-            println!("⚠ {} is not installed, installing latest version...", tool);
+            println!("[!] {} is not installed, installing latest version...", tool);
         }
     } else if !args.force && manager.is_installed(tool) {
         // Check if already installed (when not upgrading)
         if let Some(version) = manager.get_current_version(tool)? {
-            println!("✅ {} is already installed (version {})", tool, version);
+            println!("✓ {} is already installed (version {})", tool, version);
             println!("Use --force to reinstall or --upgrade to check for updates");
             return Ok(());
         }

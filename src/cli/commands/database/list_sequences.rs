@@ -1,237 +1,191 @@
 use clap::Args;
+use std::path::PathBuf;
 
 #[derive(Args)]
 pub struct ListSequencesArgs {
-    /// Database reduction to list sequences from (e.g., "uniprot/swissprot:blast-30")
-    /// Profile is required to find the specific reduction
-    #[arg(value_name = "DATABASE:PROFILE")]
+    /// Database reference (e.g., "uniprot/swissprot")
     pub database: String,
-    
-    /// Search for specific sequence IDs (partial match)
+
+    /// Show only sequence IDs (no descriptions)
+    #[arg(long)]
+    pub ids_only: bool,
+
+    /// Show full sequence data
+    #[arg(long)]
+    pub full: bool,
+
+    /// Filter by sequence ID pattern (supports wildcards)
+    #[arg(long)]
+    pub filter: Option<String>,
+
+    /// Limit number of sequences shown
+    #[arg(long, default_value = "100")]
+    pub limit: usize,
+
+    /// Output file (if not specified, prints to stdout)
     #[arg(short, long)]
-    pub search: Option<String>,
-    
-    /// Output format (text, json, csv)
-    #[arg(short = 'f', long, default_value = "text")]
-    pub format: String,
-    
-    /// Show only references (not delta children)
-    #[arg(long)]
-    pub references_only: bool,
-    
-    /// Show only delta children (not references)
-    #[arg(long)]
-    pub deltas_only: bool,
-    
-    /// Include sequence lengths
-    #[arg(long)]
-    pub show_lengths: bool,
-    
-    /// Include taxonomic IDs if available
-    #[arg(long)]
-    pub show_taxon: bool,
+    pub output: Option<PathBuf>,
+
+    /// Output format
+    #[arg(long, value_enum, default_value = "text")]
+    pub format: OutputFormat,
+}
+
+#[derive(Clone, Debug, clap::ValueEnum)]
+pub enum OutputFormat {
+    Text,
+    Fasta,
+    Json,
+    Tsv,
 }
 
 pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
     use crate::core::database_manager::DatabaseManager;
-    use crate::core::config::load_config;
-    use crate::bio::fasta::parse_fasta;
-    use crate::storage::metadata::load_metadata;
-    use indicatif::{ProgressBar, ProgressStyle};
-    
-    let pb = ProgressBar::new_spinner();
-    pb.set_style(
-        ProgressStyle::default_spinner()
-            .template("{spinner:.green} {msg}")
-            .unwrap()
-    );
-    
-    // Parse database reference with profile
-    let (base_ref, profile) = parse_database_with_profile(&args.database)?;
-    
-    let profile = profile.ok_or_else(|| anyhow::anyhow!(
-        "Reduction profile required. Use format: 'database:profile' (e.g., 'uniprot/swissprot:blast-30')"
-    ))?;
-    
-    // Load config and database manager
-    let config = load_config("talaria.toml").unwrap_or_default();
-    let db_manager = DatabaseManager::new(config.database.database_dir)?;
-    
-    // Parse and resolve the database reference
-    let db_ref = db_manager.parse_reference(&base_ref)?;
-    let db_dir = db_manager.resolve_reference(&db_ref)?;
-    
-    // Find reduced directory
-    let reduced_dir = db_dir.join("reduced").join(&profile);
-    if !reduced_dir.exists() {
-        anyhow::bail!("Reduction profile '{}' not found for {}/{}", 
-                      profile, db_ref.source, db_ref.dataset);
-    }
-    
-    pb.set_message(format!("Loading sequences from {}/{}:{}", 
-                          db_ref.source, db_ref.dataset, profile));
-    
-    // Load reference sequences from FASTA
-    let mut sequences = Vec::new();
-    
-    if !args.deltas_only {
-        let fasta_path = db_manager.find_fasta_in_dir(&reduced_dir)?;
-        pb.set_message("Loading reference sequences...");
-        let references = parse_fasta(&fasta_path)?;
-        
-        for seq in references {
-            let entry = SequenceEntry {
-                id: seq.id.clone(),
-                seq_type: "reference".to_string(),
-                length: if args.show_lengths { Some(seq.sequence.len()) } else { None },
-                taxon_id: if args.show_taxon { seq.taxon_id } else { None },
-            };
-            sequences.push(entry);
-        }
-        pb.set_message(format!("Loaded {} reference sequences", sequences.len()));
-    }
-    
-    // Load delta child sequences
-    if !args.references_only {
-        let delta_path = find_delta_file(&reduced_dir)?;
-        pb.set_message("Loading delta sequences...");
-        let deltas = load_metadata(&delta_path)?;
-        
-        let delta_count = deltas.len();
-        for delta in deltas {
-            let entry = SequenceEntry {
-                id: delta.child_id.clone(),
-                seq_type: "delta".to_string(),
-                length: None, // We don't have length without reconstruction
-                taxon_id: if args.show_taxon { delta.taxon_id } else { None },
-            };
-            sequences.push(entry);
-        }
-        pb.set_message(format!("Loaded {} delta sequences", delta_count));
-    }
-    
-    // Apply search filter if specified
-    if let Some(search_term) = &args.search {
-        let search_lower = search_term.to_lowercase();
-        sequences.retain(|s| s.id.to_lowercase().contains(&search_lower));
-        pb.set_message(format!("Found {} matching sequences", sequences.len()));
-    }
-    
-    pb.finish_and_clear();
-    
-    // Output results
-    match args.format.as_str() {
-        "json" => {
-            let json = serde_json::to_string_pretty(&sequences)?;
-            println!("{}", json);
-        }
-        "csv" => {
-            println!("sequence_id,type{}{}", 
-                    if args.show_lengths { ",length" } else { "" },
-                    if args.show_taxon { ",taxon_id" } else { "" });
-            for seq in sequences {
-                print!("{},{}", seq.id, seq.seq_type);
-                if args.show_lengths {
-                    print!(",{}", seq.length.map_or("N/A".to_string(), |l| l.to_string()));
-                }
-                if args.show_taxon {
-                    print!(",{}", seq.taxon_id.map_or("N/A".to_string(), |t| t.to_string()));
-                }
-                println!();
-            }
-        }
-        _ => {
-            // Text format (default)
-            use comfy_table::{Table, presets::UTF8_FULL};
-            
-            let mut table = Table::new();
-            table.load_preset(UTF8_FULL);
-            
-            let mut headers = vec!["Sequence ID", "Type"];
-            if args.show_lengths {
-                headers.push("Length");
-            }
-            if args.show_taxon {
-                headers.push("Taxon ID");
-            }
-            table.set_header(headers);
-            
-            for seq in &sequences {
-                let mut row = vec![seq.id.clone(), seq.seq_type.clone()];
-                if args.show_lengths {
-                    row.push(seq.length.map_or("N/A".to_string(), |l| format!("{}", l)));
-                }
-                if args.show_taxon {
-                    row.push(seq.taxon_id.map_or("N/A".to_string(), |t| format!("{}", t)));
-                }
-                table.add_row(row);
-            }
-            
-            println!("\n{}", table);
-            
-            // Summary
-            let ref_count = sequences.iter().filter(|s| s.seq_type == "reference").count();
-            let delta_count = sequences.iter().filter(|s| s.seq_type == "delta").count();
-            
-            println!("\nSummary for {}/{}:{}", db_ref.source, db_ref.dataset, profile);
-            println!("  Reference sequences: {}", ref_count);
-            println!("  Delta sequences:     {}", delta_count);
-            println!("  Total sequences:     {}", sequences.len());
-            
-            if args.search.is_some() {
-                println!("\n(Filtered by search term: '{}')", args.search.unwrap());
-            }
-        }
-    }
-    
-    Ok(())
-}
+    use crate::casg::assembler::FastaAssembler;
+    use std::io::Write;
 
-#[derive(serde::Serialize)]
-struct SequenceEntry {
-    id: String,
-    #[serde(rename = "type")]
-    seq_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    length: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    taxon_id: Option<u32>,
-}
+    // Initialize database manager
+    use crate::core::paths;
+    let base_path = paths::talaria_databases_dir();
 
-/// Parse a database reference that may include a reduction profile
-fn parse_database_with_profile(reference: &str) -> anyhow::Result<(String, Option<String>)> {
-    if let Some(colon_idx) = reference.find(':') {
-        let base = &reference[..colon_idx];
-        let remainder = &reference[colon_idx + 1..];
-        
-        if let Some(at_idx) = remainder.find('@') {
-            let profile = &remainder[..at_idx];
-            let version = &remainder[at_idx..];
-            Ok((format!("{}{}", base, version), Some(profile.to_string())))
-        } else {
-            Ok((base.to_string(), Some(remainder.to_string())))
-        }
+    let manager = DatabaseManager::new(Some(base_path.to_string_lossy().to_string()))?;
+
+    // Parse database reference
+    let parts: Vec<&str> = args.database.split('/').collect();
+    if parts.len() != 2 {
+        anyhow::bail!("Invalid database reference. Use format: source/database (e.g., uniprot/swissprot)");
+    }
+
+    let source = parts[0];
+    let db_name = parts[1];
+
+    // Find the database manifest in the manifests directory
+    // Try both naming conventions
+    let manifest_name = format!("{}-{}.json", source, db_name);
+    let manifest_path = base_path.join("manifests").join(&manifest_name);
+
+    let manifest_path = if manifest_path.exists() {
+        manifest_path
     } else {
-        Ok((reference.to_string(), None))
-    }
-}
+        // Try alternative naming
+        let alt_manifest_path = base_path
+            .join("manifests")
+            .join(format!("{}_{}.json", source, db_name));
+        if alt_manifest_path.exists() {
+            alt_manifest_path
+        } else {
+            anyhow::bail!("Database not found: {}\nLooked for: {}\nand: {}",
+                args.database,
+                manifest_path.display(),
+                alt_manifest_path.display());
+        }
+    };
 
-/// Find a delta file in a directory
-fn find_delta_file(dir: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
-    use std::fs;
-    
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        
-        if path.is_file() {
-            if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                if name.contains(".deltas.") || name.ends_with(".deltas") || name.ends_with(".delta") {
-                    return Ok(path);
+    // Load manifest
+    let manifest = crate::casg::manifest::Manifest::load_file(&manifest_path)?;
+    let manifest_data = manifest.get_data()
+        .ok_or_else(|| anyhow::anyhow!("No manifest data found"))?;
+
+    eprintln!("\u{25cf} Loading sequences from {} (version {})", args.database, manifest_data.version);
+    eprintln!("  Total chunks: {}", manifest_data.chunk_index.len());
+
+    // Create assembler
+    let _assembler = FastaAssembler::new(manager.get_storage());
+
+    // Collect sequence references from chunks
+    let mut all_sequences = Vec::new();
+    let pb = crate::utils::progress::create_progress_bar(manifest_data.chunk_index.len() as u64, "Reading chunks");
+
+    let mut missing_chunks = 0;
+    for chunk_info in &manifest_data.chunk_index {
+        pb.inc(1);
+
+        // Load chunk
+        match manager.get_storage().get_chunk(&chunk_info.hash) {
+            Ok(chunk_data) => {
+            if let Ok(chunk) = serde_json::from_slice::<crate::casg::types::TaxonomyAwareChunk>(&chunk_data) {
+                // Apply filter if specified
+                let sequences: Vec<_> = if let Some(filter) = &args.filter {
+                    chunk.sequences.into_iter()
+                        .filter(|seq| seq.sequence_id.contains(filter))
+                        .collect()
+                } else {
+                    chunk.sequences
+                };
+
+                all_sequences.extend(sequences);
+
+                // Check limit
+                if all_sequences.len() >= args.limit {
+                    all_sequences.truncate(args.limit);
+                    break;
                 }
+            }
+            }
+            Err(_) => {
+                missing_chunks += 1;
+                // Continue processing other chunks
             }
         }
     }
-    
-    anyhow::bail!("No delta file found in directory: {}", dir.display())
+
+    if missing_chunks > 0 {
+        eprintln!("\n⚠ Warning: {} chunks referenced in manifest are not present on disk", missing_chunks);
+        eprintln!("  The database may need to be re-downloaded.");
+        eprintln!("  Run: talaria database download {}", args.database);
+    }
+
+    pb.finish_with_message(format!("Found {} sequences", all_sequences.len()));
+
+    // Format and output results
+    let output: Box<dyn Write> = if let Some(path) = &args.output {
+        Box::new(std::fs::File::create(path)?)
+    } else {
+        Box::new(std::io::stdout())
+    };
+
+    let mut writer = std::io::BufWriter::new(output);
+
+    match args.format {
+        OutputFormat::Text => {
+            for seq_ref in &all_sequences {
+                if args.ids_only {
+                    writeln!(writer, "{}", seq_ref.sequence_id)?;
+                } else if args.full {
+                    writeln!(writer, "ID: {}", seq_ref.sequence_id)?;
+                    writeln!(writer, "Chunk: {}", seq_ref.chunk_hash)?;
+                    writeln!(writer, "Offset: {}, Length: {}", seq_ref.offset, seq_ref.length)?;
+                    writeln!(writer, "---")?;
+                } else {
+                    writeln!(writer, "{}", seq_ref.sequence_id)?;
+                }
+            }
+        }
+        OutputFormat::Fasta => {
+            eprintln!("\u{25cf} Note: FASTA output requires assembling full sequences");
+            eprintln!("  This feature shows sequence headers only for now");
+            for seq_ref in &all_sequences {
+                writeln!(writer, ">{}", seq_ref.sequence_id)?;
+                writeln!(writer, "SEQUENCE_DATA_NOT_ASSEMBLED")?;
+            }
+        }
+        OutputFormat::Json => {
+            serde_json::to_writer_pretty(&mut writer, &all_sequences)?;
+            writeln!(writer)?;
+        }
+        OutputFormat::Tsv => {
+            writeln!(writer, "id\tchunk_hash\toffset\tlength")?;
+            for seq_ref in &all_sequences {
+                writeln!(writer, "{}\t{}\t{}\t{}", seq_ref.sequence_id, seq_ref.chunk_hash, seq_ref.offset, seq_ref.length)?;
+            }
+        }
+    }
+
+    writer.flush()?;
+
+    if args.output.is_some() {
+        eprintln!("\u{2713} Output written to {:?}", args.output.unwrap());
+    }
+
+    Ok(())
 }

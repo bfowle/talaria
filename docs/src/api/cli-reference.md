@@ -56,6 +56,184 @@ uniprot/swissprot@2024-01-01:blast-30  # Specific version's reduction
 
 ## Commands
 
+### database
+
+Manage biological sequence databases with CASG (Content-Addressed Sequence Graph) for efficient storage and updates.
+
+#### Usage
+```bash
+talaria database <SUBCOMMAND> [OPTIONS]
+```
+
+#### Subcommands
+
+##### database download
+
+Download a new database using CASG.
+
+```bash
+talaria database download <SOURCE> [OPTIONS]
+```
+
+**Arguments:**
+- `<SOURCE>`: Database source (e.g., "uniprot", "ncbi")
+
+**Options:**
+- `-d, --dataset <NAME>`: Dataset name (e.g., "swissprot", "nr")
+- `--taxonomy`: Download taxonomy data
+
+**Example:**
+```bash
+talaria database download uniprot -d swissprot
+```
+
+##### database update
+
+Check for and download database updates.
+
+```bash
+talaria database update <DATABASE> [OPTIONS]
+```
+
+**Arguments:**
+- `<DATABASE>`: Database reference (e.g., "uniprot/swissprot")
+
+**Options:**
+- `--download`: Download updates if available
+- `--force`: Force update even if recent
+
+**Example:**
+```bash
+talaria database update uniprot/swissprot --download
+```
+
+##### database list
+
+List downloaded databases.
+
+```bash
+talaria database list [OPTIONS]
+```
+
+**Options:**
+- `--detailed`: Show detailed information
+- `--all-versions`: Show all versions, not just current
+
+**Example:**
+```bash
+talaria database list
+```
+
+##### database add
+
+Add a custom FASTA file to CASG.
+
+```bash
+talaria database add [OPTIONS]
+```
+
+**Options:**
+- `--source <NAME>`: Source name for the database
+- `--dataset <NAME>`: Dataset name
+- `--input <PATH>`: Path to FASTA file
+- `--version <VERSION>`: Version string
+- `--description <TEXT>`: Database description
+- `--replace`: Replace existing database
+- `--copy`: Keep original file (don't move)
+
+**Example:**
+```bash
+talaria database add --source mylab --dataset proteins --input sequences.fasta
+```
+
+##### database list-sequences
+
+List sequences from a CASG database.
+
+```bash
+talaria database list-sequences <DATABASE> [OPTIONS]
+```
+
+**Arguments:**
+- `<DATABASE>`: Database reference (e.g., "uniprot/swissprot")
+
+**Options:**
+- `--format <FORMAT>`: Output format (text, json, tsv, fasta)
+- `--output <PATH>`: Output file path
+- `--limit <N>`: Maximum number of sequences
+- `--filter <TEXT>`: Filter sequences by ID
+- `--ids-only`: Output only sequence IDs
+- `--full`: Include all metadata
+
+**Example:**
+```bash
+talaria database list-sequences uniprot/swissprot --format json -o sequences.json
+```
+- `--aggressive`: Remove all unreferenced chunks
+
+**Example:**
+```bash
+talaria casg gc --dry-run
+```
+
+##### casg diff
+
+Compare two CASG database versions.
+
+```bash
+talaria casg diff <OLD> <NEW> [OPTIONS]
+```
+
+**Arguments:**
+- `<OLD>`: First database version
+- `<NEW>`: Second database version
+
+**Options:**
+- `--detailed`: Show chunk-level differences
+- `--output <FILE>`: Save diff to file
+
+**Example:**
+```bash
+talaria casg diff uniprot/swissprot@2024-01 uniprot/swissprot@2024-02
+```
+
+---
+
+### reduce
+
+Reduce biological sequence databases for optimal aligner performance.
+
+#### Usage
+```bash
+talaria reduce [OPTIONS]
+```
+
+**Options:**
+- `-i, --input <PATH>`: Input FASTA file or database reference
+- `-o, --output <PATH>`: Output FASTA file
+- `-d, --database <DB>`: Use CASG database as input
+- `-r, --reduction-ratio <RATIO>`: Target reduction ratio (0.0-1.0)
+- `-a, --target-aligner <ALIGNER>`: Target aligner (blast, diamond, lambda, etc.)
+- `--profile <NAME>`: Name for this reduction profile
+- `--min-length <N>`: Minimum sequence length
+- `--no-deltas`: Don't generate delta files
+- `--skip-validation`: Skip validation checks
+
+**Examples:**
+```bash
+# Reduce from file
+talaria reduce -i input.fasta -o reduced.fasta -r 0.3
+
+# Reduce from CASG database
+talaria reduce -d uniprot/swissprot -o reduced.fasta --profile blast-30 -r 0.3
+
+# Optimize for specific aligner
+talaria reduce -d ncbi/nr -o nr_diamond.fasta -a diamond -r 0.25
+```
+
+
+---
+
 ### reduce
 
 Intelligently reduce a FASTA file for optimal aligner indexing by selecting representative sequences and encoding similar sequences as deltas.
@@ -333,43 +511,6 @@ talaria reconstruct -r refs.fasta -d deltas.tal --sequences P12345
 
 ---
 
-### database
-
-Manage biological databases with versioning, downloading, and comparison features.
-
-#### Subcommands
-
-##### database download
-
-Download biological databases with automatic versioning and storage.
-
-```bash
-talaria database download [DATABASE] [OPTIONS]
-```
-
-**Arguments:**
-- `[DATABASE]`: Database source (`uniprot`, `ncbi`, `pdb`, `pfam`)
-
-**Options:**
-- `-d, --dataset <NAME>`: Dataset to download (e.g., `swissprot`, `nr`)
-- `-o, --output <PATH>`: Custom output directory (default: managed storage)
-- `-t, --taxonomy`: Download taxonomy data as well
-- `-r, --resume`: Resume incomplete download
-- `-i, --interactive`: Interactive mode for dataset selection
-- `--skip-verify`: Skip checksum verification
-- `--list-datasets`: List available datasets for each database
-
-**Examples:**
-```bash
-# Download UniProt SwissProt
-talaria database download uniprot -d swissprot
-
-# Download NCBI NR with resume
-talaria database download ncbi -d nr --resume
-
-# Interactive selection
-talaria database download uniprot -i
-```
 
 ##### database list
 
@@ -385,6 +526,7 @@ talaria database list [OPTIONS]
 - `--all-versions`: Show all versions (not just current)
 - `--show-reduced`: Show reduced versions
 - `--sort <FIELD>`: Sort by field (`name`, `size`, `date`)
+- `--show-hashes`: Show Merkle roots for verification
 
 **Examples:**
 ```bash

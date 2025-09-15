@@ -257,9 +257,50 @@ clustering_mode = 0  # 0: Greedy set cover, 1: Connected component, 2: Greedy in
 
 ## Environment Variables
 
+### Path Configuration
+
+Configure where Talaria stores data using environment variables:
+
+```bash
+# Base directory for all Talaria data (default: ~/.talaria)
+export TALARIA_HOME="/opt/talaria"
+
+# Data directory (default: $TALARIA_HOME)
+export TALARIA_DATA_DIR="/data/talaria"
+
+# Database storage (default: $TALARIA_DATA_DIR/databases)
+export TALARIA_DATABASES_DIR="/fast/ssd/talaria-databases"
+
+# External tools (default: $TALARIA_DATA_DIR/tools)
+export TALARIA_TOOLS_DIR="/usr/local/talaria-tools"
+
+# Cache directory (default: $TALARIA_DATA_DIR/cache)
+export TALARIA_CACHE_DIR="/tmp/talaria-cache"
+```
+
+### Remote Storage
+
+Configure remote storage for distributed setups:
+
+```bash
+# Manifest server for remote updates
+export TALARIA_MANIFEST_SERVER="https://manifests.example.com"
+
+# Chunk server for remote storage (S3, GCS, Azure)
+export TALARIA_CHUNK_SERVER="s3://my-bucket/talaria-chunks"
+
+# Remote repository for sync
+export TALARIA_REMOTE_REPO="https://github.com/org/talaria-databases"
+```
+
+### Performance and Behavior
+
 Override configuration with environment variables:
 
 ```bash
+# Logging
+export TALARIA_LOG="debug"  # error, warn, info, debug, trace
+
 # General settings
 export TALARIA_THREADS=16
 export TALARIA_VERBOSE=2

@@ -1,4 +1,5 @@
 pub mod bio;
+pub mod casg;
 pub mod cli;
 pub mod core;
 pub mod download;

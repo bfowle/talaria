@@ -1,65 +1,103 @@
 # Database Management Guide
 
-Talaria provides comprehensive database management with automatic versioning, centralized storage, and lifecycle management. All databases are stored in a versioned directory structure under `~/.talaria/databases/data/` by default.
+Talaria provides comprehensive database management using the Content-Addressed Sequence Graph (CASG) system for efficient incremental updates.
+
+## How CASG Works
+
+| Aspect | CASG Benefit |
+|--------|-------------|
+| Initial Download | 100GB split into chunks |
+| Daily Updates | ~1GB (only changed chunks) |
+| Storage (1 year) | ~100GB (deduplicated) |
+| Update Check | 100KB manifest |
+| Deduplication | Automatic 30-50% |
+| Verification | Cryptographic proofs |
 
 ## Key Features
 
-- **Centralized Storage**: All databases in one configurable location
-- **Automatic Versioning**: Date-based version tracking  
-- **Smart References**: Use `source/dataset` or `source/dataset@version`
-- **Lifecycle Management**: Update checking and old version cleanup
-- **Metadata Tracking**: Download dates, checksums, and source URLs
+- **Content-Addressed Storage**: Immutable chunks with SHA256 addressing
+- **Incremental Updates**: Only download changed chunks
+- **Bi-Temporal Versioning**: Track sequence and taxonomy changes independently
+- **Cryptographic Verification**: Merkle DAG ensures integrity
+- **Smart Chunking**: Group sequences by taxonomy for better compression
 
 ## Directory Structure
 
+### CASG Directory Structure
 ```
-~/.talaria/
-├── databases/
-│   ├── metadata/          # JSON metadata files
-│   └── data/              # Actual database files
-│       ├── uniprot/
-│       │   ├── swissprot/
-│       │   │   ├── 2024-01-15/
-│       │   │   │   ├── swissprot.fasta
-│       │   │   │   └── metadata.json
-│       │   │   └── current -> 2024-01-15/  # Symlink to latest
-│       └── ncbi/
-│           └── nr/
+~/.talaria/databases/
+├── manifests/                      # Database-specific manifest files
+│   ├── uniprot-swissprot.json     # SwissProt manifest
+│   ├── ncbi-nr.json                # NR database manifest
+│   └── custom-mydb.json            # Custom database manifests
+├── chunks/                         # Content-addressed chunk storage
+│   ├── ab/                         # Two-letter prefix directories
+│   │   └── abc123...               # SHA256-named chunk files
+│   └── de/
+│       └── def456...
+└── taxonomy/                       # Taxonomy data
+    └── taxdump/                    # NCBI taxonomy files
+        ├── nodes.dmp
+        └── names.dmp
 ```
 
-## Interactive Download Mode
 
-The easiest way to download databases is using the interactive mode:
+## Database Download
+
+### How It Works
+
+The `database download` command intelligently handles both initial downloads and updates:
 
 ```bash
-talaria database download --interactive
-# or
-talaria interactive  # Then select "Download databases"
+# First time - downloads entire database
+talaria database download uniprot -d swissprot
+# Downloads all chunks, creates manifest
+
+# Run again - automatically checks for updates
+talaria database download uniprot -d swissprot
+# Output: "Database is already up to date!" or "Updated: 5 new chunks"
 ```
 
-This will guide you through:
-1. Selecting a database source (UniProt, NCBI, etc.)
-2. Choosing specific datasets
-3. Configuring download options
-4. Automatic decompression and verification
+### What Happens Behind the Scenes
 
-## Command-Line Download
+1. **First Download**:
+   - Downloads manifest (~100KB)
+   - Downloads all chunks (e.g., 200MB as ~50 chunks)
+   - Stores with deduplication and compression
+   - Creates database-specific manifest
 
-### Basic Usage
+2. **Subsequent Runs**:
+   - Checks local manifest
+   - Compares with source (if available)
+   - Downloads only changed chunks
+   - Updates manifest
+
+For large databases, the savings are massive:
+- SwissProt update: ~5MB instead of 200MB
+- NR update: ~1GB instead of 100GB
+
+### Database Commands
 
 ```bash
-# Download UniProt SwissProt (automatically versioned)
+# Download database (initial or update)
 talaria database download uniprot -d swissprot
 
-# Download NCBI nr database
-talaria database download ncbi -d nr
+# Add custom FASTA to CASG
+talaria database add -i sequences.fasta --source mylab --dataset proteins
 
-# Download with taxonomy
-talaria database download uniprot -d swissprot --taxonomy
+# List downloaded databases
+talaria database list
 
-# Specify custom output directory (overrides centralized storage)
-talaria database download ncbi -d nr --output /data/databases/
+# Show database information
+talaria database info uniprot/swissprot
+
+# List sequences from a database
+talaria database list-sequences uniprot/swissprot --limit 100
+
+# Update taxonomy data
+talaria database update-taxonomy
 ```
+
 
 ## Supported Databases
 
@@ -227,36 +265,30 @@ talaria database list --database uniprot/swissprot
 ### Update Databases
 
 ```bash
-# Check all databases for updates
-talaria database update
+# Check for updates and download if available (same as initial download)
+talaria database download uniprot -d swissprot
 
-# Check specific database
-talaria database update uniprot/swissprot
+# The download command automatically:
+# - Detects if database exists
+# - Checks for updates
+# - Downloads only changes
+# - Reports status clearly
 
-# Download updates if available
-talaria database update --download
-
-# Force update even if recent
-talaria database update uniprot/swissprot --download --force
+# Resume interrupted download
+talaria database download uniprot -d swissprot --resume
 ```
 
-### Clean Old Versions
+### Storage Management
 
 ```bash
-# Clean old versions (keeps 3 by default)
-talaria database clean
+# View CASG repository statistics
+talaria casg stats
 
-# Keep only 1 old version
-talaria database clean --keep 1
+# Initialize CASG if not already done
+talaria casg init
 
-# Remove all old versions except current
-talaria database clean --all
-
-# Dry run to see what would be deleted
-talaria database clean --dry-run
-
-# Clean specific database
-talaria database clean uniprot/swissprot
+# Future: Garbage collection for unused chunks
+# talaria casg gc  # Not yet implemented
 ```
 
 ### Compare Database Versions

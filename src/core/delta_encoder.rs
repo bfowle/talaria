@@ -11,6 +11,21 @@ pub struct DeltaRecord {
     pub reference_id: String,
     pub taxon_id: Option<u32>,
     pub deltas: Vec<DeltaRange>,
+    /// Track header changes separately from sequence changes
+    pub header_change: Option<HeaderChange>,
+}
+
+/// Tracks changes to FASTA headers (ID and description)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HeaderChange {
+    /// The old description (from reference)
+    pub old_description: Option<String>,
+    /// The new description (in child)
+    pub new_description: Option<String>,
+    /// Whether the ID itself changed
+    pub id_changed: bool,
+    /// The old ID if it changed
+    pub old_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,12 +58,25 @@ impl DeltaEncoder {
     pub fn encode(&self, reference: &Sequence, child: &Sequence) -> DeltaRecord {
         let alignment = Alignment::global(reference, child);
         let deltas = self.compress_deltas(&alignment);
-        
+
+        // Track header changes
+        let header_change = if reference.description != child.description {
+            Some(HeaderChange {
+                old_description: reference.description.clone(),
+                new_description: child.description.clone(),
+                id_changed: false,  // IDs should match in our current model
+                old_id: None,
+            })
+        } else {
+            None
+        };
+
         DeltaRecord {
             child_id: child.id.clone(),
             reference_id: reference.id.clone(),
             taxon_id: child.taxon_id,
             deltas,
+            header_change,
         }
     }
     
@@ -300,6 +328,7 @@ pub fn parse_deltas_dat(line: &str) -> Result<DeltaRecord, crate::TalariaError> 
         reference_id,  // Use the parsed reference_id
         taxon_id: None,
         deltas,
+        header_change: None,  // No header change tracking in the old format
     })
 }
 
@@ -314,6 +343,7 @@ mod tests {
             child_id: "child_seq_1".to_string(),
             reference_id: "ref_seq_1".to_string(),
             taxon_id: Some(9606),
+            header_change: None,
             deltas: vec![
                 DeltaRange::new(1, 1, b"A".to_vec()),
                 DeltaRange::new(5, 5, b"T".to_vec()),

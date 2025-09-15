@@ -93,12 +93,18 @@ pub struct ReduceArgs {
     /// If not specified, uses reduction ratio (e.g., "30-percent")
     #[arg(long, value_name = "NAME")]
     pub profile: Option<String>,
+
+    /// Output to CASG repository instead of files
+    #[arg(long)]
+    pub casg_output: bool,
+
+    /// CASG repository path (default: ~/.talaria/databases)
+    #[arg(long, value_name = "PATH")]
+    pub casg_path: Option<PathBuf>,
 }
 
 pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     use crate::utils::format::get_file_size;
-    use crate::core::database_manager::DatabaseManager;
-    use crate::core::config::load_config;
     
     // Get threads from environment or default
     args.threads = std::env::var("TALARIA_THREADS")
@@ -123,36 +129,34 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     }
     
     // Handle database reference
-    let (actual_input, should_store, db_reference) = if let Some(db_ref_str) = &args.database {
-        // Parse database reference with potential reduction profile
-        let (base_ref, reduction_profile) = parse_database_with_reduction(db_ref_str)?;
-        
-        // Load config and database manager
-        let config = load_config("talaria.toml").unwrap_or_default();
-        let db_manager = DatabaseManager::new(config.database.database_dir)?;
-        
-        // Parse the base reference
-        let db_ref = db_manager.parse_reference(&base_ref)?;
-        
-        // Resolve to directory
-        let db_dir = db_manager.resolve_reference(&db_ref)?;
-        
-        // If reduction profile specified, look in reduced subdirectory
-        let search_dir = if let Some(profile) = reduction_profile {
-            let reduced_dir = db_dir.join("reduced").join(&profile);
-            if !reduced_dir.exists() {
-                anyhow::bail!("Reduction profile '{}' not found for {}/{}", 
-                              profile, db_ref.source, db_ref.dataset);
-            }
-            reduced_dir
-        } else {
-            db_dir
-        };
-        
-        // Find FASTA file in directory
-        let fasta_path = db_manager.find_fasta_in_dir(&search_dir)?;
-        
-        (fasta_path, true, Some(db_ref))
+    let actual_input = if let Some(db_ref_str) = &args.database {
+            // Assemble FASTA from chunks on-demand
+            use crate::core::database_manager::DatabaseManager;
+            use crate::download::{DatabaseSource, NCBIDatabase, UniProtDatabase};
+
+            let manager = DatabaseManager::new(None)?;
+
+            // Parse database reference to determine source
+            let database_source = match db_ref_str.as_str() {
+                s if s.starts_with("uniprot/swissprot") => DatabaseSource::UniProt(UniProtDatabase::SwissProt),
+                s if s.starts_with("uniprot/trembl") => DatabaseSource::UniProt(UniProtDatabase::TrEMBL),
+                s if s.starts_with("ncbi/nr") => DatabaseSource::NCBI(NCBIDatabase::NR),
+                s if s.starts_with("ncbi/nt") => DatabaseSource::NCBI(NCBIDatabase::NT),
+                _ => anyhow::bail!("Unknown database: {}", db_ref_str),
+            };
+
+            // Create temporary file for assembled FASTA
+            let temp_dir = std::env::temp_dir();
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+            let temp_file = temp_dir.join(format!("talaria_casg_{}.fasta", timestamp));
+
+            println!("🔄 Assembling database from chunks...");
+            manager.assemble_database(&database_source, &temp_file)?;
+
+            temp_file
     } else {
         // Traditional file-based usage
         let input = args.input.as_ref()
@@ -166,14 +170,12 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
             anyhow::bail!("Output file (-o) is required when not using database reference or --store");
         }
         
-        // Try to infer database reference if --store is used
-        let db_ref = if args.store {
-            infer_database_from_path(input)?
-        } else {
-            None
-        };
-        
-        (input.clone(), args.store, db_ref)
+        // CASG doesn't support --store yet
+        if args.store {
+            anyhow::bail!("--store option not yet implemented for CASG. Please specify an output file with -o instead.");
+        }
+
+        input.clone()
     };
     
     let pb = ProgressBar::new_spinner();
@@ -212,9 +214,9 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     pb.set_message(format!("Using {} threads", threads));
     
     // Load configuration if provided
-    let mut config = if let Some(config_path) = args.config {
+    let mut config = if let Some(config_path) = &args.config {
         pb.set_message("Loading configuration...");
-        crate::core::config::load_config(&config_path)?
+        crate::core::config::load_config(config_path)?
     } else {
         crate::core::config::default_config()
     };
@@ -257,49 +259,14 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         args.target_aligner.clone(),
     )?;
     
-    // Determine output paths based on whether we're storing
-    let (output_path, metadata_path) = if should_store {
-        // Store in database structure
-        let db_ref = db_reference.as_ref().ok_or_else(|| anyhow::anyhow!("Database reference required for storage"))?;
-        
-        // Load config and database manager if not already loaded
-        let config = load_config("talaria.toml").unwrap_or_default();
-        let db_manager = DatabaseManager::new(config.database.database_dir)?;
-        
-        // Determine profile name
-        let profile_name = args.profile.clone().unwrap_or_else(|| {
-            if reduction_ratio == 0.0 {
-                // Auto-detection mode
-                "auto-detect".to_string()
-            } else {
-                format!("{}-percent", (reduction_ratio * 100.0) as u32)
-            }
-        });
-        
-        // Get the version directory for this database
-        let db_versions = db_manager.list_versions(&db_ref.source, &db_ref.dataset)?;
-        let current_version = db_versions.iter()
-            .find(|v| v.is_current)
-            .or_else(|| db_versions.first())
-            .ok_or_else(|| anyhow::anyhow!("No versions found for {}/{}", db_ref.source, db_ref.dataset))?;
-        
-        // Create reduced subdirectory
-        let reduced_dir = current_version.path.join("reduced").join(&profile_name);
-        std::fs::create_dir_all(&reduced_dir)?;
-        
-        let output_file = reduced_dir.join(format!("{}.fasta", db_ref.dataset));
-        let delta_file = reduced_dir.join(format!("{}.deltas.tal", db_ref.dataset));
-        
-        pb.set_message(format!("Storing as {}/{}/reduced/{}", db_ref.source, db_ref.dataset, profile_name));
-        
-        (output_file, delta_file)
-    } else {
+    // Determine output paths - should_store is always false now (CASG doesn't support it yet)
+    let (output_path, metadata_path) = {
         // Use specified output paths
         let output = args.output.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Output file (-o) is required when not storing in database"))?;
+            .ok_or_else(|| anyhow::anyhow!("Output file (-o) is required"))?;
         
-        let metadata_path = if let Some(path) = args.metadata {
-            path
+        let metadata_path = if let Some(path) = &args.metadata {
+            path.clone()
         } else {
             // Auto-generate based on output filename
             let mut delta_path = output.clone();
@@ -317,60 +284,46 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         (output.clone(), metadata_path)
     };
     
-    // Write output
-    pb.set_message("Writing reduced FASTA...");
-    crate::bio::fasta::write_fasta(&output_path, &references)?;
-    
-    // Get output file size
-    let output_size = get_file_size(&output_path).unwrap_or(0);
-    
-    // Write deltas if they were computed
-    if !args.no_deltas && !deltas.is_empty() {
-        pb.set_message("Writing delta metadata...");
-        crate::storage::metadata::write_metadata(&metadata_path, &deltas)?;
-        pb.set_message(format!("Saved deltas to {:?}", metadata_path));
-    } else if args.no_deltas {
-        pb.set_message("Skipped delta encoding (--no-deltas flag)");
-    }
-    
-    // If storing in database structure, also save reduction metadata
-    if should_store {
-        use chrono::Utc;
-        use serde_json::json;
-        
-        let source_db = db_reference.as_ref()
-            .map(|r| format!("{}/{}", r.source, r.dataset))
-            .unwrap_or_else(|| "unknown".to_string());
-        
-        let reduction_metadata = json!({
-            "source_database": source_db,
-            "reduction_ratio": if reduction_ratio == 0.0 {
-                serde_json::Value::String("auto-detect".to_string())
-            } else {
-                serde_json::Value::Number(serde_json::Number::from_f64(reduction_ratio).unwrap())
-            },
-            "auto_detected": reduction_ratio == 0.0,
-            "target_aligner": format!("{:?}", &args.target_aligner),
-            "original_sequences": original_count,
-            "reference_sequences": references.len(),
-            "child_sequences": deltas.len(),
-            "input_size": input_size,
-            "output_size": output_size,
-            "reduction_date": Utc::now().to_rfc3339(),
-            "parameters": {
-                "min_length": args.min_length,
-                "similarity_threshold": args.similarity_threshold,
-                "taxonomy_aware": args.taxonomy_aware,
-                "align_select": args.align_select,
-                "no_deltas": args.no_deltas,
-                "max_align_length": args.max_align_length,
-            }
+    // Choose output method: CASG or traditional files
+    let output_size = if args.casg_output {
+        // Output to CASG repository
+        pb.set_message("Storing reduction in CASG repository...");
+
+        let casg_path = args.casg_path.clone().unwrap_or_else(|| {
+            use crate::core::paths;
+            paths::talaria_casg_dir()
         });
-        
-        let metadata_json_path = output_path.parent().unwrap().join("metadata.json");
-        std::fs::write(metadata_json_path, serde_json::to_string_pretty(&reduction_metadata)?)?;
-    }
-    
+
+        store_reduction_in_casg(
+            &casg_path,
+            &actual_input,
+            &references,
+            &deltas,
+            &args,
+            reduction_ratio,
+            original_count,
+            input_size,
+        )?
+    } else {
+        // Traditional file output
+        pb.set_message("Writing reduced FASTA...");
+        crate::bio::fasta::write_fasta(&output_path, &references)?;
+
+        // Get output file size
+        let output_size = get_file_size(&output_path).unwrap_or(0);
+
+        // Write deltas if they were computed
+        if !args.no_deltas && !deltas.is_empty() {
+            pb.set_message("Writing delta metadata...");
+            crate::storage::metadata::write_metadata(&metadata_path, &deltas)?;
+            pb.set_message(format!("Saved deltas to {:?}", metadata_path));
+        } else if args.no_deltas {
+            pb.set_message("Skipped delta encoding (--no-deltas flag)");
+        }
+
+        output_size
+    };
+
     pb.finish_and_clear();
     
     // Print statistics using the new stats display
@@ -409,52 +362,190 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Parse a database reference that may include a reduction profile
-/// Format: "source/dataset[:reduction][@version]"
-/// Returns: (base_reference, Option<reduction_profile>)
-fn parse_database_with_reduction(reference: &str) -> anyhow::Result<(String, Option<String>)> {
-    // Check for reduction profile (colon separator)
-    if let Some(colon_idx) = reference.find(':') {
-        // Split at colon
-        let base = &reference[..colon_idx];
-        let remainder = &reference[colon_idx + 1..];
-        
-        // Check if remainder has version (@)
-        if let Some(at_idx) = remainder.find('@') {
-            // Format: source/dataset:reduction@version
-            let reduction = &remainder[..at_idx];
-            let version = &remainder[at_idx..];
-            Ok((format!("{}{}", base, version), Some(reduction.to_string())))
-        } else {
-            // Format: source/dataset:reduction
-            Ok((base.to_string(), Some(remainder.to_string())))
-        }
-    } else {
-        // No reduction specified
-        Ok((reference.to_string(), None))
-    }
-}
+/// Store reduction results in CASG repository
+fn store_reduction_in_casg(
+    casg_path: &PathBuf,
+    input_path: &PathBuf,
+    references: &[crate::bio::sequence::Sequence],
+    deltas: &[crate::core::delta_encoder::DeltaRecord],
+    args: &ReduceArgs,
+    reduction_ratio: f64,
+    original_count: usize,
+    input_size: u64,
+) -> anyhow::Result<u64> {
+    use crate::casg::{CASGRepository, delta::DeltaChunk, reduction::{ReductionManifest, ReductionParameters, ReferenceChunk, DeltaChunkRef}};
+    use crate::casg::chunker::TaxonomicChunker;
+    use crate::casg::types::SHA256Hash;
+    use std::collections::HashMap;
+    use std::time::Instant;
 
-/// Try to infer database reference from a file path
-fn infer_database_from_path(path: &PathBuf) -> anyhow::Result<Option<crate::core::database_manager::DatabaseReference>> {
-    let path_str = path.to_string_lossy();
-    
-    if path_str.contains("/databases/data/") {
-        // Extract source/dataset from path
-        let parts: Vec<&str> = path_str.split('/').collect();
-        if let Some(idx) = parts.iter().position(|&x| x == "data") {
-            if idx + 2 < parts.len() {
-                let source = parts[idx + 1].to_string();
-                let dataset = parts[idx + 2].to_string();
-                return Ok(Some(crate::core::database_manager::DatabaseReference {
-                    source,
-                    dataset,
-                    version: None,
-                }));
+    let start = Instant::now();
+
+    // Initialize or open CASG repository
+    let casg = if casg_path.exists() {
+        CASGRepository::open(casg_path)?
+    } else {
+        CASGRepository::init(casg_path)?
+    };
+
+    // Determine profile name
+    let profile_name = args.profile.clone().unwrap_or_else(|| {
+        if reduction_ratio == 0.0 {
+            "auto-detect".to_string()
+        } else {
+            format!("{}-percent", (reduction_ratio * 100.0) as u32)
+        }
+    });
+
+    // Get source database info (if available)
+    let source_database = input_path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    // Create reduction parameters
+    let parameters = ReductionParameters {
+        reduction_ratio,
+        target_aligner: Some(args.target_aligner.clone()),
+        min_length: args.min_length,
+        similarity_threshold: args.similarity_threshold.unwrap_or(0.9),
+        taxonomy_aware: args.taxonomy_aware,
+        align_select: args.align_select,
+        max_align_length: args.max_align_length,
+        no_deltas: args.no_deltas,
+    };
+
+    // Get actual source manifest if input was from CASG
+    // Check if the path is within a Talaria databases directory
+    let databases_dir = crate::core::paths::talaria_databases_dir();
+    let source_manifest_hash = if input_path.starts_with(&databases_dir) {
+        // Try to find manifest.json in the CASG structure
+        let mut current = input_path.clone();
+        loop {
+            let manifest_path = current.join("manifest.json");
+            if manifest_path.exists() {
+                // Load and hash the manifest content
+                if let Ok(content) = std::fs::read(&manifest_path) {
+                    break SHA256Hash::compute(&content);
+                }
+            }
+            // Go up one directory
+            if !current.pop() || current.parent().is_none() {
+                break SHA256Hash::compute(input_path.to_string_lossy().as_bytes());
             }
         }
+    } else {
+        SHA256Hash::compute(input_path.to_string_lossy().as_bytes())
+    };
+
+    // Create reduction manifest
+    let mut manifest = ReductionManifest::new(
+        profile_name.clone(),
+        source_manifest_hash,
+        source_database,
+        parameters,
+    );
+
+    // Chunk and store reference sequences
+    println!("📦 Chunking reference sequences...");
+    use crate::casg::types::ChunkingStrategy;
+    let strategy = ChunkingStrategy {
+        target_chunk_size: 1024 * 1024,  // 1MB
+        max_chunk_size: 10 * 1024 * 1024,  // 10MB
+        min_sequences_per_chunk: 1,
+        taxonomic_coherence: 0.8,
+        special_taxa: Vec::new(),
+    };
+    let chunker = TaxonomicChunker::new(strategy);
+    let ref_chunks = chunker.chunk_sequences(references.to_vec())?;
+
+    let mut reference_chunk_refs = Vec::new();
+    let mut ref_chunk_map = HashMap::new();
+
+    for chunk in ref_chunks {
+        let chunk_hash = casg.storage.store_taxonomy_chunk(&chunk)?;
+
+        // Create reference chunk metadata
+        let ref_chunk = ReferenceChunk {
+            chunk_hash: chunk_hash.clone(),
+            sequence_ids: chunk.sequences.iter().map(|s| s.sequence_id.clone()).collect(),
+            sequence_count: chunk.sequences.len(),
+            size: chunk.size,
+            compressed_size: chunk.compressed_size,
+            taxon_ids: chunk.taxon_ids.clone(),
+        };
+
+        reference_chunk_refs.push(ref_chunk);
+
+        // Map sequence IDs to chunk hash for delta processing
+        for seq_ref in &chunk.sequences {
+            ref_chunk_map.insert(seq_ref.sequence_id.clone(), chunk_hash.clone());
+        }
     }
-    
-    // Cannot infer - user must specify explicitly
-    anyhow::bail!("Cannot infer database from input path. For external files, specify source/dataset explicitly.");
+
+    manifest.add_reference_chunks(reference_chunk_refs);
+
+    // Process and store delta chunks if present
+    if !deltas.is_empty() && !args.no_deltas {
+        println!("📦 Storing delta chunks...");
+
+        // Group deltas by reference sequence
+        let mut deltas_by_ref: HashMap<String, Vec<crate::core::delta_encoder::DeltaRecord>> = HashMap::new();
+        for delta in deltas {
+            deltas_by_ref
+                .entry(delta.reference_id.clone())
+                .or_insert_with(Vec::new)
+                .push(delta.clone());
+        }
+
+        let mut delta_chunk_refs = Vec::new();
+
+        // Create delta chunks
+        for (ref_id, delta_records) in deltas_by_ref {
+            if let Some(ref_chunk_hash) = ref_chunk_map.get(&ref_id) {
+                let delta_chunk = DeltaChunk::new(ref_chunk_hash.clone(), delta_records.clone())?;
+                let delta_hash = casg.storage.store_delta_chunk(&delta_chunk)?;
+
+                let delta_ref = DeltaChunkRef {
+                    chunk_hash: delta_hash,
+                    reference_chunk_hash: ref_chunk_hash.clone(),
+                    child_count: delta_records.len(),
+                    child_ids: delta_records.iter().map(|d| d.child_id.clone()).collect(),
+                    size: delta_chunk.effective_size(),
+                    avg_delta_ops: delta_chunk.metadata.avg_delta_ops,
+                };
+
+                delta_chunk_refs.push(delta_ref);
+            }
+        }
+
+        manifest.add_delta_chunks(delta_chunk_refs);
+    }
+
+    // Compute Merkle roots
+    manifest.compute_merkle_roots()?;
+
+    // Calculate statistics
+    let elapsed = start.elapsed().as_secs();
+    manifest.calculate_statistics(original_count, input_size, elapsed);
+
+    // Store the manifest
+    let manifest_hash = casg.storage.store_reduction_manifest(&manifest)?;
+
+    // Calculate total size
+    let total_size = manifest.statistics.total_size_with_deltas;
+
+    println!("✓ Reduction stored in CASG repository");
+    println!("   Profile: {}", profile_name);
+    println!("   Manifest: {}", manifest_hash);
+    println!("   References: {} chunks", manifest.reference_chunks.len());
+    if !args.no_deltas {
+        println!("   Deltas: {} chunks", manifest.delta_chunks.len());
+    }
+    println!("   Merkle root: {}", manifest.reduction_merkle_root);
+    println!("   Deduplication ratio: {:.1}%", manifest.statistics.deduplication_ratio * 100.0);
+
+    Ok(total_size)
 }
+
+

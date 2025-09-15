@@ -1,0 +1,587 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Storage Overview - Talaria Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- MathJax Configuration -->
+        <script>
+        window.MathJax = {
+          tex2jax: {
+            inlineMath: [['$','$'], ['\\(','\\)']],
+            displayMath: [['$$','$$'], ['\\[','\\]']],
+            processEscapes: true,
+            processEnvironments: true
+          },
+          TeX: {
+            equationNumbers: { autoNumber: "AMS" },
+            extensions: ["AMSmath.js", "AMSsymbols.js"]
+          }
+        };
+        </script>
+        <meta name="description" content="Intelligent FASTA reduction for aligner index optimization">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../custom.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Talaria Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/Andromeda-Tech/talaria/edit/main/docs/src/casg/overview.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
+<h1 id="content-addressed-sequence-graph-casg"><a class="header" href="#content-addressed-sequence-graph-casg">Content-Addressed Sequence Graph (CASG)</a></h1>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>The Content-Addressed Sequence Graph (CASG) is a revolutionary approach to managing biological sequence databases that solves the fundamental problems of storage explosion, bandwidth waste, and version management that plague traditional approaches.</p>
+<pre class="mermaid">graph TB
+    subgraph &quot;Traditional Approach&quot;
+        T1[Version 2024-01-01&lt;br/&gt;100GB]
+        T2[Version 2024-02-01&lt;br/&gt;102GB]
+        T3[Version 2024-03-01&lt;br/&gt;105GB]
+        T1 --&gt; T2
+        T2 --&gt; T3
+    end
+
+    subgraph &quot;CASG Approach&quot;
+        M[Manifest&lt;br/&gt;~100KB]
+        C1[Chunk A&lt;br/&gt;SHA256: abc...]
+        C2[Chunk B&lt;br/&gt;SHA256: def...]
+        C3[New Chunk C&lt;br/&gt;SHA256: ghi...]
+        M --&gt; C1
+        M --&gt; C2
+        M --&gt; C3
+        C1 -.-&gt; |Deduplicated| C1
+    end
+
+    style T1 stroke:#d32f2f,stroke-width:2px
+    style T2 stroke:#d32f2f,stroke-width:2px
+    style T3 stroke:#d32f2f,stroke-width:2px
+    style M stroke:#388e3c,stroke-width:2px
+    style C1 stroke:#1976d2,stroke-width:2px
+    style C2 stroke:#1976d2,stroke-width:2px
+    style C3 stroke:#f57c00,stroke-width:2px,stroke-dasharray: 5 5
+</pre>
+<h2 id="key-concepts"><a class="header" href="#key-concepts">Key Concepts</a></h2>
+<h3 id="1-content-addressed-storage"><a class="header" href="#1-content-addressed-storage">1. Content-Addressed Storage</a></h3>
+<p>Every piece of data is identified by its cryptographic hash (SHA256), making it:</p>
+<ul>
+<li><strong>Immutable</strong>: Content cannot be changed without changing its address</li>
+<li><strong>Verifiable</strong>: Integrity can be proven cryptographically</li>
+<li><strong>Deduplicated</strong>: Identical content is stored only once</li>
+</ul>
+<h3 id="2-merkle-dags"><a class="header" href="#2-merkle-dags">2. Merkle DAGs</a></h3>
+<p>The entire database is organized as a Directed Acyclic Graph (DAG) with Merkle properties:</p>
+<pre class="mermaid">graph TD
+    Root[Root Hash&lt;br/&gt;SHA256: 0xabc...]
+    S[Sequences Root]
+    T[Taxonomy Root]
+
+    Root --&gt; S
+    Root --&gt; T
+
+    S --&gt; S1[Chunk Group 1]
+    S --&gt; S2[Chunk Group 2]
+
+    T --&gt; T1[Bacteria]
+    T --&gt; T2[Eukarya]
+
+    S1 --&gt; C1[Chunk: E.coli sequences]
+    S1 --&gt; C2[Chunk: Salmonella sequences]
+
+    T1 --&gt; T3[Proteobacteria]
+    T3 --&gt; T4[E. coli&lt;br/&gt;TaxID: 562]
+
+    style Root stroke:#7b1fa2,stroke-width:3px
+    style S stroke:#1976d2,stroke-width:2px
+    style T stroke:#388e3c,stroke-width:2px
+    style S1 stroke:#1976d2,stroke-width:2px
+    style S2 stroke:#1976d2,stroke-width:2px
+    style T1 stroke:#388e3c,stroke-width:2px
+    style T2 stroke:#388e3c,stroke-width:2px
+    style C1 stroke:#0288d1,stroke-width:2px
+    style C2 stroke:#0288d1,stroke-width:2px
+    style T3 stroke:#2e7d32,stroke-width:2px
+    style T4 stroke:#2e7d32,stroke-width:2px
+</pre>
+<h3 id="3-bi-temporal-versioning"><a class="header" href="#3-bi-temporal-versioning">3. Bi-Temporal Versioning</a></h3>
+<p>CASG tracks two independent timelines:</p>
+<h4 id="sequence-time"><a class="header" href="#sequence-time">Sequence Time</a></h4>
+<p>When sequences were published or updated:</p>
+<pre><code>2024-01-01: SwissProt release with 500K sequences
+2024-02-01: Added 10K new proteins
+2024-03-01: Updated 5K sequences with corrections
+</code></pre>
+<h4 id="taxonomy-time"><a class="header" href="#taxonomy-time">Taxonomy Time</a></h4>
+<p>When taxonomic classifications changed:</p>
+<pre><code>2024-01-15: NCBI Taxonomy update
+2024-02-20: Reclassification of Lactobacillus species
+2024-03-10: New viral classifications
+</code></pre>
+<p>This allows queries like:</p>
+<ul>
+<li>“Give me E. coli sequences as they were in January”</li>
+<li>“Show me sequences with 2023 taxonomy applied to 2024 data”</li>
+<li>“Track how this organism’s classification changed over time”</li>
+</ul>
+<h3 id="4-smart-taxonomic-chunking"><a class="header" href="#4-smart-taxonomic-chunking">4. Smart Taxonomic Chunking</a></h3>
+<p>Sequences are grouped into chunks based on taxonomic relationships:</p>
+<pre><code>Chunk Strategy:
+├── Model Organisms (own chunks)
+│   ├── E. coli (562) → dedicated chunks
+│   ├── H. sapiens (9606) → dedicated chunks
+│   └── M. musculus (10090) → dedicated chunks
+├── Pathogens (grouped by family)
+│   └── Enterobacteriaceae → shared chunks
+└── Environmental (grouped by phylum)
+    └── Proteobacteria → large shared chunks
+</code></pre>
+<h3 id="5-manifest-based-updates"><a class="header" href="#5-manifest-based-updates">5. Manifest-Based Updates</a></h3>
+<p>Instead of downloading entire databases, check for updates with tiny manifest files:</p>
+<pre><code class="language-yaml"># Manifest (&lt; 100KB)
+version: "2024-03-15"
+etag: "W/\"5e3b-1234567890\""
+taxonomy_root: sha256:abc123...
+sequence_root: sha256:def456...
+chunks:
+  - hash: sha256:chunk1...
+    taxa: [562, 563]  # E. coli strains
+    size: 52428800    # 50MB
+  - hash: sha256:chunk2...
+    taxa: [9606]      # Human
+    size: 104857600   # 100MB
+</code></pre>
+<h2 id="benefits"><a class="header" href="#benefits">Benefits</a></h2>
+<h3 id="for-individual-researchers"><a class="header" href="#for-individual-researchers">For Individual Researchers</a></h3>
+<ol>
+<li><strong>Minimal Storage</strong>: Only download chunks for organisms you study</li>
+<li><strong>Incremental Updates</strong>: Download only what changed (often &lt;1% of database)</li>
+<li><strong>Bandwidth Efficient</strong>: KB-sized manifests for checking updates</li>
+<li><strong>Version Freedom</strong>: Query any historical version without storing it</li>
+</ol>
+<h3 id="for-teams"><a class="header" href="#for-teams">For Teams</a></h3>
+<ol>
+<li><strong>Shared Storage</strong>: Team members share deduplicated chunks</li>
+<li><strong>Reproducibility</strong>: Cryptographic proof of exact versions used</li>
+<li><strong>Collaboration</strong>: Share subset proofs without sharing full data</li>
+</ol>
+<h3 id="for-infrastructure"><a class="header" href="#for-infrastructure">For Infrastructure</a></h3>
+<ol>
+<li><strong>CDN Friendly</strong>: Immutable chunks can be cached forever</li>
+<li><strong>P2P Distribution</strong>: Content-addressing enables BitTorrent-style sharing</li>
+<li><strong>Disaster Recovery</strong>: Any subset can reconstruct from hashes</li>
+</ol>
+<h2 id="mathematical-foundation"><a class="header" href="#mathematical-foundation">Mathematical Foundation</a></h2>
+<h3 id="content-addressing"><a class="header" href="#content-addressing">Content Addressing</a></h3>
+<p>For any data chunk <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em;"></span><span class="mord mathnormal" style="margin-right:0.02778em;">D</span></span></span></span>:
+<span class="katex-display"><span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord text"><span class="mord">Address</span></span><span class="mopen">(</span><span class="mord mathnormal" style="margin-right:0.02778em;">D</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord text"><span class="mord">SHA256</span></span><span class="mopen">(</span><span class="mord mathnormal" style="margin-right:0.02778em;">D</span><span class="mclose">)</span></span></span></span></span></p>
+<h3 id="merkle-tree-construction"><a class="header" href="#merkle-tree-construction">Merkle Tree Construction</a></h3>
+<p>For chunks <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8778em;vertical-align:-0.1944em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.07153em;">C</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3011em;"><span style="top:-2.55em;margin-left:-0.0715em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.07153em;">C</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3011em;"><span style="top:-2.55em;margin-left:-0.0715em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord">…</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.07153em;">C</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.1514em;"><span style="top:-2.55em;margin-left:-0.0715em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight">n</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>:
+<span class="katex-display"><span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em;"></span><span class="mord text"><span class="mord">Root</span></span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathnormal" style="margin-right:0.08125em;">H</span><span class="mopen">(</span><span class="mord mathnormal" style="margin-right:0.08125em;">H</span><span class="mopen">(</span><span class="mord"><span class="mord mathnormal" style="margin-right:0.07153em;">C</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3011em;"><span style="top:-2.55em;margin-left:-0.0715em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.07153em;">C</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3011em;"><span style="top:-2.55em;margin-left:-0.0715em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord mathnormal" style="margin-right:0.08125em;">H</span><span class="mopen">(</span><span class="mord"><span class="mord mathnormal" style="margin-right:0.07153em;">C</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3011em;"><span style="top:-2.55em;margin-left:-0.0715em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">3</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.07153em;">C</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3011em;"><span style="top:-2.55em;margin-left:-0.0715em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">4</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord">…</span><span class="mclose">)</span></span></span></span></span></p>
+<p>Where <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em;"></span><span class="mord mathnormal" style="margin-right:0.08125em;">H</span></span></span></span> is the hash function (SHA256).</p>
+<h3 id="proof-of-inclusion"><a class="header" href="#proof-of-inclusion">Proof of Inclusion</a></h3>
+<p>To prove chunk <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.07153em;">C</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3117em;"><span style="top:-2.55em;margin-left:-0.0715em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> is in the dataset:
+<span class="katex-display"><span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em;"></span><span class="mord text"><span class="mord">Proof</span></span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:1.0361em;vertical-align:-0.2861em;"></span><span class="mopen">[</span><span class="mord"><span class="mord mathnormal" style="margin-right:0.08125em;">H</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em;"><span style="top:-2.55em;margin-left:-0.0813em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">sibling</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2861em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.08125em;">H</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em;"><span style="top:-2.55em;margin-left:-0.0813em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">parent-sibling</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2861em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord">…</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.08125em;">H</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2806em;"><span style="top:-2.55em;margin-left:-0.0813em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">root</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">]</span></span></span></span></span></p>
+<p>Verification:
+<span class="katex-display"><span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord text"><span class="mord">Verify</span></span><span class="mopen">(</span><span class="mord"><span class="mord mathnormal" style="margin-right:0.07153em;">C</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3117em;"><span style="top:-2.55em;margin-left:-0.0715em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord text"><span class="mord">Proof</span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:1.0361em;vertical-align:-0.2861em;"></span><span class="mopen">(</span><span class="mord"><span class="mord mathnormal" style="margin-right:0.08125em;">H</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em;"><span style="top:-2.55em;margin-left:-0.0813em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">computed</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2861em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">==</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.08125em;">H</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2806em;"><span style="top:-2.55em;margin-left:-0.0813em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">root</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span></span></p>
+<h3 id="temporal-integrity"><a class="header" href="#temporal-integrity">Temporal Integrity</a></h3>
+<p>For sequence version <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.05764em;">S</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2806em;"><span style="top:-2.55em;margin-left:-0.0576em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> and taxonomy version <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2806em;"><span style="top:-2.55em;margin-left:-0.1389em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>:
+<span class="katex-display"><span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord text"><span class="mord">CrossHash</span></span><span class="mopen">(</span><span class="mord"><span class="mord mathnormal" style="margin-right:0.05764em;">S</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2806em;"><span style="top:-2.55em;margin-left:-0.0576em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2806em;"><span style="top:-2.55em;margin-left:-0.1389em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathnormal" style="margin-right:0.08125em;">H</span><span class="mopen">(</span><span class="mord mathnormal" style="margin-right:0.08125em;">H</span><span class="mopen">(</span><span class="mord"><span class="mord mathnormal" style="margin-right:0.05764em;">S</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2806em;"><span style="top:-2.55em;margin-left:-0.0576em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mord">∣∣</span><span class="mord mathnormal" style="margin-right:0.08125em;">H</span><span class="mopen">(</span><span class="mord"><span class="mord mathnormal" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2806em;"><span style="top:-2.55em;margin-left:-0.1389em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mord">∣∣</span><span class="mord text"><span class="mord">timestamp</span></span><span class="mclose">)</span></span></span></span></span></p>
+<h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
+<pre class="mermaid">graph LR
+    subgraph &quot;Client&quot;
+        CLI[CLI Commands]
+        API[Rust API]
+    end
+
+    subgraph &quot;CASG Core&quot;
+        M[Manifest Manager]
+        S[Storage Layer]
+        C[Chunker]
+        A[Assembler]
+        V[Verifier]
+        T[Taxonomy Manager]
+    end
+
+    subgraph &quot;Remote&quot;
+        R1[NCBI]
+        R2[UniProt]
+        R3[IPFS]
+        R4[S3/CDN]
+    end
+
+    CLI --&gt; API
+    API --&gt; M
+    M --&gt; S
+    S --&gt; C
+    S --&gt; A
+    S --&gt; V
+    C --&gt; T
+
+    M -.-&gt; |Fetch manifests| R1
+    M -.-&gt; |Fetch manifests| R2
+    S -.-&gt; |Fetch chunks| R3
+    S -.-&gt; |Fetch chunks| R4
+
+    style CLI stroke:#1976d2,stroke-width:2px
+    style API stroke:#1976d2,stroke-width:2px
+    style M stroke:#f57c00,stroke-width:2px
+    style S stroke:#1976d2,stroke-width:2px
+    style C stroke:#00796b,stroke-width:2px
+    style A stroke:#00796b,stroke-width:2px
+    style V stroke:#388e3c,stroke-width:2px
+    style T stroke:#388e3c,stroke-width:2px
+    style R1 stroke:#757575,stroke-width:2px,stroke-dasharray: 5 5
+    style R2 stroke:#757575,stroke-width:2px,stroke-dasharray: 5 5
+    style R3 stroke:#757575,stroke-width:2px,stroke-dasharray: 5 5
+    style R4 stroke:#757575,stroke-width:2px,stroke-dasharray: 5 5
+</pre>
+<h2 id="discrepancy-detection"><a class="header" href="#discrepancy-detection">Discrepancy Detection</a></h2>
+<p>CASG automatically detects and tracks inconsistencies between:</p>
+<ul>
+<li>FASTA headers vs. accession2taxid mappings</li>
+<li>Old classifications vs. current taxonomy</li>
+<li>Missing or invalid taxon IDs</li>
+</ul>
+<pre class="mermaid">graph TD
+    Seq[Sequence:&lt;br/&gt;NP_12345.1 E. coli protein]
+
+    H[Header Parser]
+    M[Mapping Lookup]
+    I[Inference Engine]
+
+    Seq --&gt; H
+    Seq --&gt; M
+    Seq --&gt; I
+
+    H --&gt; |Claims: E. coli| D{Discrepancy&lt;br/&gt;Detector}
+    M --&gt; |Maps to: Salmonella| D
+    I --&gt; |Infers: E. coli| D
+
+    D --&gt; Report[Discrepancy Report:&lt;br/&gt;Conflict detected]
+
+    style Seq stroke:#1976d2,stroke-width:2px
+    style H stroke:#00796b,stroke-width:2px
+    style M stroke:#00796b,stroke-width:2px
+    style I stroke:#00796b,stroke-width:2px
+    style D stroke:#d32f2f,stroke-width:2px
+    style Report stroke:#d32f2f,stroke-width:3px
+</pre>
+<h2 id="getting-started"><a class="header" href="#getting-started">Getting Started</a></h2>
+<h3 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h3>
+<pre><code class="language-bash"># 1. Initialize CASG repository (one-time setup)
+talaria casg init
+
+# 2. Download a database (uses CASG automatically)
+talaria database download uniprot -d swissprot
+
+# 3. Check for updates (run the same command again)
+talaria database download uniprot -d swissprot
+# Output: "Database is already up to date!" or downloads only changes
+
+# 4. View repository statistics
+talaria casg stats
+</code></pre>
+<h3 id="example-workflow"><a class="header" href="#example-workflow">Example Workflow</a></h3>
+<pre><code class="language-bash"># Initialize CASG
+talaria casg init
+
+# Download SwissProt (initial download)
+talaria database download uniprot -d swissprot
+# Downloads and chunks the database efficiently
+
+# Later, check for updates (same command)
+talaria database download uniprot -d swissprot
+# Automatically detects existing data and only downloads changes
+
+# Add a custom database
+talaria database add -i mysequences.fasta --source mylab --dataset proteins
+
+# List all databases
+talaria database list
+
+# Reduce a database
+talaria reduce uniprot/swissprot -r 0.3 -o reduced.fasta
+
+# View detailed information
+talaria database info uniprot/swissprot
+</code></pre>
+<h2 id="implementation-status"><a class="header" href="#implementation-status">Implementation Status</a></h2>
+<h3 id="currently-implemented"><a class="header" href="#currently-implemented">Currently Implemented</a></h3>
+<p>✅ <strong>Core CASG System</strong></p>
+<ul>
+<li>Content-addressed storage with SHA256</li>
+<li>Manifest-based version tracking</li>
+<li>Chunk deduplication</li>
+<li>Local storage management</li>
+</ul>
+<p>✅ <strong>Database Commands</strong></p>
+<ul>
+<li><code>talaria database download</code> - Download or update databases</li>
+<li><code>talaria database add</code> - Add custom databases</li>
+<li><code>talaria database list</code> - List available databases</li>
+<li><code>talaria database info</code> - Show database information</li>
+<li><code>talaria database list-sequences</code> - List sequences</li>
+<li><code>talaria database update-taxonomy</code> - Update taxonomy data</li>
+</ul>
+<p>✅ <strong>CASG Commands</strong></p>
+<ul>
+<li><code>talaria casg init</code> - Initialize repository</li>
+<li><code>talaria casg stats</code> - Show statistics</li>
+<li><code>talaria casg sync</code> - Basic cloud sync</li>
+<li><code>talaria casg history</code> - Version history</li>
+</ul>
+<h3 id="planned-features"><a class="header" href="#planned-features">Planned Features</a></h3>
+<p>📋 <strong>Future Enhancements</strong></p>
+<ul>
+<li>Remote manifest servers for shared updates</li>
+<li>Cloud storage backends (S3, GCS, Azure)</li>
+<li><code>talaria database verify</code> - Verify integrity</li>
+<li><code>talaria database repair</code> - Fix corruption</li>
+<li><code>talaria casg gc</code> - Garbage collection</li>
+<li>Peer-to-peer chunk sharing</li>
+</ul>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<ul>
+<li><a href="architecture.html">Architecture Deep Dive</a></li>
+<li><a href="api-reference.html">API Reference</a></li>
+<li><a href="troubleshooting.html">Troubleshooting Guide</a></li>
+<li><a href="../api/cli-reference.html">CLI Reference</a></li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../databases/downloading.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../casg/architecture.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../databases/downloading.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../casg/architecture.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../mermaid.min.js"></script>
+        <script src="../mermaid-init.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

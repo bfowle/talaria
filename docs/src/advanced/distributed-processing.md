@@ -82,6 +82,14 @@ graph LR
     C2 --> D
     CN --> D
     D --> E[Sharding Plan]
+
+    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
+    style B stroke:#7b1fa2,stroke-width:2px,fill:#e1bee7
+    style C1 stroke:#00796b,stroke-width:2px
+    style C2 stroke:#00796b,stroke-width:2px
+    style CN stroke:#00796b,stroke-width:2px
+    style D stroke:#512da8,stroke-width:2px,fill:#d1c4e9
+    style E stroke:#388e3c,stroke-width:3px,fill:#c8e6c9
 ```
 
 ### Phase 2: Smart Sharding
@@ -94,6 +102,15 @@ graph TD
     C --> F[Shard 1: Balanced subset]
     D --> G[Shard 2: Balanced subset]
     E --> H[Shard N: Balanced subset]
+
+    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
+    style B stroke:#7b1fa2,stroke-width:2px,fill:#e1bee7
+    style C stroke:#00796b,stroke-width:2px,fill:#b2dfdb
+    style D stroke:#00796b,stroke-width:2px,fill:#b2dfdb
+    style E stroke:#00796b,stroke-width:2px,fill:#b2dfdb
+    style F stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
+    style G stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
+    style H stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
 ```
 
 ### Phase 3: Parallel Processing
@@ -108,6 +125,17 @@ graph LR
     C1 --> D[Distributed Query Router]
     C2 --> D
     CN --> D
+
+    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
+    style A2 stroke:#1976d2,stroke-width:2px,fill:#bbdefb
+    style AN stroke:#1976d2,stroke-width:2px,fill:#bbdefb
+    style B1 stroke:#00796b,stroke-width:2px
+    style B2 stroke:#00796b,stroke-width:2px
+    style BN stroke:#00796b,stroke-width:2px
+    style C1 stroke:#512da8,stroke-width:2px,fill:#d1c4e9
+    style C2 stroke:#512da8,stroke-width:2px,fill:#d1c4e9
+    style CN stroke:#512da8,stroke-width:2px,fill:#d1c4e9
+    style D stroke:#388e3c,stroke-width:3px,fill:#c8e6c9
 ```
 
 ## Shard Assignment Strategies

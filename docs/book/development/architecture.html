@@ -422,8 +422,15 @@ impl ProgressManager {
     G --&gt;|Encode non-references| H[Write Output]
     H --&gt; I[FASTA + Delta files]
     
-    style F fill:#f9f,stroke:#333,stroke-width:2px
-    style G fill:#bbf,stroke:#333,stroke-width:2px
+    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
+    style B stroke:#00796b,stroke-width:2px
+    style C stroke:#00796b,stroke-width:2px
+    style D stroke:#00796b,stroke-width:2px
+    style E stroke:#512da8,stroke-width:2px,fill:#d1c4e9
+    style F stroke:#f57c00,stroke-width:2px,fill:#ffe0b2
+    style G stroke:#0288d1,stroke-width:2px,fill:#b3e5fc
+    style H stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
+    style I stroke:#388e3c,stroke-width:3px,fill:#a5d6a7
 </pre>
 <h3 id="alignment-processing"><a class="header" href="#alignment-processing">Alignment Processing</a></h3>
 <pre class="mermaid">flowchart TD
@@ -442,8 +449,16 @@ impl ProgressManager {
     
     E --&gt; F[Results]
     
-    style B fill:#f96,stroke:#333,stroke-width:2px
-    style E fill:#9f9,stroke:#333,stroke-width:2px
+    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
+    style B stroke:#7b1fa2,stroke-width:2px,fill:#e1bee7
+    style E stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
+    style F stroke:#388e3c,stroke-width:3px,fill:#a5d6a7
+    style C1 stroke:#00796b,stroke-width:2px
+    style C2 stroke:#00796b,stroke-width:2px
+    style CN stroke:#00796b,stroke-width:2px
+    style D1 stroke:#0288d1,stroke-width:2px
+    style D2 stroke:#0288d1,stroke-width:2px
+    style DN stroke:#0288d1,stroke-width:2px
 </pre>
 <h2 id="memory-management"><a class="header" href="#memory-management">Memory Management</a></h2>
 <h3 id="memory-layout"><a class="header" href="#memory-layout">Memory Layout</a></h3>
@@ -459,10 +474,10 @@ impl ProgressManager {
     B -.-&gt;|Dynamic allocation| C
     C -.-&gt;|Shared access| D
     
-    style A fill:#ffd,stroke:#333,stroke-width:2px
-    style B fill:#dff,stroke:#333,stroke-width:2px
-    style C fill:#fdf,stroke:#333,stroke-width:2px
-    style D fill:#dfd,stroke:#333,stroke-width:2px
+    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
+    style B stroke:#00796b,stroke-width:2px,fill:#b2dfdb
+    style C stroke:#512da8,stroke-width:2px,fill:#d1c4e9
+    style D stroke:#7b1fa2,stroke-width:2px,fill:#e1bee7
 </pre>
 <h3 id="object-pooling"><a class="header" href="#object-pooling">Object Pooling</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -502,9 +517,13 @@ impl AlignmentMatrixPool {
     D3 --&gt; C
     DN --&gt; C
     
-    style A fill:#f9f,stroke:#333,stroke-width:3px
-    style B fill:#9ff,stroke:#333,stroke-width:2px
-    style C fill:#ff9,stroke:#333,stroke-width:2px
+    style A stroke:#7b1fa2,stroke-width:3px,fill:#e1bee7
+    style B stroke:#1976d2,stroke-width:2px,fill:#bbdefb
+    style C stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
+    style D1 stroke:#00796b,stroke-width:2px
+    style D2 stroke:#00796b,stroke-width:2px
+    style D3 stroke:#00796b,stroke-width:2px
+    style DN stroke:#00796b,stroke-width:2px
 </pre>
 <h3 id="synchronization-primitives"><a class="header" href="#synchronization-primitives">Synchronization Primitives</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -592,9 +611,11 @@ pub struct PluginManager {
     K --&gt; L[post_output]
     L --&gt; M[Application End]
     
-    style E fill:#bbf,stroke:#333,stroke-width:2px
-    style H fill:#bbf,stroke:#333,stroke-width:2px
-    style K fill:#bbf,stroke:#333,stroke-width:2px
+    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
+    style E stroke:#512da8,stroke-width:3px,fill:#d1c4e9
+    style H stroke:#512da8,stroke-width:3px,fill:#d1c4e9
+    style K stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
+    style M stroke:#388e3c,stroke-width:3px,fill:#a5d6a7
 </pre>
 <h2 id="testing-architecture"><a class="header" href="#testing-architecture">Testing Architecture</a></h2>
 <h3 id="test-structure"><a class="header" href="#test-structure">Test Structure</a></h3>

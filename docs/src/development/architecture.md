@@ -240,8 +240,15 @@ flowchart TD
     G -->|Encode non-references| H[Write Output]
     H --> I[FASTA + Delta files]
     
-    style F fill:#f9f,stroke:#333,stroke-width:2px
-    style G fill:#bbf,stroke:#333,stroke-width:2px
+    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
+    style B stroke:#00796b,stroke-width:2px
+    style C stroke:#00796b,stroke-width:2px
+    style D stroke:#00796b,stroke-width:2px
+    style E stroke:#512da8,stroke-width:2px,fill:#d1c4e9
+    style F stroke:#f57c00,stroke-width:2px,fill:#ffe0b2
+    style G stroke:#0288d1,stroke-width:2px,fill:#b3e5fc
+    style H stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
+    style I stroke:#388e3c,stroke-width:3px,fill:#a5d6a7
 ```
 
 ### Alignment Processing
@@ -263,8 +270,16 @@ flowchart TD
     
     E --> F[Results]
     
-    style B fill:#f96,stroke:#333,stroke-width:2px
-    style E fill:#9f9,stroke:#333,stroke-width:2px
+    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
+    style B stroke:#7b1fa2,stroke-width:2px,fill:#e1bee7
+    style E stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
+    style F stroke:#388e3c,stroke-width:3px,fill:#a5d6a7
+    style C1 stroke:#00796b,stroke-width:2px
+    style C2 stroke:#00796b,stroke-width:2px
+    style CN stroke:#00796b,stroke-width:2px
+    style D1 stroke:#0288d1,stroke-width:2px
+    style D2 stroke:#0288d1,stroke-width:2px
+    style DN stroke:#0288d1,stroke-width:2px
 ```
 
 ## Memory Management
@@ -284,10 +299,10 @@ graph TB
     B -.->|Dynamic allocation| C
     C -.->|Shared access| D
     
-    style A fill:#ffd,stroke:#333,stroke-width:2px
-    style B fill:#dff,stroke:#333,stroke-width:2px
-    style C fill:#fdf,stroke:#333,stroke-width:2px
-    style D fill:#dfd,stroke:#333,stroke-width:2px
+    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
+    style B stroke:#00796b,stroke-width:2px,fill:#b2dfdb
+    style C stroke:#512da8,stroke-width:2px,fill:#d1c4e9
+    style D stroke:#7b1fa2,stroke-width:2px,fill:#e1bee7
 ```
 
 ### Object Pooling
@@ -332,9 +347,13 @@ flowchart TD
     D3 --> C
     DN --> C
     
-    style A fill:#f9f,stroke:#333,stroke-width:3px
-    style B fill:#9ff,stroke:#333,stroke-width:2px
-    style C fill:#ff9,stroke:#333,stroke-width:2px
+    style A stroke:#7b1fa2,stroke-width:3px,fill:#e1bee7
+    style B stroke:#1976d2,stroke-width:2px,fill:#bbdefb
+    style C stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
+    style D1 stroke:#00796b,stroke-width:2px
+    style D2 stroke:#00796b,stroke-width:2px
+    style D3 stroke:#00796b,stroke-width:2px
+    style DN stroke:#00796b,stroke-width:2px
 ```
 
 ### Synchronization Primitives
@@ -431,9 +450,11 @@ flowchart LR
     K --> L[post_output]
     L --> M[Application End]
     
-    style E fill:#bbf,stroke:#333,stroke-width:2px
-    style H fill:#bbf,stroke:#333,stroke-width:2px
-    style K fill:#bbf,stroke:#333,stroke-width:2px
+    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
+    style E stroke:#512da8,stroke-width:3px,fill:#d1c4e9
+    style H stroke:#512da8,stroke-width:3px,fill:#d1c4e9
+    style K stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
+    style M stroke:#388e3c,stroke-width:3px,fill:#a5d6a7
 ```
 
 ## Testing Architecture

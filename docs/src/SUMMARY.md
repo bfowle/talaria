@@ -5,6 +5,7 @@
 # User Guide
 
 - [Quick Start](./user-guide/quick-start.md)
+- [Cheat Sheet](./user-guide/cheatsheet.md)
 - [Installation](./user-guide/installation.md)
 - [Basic Usage](./user-guide/basic-usage.md)
 - [Interactive Mode](./user-guide/interactive-mode.md)
@@ -13,6 +14,16 @@
 # Databases
 
 - [Downloading Databases](./databases/downloading.md)
+
+# Storage Architecture
+
+- [Storage Overview](./casg/overview.md)
+- [Architecture Deep Dive](./casg/architecture.md)
+- [Manifest Format](./casg/manifest.md)
+- [Smart Chunking](./casg/chunking.md)
+- [Merkle DAG & Proofs](./casg/merkle.md)
+- [API Reference](./casg/api-reference.md)
+- [Troubleshooting Guide](./casg/troubleshooting.md)
 
 # Workflows
 

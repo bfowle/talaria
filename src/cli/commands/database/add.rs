@@ -1,10 +1,5 @@
 use clap::Args;
 use std::path::PathBuf;
-use std::fs;
-use anyhow::{Context, Result};
-use indicatif::{ProgressBar, ProgressStyle};
-use chrono::Local;
-use serde_json::json;
 
 #[derive(Args)]
 pub struct AddArgs {
@@ -43,142 +38,136 @@ pub struct AddArgs {
     pub copy: bool,
 }
 
-pub fn run(args: AddArgs) -> Result<()> {
-    use crate::core::config::load_config;
+pub fn run(args: AddArgs) -> anyhow::Result<()> {
     use crate::core::database_manager::DatabaseManager;
-    use crate::utils::format::get_file_size;
+    use crate::casg::chunker::TaxonomicChunker;
+    use crate::casg::types::{ChunkingStrategy, ChunkMetadata, TemporalManifest, SHA256Hash};
+    use crate::bio::fasta::parse_fasta;
+    use crate::utils::progress::create_progress_bar;
+    use chrono::Utc;
 
-    // Validate input file exists
+    // Validate input file
     if !args.input.exists() {
         anyhow::bail!("Input file does not exist: {:?}", args.input);
     }
 
-    if !args.input.is_file() {
-        anyhow::bail!("Input must be a file, not a directory: {:?}", args.input);
-    }
-
     // Determine database name
     let db_name = args.name.clone().or_else(|| {
-        args.dataset.clone()
-    }).or_else(|| {
         args.input.file_stem()
             .and_then(|s| s.to_str())
             .map(|s| s.to_string())
     }).ok_or_else(|| anyhow::anyhow!("Could not determine database name"))?;
 
-    let dataset_name = args.dataset.unwrap_or_else(|| db_name.clone());
+    let dataset = args.dataset.clone().unwrap_or_else(|| db_name.clone());
 
-    // Initialize progress bar
-    let pb = ProgressBar::new_spinner();
-    pb.set_style(
-        ProgressStyle::default_spinner()
-            .template("{spinner:.green} {msg}")
-            .unwrap()
-    );
-    pb.set_message(format!("Adding custom database '{}/{}'...", args.source, dataset_name));
+    // Initialize database manager
+    use crate::core::paths;
+    let base_path = paths::talaria_databases_dir();
 
-    // Load config and database manager
-    let config = load_config("talaria.toml").unwrap_or_default();
-    let db_manager = DatabaseManager::new(config.database.database_dir)?;
+    let manager = DatabaseManager::new(Some(base_path.to_string_lossy().to_string()))?;
 
     // Check if database already exists
-    let db_dir = db_manager.get_database_dir(&args.source, &dataset_name);
-    if db_dir.exists() && !args.replace {
+    let db_path = base_path.join(&args.source).join(&dataset);
+    if db_path.exists() && !args.replace {
         anyhow::bail!(
-            "Database '{}/{}' already exists. Use --replace to overwrite.",
-            args.source, dataset_name
+            "Database already exists: {}/{}. Use --replace to overwrite.",
+            args.source,
+            dataset
         );
     }
 
-    // Determine version
+    eprintln!("\u{25cf} Adding custom database: {}/{}", args.source, dataset);
+
+    // Create directories
+    std::fs::create_dir_all(&db_path)?;
+
+    // Read FASTA file
+    eprintln!("\u{25cf} Reading FASTA file: {:?}", args.input);
+    let sequences = parse_fasta(&args.input)?;
+    let sequence_count = sequences.len();
+    eprintln!("  Read {} sequences", sequence_count);
+
+    // Create chunker
+    let strategy = ChunkingStrategy {
+        target_chunk_size: 5 * 1024 * 1024, // 5MB target
+        max_chunk_size: 10 * 1024 * 1024, // 10MB max
+        min_sequences_per_chunk: 10, // At least 10 sequences
+        taxonomic_coherence: 0.0, // No taxonomy optimization for custom DBs
+        special_taxa: Vec::new(),
+    };
+
+    let chunker = TaxonomicChunker::new(strategy);
+
+    // Chunk the sequences
+    eprintln!("\u{25cf} Chunking sequences...");
+    let chunks = chunker.chunk_sequences(sequences)?;
+    eprintln!("  Created {} chunks", chunks.len());
+
+    // Store chunks in CASG
+    let pb = create_progress_bar(chunks.len() as u64, "Storing chunks");
+    let mut chunk_infos = Vec::new();
+
+    for chunk in chunks {
+        pb.inc(1);
+
+        // Store chunk
+        let hash = manager.get_storage().store_chunk(
+            &serde_json::to_vec(&chunk)?,
+            true // compress
+        )?;
+
+        // Create chunk metadata
+        chunk_infos.push(ChunkMetadata {
+            hash: hash.clone(),
+            taxon_ids: chunk.taxon_ids.clone(),
+            sequence_count: chunk.sequences.len(),
+            size: chunk.size,
+            compressed_size: chunk.compressed_size,
+        });
+    }
+    pb.finish_with_message("All chunks stored");
+
+    // Create manifest
     let version = args.version.unwrap_or_else(|| {
-        Local::now().format("%Y-%m-%d").to_string()
+        Utc::now().format("%Y%m%d").to_string()
     });
 
-    // Create version directory
-    let version_dir = db_manager.get_version_dir(&args.source, &dataset_name, &version);
-    fs::create_dir_all(&version_dir)
-        .context("Failed to create version directory")?;
-
-    // Determine target filename
-    let target_filename = format!("{}.fasta", dataset_name);
-    let target_path = version_dir.join(&target_filename);
-
-    // Copy or move the file
-    pb.set_message(if args.copy { "Copying FASTA file..." } else { "Moving FASTA file..." });
-
-    if args.copy {
-        fs::copy(&args.input, &target_path)
-            .context("Failed to copy FASTA file")?;
-    } else {
-        // Try to rename first (fast if same filesystem), fall back to copy+delete
-        if fs::rename(&args.input, &target_path).is_err() {
-            fs::copy(&args.input, &target_path)
-                .context("Failed to copy FASTA file")?;
-            fs::remove_file(&args.input)
-                .context("Failed to remove original file after copy")?;
-        }
-    }
-
-    // Quick validation - read first few lines to ensure it's a FASTA file
-    pb.set_message("Validating FASTA format...");
-    let content = fs::read_to_string(&target_path)
-        .context("Failed to read copied FASTA file")?;
-
-    let first_line = content.lines().next()
-        .ok_or_else(|| anyhow::anyhow!("File is empty"))?;
-
-    if !first_line.starts_with('>') {
-        // Clean up on error
-        fs::remove_dir_all(&version_dir).ok();
-        anyhow::bail!("File does not appear to be in FASTA format (first line should start with '>')");
-    }
-
-    // Count sequences
-    pb.set_message("Counting sequences...");
-    let sequence_count = content.lines()
-        .filter(|line| line.starts_with('>'))
-        .count();
-
-    // Get file size
-    let file_size = get_file_size(&target_path).unwrap_or(0);
-
-    // Create metadata
-    pb.set_message("Creating metadata...");
-    let metadata = json!({
-        "database_type": "custom",
-        "source": args.source,
-        "dataset": dataset_name,
-        "version": version,
-        "description": args.description.unwrap_or_else(|| format!("Custom database from {}",
-            args.input.file_name().and_then(|s| s.to_str()).unwrap_or("unknown"))),
-        "original_file": args.input.to_string_lossy(),
-        "added_date": Local::now().to_rfc3339(),
-        "file_size": file_size,
-        "sequence_count": sequence_count,
-        "format": "fasta",
+    let _description = args.description.unwrap_or_else(|| {
+        format!("Custom database imported from {:?}", args.input.file_name().unwrap_or_default())
     });
 
-    let metadata_path = version_dir.join("metadata.json");
-    fs::write(&metadata_path, serde_json::to_string_pretty(&metadata)?)
-        .context("Failed to write metadata")?;
+    let temporal_manifest = TemporalManifest {
+        version: version.clone(),
+        created_at: Utc::now(),
+        sequence_version: version.clone(),
+        taxonomy_version: "none".to_string(),
+        taxonomy_root: SHA256Hash::zero(),
+        sequence_root: SHA256Hash::zero(),
+        taxonomy_manifest_hash: SHA256Hash::zero(),
+        taxonomy_dump_version: "none".to_string(),
+        source_database: Some(format!("{}/{}", args.source, dataset)),
+        chunk_index: chunk_infos.clone(),
+        discrepancies: Vec::new(),
+        etag: format!("custom-{}-{}", dataset, version),
+        previous_version: None,
+    };
 
-    // Update current symlink
-    pb.set_message("Updating current version link...");
-    db_manager.update_current_link(&args.source, &dataset_name, &version)?;
+    // Save manifest
+    let manifest_path = db_path.join("manifest.json");
+    let manifest_content = serde_json::to_string_pretty(&temporal_manifest)?;
+    std::fs::write(&manifest_path, manifest_content)?;
 
-    pb.finish_and_clear();
+    eprintln!("\u{2713} Successfully added custom database: {}/{}", args.source, dataset);
+    eprintln!("  Version: {}", version);
+    eprintln!("  Sequences: {}", sequence_count);
+    eprintln!("  Chunks: {}", chunk_infos.len());
+    eprintln!("  Location: {:?}", db_path);
 
-    // Print success message with statistics
-    println!("✓ Successfully added custom database '{}/{}'", args.source, dataset_name);
-    println!("  Version: {}", version);
-    println!("  Sequences: {}", sequence_count);
-    println!("  Size: {:.2} MB", file_size as f64 / 1_048_576.0);
-    println!("  Location: {:?}", version_dir);
-    println!();
-    println!("You can now use this database with:");
-    println!("  talaria reduce {}/{} -r 0.3", args.source, dataset_name);
-    println!("  talaria database info {}/{}", args.source, dataset_name);
+    // Optionally remove original file if moving (not copying)
+    if !args.copy {
+        eprintln!("\u{25cf} Note: Original file kept at {:?}", args.input);
+        eprintln!("  Use --copy=false to move the file instead");
+    }
 
     Ok(())
 }

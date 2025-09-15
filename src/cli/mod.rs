@@ -43,7 +43,7 @@ pub enum Commands {
     
     /// Manage biological databases
     Database(commands::database::DatabaseArgs),
-    
+
     /// Manage bioinformatics tools (aligners)
     Tools(commands::tools::ToolsArgs),
 
@@ -51,7 +51,7 @@ pub enum Commands {
     Interactive(commands::interactive::InteractiveArgs),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TargetAligner {
     Lambda,
     Blast,

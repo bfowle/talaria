@@ -61,7 +61,7 @@ impl TaxonomyDB {
     pub fn distance(&self, taxon_a: u32, taxon_b: u32) -> Option<usize> {
         let lineage_a = self.get_lineage(taxon_a);
         let lineage_b = self.get_lineage(taxon_b);
-        
+
         if let Some(common) = self.common_ancestor(taxon_a, taxon_b) {
             let dist_a = lineage_a.iter().position(|&x| x == common)?;
             let dist_b = lineage_b.iter().position(|&x| x == common)?;
@@ -69,6 +69,10 @@ impl TaxonomyDB {
         } else {
             None
         }
+    }
+
+    pub fn taxa_count(&self) -> usize {
+        self.taxa.len()
     }
 }
 
@@ -121,9 +125,9 @@ pub mod ncbi {
     pub fn build_taxonomy_db<P: AsRef<Path>>(names_path: P, nodes_path: P) -> Result<TaxonomyDB, std::io::Error> {
         let names = load_names(names_path)?;
         let nodes = load_nodes(nodes_path)?;
-        
+
         let mut db = TaxonomyDB::new();
-        
+
         for (taxon_id, name) in names {
             if let Some((parent_id, rank)) = nodes.get(&taxon_id) {
                 let info = TaxonomyInfo {
@@ -135,7 +139,12 @@ pub mod ncbi {
                 db.add_taxon(info);
             }
         }
-        
+
         Ok(db)
+    }
+
+    // Alias for convenience
+    pub fn parse_ncbi_taxonomy<P: AsRef<Path>>(names_path: P, nodes_path: P) -> Result<TaxonomyDB, std::io::Error> {
+        build_taxonomy_db(names_path, nodes_path)
     }
 }

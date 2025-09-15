@@ -197,34 +197,98 @@
                 <div id="content" class="content">
                     <main>
                         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
-<h1 id="database-downloading-guide"><a class="header" href="#database-downloading-guide">Database Downloading Guide</a></h1>
-<p>Talaria includes built-in support for downloading and managing biological sequence databases from major sources.</p>
-<h2 id="interactive-download-mode"><a class="header" href="#interactive-download-mode">Interactive Download Mode</a></h2>
-<p>The easiest way to download databases is using the interactive mode:</p>
-<pre><code class="language-bash">talaria download --interactive
-# or
-talaria interactive  # Then select "Download databases"
+<h1 id="database-management-guide"><a class="header" href="#database-management-guide">Database Management Guide</a></h1>
+<p>Talaria provides comprehensive database management using the Content-Addressed Sequence Graph (CASG) system for efficient incremental updates.</p>
+<h2 id="how-casg-works"><a class="header" href="#how-casg-works">How CASG Works</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Aspect</th><th>CASG Benefit</th></tr></thead><tbody>
+<tr><td>Initial Download</td><td>100GB split into chunks</td></tr>
+<tr><td>Daily Updates</td><td>~1GB (only changed chunks)</td></tr>
+<tr><td>Storage (1 year)</td><td>~100GB (deduplicated)</td></tr>
+<tr><td>Update Check</td><td>100KB manifest</td></tr>
+<tr><td>Deduplication</td><td>Automatic 30-50%</td></tr>
+<tr><td>Verification</td><td>Cryptographic proofs</td></tr>
+</tbody></table>
+</div>
+<h2 id="key-features"><a class="header" href="#key-features">Key Features</a></h2>
+<ul>
+<li><strong>Content-Addressed Storage</strong>: Immutable chunks with SHA256 addressing</li>
+<li><strong>Incremental Updates</strong>: Only download changed chunks</li>
+<li><strong>Bi-Temporal Versioning</strong>: Track sequence and taxonomy changes independently</li>
+<li><strong>Cryptographic Verification</strong>: Merkle DAG ensures integrity</li>
+<li><strong>Smart Chunking</strong>: Group sequences by taxonomy for better compression</li>
+</ul>
+<h2 id="directory-structure"><a class="header" href="#directory-structure">Directory Structure</a></h2>
+<h3 id="casg-directory-structure"><a class="header" href="#casg-directory-structure">CASG Directory Structure</a></h3>
+<pre><code>~/.talaria/databases/
+├── manifests/                      # Database-specific manifest files
+│   ├── uniprot-swissprot.json     # SwissProt manifest
+│   ├── ncbi-nr.json                # NR database manifest
+│   └── custom-mydb.json            # Custom database manifests
+├── chunks/                         # Content-addressed chunk storage
+│   ├── ab/                         # Two-letter prefix directories
+│   │   └── abc123...               # SHA256-named chunk files
+│   └── de/
+│       └── def456...
+└── taxonomy/                       # Taxonomy data
+    └── taxdump/                    # NCBI taxonomy files
+        ├── nodes.dmp
+        └── names.dmp
 </code></pre>
-<p>This will guide you through:</p>
+<h2 id="database-download"><a class="header" href="#database-download">Database Download</a></h2>
+<h3 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h3>
+<p>The <code>database download</code> command intelligently handles both initial downloads and updates:</p>
+<pre><code class="language-bash"># First time - downloads entire database
+talaria database download uniprot -d swissprot
+# Downloads all chunks, creates manifest
+
+# Run again - automatically checks for updates
+talaria database download uniprot -d swissprot
+# Output: "Database is already up to date!" or "Updated: 5 new chunks"
+</code></pre>
+<h3 id="what-happens-behind-the-scenes"><a class="header" href="#what-happens-behind-the-scenes">What Happens Behind the Scenes</a></h3>
 <ol>
-<li>Selecting a database source (UniProt, NCBI, etc.)</li>
-<li>Choosing specific datasets</li>
-<li>Configuring download options</li>
-<li>Automatic decompression and verification</li>
+<li>
+<p><strong>First Download</strong>:</p>
+<ul>
+<li>Downloads manifest (~100KB)</li>
+<li>Downloads all chunks (e.g., 200MB as ~50 chunks)</li>
+<li>Stores with deduplication and compression</li>
+<li>Creates database-specific manifest</li>
+</ul>
+</li>
+<li>
+<p><strong>Subsequent Runs</strong>:</p>
+<ul>
+<li>Checks local manifest</li>
+<li>Compares with source (if available)</li>
+<li>Downloads only changed chunks</li>
+<li>Updates manifest</li>
+</ul>
+</li>
 </ol>
-<h2 id="command-line-download"><a class="header" href="#command-line-download">Command-Line Download</a></h2>
-<h3 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h3>
-<pre><code class="language-bash"># Download UniProt SwissProt
-talaria download --database uniprot --dataset swissprot
+<p>For large databases, the savings are massive:</p>
+<ul>
+<li>SwissProt update: ~5MB instead of 200MB</li>
+<li>NR update: ~1GB instead of 100GB</li>
+</ul>
+<h3 id="database-commands"><a class="header" href="#database-commands">Database Commands</a></h3>
+<pre><code class="language-bash"># Download database (initial or update)
+talaria database download uniprot -d swissprot
 
-# Download NCBI nr database
-talaria download --database ncbi --dataset nr
+# Add custom FASTA to CASG
+talaria database add -i sequences.fasta --source mylab --dataset proteins
 
-# Download with taxonomy
-talaria download --database uniprot --dataset swissprot --taxonomy
+# List downloaded databases
+talaria database list
 
-# Specify output directory
-talaria download --database ncbi --dataset nr --output /data/databases/
+# Show database information
+talaria database info uniprot/swissprot
+
+# List sequences from a database
+talaria database list-sequences uniprot/swissprot --limit 100
+
+# Update taxonomy data
+talaria database update-taxonomy
 </code></pre>
 <h2 id="supported-databases"><a class="header" href="#supported-databases">Supported Databases</a></h2>
 <h3 id="uniprot"><a class="header" href="#uniprot">UniProt</a></h3>
@@ -237,11 +301,10 @@ talaria download --database ncbi --dataset nr --output /data/databases/
 </tbody></table>
 </div>
 <p><strong>Example: Download SwissProt with taxonomy mapping</strong></p>
-<pre><code class="language-bash">talaria download \
-  --database uniprot \
-  --dataset swissprot \
-  --taxonomy \
-  --output ./databases/
+<pre><code class="language-bash">talaria database download uniprot \
+  -d swissprot \
+  --taxonomy
+# Downloads to: ~/.talaria/databases/data/uniprot/swissprot/YYYY-MM-DD/
 </code></pre>
 <h3 id="ncbi"><a class="header" href="#ncbi">NCBI</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Dataset</th><th>Size</th><th>Description</th><th>Command</th></tr></thead><tbody>
@@ -254,18 +317,17 @@ talaria download --database ncbi --dataset nr --output /data/databases/
 </div>
 <p><strong>Example: Download nr with taxonomy</strong></p>
 <pre><code class="language-bash"># Download nr database
-talaria download --database ncbi --dataset nr
+talaria database download ncbi -d nr
 
 # Download taxonomy separately
-talaria download --database ncbi --dataset taxonomy
+talaria database download ncbi -d taxonomy
 </code></pre>
 <h3 id="pdb-pfam-silva-kegg"><a class="header" href="#pdb-pfam-silva-kegg">PDB, PFAM, Silva, KEGG</a></h3>
 <p>These databases are recognized but not yet fully implemented. Coming in future versions.</p>
 <h2 id="advanced-download-options"><a class="header" href="#advanced-download-options">Advanced Download Options</a></h2>
 <h3 id="resume-interrupted-downloads"><a class="header" href="#resume-interrupted-downloads">Resume Interrupted Downloads</a></h3>
-<pre><code class="language-bash">talaria download \
-  --database uniprot \
-  --dataset trembl \
+<pre><code class="language-bash">talaria database download uniprot \
+  -d trembl \
   --resume
 </code></pre>
 <h3 id="parallel-downloads"><a class="header" href="#parallel-downloads">Parallel Downloads</a></h3>
@@ -340,22 +402,90 @@ kraken2-build --download-library bacteria --db kraken2_db
 talaria download --database ncbi --dataset nr.gz
 talaria convert --input nr.gz --output kraken2_format --format kraken2
 </code></pre>
-<h2 id="storage-recommendations"><a class="header" href="#storage-recommendations">Storage Recommendations</a></h2>
-<h3 id="directory-structure"><a class="header" href="#directory-structure">Directory Structure</a></h3>
-<pre><code>/data/databases/
-├── uniprot/
-│   ├── 2024.01/          # Version-specific
-│   │   ├── uniprot_sprot.fasta
-│   │   ├── uniprot_sprot_reduced.fasta
-│   │   └── uniprot_sprot.lambda
-│   └── current -&gt; 2024.01/  # Symlink to current
-├── ncbi/
-│   ├── nr/
-│   ├── nt/
-│   └── taxonomy/
-└── cache/                 # Download cache
-    └── checksums/
+<h2 id="database-management-commands"><a class="header" href="#database-management-commands">Database Management Commands</a></h2>
+<h3 id="list-databases"><a class="header" href="#list-databases">List Databases</a></h3>
+<pre><code class="language-bash"># List all downloaded databases
+talaria database list
+
+# Show detailed information
+talaria database list --detailed
+
+# Show all versions (not just current)
+talaria database list --all-versions
+
+# List specific database versions
+talaria database list --database uniprot/swissprot
 </code></pre>
+<h3 id="update-databases"><a class="header" href="#update-databases">Update Databases</a></h3>
+<pre><code class="language-bash"># Check for updates and download if available (same as initial download)
+talaria database download uniprot -d swissprot
+
+# The download command automatically:
+# - Detects if database exists
+# - Checks for updates
+# - Downloads only changes
+# - Reports status clearly
+
+# Resume interrupted download
+talaria database download uniprot -d swissprot --resume
+</code></pre>
+<h3 id="storage-management"><a class="header" href="#storage-management">Storage Management</a></h3>
+<pre><code class="language-bash"># View CASG repository statistics
+talaria casg stats
+
+# Initialize CASG if not already done
+talaria casg init
+
+# Future: Garbage collection for unused chunks
+# talaria casg gc  # Not yet implemented
+</code></pre>
+<h3 id="compare-database-versions"><a class="header" href="#compare-database-versions">Compare Database Versions</a></h3>
+<pre><code class="language-bash"># Compare current with previous version
+talaria database diff uniprot/swissprot
+
+# Compare specific versions
+talaria database diff uniprot/swissprot@2024-01-01 uniprot/swissprot@2024-02-01
+
+# Compare with file path
+talaria database diff uniprot/swissprot /path/to/other.fasta
+
+# Generate detailed report
+talaria database diff uniprot/swissprot --detailed --output report.html
+</code></pre>
+<h3 id="get-database-info"><a class="header" href="#get-database-info">Get Database Info</a></h3>
+<pre><code class="language-bash"># Show database statistics
+talaria database info uniprot/swissprot/current/swissprot.fasta
+
+# Include taxonomic distribution
+talaria database info database.fasta --taxonomy
+
+# Output as JSON
+talaria database info database.fasta --format json
+</code></pre>
+<h2 id="configuration-1"><a class="header" href="#configuration-1">Configuration</a></h2>
+<h3 id="database-settings"><a class="header" href="#database-settings">Database Settings</a></h3>
+<p>Configure database management in <code>talaria.toml</code>:</p>
+<pre><code class="language-toml">[database]
+# Base directory for databases (default: ~/.talaria/databases/data/)
+database_dir = "/data/talaria/databases"
+
+# Number of old versions to keep (0 = keep all)
+retention_count = 3
+
+# Automatically check for updates
+auto_update_check = false
+
+# Preferred mirror for downloads
+preferred_mirror = "ebi"  # or "uniprot", "ncbi"
+</code></pre>
+<h3 id="environment-variables"><a class="header" href="#environment-variables">Environment Variables</a></h3>
+<pre><code class="language-bash"># Override database directory
+export TALARIA_DB_DIR=/custom/path/databases
+
+# Set retention policy
+export TALARIA_RETENTION=5
+</code></pre>
+<h2 id="storage-recommendations"><a class="header" href="#storage-recommendations">Storage Recommendations</a></h2>
 <h3 id="disk-space-planning"><a class="header" href="#disk-space-planning">Disk Space Planning</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Database</th><th>Original</th><th>After Reduction (30%)</th><th>With Index</th></tr></thead><tbody>
 <tr><td>SwissProt</td><td>200 MB</td><td>60 MB</td><td>150 MB</td></tr>
@@ -399,7 +529,7 @@ talaria download --database ncbi --dataset nr \
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../workflows/lambda-workflow.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../casg/overview.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -413,7 +543,7 @@ talaria download --database ncbi --dataset nr \
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../workflows/lambda-workflow.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../casg/overview.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

@@ -110,17 +110,53 @@ Reconstruct sequences from references and deltas
 talaria reconstruct -r <REFERENCES> -d <DELTAS> -o <OUTPUT> [--sequences <ID>...]
 ```
 
-### `download`
-Download biological databases (currently supports UniProt and NCBI)
+### `database`
+Manage biological databases with content-addressed storage
 
 ```bash
-talaria download [DATABASE] [OPTIONS]
+talaria database <SUBCOMMAND>
 
-Supported databases:
-  uniprot - UniProt/SwissProt/TrEMBL databases
-  ncbi    - NCBI nr/nt/RefSeq databases
-  
+Subcommands:
+  download         Download biological databases (UniProt, NCBI)
+  list            List downloaded databases
+  info            Show information about a database
+  add             Add a custom database from local FASTA
+  list-sequences  List sequences in a database
+  taxa-coverage   Analyze taxonomic coverage
+  update-taxonomy Update NCBI taxonomy data
+  stats           Show repository statistics
+  init            Initialize database repository
+
+Download examples:
+  talaria database download uniprot/swissprot    # Download SwissProt
+  talaria database download ncbi/nr              # Download NCBI NR
+  talaria database download uniprot/idmapping    # Download ID mappings
+
 Note: PDB, PFAM, Silva, and KEGG databases are not yet implemented
+```
+
+### `tools`
+Manage bioinformatics tools
+
+```bash
+talaria tools <SUBCOMMAND>
+
+Subcommands:
+  install  Install a bioinformatics tool (lambda, blast, etc.)
+  list     List installed tools
+```
+
+### `interactive`
+Launch interactive TUI mode
+
+```bash
+talaria interactive
+
+Features:
+  - Visual database browser
+  - Guided reduction workflow
+  - Real-time statistics
+  - Configuration editor
 ```
 
 ## Algorithm
@@ -131,6 +167,27 @@ Talaria uses a multi-phase approach:
 2. **Similarity Clustering**: Group similar sequences using k-mer overlap
 3. **Delta Encoding**: Encode child sequences as compact deltas from references
 4. **Optimization**: Target-specific optimizations for different aligners
+
+## Environment Variables
+
+Talaria uses environment variables for flexible path configuration:
+
+```bash
+# Path configuration
+export TALARIA_HOME="$HOME/.talaria"              # Base directory (default: ~/.talaria)
+export TALARIA_DATA_DIR="$TALARIA_HOME"           # Data directory
+export TALARIA_DATABASES_DIR="$TALARIA_DATA_DIR/databases"  # Database storage
+export TALARIA_TOOLS_DIR="$TALARIA_DATA_DIR/tools"         # External tools
+export TALARIA_CACHE_DIR="$TALARIA_DATA_DIR/cache"         # Cache directory
+
+# Remote storage (optional)
+export TALARIA_MANIFEST_SERVER="https://example.com/manifests"  # Remote manifests
+export TALARIA_CHUNK_SERVER="s3://bucket/chunks"               # Remote chunks
+
+# Performance
+export TALARIA_LOG="info"                         # Log level (error, warn, info, debug, trace)
+export TALARIA_THREADS="16"                       # Number of threads
+```
 
 ## Configuration
 
