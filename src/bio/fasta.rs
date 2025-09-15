@@ -98,6 +98,50 @@ fn extract_taxon_id(description: &str) -> Option<u32> {
     None
 }
 
+/// Parse FASTA from bytes
+pub fn parse_fasta_from_bytes(data: &[u8]) -> Result<Vec<Sequence>, TalariaError> {
+    let mut sequences = Vec::new();
+    let mut remaining = data;
+
+    while !remaining.is_empty() {
+        // Skip empty lines and whitespace
+        while !remaining.is_empty() && remaining[0].is_ascii_whitespace() {
+            if let Ok((rest, _)) = line_ending::<_, nom::error::Error<_>>(remaining) {
+                remaining = rest;
+            } else {
+                remaining = &remaining[1..];
+            }
+        }
+
+        if remaining.is_empty() {
+            break;
+        }
+
+        // Must start with '>'
+        if remaining[0] != b'>' {
+            break;
+        }
+
+        // Parse header
+        let (rest, (id, description)) = parse_header(remaining)
+            .map_err(|_| TalariaError::Parse("Failed to parse FASTA header".to_string()))?;
+
+        // Parse sequence
+        let (rest, seq_data) = parse_sequence(rest)
+            .map_err(|_| TalariaError::Parse("Failed to parse FASTA sequence".to_string()))?;
+
+        let mut seq = Sequence::new(id.to_string(), seq_data);
+        if let Some(desc) = description {
+            seq.description = Some(desc.to_string());
+        }
+        sequences.push(seq);
+
+        remaining = rest;
+    }
+
+    Ok(sequences)
+}
+
 /// Parse a FASTA file into sequences (supports .gz compression)
 pub fn parse_fasta<P: AsRef<Path>>(path: P) -> Result<Vec<Sequence>, TalariaError> {
     let path = path.as_ref();

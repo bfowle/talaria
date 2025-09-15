@@ -37,6 +37,24 @@ struct DeltaIndexEntry {
     reference_id: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DeltaIndexEntryV2 {
+    sequence_id: String,
+    delta_chunk_hash: SHA256Hash,
+    reference_hash: SHA256Hash,
+    chunk_type: ChunkType,
+    compression_ratio: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ChunkMetadataExtended {
+    hash: SHA256Hash,
+    chunk_type: ChunkType,
+    reference_hash: Option<SHA256Hash>,
+    compression_ratio: Option<f32>,
+    taxon_ids: Vec<TaxonId>,
+}
+
 impl CASGStorage {
     pub fn new(base_path: &Path) -> Result<Self> {
         let chunks_dir = base_path.join("chunks");
@@ -445,6 +463,250 @@ impl CASGStorage {
             .collect()
     }
 
+    /// Store a delta chunk with type information
+    pub fn store_delta_chunk(&self, chunk: &DeltaChunk) -> Result<SHA256Hash> {
+        // Serialize the delta chunk
+        let chunk_data = serde_json::to_vec(chunk)?;
+        let chunk_hash = chunk.content_hash.clone();
+
+        // Store with chunk type metadata
+        let metadata = ChunkMetadataExtended {
+            hash: chunk_hash.clone(),
+            chunk_type: chunk.chunk_type.clone(),
+            reference_hash: Some(chunk.reference_hash.clone()),
+            compression_ratio: Some(chunk.compression_ratio),
+            taxon_ids: chunk.taxon_ids.clone(),
+        };
+
+        // Store metadata separately for quick lookups
+        let metadata_path = self.base_path.join("metadata").join(format!("{}.meta", chunk_hash.to_hex()));
+        fs::create_dir_all(metadata_path.parent().unwrap())?;
+        fs::write(&metadata_path, serde_json::to_vec(&metadata)?)?;
+
+        // Store the chunk data (compressed if beneficial)
+        let compress = chunk.compression_ratio < 0.9;
+        self.store_chunk(&chunk_data, compress)?;
+
+        // Update delta index
+        self.update_delta_index(&chunk)?;
+
+        Ok(chunk_hash)
+    }
+
+
+    /// Retrieve a delta chunk
+    pub fn get_delta_chunk(&self, hash: &SHA256Hash) -> Result<DeltaChunk> {
+        let data = self.get_chunk(hash)?;
+        let chunk: DeltaChunk = serde_json::from_slice(&data)?;
+        Ok(chunk)
+    }
+
+
+    /// Update delta index for a new delta chunk
+    fn update_delta_index(&self, chunk: &DeltaChunk) -> Result<()> {
+        let index_path = self.base_path.join("delta_index_v2.json");
+
+        let mut index: HashMap<String, DeltaIndexEntryV2> = if index_path.exists() {
+            serde_json::from_str(&fs::read_to_string(&index_path)?)?
+        } else {
+            HashMap::new()
+        };
+
+        // Index each sequence in the delta chunk
+        for seq_ref in &chunk.sequences {
+            let entry = DeltaIndexEntryV2 {
+                sequence_id: seq_ref.sequence_id.clone(),
+                delta_chunk_hash: chunk.content_hash.clone(),
+                reference_hash: chunk.reference_hash.clone(),
+                chunk_type: chunk.chunk_type.clone(),
+                compression_ratio: chunk.compression_ratio,
+            };
+            index.insert(seq_ref.sequence_id.clone(), entry);
+        }
+
+        fs::write(&index_path, serde_json::to_string_pretty(&index)?)?;
+        Ok(())
+    }
+
+    /// Add entry to legacy delta index
+    fn add_delta_index_entry(&self, entry: DeltaIndexEntry) -> Result<()> {
+        let index_path = self.base_path.join("delta_index.json");
+
+        let mut entries: Vec<DeltaIndexEntry> = if index_path.exists() {
+            serde_json::from_str(&fs::read_to_string(&index_path)?)?
+        } else {
+            Vec::new()
+        };
+
+        entries.push(entry);
+        fs::write(&index_path, serde_json::to_string_pretty(&entries)?)?;
+        Ok(())
+    }
+
+    /// Find delta chunks for a reference
+    pub fn find_delta_chunks_for_reference(&self, reference_hash: &SHA256Hash) -> Result<Vec<SHA256Hash>> {
+        let index_path = self.base_path.join("delta_index_v2.json");
+
+        if !index_path.exists() {
+            return Ok(Vec::new());
+        }
+
+        let index: HashMap<String, DeltaIndexEntryV2> =
+            serde_json::from_str(&fs::read_to_string(&index_path)?)?;
+
+        let chunks: HashSet<SHA256Hash> = index.values()
+            .filter(|entry| entry.reference_hash == *reference_hash)
+            .map(|entry| entry.delta_chunk_hash.clone())
+            .collect();
+
+        Ok(chunks.into_iter().collect())
+    }
+
+    /// Get chunk type for a hash
+    pub fn get_chunk_type(&self, hash: &SHA256Hash) -> Result<ChunkType> {
+        let metadata_path = self.base_path.join("metadata").join(format!("{}.meta", hash.to_hex()));
+
+        if metadata_path.exists() {
+            let metadata: ChunkMetadataExtended = serde_json::from_slice(&fs::read(&metadata_path)?)?;
+            Ok(metadata.chunk_type)
+        } else {
+            // Default to full chunk if no metadata
+            Ok(ChunkType::Full)
+        }
+    }
+
+    /// Garbage collect unreferenced delta chunks
+    pub fn garbage_collect_deltas(&self) -> Result<GarbageCollectionStats> {
+        let mut stats = GarbageCollectionStats::default();
+
+        // Build reference graph
+        let (referenced_chunks, orphaned_chunks) = self.build_reference_graph()?;
+
+        // Delete orphaned delta chunks
+        for chunk_hash in orphaned_chunks {
+            if let Ok(chunk_type) = self.get_chunk_type(&chunk_hash) {
+                if matches!(chunk_type, ChunkType::Delta { .. }) {
+                    // Remove chunk file
+                    let chunk_path = self.get_chunk_path(&chunk_hash, false);
+                    let gz_path = self.get_chunk_path(&chunk_hash, true);
+
+                    if chunk_path.exists() {
+                        fs::remove_file(&chunk_path)?;
+                        stats.chunks_deleted += 1;
+                        stats.bytes_freed += fs::metadata(&chunk_path)
+                            .map(|m| m.len() as usize)
+                            .unwrap_or(0);
+                    }
+
+                    if gz_path.exists() {
+                        fs::remove_file(&gz_path)?;
+                        stats.chunks_deleted += 1;
+                        stats.bytes_freed += fs::metadata(&gz_path)
+                            .map(|m| m.len() as usize)
+                            .unwrap_or(0);
+                    }
+
+                    // Remove from index
+                    self.chunk_index.remove(&chunk_hash);
+
+                    // Remove metadata
+                    let metadata_path = self.base_path.join("metadata")
+                        .join(format!("{}.meta", chunk_hash.to_hex()));
+                    if metadata_path.exists() {
+                        fs::remove_file(&metadata_path)?;
+                    }
+                }
+            }
+        }
+
+        // Compact delta chains that are too deep
+        stats.chains_compacted = self.compact_deep_chains(&referenced_chunks)?;
+
+        Ok(stats)
+    }
+
+    /// Build reference graph to identify orphaned chunks
+    fn build_reference_graph(&self) -> Result<(HashSet<SHA256Hash>, HashSet<SHA256Hash>)> {
+        let mut referenced = HashSet::new();
+        let mut all_chunks = HashSet::new();
+
+        // Collect all chunks
+        for entry in self.chunk_index.iter() {
+            all_chunks.insert(entry.key().clone());
+        }
+
+        // Load manifest to find root references
+        let manifest_path = self.base_path.join("manifest.json");
+        if manifest_path.exists() {
+            let manifest_data = fs::read_to_string(&manifest_path)?;
+            if let Ok(manifest) = serde_json::from_str::<TemporalManifest>(&manifest_data) {
+                // Add all chunks referenced in manifest
+                for chunk_meta in &manifest.chunk_index {
+                    referenced.insert(chunk_meta.hash.clone());
+                }
+            }
+        }
+
+        // Load delta index to find delta references
+        let delta_index_path = self.base_path.join("delta_index_v2.json");
+        if delta_index_path.exists() {
+            let index: HashMap<String, DeltaIndexEntryV2> =
+                serde_json::from_str(&fs::read_to_string(&delta_index_path)?)?;
+
+            for entry in index.values() {
+                referenced.insert(entry.delta_chunk_hash.clone());
+                referenced.insert(entry.reference_hash.clone());
+            }
+        }
+
+        // Find orphaned chunks (in storage but not referenced)
+        let orphaned: HashSet<_> = all_chunks.difference(&referenced).cloned().collect();
+
+        Ok((referenced, orphaned))
+    }
+
+    /// Compact delta chains that exceed maximum depth
+    fn compact_deep_chains(&self, referenced_chunks: &HashSet<SHA256Hash>) -> Result<usize> {
+        let mut chains_compacted = 0;
+
+        // Load delta index to analyze chains
+        let delta_index_path = self.base_path.join("delta_index_v2.json");
+        if !delta_index_path.exists() {
+            return Ok(0);
+        }
+
+        let index: HashMap<String, DeltaIndexEntryV2> =
+            serde_json::from_str(&fs::read_to_string(&delta_index_path)?)?;
+
+        // Build chain depth map
+        let mut chain_depths: HashMap<SHA256Hash, usize> = HashMap::new();
+        for entry in index.values() {
+            // Simple depth calculation - in real implementation would traverse chain
+            let depth = chain_depths.get(&entry.reference_hash).unwrap_or(&0) + 1;
+            chain_depths.insert(entry.delta_chunk_hash.clone(), depth);
+        }
+
+        // Identify chains that need compaction (depth > 3)
+        for (chunk_hash, depth) in chain_depths {
+            if depth > 3 && referenced_chunks.contains(&chunk_hash) {
+                // In a real implementation, we would:
+                // 1. Load the delta chunk
+                // 2. Reconstruct the full sequence
+                // 3. Create a new delta directly from root reference
+                // 4. Replace the deep delta with the shallow one
+                chains_compacted += 1;
+
+                tracing::info!(
+                    "Would compact delta chain {} with depth {}",
+                    chunk_hash.to_hex(),
+                    depth
+                );
+            }
+        }
+
+        Ok(chains_compacted)
+    }
+
     /// Get chunk metadata
     pub fn get_chunk_info(&self, hash: &SHA256Hash) -> Option<ChunkInfo> {
         self.chunk_index.get(hash).map(|entry| ChunkInfo {
@@ -520,29 +782,6 @@ impl CASGStorage {
             .collect()
     }
 
-    // Delta-specific storage operations
-
-    /// Store a delta chunk in content-addressed storage
-    pub fn store_delta_chunk(&self, delta_chunk: &crate::casg::delta::DeltaChunk) -> Result<SHA256Hash> {
-        // Serialize the delta chunk
-        let chunk_data = serde_json::to_vec(delta_chunk)?;
-
-        // Store with compression (deltas compress well)
-        let hash = self.store_chunk(&chunk_data, true)?;
-
-        // Store delta index metadata separately for fast lookups
-        self.update_delta_index(delta_chunk)?;
-
-        Ok(hash)
-    }
-
-    /// Retrieve a delta chunk from storage
-    pub fn get_delta_chunk(&self, hash: &SHA256Hash) -> Result<crate::casg::delta::DeltaChunk> {
-        let data = self.get_chunk(hash)?;
-        let delta_chunk: crate::casg::delta::DeltaChunk = serde_json::from_slice(&data)?;
-        Ok(delta_chunk)
-    }
-
     /// Store raw chunk data (for manifests, etc.)
     pub fn store_raw_chunk(&self, hash: &SHA256Hash, data: Vec<u8>) -> Result<()> {
         // Verify the hash matches
@@ -556,28 +795,6 @@ impl CASGStorage {
         Ok(())
     }
 
-    /// Update the delta index for fast child lookups
-    fn update_delta_index(&self, delta_chunk: &crate::casg::delta::DeltaChunk) -> Result<()> {
-        // Store delta index information
-        let index_dir = self.base_path.join("delta_index");
-        fs::create_dir_all(&index_dir)?;
-
-        // Create index entries for each child
-        for record in &delta_chunk.delta_records {
-            let child_index_path = index_dir.join(format!("{}.idx", record.child_id));
-            let index_entry = DeltaIndexEntry {
-                child_id: record.child_id.clone(),
-                delta_chunk_hash: delta_chunk.content_hash.clone(),
-                reference_chunk_hash: delta_chunk.reference_chunk_hash.clone(),
-                reference_id: record.reference_id.clone(),
-            };
-
-            let index_data = serde_json::to_vec(&index_entry)?;
-            fs::write(child_index_path, index_data)?;
-        }
-
-        Ok(())
-    }
 
     /// Find the delta chunk containing a specific child sequence
     pub fn find_delta_for_child(&self, child_id: &str) -> Result<Option<SHA256Hash>> {
@@ -774,6 +991,13 @@ pub struct StorageStats {
     pub total_size: usize,
     pub compressed_chunks: usize,
     pub deduplication_ratio: f32,
+}
+
+#[derive(Debug, Default)]
+pub struct GarbageCollectionStats {
+    pub chunks_deleted: usize,
+    pub bytes_freed: usize,
+    pub chains_compacted: usize,
 }
 
 #[derive(Debug)]

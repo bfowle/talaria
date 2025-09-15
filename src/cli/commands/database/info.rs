@@ -38,9 +38,18 @@ pub fn run(args: InfoArgs) -> anyhow::Result<()> {
     let manager = DatabaseManager::new(None)?;
     let databases = manager.list_databases()?;
 
-    // Find the requested database
+    // Find the requested database (handle both slash and hyphen formats)
     let db_info = databases.iter()
-        .find(|db| db.name == args.database || db.name.ends_with(&args.database))
+        .find(|db| {
+            // Exact match
+            db.name == args.database ||
+            // Try with hyphens converted to slashes
+            db.name == args.database.replace('-', "/") ||
+            // Try with slashes converted to hyphens (backward compat)
+            db.name == args.database.replace('/', "-") ||
+            // Partial match at the end
+            db.name.ends_with(&args.database)
+        })
         .ok_or_else(|| anyhow::anyhow!("Database '{}' not found in repository", args.database))?;
 
     println!("Database: {}", db_info.name);

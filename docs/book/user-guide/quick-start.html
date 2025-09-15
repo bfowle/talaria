@@ -214,8 +214,8 @@ talaria casg init
 # 2. Download SwissProt database (small, ~200MB, perfect for testing)
 talaria database download uniprot -d swissprot
 
-# 3. Reduce it to 30% size
-talaria reduce uniprot/swissprot -r 0.3 -o reduced.fasta
+# 3. Reduce it intelligently (auto-detects optimal size)
+talaria reduce uniprot/swissprot -o reduced.fasta
 
 # Done! You've just reduced a database. Use it with any aligner:
 lambda3 mkindexp -d reduced.fasta
@@ -224,12 +224,13 @@ lambda3 mkindexp -d reduced.fasta
 <ul>
 <li><strong>CASG initialized</strong>: Smart storage system that only downloads changes in the future</li>
 <li><strong>Downloaded SwissProt</strong>: In chunks, ready for instant updates</li>
-<li><strong>Reduced to 30%</strong>: Maintains search sensitivity while shrinking 70%</li>
+<li><strong>Intelligently reduced</strong>: Auto-detected optimal representatives using alignment analysis</li>
 <li><strong>Ready to use</strong>: Works with LAMBDA, BLAST, Diamond, MMseqs2, etc.</li>
 </ul>
 <h2 id="next-real-workflows"><a class="header" href="#next-real-workflows">Next: Real Workflows</a></h2>
 <h3 id="for-lambda-users"><a class="header" href="#for-lambda-users">For LAMBDA Users</a></h3>
-<pre><code class="language-bash">talaria reduce uniprot/swissprot -r 0.3 -a lambda -o lambda_db.fasta
+<pre><code class="language-bash"># Auto-detection optimized for LAMBDA
+talaria reduce uniprot/swissprot -a lambda -o lambda_db.fasta
 lambda3 mkindexp -d lambda_db.fasta
 lambda3 searchp -q queries.fasta -d lambda_db.fasta
 </code></pre>
@@ -240,12 +241,13 @@ talaria database download ncbi -d nr
 # Later, check for updates (same command, only downloads changes ~1GB)
 talaria database download ncbi -d nr
 
-# Reduce for your aligner
-talaria reduce ncbi/nr -r 0.25 -a diamond -o nr_reduced.fasta
+# Reduce intelligently for your aligner
+talaria reduce ncbi/nr -a diamond -o nr_reduced.fasta
+# Or specify exact size if needed: -r 0.25
 </code></pre>
 <h3 id="custom-databases"><a class="header" href="#custom-databases">Custom Databases</a></h3>
 <pre><code class="language-bash">talaria database add -i mysequences.fasta --source mylab --dataset proteins
-talaria reduce mylab/proteins -r 0.3 -o my_reduced.fasta
+talaria reduce mylab/proteins -o my_reduced.fasta  # Auto-detects optimal reduction
 </code></pre>
 <h2 id="common-commands"><a class="header" href="#common-commands">Common Commands</a></h2>
 <h3 id="view-what-you-have"><a class="header" href="#view-what-you-have">View What You Have</a></h3>
@@ -261,22 +263,26 @@ talaria casg stats
 # List sequences
 talaria database list-sequences uniprot/swissprot --limit 10
 </code></pre>
-<h3 id="different-aligners-need-different-reductions"><a class="header" href="#different-aligners-need-different-reductions">Different Aligners Need Different Reductions</a></h3>
-<pre><code class="language-bash"># BLAST likes 30% reduction
-talaria reduce uniprot/swissprot -r 0.3 -a blast -o blast_db.fasta
+<h3 id="optimize-for-different-aligners"><a class="header" href="#optimize-for-different-aligners">Optimize for Different Aligners</a></h3>
+<pre><code class="language-bash"># Auto-detection adapts to each aligner's characteristics
+talaria reduce uniprot/swissprot -a blast -o blast_db.fasta
+talaria reduce uniprot/swissprot -a diamond -o diamond_db.fasta
+talaria reduce uniprot/swissprot -a mmseqs2 -o mmseqs_db.fasta
 
-# Diamond can handle 25%
-talaria reduce uniprot/swissprot -r 0.25 -a diamond -o diamond_db.fasta
+# Or use fixed ratios for specific size requirements:
+# talaria reduce uniprot/swissprot -r 0.3 -a blast -o blast_db.fasta
+# talaria reduce uniprot/swissprot -r 0.25 -a diamond -o diamond_db.fasta
 
-# MMseqs2 works well at 40%
-talaria reduce uniprot/swissprot -r 0.4 -a mmseqs2 -o mmseqs_db.fasta
+# For taxonomically diverse datasets, weight alignment scores by taxonomy:
+# talaria reduce uniprot/trembl --use-taxonomy-weights -a diamond -o trembl_tax.fasta
 </code></pre>
 <h2 id="tips-for-success"><a class="header" href="#tips-for-success">Tips for Success</a></h2>
 <h3 id="start-small"><a class="header" href="#start-small">Start Small</a></h3>
 <ul>
 <li>Use SwissProt (~200MB) for testing, not nr (~100GB)</li>
-<li>Try 30% reduction first, adjust based on results</li>
+<li>Let auto-detection find optimal reduction (no -r flag needed)</li>
 <li>Use <code>-a &lt;aligner&gt;</code> to optimize for your specific tool</li>
+<li>Add <code>-r 0.3</code> only if you need a specific target size</li>
 </ul>
 <h3 id="storage-location"><a class="header" href="#storage-location">Storage Location</a></h3>
 <pre><code class="language-bash"># Default location
@@ -288,7 +294,7 @@ talaria casg init
 </code></pre>
 <h3 id="use-more-cores"><a class="header" href="#use-more-cores">Use More Cores</a></h3>
 <pre><code class="language-bash"># Use 16 threads
-talaria -j 16 reduce ncbi/nr -r 0.3 -o output.fasta
+talaria -j 16 reduce ncbi/nr -o output.fasta  # Auto-detection with 16 threads
 </code></pre>
 <h2 id="why-casg-the-update-problem-solved"><a class="header" href="#why-casg-the-update-problem-solved">Why CASG? The Update Problem Solved</a></h2>
 <p>Traditional approach downloads entire databases repeatedly:</p>
@@ -312,7 +318,7 @@ talaria database download ncbi -d nr
 <pre><code class="language-bash"># Complete workflow in 5 commands
 talaria casg init
 talaria database download uniprot -d swissprot
-talaria reduce uniprot/swissprot -r 0.3 -a lambda -o lambda_db.fasta
+talaria reduce uniprot/swissprot -a lambda -o lambda_db.fasta  # Auto-detects optimal size
 lambda3 mkindexp -d lambda_db.fasta
 lambda3 searchp -q your_queries.fasta -d lambda_db.fasta -o results.m8
 

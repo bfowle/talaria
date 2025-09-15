@@ -53,11 +53,15 @@ Navigate menus to:
 ### Default: Intelligent Auto-Detection (Recommended)
 
 When no reduction ratio (-r) is specified, Talaria uses intelligent auto-detection:
-- **LAMBDA-based selection**: If LAMBDA is installed, uses accurate alignment scoring
-- **K-mer fallback**: Uses efficient k-mer analysis if LAMBDA unavailable
+- **LAMBDA-based selection**: Uses accurate alignment scoring (required for auto-detection)
 - **Taxonomy-aware**: Automatically considers taxonomic relationships
 - **Coverage optimization**: Stops adding references when coverage plateaus
 - **Dynamic sizing**: Adapts to your specific dataset characteristics
+
+**Note:** Auto-detection requires LAMBDA aligner to be installed:
+```bash
+talaria tools install lambda
+```
 
 ### Fixed Ratio Reduction
 
@@ -76,6 +80,7 @@ talaria reduce -i input.fasta -o output.fasta -r 0.3
 | Similarity threshold | `--similarity-threshold <value>` | K-mer similarity clustering | Highly similar sequences |
 | Alignment selection | `--align-select` | Force alignment-based selection | Maximum accuracy needed |
 | Taxonomy awareness | `--taxonomy-aware` | Enhanced taxonomic grouping | Diverse taxonomic data |
+| Taxonomy weighting | `--use-taxonomy-weights` | Weight alignment scores by taxonomy | Taxonomically diverse datasets |
 | Low complexity filter | `--low-complexity-filter` | Remove repetitive sequences | Genomic data with repeats |
 | Skip deltas | `--no-deltas` | No reconstruction file | Speed over recoverability |
 

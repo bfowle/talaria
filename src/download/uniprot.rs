@@ -28,6 +28,10 @@ impl UniProtDownloader {
                 .timeout(std::time::Duration::from_secs(1800))
                 // Add connection timeout separately
                 .connect_timeout(std::time::Duration::from_secs(30))
+                // Enable TCP keep-alive to prevent connection drops during long downloads
+                .tcp_keepalive(std::time::Duration::from_secs(60))
+                // Pool idle timeout to keep connections alive
+                .pool_idle_timeout(std::time::Duration::from_secs(90))
                 .build()
                 .unwrap(),
             // Using EBI mirror as it's more reliable for HTTPS access
@@ -191,16 +195,61 @@ impl UniProtDownloader {
         // Initialize downloaded to resume_from to track total bytes correctly
         let mut downloaded = resume_from;
         let mut stream = response.bytes_stream();
+        let mut consecutive_errors = 0;
+        const MAX_CONSECUTIVE_ERRORS: u32 = 3;
 
         use futures_util::StreamExt;
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.context("Failed to read chunk")?;
+        while let Some(chunk_result) = stream.next().await {
+            // Add retry logic for chunk reading
+            let chunk = match chunk_result {
+                Ok(chunk) => {
+                    consecutive_errors = 0;  // Reset error counter on success
+                    chunk
+                },
+                Err(e) => {
+                    consecutive_errors += 1;
+                    let bytes_so_far = downloaded - resume_from;
+                    let percent = if total_size > 0 {
+                        (downloaded as f64 / total_size as f64 * 100.0) as u32
+                    } else {
+                        0
+                    };
+
+                    eprintln!("Warning: Failed to read chunk at {}% ({} MB downloaded): {}",
+                             percent, bytes_so_far / (1024 * 1024), e);
+
+                    if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
+                        // Too many consecutive errors, fail and allow resume
+                        // Ensure file is flushed before returning error
+                        file.flush().ok();
+                        return Err(anyhow::anyhow!(
+                            "Download interrupted after {} consecutive errors at {} bytes. \n\
+                             The download can be resumed by running the command again.",
+                            consecutive_errors, downloaded
+                        ));
+                    }
+
+                    // Try to continue with next chunk
+                    eprintln!("Attempting to continue download (error {}/{})",
+                             consecutive_errors, MAX_CONSECUTIVE_ERRORS);
+                    continue;
+                }
+            };
+
             file.write_all(&chunk)
                 .context("Failed to write chunk")?;
 
             downloaded += chunk.len() as u64;
             progress.set_current(downloaded as usize);
+
+            // Periodically flush to disk for large files
+            if downloaded % (100 * 1024 * 1024) == 0 {  // Every 100MB
+                file.flush()?;
+            }
         }
+
+        // Final flush before moving
+        file.flush()?;
 
         // Move to final location
         std::fs::rename(&temp_path, output_path)
@@ -289,17 +338,62 @@ impl UniProtDownloader {
         // Initialize downloaded to resume_from to track total bytes correctly
         let mut downloaded = resume_from;
         let mut stream = response.bytes_stream();
+        let mut consecutive_errors = 0;
+        const MAX_CONSECUTIVE_ERRORS: u32 = 3;
 
         use futures_util::StreamExt;
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.context("Failed to read chunk")?;
+        while let Some(chunk_result) = stream.next().await {
+            // Add retry logic for chunk reading
+            let chunk = match chunk_result {
+                Ok(chunk) => {
+                    consecutive_errors = 0;  // Reset error counter on success
+                    chunk
+                },
+                Err(e) => {
+                    consecutive_errors += 1;
+                    let bytes_so_far = downloaded - resume_from;
+                    let percent = if total_size > 0 {
+                        (downloaded as f64 / total_size as f64 * 100.0) as u32
+                    } else {
+                        0
+                    };
+
+                    eprintln!("Warning: Failed to read chunk at {}% ({} MB downloaded): {}",
+                             percent, bytes_so_far / (1024 * 1024), e);
+
+                    if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
+                        // Too many consecutive errors, fail and allow resume
+                        // Ensure file is flushed before returning error
+                        file.flush().ok();
+                        return Err(anyhow::anyhow!(
+                            "Download interrupted after {} consecutive errors at {} bytes. \n\
+                             The download can be resumed by running the command again.",
+                            consecutive_errors, downloaded
+                        ));
+                    }
+
+                    // Try to continue with next chunk
+                    eprintln!("Attempting to continue download (error {}/{})",
+                             consecutive_errors, MAX_CONSECUTIVE_ERRORS);
+                    continue;
+                }
+            };
+
             file.write_all(&chunk)
                 .context("Failed to write chunk")?;
 
             downloaded += chunk.len() as u64;
             progress.set_current(downloaded as usize);
+
+            // Periodically flush to disk for large files
+            if downloaded % (100 * 1024 * 1024) == 0 {  // Every 100MB
+                file.flush()?;
+            }
         }
-        
+
+        // Final flush before decompressing
+        file.flush()?;
+
         progress.set_message("Decompressing file...");
         
         // Decompress the file

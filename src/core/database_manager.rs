@@ -514,12 +514,12 @@ impl DatabaseManager {
             self.repository.storage.get_sequence_root()?,
         )?;
 
-        // Set the source database
+        // Set the source database (use slash format for consistency)
         manifest_data.source_database = Some(match source {
-            DatabaseSource::UniProt(UniProtDatabase::SwissProt) => "uniprot-swissprot".to_string(),
-            DatabaseSource::UniProt(UniProtDatabase::TrEMBL) => "uniprot-trembl".to_string(),
-            DatabaseSource::NCBI(NCBIDatabase::NR) => "ncbi-nr".to_string(),
-            DatabaseSource::NCBI(NCBIDatabase::NT) => "ncbi-nt".to_string(),
+            DatabaseSource::UniProt(UniProtDatabase::SwissProt) => "uniprot/swissprot".to_string(),
+            DatabaseSource::UniProt(UniProtDatabase::TrEMBL) => "uniprot/trembl".to_string(),
+            DatabaseSource::NCBI(NCBIDatabase::NR) => "ncbi/nr".to_string(),
+            DatabaseSource::NCBI(NCBIDatabase::NT) => "ncbi/nt".to_string(),
             _ => "custom".to_string(),
         });
 
@@ -625,6 +625,115 @@ impl DatabaseManager {
         ).await?;
 
         Ok(())
+    }
+
+    /// Get taxonomy mapping from CASG manifest
+    /// This extracts accession-to-taxid mappings directly from the manifest's chunk metadata
+    pub fn get_taxonomy_mapping_from_manifest(&self, source: &DatabaseSource) -> Result<std::collections::HashMap<String, crate::casg::TaxonId>> {
+        use std::collections::HashMap;
+
+        // Load manifest for this database
+        let manifest_path = self.get_manifest_path(source);
+        if !manifest_path.exists() {
+            anyhow::bail!("Database manifest not found. Run download first.");
+        }
+
+        let manifest_content = std::fs::read_to_string(manifest_path)?;
+        let manifest: crate::casg::TemporalManifest = serde_json::from_str(&manifest_content)?;
+
+        let mut mapping = HashMap::new();
+
+        println!("Processing {} chunks from manifest", manifest.chunk_index.len());
+
+        // For each chunk, we need to load its sequences to get the accessions
+        // and map them to the chunk's TaxIDs
+        for (idx, chunk_meta) in manifest.chunk_index.iter().enumerate() {
+            if chunk_meta.taxon_ids.is_empty() {
+                println!("  Chunk {}: No taxon IDs, skipping", idx);
+                continue; // Skip chunks without taxonomy
+            }
+
+            println!("  Chunk {}: {} taxon IDs", idx, chunk_meta.taxon_ids.len());
+
+            // Load the chunk to get sequence headers
+            let chunk_data = self.repository.storage.get_chunk(&chunk_meta.hash)?;
+
+            // Parse sequences from chunk
+            let sequences = crate::bio::fasta::parse_fasta_from_bytes(&chunk_data)?;
+
+            // Map each sequence to the chunk's primary TaxID
+            // Note: chunks are organized by taxonomy, so all sequences in a chunk
+            // should have the same TaxID
+            let primary_taxid = chunk_meta.taxon_ids[0];
+
+            for seq in sequences {
+                // Extract accession from sequence ID/header
+                if let Some(accession) = Self::extract_accession_from_header(&seq.id) {
+                    mapping.insert(accession.clone(), primary_taxid);
+
+                    // Also store without version suffix if present
+                    if let Some(dot_pos) = accession.rfind('.') {
+                        mapping.insert(accession[..dot_pos].to_string(), primary_taxid);
+                    }
+                }
+            }
+        }
+
+        println!("Extracted {} accession-to-taxid mappings from manifest", mapping.len());
+        Ok(mapping)
+    }
+
+    /// Extract accession from FASTA header
+    fn extract_accession_from_header(header: &str) -> Option<String> {
+        // UniProt format: sp|P12345|PROT1_HUMAN or tr|Q12345|...
+        if header.starts_with("sp|") || header.starts_with("tr|") {
+            let parts: Vec<&str> = header.split('|').collect();
+            if parts.len() >= 2 {
+                return Some(parts[1].to_string());
+            }
+        }
+
+        // NCBI format: might be just the accession or gi|12345|ref|NP_123456.1|
+        if header.contains('|') {
+            let parts: Vec<&str> = header.split('|').collect();
+            // Look for ref| or gb| or similar
+            for (i, part) in parts.iter().enumerate() {
+                if (*part == "ref" || *part == "gb" || *part == "emb" || *part == "dbj")
+                    && i + 1 < parts.len() {
+                    return Some(parts[i + 1].to_string());
+                }
+            }
+        }
+
+        // Simple format: just accession (possibly with version)
+        let first_part = header.split_whitespace().next()?;
+        Some(first_part.to_string())
+    }
+
+    /// Create a temporary accession2taxid file from manifest mapping
+    pub fn create_accession2taxid_from_manifest(&self, source: &DatabaseSource) -> Result<PathBuf> {
+        let mapping = self.get_taxonomy_mapping_from_manifest(source)?;
+
+        // Create temporary file with .accession2taxid extension (required by LAMBDA)
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join(format!("talaria_manifest_{}.accession2taxid",
+                                              std::process::id()));
+
+        use std::io::Write;
+        let mut file = std::fs::File::create(&temp_file)?;
+
+        // Write header (NCBI format)
+        writeln!(file, "accession\taccession.version\ttaxid\tgi")?;
+
+        // Write mappings
+        for (accession, taxid) in mapping {
+            // Write in NCBI prot.accession2taxid format
+            // accession, accession.version, taxid, gi (we use 0 for gi)
+            writeln!(file, "{}\t{}\t{}\t0", accession, accession, taxid.0)?;
+        }
+
+        println!("Created temporary accession2taxid file with manifest data: {:?}", temp_file);
+        Ok(temp_file)
     }
 
     /// Load taxonomy mapping for a database
@@ -792,7 +901,12 @@ impl DatabaseManager {
                     if let Ok(manifest) = serde_json::from_str::<crate::casg::TemporalManifest>(&content) {
                         // Use source_database field if available, otherwise parse from filename
                         let name = if let Some(ref source_db) = manifest.source_database {
-                            source_db.clone()
+                            // Ensure slash format even for old manifests that might have hyphens
+                            if source_db.contains('-') && !source_db.contains('/') {
+                                source_db.replace('-', "/")
+                            } else {
+                                source_db.clone()
+                            }
                         } else {
                             // Parse from filename like "uniprot-swissprot.json"
                             path.file_stem()

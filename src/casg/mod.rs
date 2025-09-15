@@ -14,7 +14,8 @@ pub mod taxonomy_manifest;
 pub mod temporal;
 pub mod types;
 pub mod reduction;
-pub mod delta;
+pub mod delta_generator;
+pub mod delta_reconstructor;
 pub mod processing_state;
 pub mod cloud;
 

@@ -7,13 +7,16 @@ use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct ReferenceSelector {
     min_length: usize,
     similarity_threshold: f64,
     taxonomy_aware: bool,
+    use_taxonomy_weights: bool,  // Weight alignment scores by taxonomic distance
     all_vs_all: bool,  // Use all-vs-all mode for Lambda alignments
+    manifest_acc2taxid: Option<PathBuf>,  // Path to manifest-based accession2taxid file
 }
 
 #[derive(Debug, Clone)]
@@ -29,8 +32,15 @@ impl ReferenceSelector {
             min_length: 50,
             similarity_threshold: 0.9,
             taxonomy_aware: true,
+            use_taxonomy_weights: false,  // Default to no taxonomy weighting
             all_vs_all: false,  // Default to query-vs-reference
+            manifest_acc2taxid: None,
         }
+    }
+
+    pub fn with_manifest_acc2taxid(mut self, path: Option<PathBuf>) -> Self {
+        self.manifest_acc2taxid = path;
+        self
     }
 
     pub fn with_all_vs_all(mut self, all_vs_all: bool) -> Self {
@@ -50,6 +60,11 @@ impl ReferenceSelector {
     
     pub fn with_taxonomy_aware(mut self, enabled: bool) -> Self {
         self.taxonomy_aware = enabled;
+        self
+    }
+
+    pub fn with_taxonomy_weights(mut self, enabled: bool) -> Self {
+        self.use_taxonomy_weights = enabled;
         self
     }
     
@@ -551,12 +566,103 @@ impl ReferenceSelector {
             .filter(|&&c| c == b'|')
             .count();
         let total = alignment.alignment_string.len();
-        
+
         if total == 0 {
             0.0
         } else {
             matches as f64 / total as f64
         }
+    }
+
+    /// Calculate a weight based on taxonomic distance between two sequences
+    /// Returns a value between 0.5 and 1.5 where:
+    /// - Same species (all levels match): 1.5 (boost similar taxonomy)
+    /// - Same genus but different species: 1.2
+    /// - Same family but different genus: 1.0
+    /// - Different families: 0.8 (penalize distant taxonomy)
+    /// - No taxonomy data: 1.0 (neutral)
+    fn calculate_taxonomy_weight(&self, seq1: &Sequence, seq2: &Sequence) -> f64 {
+        // Extract taxonomy from sequence descriptions
+        // Expected format in description: "OS=Organism GN=Gene Tax=9606"
+        // Or in FASTA header: >ID description [taxonomy info]
+
+        let tax1 = self.extract_taxonomy(seq1.description.as_deref().unwrap_or(""));
+        let tax2 = self.extract_taxonomy(seq2.description.as_deref().unwrap_or(""));
+
+        // If either sequence lacks taxonomy data, return neutral weight
+        if tax1.is_empty() || tax2.is_empty() {
+            return 1.0;
+        }
+
+        // Count matching taxonomy levels
+        let mut matches = 0usize;
+        let max_levels = tax1.len().min(tax2.len());
+
+        for i in 0..max_levels {
+            if tax1[i] == tax2[i] {
+                matches += 1;
+            } else {
+                break; // Stop at first mismatch (taxonomy is hierarchical)
+            }
+        }
+
+        // Weight based on taxonomy similarity
+        match matches {
+            0 => 0.8,   // Different at kingdom level (very distant)
+            1 => 0.9,   // Same kingdom, different phylum
+            2 => 0.95,  // Same phylum, different class
+            3 => 1.0,   // Same class, different order
+            4 => 1.05,  // Same order, different family
+            5 => 1.1,   // Same family, different genus
+            6 => 1.2,   // Same genus, different species
+            _ => 1.5,   // Same species or subspecies (very close)
+        }
+    }
+
+    /// Extract taxonomy levels from sequence description
+    /// Returns a vector of taxonomy levels from most general to most specific
+    fn extract_taxonomy(&self, description: &str) -> Vec<String> {
+        let mut taxonomy = Vec::new();
+
+        // Look for NCBI taxonomy ID format: "Tax=9606" or "TaxID=9606"
+        if let Some(tax_match) = description.split_whitespace()
+            .find(|s| s.starts_with("Tax=") || s.starts_with("TaxID="))
+        {
+            let tax_id = tax_match.split('=').nth(1).unwrap_or("");
+            // Map common taxonomy IDs to hierarchy
+            // This is a simplified example - in production, would use a taxonomy database
+            taxonomy = match tax_id {
+                "9606" => vec!["Eukaryota", "Chordata", "Mammalia", "Primates", "Hominidae", "Homo", "sapiens"],
+                "10090" => vec!["Eukaryota", "Chordata", "Mammalia", "Rodentia", "Muridae", "Mus", "musculus"],
+                "7227" => vec!["Eukaryota", "Arthropoda", "Insecta", "Diptera", "Drosophilidae", "Drosophila", "melanogaster"],
+                "6239" => vec!["Eukaryota", "Nematoda", "Chromadorea", "Rhabditida", "Rhabditidae", "Caenorhabditis", "elegans"],
+                "4932" => vec!["Eukaryota", "Ascomycota", "Saccharomycetes", "Saccharomycetales", "Saccharomycetaceae", "Saccharomyces", "cerevisiae"],
+                "562" => vec!["Bacteria", "Proteobacteria", "Gammaproteobacteria", "Enterobacterales", "Enterobacteriaceae", "Escherichia", "coli"],
+                _ => vec![],
+            }.iter().map(|s| s.to_string()).collect();
+        }
+
+        // Alternative: Look for organism name "OS=Homo sapiens"
+        if taxonomy.is_empty() {
+            if let Some(os_match) = description.split_whitespace()
+                .position(|s| s == "OS=")
+                .and_then(|i| description.split_whitespace().nth(i + 1))
+            {
+                // Parse organism name into taxonomy hierarchy
+                // This is simplified - real implementation would use taxonomy database
+                let organism = os_match.to_lowercase();
+                if organism.contains("homo") && organism.contains("sapiens") {
+                    taxonomy = vec!["Eukaryota", "Chordata", "Mammalia", "Primates", "Hominidae", "Homo", "sapiens"]
+                        .iter().map(|s| s.to_string()).collect();
+                } else if organism.contains("mus") && organism.contains("musculus") {
+                    taxonomy = vec!["Eukaryota", "Chordata", "Mammalia", "Rodentia", "Muridae", "Mus", "musculus"]
+                        .iter().map(|s| s.to_string()).collect();
+                }
+                // Add more organism mappings as needed
+            }
+        }
+
+        taxonomy
     }
     
     /// Select references using LAMBDA aligner for accurate alignments
@@ -565,11 +671,32 @@ impl ReferenceSelector {
         use crate::tools::{ToolManager, Tool};
         use crate::tools::lambda::LambdaAligner;
 
+        println!("Starting LAMBDA-based reference selection...");
+        println!("  Processing {} sequences", sequences.len());
+
         // Check if LAMBDA is installed
         let manager = ToolManager::new()?;
         let lambda_path = manager.get_current_tool_path(Tool::Lambda)?;
+        println!("  LAMBDA binary: {:?}", lambda_path);
 
-        let aligner = LambdaAligner::new(lambda_path)?;
+        // Create LAMBDA aligner with optional manifest-based taxonomy
+        let mut aligner = LambdaAligner::new(lambda_path)?;
+
+        // If we have a manifest-based accession2taxid file, use it
+        if let Some(ref acc2taxid_path) = self.manifest_acc2taxid {
+            // Also need the taxdump directory
+            let taxonomy_dir = crate::core::paths::talaria_taxonomy_dir();
+            let taxdump_dir = taxonomy_dir.join("taxdump");
+
+            if taxdump_dir.exists() {
+                aligner = aligner.with_taxonomy(Some(acc2taxid_path.clone()), Some(taxdump_dir));
+                println!("  Using manifest-based taxonomy mapping");
+            } else {
+                println!("  Warning: taxdump directory not found, taxonomy features disabled");
+            }
+        }
+
+        println!("  LAMBDA aligner initialized");
 
         // Run alignments with LAMBDA
         let pb = ProgressBar::new(sequences.len() as u64);
@@ -643,13 +770,33 @@ impl ReferenceSelector {
                     if other_id == &candidate.id {
                         continue;
                     }
-                    
+
                     // Check similarity from alignment results
                     let key = (candidate.id.clone(), other_id.clone());
                     if let Some(&similarity) = similarity_matrix.get(&key) {
                         if similarity >= 0.7 { // 70% identity threshold
                             coverage.push(other_id.clone());
-                            score += similarity;
+
+                            // Apply taxonomy weighting if enabled
+                            let weighted_score = if self.use_taxonomy_weights {
+                                // Find the sequences to extract taxonomy data
+                                let candidate_seq = sorted_sequences.iter()
+                                    .find(|s| s.id == candidate.id);
+                                let other_seq = sorted_sequences.iter()
+                                    .find(|s| s.id == *other_id);
+
+                                if let (Some(cand), Some(other)) = (candidate_seq, other_seq) {
+                                    // Calculate taxonomic weight based on shared taxonomy levels
+                                    let weight = self.calculate_taxonomy_weight(cand, other);
+                                    similarity * weight
+                                } else {
+                                    similarity
+                                }
+                            } else {
+                                similarity
+                            };
+
+                            score += weighted_score;
                         }
                     }
                 }

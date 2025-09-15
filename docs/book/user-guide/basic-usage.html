@@ -201,14 +201,16 @@
 <p>A practical guide to using Talaria for common sequence database reduction tasks.</p>
 <h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
 <h3 id="basic-reduction"><a class="header" href="#basic-reduction">Basic Reduction</a></h3>
-<p>Reduce a FASTA file with default settings:</p>
-<pre><code class="language-bash">talaria reduce -i sequences.fasta -o reduced.fasta
+<p>Reduce a FASTA file using intelligent auto-detection:</p>
+<pre><code class="language-bash">talaria reduce -i sequences.fasta -o reduced.fasta -a diamond
 </code></pre>
 <p>This command:</p>
 <ul>
-<li>Reduces the input file by ~70% (default: 30% of original size)</li>
-<li>Uses simple length-based selection (matches original db-reduce)</li>
-<li>Outputs reference sequences and auto-generates delta file</li>
+<li><strong>Automatically determines optimal reduction</strong> using alignment-based selection</li>
+<li>Uses LAMBDA aligner if available (most accurate) or k-mer analysis as fallback</li>
+<li>Considers taxonomic relationships and sequence similarity</li>
+<li>Outputs reference sequences and auto-generates delta file for reconstruction</li>
+<li>Achieves optimal balance between size reduction and sequence coverage</li>
 </ul>
 <h3 id="view-statistics"><a class="header" href="#view-statistics">View Statistics</a></h3>
 <p>Analyze your FASTA files:</p>
@@ -232,23 +234,32 @@ talaria stats -i reduced.fasta -d deltas.tal
 <li>View statistics</li>
 <li>Configure settings</li>
 </ul>
-<h2 id="default-vs-optional-features"><a class="header" href="#default-vs-optional-features">Default vs Optional Features</a></h2>
-<h3 id="default-behavior-matches-original-db-reduce"><a class="header" href="#default-behavior-matches-original-db-reduce">Default Behavior (Matches Original db-reduce)</a></h3>
-<p>By default, Talaria uses simple, fast reduction:</p>
+<h2 id="reduction-methods"><a class="header" href="#reduction-methods">Reduction Methods</a></h2>
+<h3 id="default-intelligent-auto-detection-recommended"><a class="header" href="#default-intelligent-auto-detection-recommended">Default: Intelligent Auto-Detection (Recommended)</a></h3>
+<p>When no reduction ratio (-r) is specified, Talaria uses intelligent auto-detection:</p>
 <ul>
-<li><strong>Selection</strong>: Length-based greedy selection</li>
-<li><strong>No similarity calculations</strong>: Pure length-based</li>
-<li><strong>No taxonomy</strong>: Taxonomic information ignored</li>
-<li><strong>Fast processing</strong>: Minimal computational overhead</li>
+<li><strong>LAMBDA-based selection</strong>: Uses accurate alignment scoring (required for auto-detection)</li>
+<li><strong>Taxonomy-aware</strong>: Automatically considers taxonomic relationships</li>
+<li><strong>Coverage optimization</strong>: Stops adding references when coverage plateaus</li>
+<li><strong>Dynamic sizing</strong>: Adapts to your specific dataset characteristics</li>
 </ul>
-<h3 id="optional-advanced-features"><a class="header" href="#optional-advanced-features">Optional Advanced Features</a></h3>
-<p>Enable these features with specific flags:</p>
-<div class="table-wrapper"><table><thead><tr><th>Feature</th><th>Flag</th><th>Description</th></tr></thead><tbody>
-<tr><td>Similarity-based selection</td><td><code>--similarity-threshold &lt;value&gt;</code></td><td>Use k-mer similarity for clustering</td></tr>
-<tr><td>Alignment-based selection</td><td><code>--align-select</code></td><td>Use full sequence alignment</td></tr>
-<tr><td>Taxonomy awareness</td><td><code>--taxonomy-aware</code></td><td>Consider taxonomic IDs (simple proximity)</td></tr>
-<tr><td>Low complexity filter</td><td><code>--low-complexity-filter</code></td><td>Filter repetitive sequences</td></tr>
-<tr><td>Skip delta encoding</td><td><code>--no-deltas</code></td><td>Faster, no reconstruction possible</td></tr>
+<p><strong>Note:</strong> Auto-detection requires LAMBDA aligner to be installed:</p>
+<pre><code class="language-bash">talaria tools install lambda
+</code></pre>
+<h3 id="fixed-ratio-reduction"><a class="header" href="#fixed-ratio-reduction">Fixed Ratio Reduction</a></h3>
+<p>For specific size requirements, use the <code>-r</code> flag:</p>
+<pre><code class="language-bash"># Reduce to exactly 30% of original
+talaria reduce -i input.fasta -o output.fasta -r 0.3
+</code></pre>
+<h3 id="advanced-options"><a class="header" href="#advanced-options">Advanced Options</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Feature</th><th>Flag</th><th>Description</th><th>When to Use</th></tr></thead><tbody>
+<tr><td>Fixed ratio</td><td><code>-r &lt;0.0-1.0&gt;</code></td><td>Exact reduction target</td><td>Known size constraints</td></tr>
+<tr><td>Similarity threshold</td><td><code>--similarity-threshold &lt;value&gt;</code></td><td>K-mer similarity clustering</td><td>Highly similar sequences</td></tr>
+<tr><td>Alignment selection</td><td><code>--align-select</code></td><td>Force alignment-based selection</td><td>Maximum accuracy needed</td></tr>
+<tr><td>Taxonomy awareness</td><td><code>--taxonomy-aware</code></td><td>Enhanced taxonomic grouping</td><td>Diverse taxonomic data</td></tr>
+<tr><td>Taxonomy weighting</td><td><code>--use-taxonomy-weights</code></td><td>Weight alignment scores by taxonomy</td><td>Taxonomically diverse datasets</td></tr>
+<tr><td>Low complexity filter</td><td><code>--low-complexity-filter</code></td><td>Remove repetitive sequences</td><td>Genomic data with repeats</td></tr>
+<tr><td>Skip deltas</td><td><code>--no-deltas</code></td><td>No reconstruction file</td><td>Speed over recoverability</td></tr>
 </tbody></table>
 </div>
 <h2 id="common-use-cases"><a class="header" href="#common-use-cases">Common Use Cases</a></h2>
@@ -256,70 +267,96 @@ talaria stats -i reduced.fasta -d deltas.tal
 <pre><code class="language-bash"># Download UniProt SwissProt
 talaria download uniprot --dataset swissprot
 
-# Reduce with default settings (recommended)
+# Reduce with intelligent auto-detection (recommended)
 talaria reduce \
     -i uniprot_sprot.fasta \
     -o sprot_reduced.fasta \
     -a diamond
+# Automatically selects optimal references based on sequence alignments
 
-# Optional: Enable similarity-based selection
+# Alternative: Fixed 30% reduction for specific size requirements
 talaria reduce \
     -i uniprot_sprot.fasta \
     -o sprot_reduced.fasta \
-    --similarity-threshold 0.70 \
+    -r 0.3 \
+    -a diamond
+
+# Advanced: High-similarity clustering for redundant datasets
+talaria reduce \
+    -i uniprot_sprot.fasta \
+    -o sprot_reduced.fasta \
+    --similarity-threshold 0.90 \
     -a diamond
 </code></pre>
 <h3 id="2-preparing-blast-database"><a class="header" href="#2-preparing-blast-database">2. Preparing BLAST Database</a></h3>
-<pre><code class="language-bash"># Reduce nucleotide database with default settings
+<pre><code class="language-bash"># Reduce nucleotide database with auto-detection (recommended)
 talaria reduce \
     -i genomes.fasta \
     -o genomes_reduced.fasta \
     -a blast
+# Intelligently selects references covering maximum sequence diversity
 
-# Optional: Enable high similarity threshold
+# Alternative: For highly similar genomes (e.g., bacterial strains)
 talaria reduce \
     -i genomes.fasta \
     -o genomes_reduced.fasta \
     -a blast \
     --similarity-threshold 0.95
+# Groups nearly identical sequences together
 
-# Create BLAST database
+# Create BLAST database from reduced set
 makeblastdb -in genomes_reduced.fasta -dbtype nucl
 </code></pre>
 <h3 id="3-optimizing-kraken-database"><a class="header" href="#3-optimizing-kraken-database">3. Optimizing Kraken Database</a></h3>
-<pre><code class="language-bash"># Default reduction (recommended)
+<pre><code class="language-bash"># Auto-detection for Kraken (recommended)
 talaria reduce \
     -i refseq_bacteria.fasta \
     -o bacteria_reduced.fasta \
     -a kraken
+# Automatically balances taxonomic representation
 
-# Optional: Enable taxonomy-aware reduction
-# Note: Uses simple taxon ID proximity, not true taxonomic distance
+# Enhanced: Explicit taxonomy-aware reduction
 talaria reduce \
     -i refseq_bacteria.fasta \
     -o bacteria_reduced.fasta \
     -a kraken \
     --taxonomy-aware
+# Ensures each taxonomic group is well-represented
 
-# Build Kraken database
+# Build Kraken database from reduced set
 kraken2-build --add-to-library bacteria_reduced.fasta --db kraken_db
 </code></pre>
 <h3 id="4-clustering-similar-sequences"><a class="header" href="#4-clustering-similar-sequences">4. Clustering Similar Sequences</a></h3>
-<pre><code class="language-bash"># Default reduction
+<pre><code class="language-bash"># Auto-detect representatives (recommended for unknown datasets)
+talaria reduce \
+    -i amplicons.fasta \
+    -o representatives.fasta
+# Automatically finds optimal number of representatives
+
+# Fixed reduction for specific needs
 talaria reduce \
     -i amplicons.fasta \
     -o representatives.fasta \
-    -r 0.1  # Keep 10% as representatives
+    -r 0.1  # Keep exactly 10% as representatives
 
-# Optional: High similarity clustering
+# High-similarity clustering for amplicon data
 talaria reduce \
     -i amplicons.fasta \
     -o representatives.fasta \
     --similarity-threshold 0.97 \
     --min-length 200
+# Groups sequences with &gt;97% similarity
 </code></pre>
 <h3 id="5-fast-processing-without-deltas"><a class="header" href="#5-fast-processing-without-deltas">5. Fast Processing Without Deltas</a></h3>
-<pre><code class="language-bash"># Skip delta encoding for maximum speed
+<pre><code class="language-bash"># Maximum speed, no reconstruction needed
+talaria reduce \
+    -i large_database.fasta \
+    -o reduced.fasta \
+    --no-deltas \
+    --skip-validation
+# Uses auto-detection but skips delta encoding
+
+# With fixed ratio for predictable output size
 talaria reduce \
     -i large_database.fasta \
     -o reduced.fasta \
@@ -328,7 +365,14 @@ talaria reduce \
     --skip-validation
 </code></pre>
 <h3 id="6-handling-long-sequences"><a class="header" href="#6-handling-long-sequences">6. Handling Long Sequences</a></h3>
-<pre><code class="language-bash"># Limit alignment length for genomes
+<pre><code class="language-bash"># Auto-detection with alignment length limit
+talaria reduce \
+    -i whole_genomes.fasta \
+    -o genomes_reduced.fasta \
+    --max-align-length 5000
+# Prevents memory issues with very long sequences
+
+# Fixed reduction with length limit
 talaria reduce \
     -i whole_genomes.fasta \
     -o genomes_reduced.fasta \
@@ -416,25 +460,45 @@ Global Options:
 </code></pre>
 <h3 id="reduce-command"><a class="header" href="#reduce-command">Reduce Command</a></h3>
 <pre><code class="language-bash">talaria reduce [OPTIONS] -i INPUT -o OUTPUT
+talaria reduce [OPTIONS] [DATABASE]  # For database reduction
 
-Required:
+Required (file mode):
   -i, --input FILE          Input FASTA file
   -o, --output FILE         Output FASTA file
 
-Common Options:
+Required (database mode):
+  [DATABASE]                Database to reduce (e.g., "uniprot/swissprot")
+
+Selection Methods:
+  (none)                    Auto-detect optimal reduction (recommended)
+  -r, --reduction-ratio N   Fixed reduction ratio (0.0-1.0)
+
+Target Optimization:
   -a, --target-aligner NAME Target aligner (blast|lambda|kraken|diamond|mmseqs2|generic)
-  -r, --reduction-ratio N   Target reduction ratio (0.0-1.0) [default: 0.3]
+                           Optimizes for specific search tool [default: generic]
+
+Common Options:
   --min-length N            Minimum sequence length [default: 50]
   -m, --metadata FILE       Delta metadata file (auto-generated if not specified)
+  -j, --threads N           Number of threads (0 = all available) [default: 0]
   --skip-validation         Skip validation step
+  -v, --verbose            Increase verbosity (can repeat)
 
-Optional Advanced Features:
+Advanced Selection:
   --similarity-threshold N  Enable similarity clustering (0.0-1.0)
-  --align-select           Use alignment-based selection
-  --taxonomy-aware         Enable taxonomy-aware clustering
+  --align-select           Force alignment-based selection
+  --taxonomy-aware         Enhanced taxonomy-aware clustering
   --low-complexity-filter  Filter low complexity sequences
+  --all-vs-all            Use all-vs-all alignment (Lambda only)
+
+Performance Options:
   --no-deltas             Skip delta encoding (faster, no reconstruction)
   --max-align-length N    Max sequence length for alignment [default: 10000]
+  --store                 Store result in database structure
+
+Sequence Type:
+  --protein               Use amino acid scoring (auto-detected by default)
+  --nucleotide           Use nucleotide scoring (auto-detected by default)
 </code></pre>
 <h3 id="stats-command"><a class="header" href="#stats-command">Stats Command</a></h3>
 <pre><code class="language-bash">talaria stats [OPTIONS] -i INPUT

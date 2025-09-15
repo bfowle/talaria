@@ -250,7 +250,7 @@ fn reconstruct_from_casg(
     sequence_filter: Vec<String>,
     pb: indicatif::ProgressBar,
 ) -> anyhow::Result<()> {
-    use crate::casg::{storage::CASGStorage, delta::DeltaReconstructor, assembler::FastaAssembler};
+    use crate::casg::{storage::CASGStorage, delta_reconstructor::DeltaReconstructor, assembler::FastaAssembler};
     
     use std::collections::HashSet;
 
@@ -298,7 +298,7 @@ fn reconstruct_from_casg(
     if !manifest.delta_chunks.is_empty() {
         pb.set_message("Reconstructing delta sequences...");
 
-        let mut delta_reconstructor = DeltaReconstructor::new();
+        let delta_reconstructor = DeltaReconstructor::default();
 
         for delta_chunk_ref in &manifest.delta_chunks {
             // Get the delta chunk

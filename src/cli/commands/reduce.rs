@@ -2,6 +2,7 @@ use clap::Args;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::path::PathBuf;
 use crate::cli::TargetAligner;
+use crate::cli::formatter::{self, TaskList, TaskStatus, info_box, print_success, print_error, print_tip, format_bytes};
 
 #[derive(Args)]
 pub struct ReduceArgs {
@@ -73,6 +74,10 @@ pub struct ReduceArgs {
     #[arg(long)]
     pub taxonomy_aware: bool,
 
+    /// Use taxonomy data to weight alignment scores (requires taxonomy data in FASTA or CASG)
+    #[arg(long)]
+    pub use_taxonomy_weights: bool,
+
     /// Skip delta encoding (much faster, but no reconstruction possible)
     #[arg(long)]
     pub no_deltas: bool,
@@ -105,7 +110,10 @@ pub struct ReduceArgs {
 
 pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     use crate::utils::format::get_file_size;
-    
+
+    // Initialize formatter
+    formatter::init();
+
     // Get threads from environment or default
     args.threads = std::env::var("TALARIA_THREADS")
         .ok()
@@ -128,8 +136,8 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         anyhow::bail!("Cannot specify both database reference and input file (-i). Use one or the other.");
     }
     
-    // Handle database reference
-    let actual_input = if let Some(db_ref_str) = &args.database {
+    // Handle database reference and optional manifest-based taxonomy
+    let (actual_input, manifest_acc2taxid) = if let Some(db_ref_str) = &args.database {
             // Assemble FASTA from chunks on-demand
             use crate::core::database_manager::DatabaseManager;
             use crate::download::{DatabaseSource, NCBIDatabase, UniProtDatabase};
@@ -153,39 +161,63 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
                 .as_secs();
             let temp_file = temp_dir.join(format!("talaria_casg_{}.fasta", timestamp));
 
-            println!("🔄 Assembling database from chunks...");
+            // Use spinner for assembly
+            let spinner = ProgressBar::new_spinner();
+            spinner.set_style(
+                ProgressStyle::default_spinner()
+                    .template("{spinner:.cyan} {msg}")
+                    .unwrap()
+                    .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+            );
+            spinner.set_message("Assembling database from chunks...");
+            spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+
             manager.assemble_database(&database_source, &temp_file)?;
 
-            temp_file
+            spinner.finish_with_message("Database assembled successfully");
+
+            // Create accession2taxid mapping from manifest if using LAMBDA
+            let acc2taxid_file = if args.target_aligner == TargetAligner::Lambda {
+                spinner.set_message("Creating taxonomy mapping from manifest...");
+                spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+
+                match manager.create_accession2taxid_from_manifest(&database_source) {
+                    Ok(path) => {
+                        spinner.finish_with_message("Taxonomy mapping created from manifest");
+                        Some(path)
+                    }
+                    Err(e) => {
+                        spinner.finish_with_message("Warning: Could not create taxonomy mapping from manifest");
+                        println!("  {}", e);
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
+            (temp_file, acc2taxid_file)
     } else {
         // Traditional file-based usage
         let input = args.input.as_ref()
             .ok_or_else(|| anyhow::anyhow!("Input file (-i) is required when not using database reference"))?;
-        
+
         if !input.exists() {
             anyhow::bail!("Input file does not exist: {:?}", input);
         }
-        
+
         if !args.store && args.output.is_none() {
             anyhow::bail!("Output file (-o) is required when not using database reference or --store");
         }
-        
+
         // CASG doesn't support --store yet
         if args.store {
             anyhow::bail!("--store option not yet implemented for CASG. Please specify an output file with -o instead.");
         }
 
-        input.clone()
+        (input.clone(), None)  // No manifest-based taxonomy for file input
     };
-    
-    let pb = ProgressBar::new_spinner();
-    pb.set_style(
-        ProgressStyle::default_spinner()
-            .template("{spinner:.green} {msg}")
-            .unwrap()
-    );
-    pb.set_message("Initializing reduction pipeline...");
-    
+
     // Use reduction ratio if provided, otherwise use auto-detection
     let reduction_ratio = if let Some(ratio) = args.reduction_ratio {
         if ratio <= 0.0 || ratio > 1.0 {
@@ -196,6 +228,42 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         // Auto-detection will be handled by the reducer
         0.0  // Sentinel value for auto-detection
     };
+
+    // Create task list for tracking reduction pipeline
+    let mut task_list = TaskList::new();
+
+    // Print header
+    let header = if let Some(db) = &args.database {
+        format!("Reduction Pipeline: {}", db)
+    } else if let Some(input) = &args.input {
+        format!("Reduction Pipeline: {}", input.display())
+    } else {
+        "Reduction Pipeline".to_string()
+    };
+    task_list.print_header(&header);
+
+    // Show reduction mode info
+    if reduction_ratio == 0.0 {
+        info_box("Using LAMBDA for intelligent auto-detection", &[
+            "Alignment-based selection",
+            "Taxonomy-aware clustering",
+            "Dynamic coverage optimization"
+        ]);
+    } else {
+        info_box(&format!("Fixed reduction to {:.0}% of original", reduction_ratio * 100.0), &[
+            "Greedy selection by sequence length",
+            "Predictable output size"
+        ]);
+    }
+
+    // Add tasks
+    let init_task = task_list.add_task("Initialize pipeline");
+    let load_task = task_list.add_task("Load sequences");
+    let select_task = task_list.add_task("Select references");
+    let encode_task = task_list.add_task("Encode deltas");
+    let write_task = task_list.add_task("Write output files");
+
+    task_list.update_task(init_task, TaskStatus::InProgress);
     
     // Set up thread pool
     let threads = if args.threads == 0 {
@@ -211,11 +279,12 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         // Thread pool already initialized, that's fine
     }
     
-    pb.set_message(format!("Using {} threads", threads));
+    println!("  Using {} threads", threads);
+    task_list.update_task(init_task, TaskStatus::Complete);
     
     // Load configuration if provided
     let mut config = if let Some(config_path) = &args.config {
-        pb.set_message("Loading configuration...");
+        println!("  Loading configuration from {:?}...", config_path);
         crate::core::config::load_config(config_path)?
     } else {
         crate::core::config::default_config()
@@ -239,11 +308,16 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     let input_size = get_file_size(&actual_input).unwrap_or(0);
     
     // Parse input FASTA
-    pb.set_message("Parsing input FASTA...");
+    task_list.update_task(load_task, TaskStatus::InProgress);
+    println!("  Reading FASTA file...");
     let sequences = crate::bio::fasta::parse_fasta(&actual_input)?;
-    pb.finish_with_message(format!("Loaded {} sequences", sequences.len()));
+    task_list.update_task(load_task, TaskStatus::Complete);
+    println!("  Loaded {} sequences ({})",
+        sequences.len(),
+        format_bytes(input_size));
     
     // Run reduction pipeline
+    task_list.update_task(select_task, TaskStatus::InProgress);
     let reducer = crate::core::reducer::Reducer::new(config)
         .with_selection_mode(
             args.similarity_threshold.is_some() || args.align_select,
@@ -252,12 +326,50 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         .with_no_deltas(args.no_deltas)
         .with_max_align_length(args.max_align_length)
         .with_all_vs_all(args.all_vs_all)
+        .with_taxonomy_weights(args.use_taxonomy_weights)
+        .with_manifest_acc2taxid(manifest_acc2taxid)
         .with_file_sizes(input_size, 0);  // Output size will be set later
-    let (references, deltas, original_count) = reducer.reduce(
+
+    // Run reduction with better error handling
+    let reduction_result = reducer.reduce(
         sequences,
         reduction_ratio,
         args.target_aligner.clone(),
-    )?;
+    );
+
+    let (references, deltas, original_count) = match reduction_result {
+        Ok(result) => {
+            task_list.update_task(select_task, TaskStatus::Complete);
+            println!("  Selected {} reference sequences", result.0.len());
+            result
+        }
+        Err(e) => {
+            task_list.update_task(select_task, TaskStatus::Failed);
+            // Print a helpful error message
+            print_error(&format!("Reference selection failed: {}", e));
+
+            // Check if it's a LAMBDA error
+            if e.to_string().contains("LAMBDA") && e.to_string().contains("taxonomy") {
+                print_tip("This error often occurs when sequences lack taxonomy IDs.");
+                print_tip("Try one of these solutions:");
+                println!("  1. Use a fixed reduction ratio: -r 0.3");
+                println!("  2. Skip auto-detection and use simple selection");
+                println!("  3. Ensure your FASTA headers include TaxID tags");
+            }
+
+            return Err(e.into());
+        }
+    };
+
+    // Update delta encoding status
+    if args.no_deltas {
+        task_list.update_task(encode_task, TaskStatus::Skipped);
+    } else if !deltas.is_empty() {
+        task_list.update_task(encode_task, TaskStatus::Complete);
+        println!("  Encoded {} child sequences as deltas", deltas.len());
+    } else {
+        task_list.update_task(encode_task, TaskStatus::Skipped);
+    }
     
     // Determine output paths - should_store is always false now (CASG doesn't support it yet)
     let (output_path, metadata_path) = {
@@ -287,7 +399,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     // Choose output method: CASG or traditional files
     let output_size = if args.casg_output {
         // Output to CASG repository
-        pb.set_message("Storing reduction in CASG repository...");
+        println!("  Storing reduction in CASG repository...");
 
         let casg_path = args.casg_path.clone().unwrap_or_else(|| {
             use crate::core::paths;
@@ -306,7 +418,9 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         )?
     } else {
         // Traditional file output
-        pb.set_message("Writing reduced FASTA...");
+        task_list.update_task(write_task, TaskStatus::InProgress);
+        println!("  Writing output files...");
+
         crate::bio::fasta::write_fasta(&output_path, &references)?;
 
         // Get output file size
@@ -314,17 +428,14 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
 
         // Write deltas if they were computed
         if !args.no_deltas && !deltas.is_empty() {
-            pb.set_message("Writing delta metadata...");
             crate::storage::metadata::write_metadata(&metadata_path, &deltas)?;
-            pb.set_message(format!("Saved deltas to {:?}", metadata_path));
-        } else if args.no_deltas {
-            pb.set_message("Skipped delta encoding (--no-deltas flag)");
+            println!("  Saved deltas to {:?}", metadata_path);
         }
+
+        task_list.update_task(write_task, TaskStatus::Complete);
 
         output_size
     };
-
-    pb.finish_and_clear();
     
     // Print statistics using the new stats display
     use crate::cli::stats_display::create_reduction_stats;
@@ -346,18 +457,22 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     
     println!("\n{}", stats);
     
-    // Show simple completion message
+    // Show completion message with nice formatting
     let file_size_reduction = if input_size > 0 && output_size > 0 {
         (1.0 - (output_size as f64 / input_size as f64)) * 100.0
     } else {
         0.0
     };
     let sequence_coverage = (references.len() + deltas.len()) as f64 / original_count as f64 * 100.0;
-    
-    println!("\nReduction complete: {:.1}% file size reduction, {:.1}% sequence coverage",
+
+    print_success(&format!("Reduction complete: {:.1}% file size reduction, {:.1}% sequence coverage",
         file_size_reduction,
         sequence_coverage
-    );
+    ));
+
+    if !args.no_deltas && !deltas.is_empty() {
+        print_tip("Use 'talaria reconstruct' to recover original sequences from the reduced set and deltas");
+    }
     
     Ok(())
 }
@@ -373,7 +488,7 @@ fn store_reduction_in_casg(
     original_count: usize,
     input_size: u64,
 ) -> anyhow::Result<u64> {
-    use crate::casg::{CASGRepository, delta::DeltaChunk, reduction::{ReductionManifest, ReductionParameters, ReferenceChunk, DeltaChunkRef}};
+    use crate::casg::{CASGRepository, delta_generator::{DeltaGenerator, DeltaGeneratorConfig}, reduction::{ReductionManifest, ReductionParameters, ReferenceChunk, DeltaChunkRef}};
     use crate::casg::chunker::TaxonomicChunker;
     use crate::casg::types::SHA256Hash;
     use std::collections::HashMap;
@@ -500,19 +615,51 @@ fn store_reduction_in_casg(
 
         let mut delta_chunk_refs = Vec::new();
 
-        // Create delta chunks
-        for (ref_id, delta_records) in deltas_by_ref {
-            if let Some(ref_chunk_hash) = ref_chunk_map.get(&ref_id) {
-                let delta_chunk = DeltaChunk::new(ref_chunk_hash.clone(), delta_records.clone())?;
+        // Create delta generator
+        let delta_config = DeltaGeneratorConfig {
+            max_chunk_size: 16 * 1024 * 1024,
+            min_similarity_threshold: 0.85,
+            enable_compression: true,
+            target_sequences_per_chunk: 1000,
+            max_delta_ops_threshold: 100,
+        };
+        let mut delta_generator = DeltaGenerator::new(delta_config);
+
+        // Convert delta records to sequences for delta generation
+        let all_child_sequences: Vec<crate::bio::sequence::Sequence> =
+            deltas.iter().map(|d| crate::bio::sequence::Sequence {
+                id: d.child_id.clone(),
+                description: None,
+                sequence: Vec::new(), // Will be filled by delta generator
+                taxon_id: d.taxon_id,
+            }).collect();
+
+        let all_ref_sequences: Vec<crate::bio::sequence::Sequence> =
+            references.iter().cloned().collect();
+
+        // Generate delta chunks using the new system
+        if !all_child_sequences.is_empty() && !all_ref_sequences.is_empty() {
+            // Get the first reference chunk hash as the base
+            let base_ref_hash = ref_chunk_map.values().next()
+                .ok_or_else(|| anyhow::anyhow!("No reference chunks available"))?;
+
+            let delta_chunks = delta_generator.generate_delta_chunks(
+                &all_child_sequences,
+                &all_ref_sequences,
+                base_ref_hash.clone(),
+            )?;
+
+            // Store delta chunks and create references
+            for delta_chunk in delta_chunks {
                 let delta_hash = casg.storage.store_delta_chunk(&delta_chunk)?;
 
                 let delta_ref = DeltaChunkRef {
                     chunk_hash: delta_hash,
-                    reference_chunk_hash: ref_chunk_hash.clone(),
-                    child_count: delta_records.len(),
-                    child_ids: delta_records.iter().map(|d| d.child_id.clone()).collect(),
-                    size: delta_chunk.effective_size(),
-                    avg_delta_ops: delta_chunk.metadata.avg_delta_ops,
+                    reference_chunk_hash: delta_chunk.reference_hash.clone(),
+                    child_count: delta_chunk.sequences.len(),
+                    child_ids: delta_chunk.sequences.iter().map(|s| s.sequence_id.clone()).collect(),
+                    size: delta_chunk.compressed_size,
+                    avg_delta_ops: delta_chunk.deltas.len() as f32 / delta_chunk.sequences.len().max(1) as f32,
                 };
 
                 delta_chunk_refs.push(delta_ref);

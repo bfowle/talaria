@@ -7,6 +7,7 @@ static TALARIA_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 static TALARIA_DATABASES_DIR: OnceLock<PathBuf> = OnceLock::new();
 static TALARIA_TOOLS_DIR: OnceLock<PathBuf> = OnceLock::new();
 static TALARIA_CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
+static TALARIA_TAXONOMY_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 /// Get the Talaria home directory
 /// Checks TALARIA_HOME environment variable, falls back to ~/.talaria
@@ -76,6 +77,17 @@ pub fn talaria_cache_dir() -> PathBuf {
     }).clone()
 }
 
+/// Get the taxonomy directory
+/// Checks TALARIA_TAXONOMY_DIR environment variable, falls back to TALARIA_DATABASES_DIR/taxonomy
+pub fn talaria_taxonomy_dir() -> PathBuf {
+    TALARIA_TAXONOMY_DIR.get_or_init(|| {
+        if let Ok(path) = std::env::var("TALARIA_TAXONOMY_DIR") {
+            PathBuf::from(path)
+        } else {
+            talaria_databases_dir().join("taxonomy")
+        }
+    }).clone()
+}
 
 /// Get database path for a specific source and dataset
 pub fn database_path(source: &str, dataset: &str) -> PathBuf {

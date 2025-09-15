@@ -197,10 +197,28 @@
                 <div id="content" class="content">
                     <main>
                         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
-<h1 id="manifest-format-specification"><a class="header" href="#manifest-format-specification">Manifest Format Specification</a></h1>
-<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
-<p>The manifest is the heart of the CASG system - a small, efficiently-structured file that describes the entire state of a sequence database at a point in time. Manifests typically range from 50KB to 500KB even for databases containing terabytes of sequence data.</p>
-<h2 id="format-structure"><a class="header" href="#format-structure">Format Structure</a></h2>
+<h1 id="manifest-format-specification-the-database-genome"><a class="header" href="#manifest-format-specification-the-database-genome">Manifest Format Specification: The Database Genome</a></h1>
+<h2 id="overview-small-files-massive-impact"><a class="header" href="#overview-small-files-massive-impact">Overview: Small Files, Massive Impact</a></h2>
+<p>The manifest is the heart of the CASG system—a small, efficiently-structured JSON file that completely describes the state of a multi-gigabyte sequence database. Think of it as the “genome” of your database: just as DNA encodes an entire organism in a tiny molecule, the manifest encodes an entire database in typically 50-500KB.</p>
+<h3 id="why-manifests-matter"><a class="header" href="#why-manifests-matter">Why Manifests Matter</a></h3>
+<p>Consider the traditional approach to checking for database updates: you either trust that your local copy is current (dangerous for reproducibility) or you re-download the entire database to be sure (wasteful). The manifest solves this elegantly:</p>
+<ol>
+<li><strong>Instant Update Checks</strong>: A simple HTTP HEAD request (1KB) tells you if updates exist</li>
+<li><strong>Precise Diffs</strong>: The manifest lists every chunk, so you know exactly what changed</li>
+<li><strong>Cryptographic Proof</strong>: Merkle roots prove the database hasn’t been tampered with</li>
+<li><strong>Perfect Reproducibility</strong>: A manifest hash uniquely identifies a database state forever</li>
+</ol>
+<h3 id="the-power-of-indirection"><a class="header" href="#the-power-of-indirection">The Power of Indirection</a></h3>
+<p>Instead of moving massive databases around, we move tiny manifests. A researcher can email a colleague a 100KB manifest that precisely describes a 100GB database. The colleague downloads only the chunks they need, verified against the manifest’s cryptographic proofs. This indirection transforms database distribution from a bandwidth problem to a metadata problem.</p>
+<h2 id="format-structure-anatomy-of-a-manifest"><a class="header" href="#format-structure-anatomy-of-a-manifest">Format Structure: Anatomy of a Manifest</a></h2>
+<p>The manifest uses JSON for human readability and tooling compatibility, with a carefully designed schema that balances completeness with compactness.</p>
+<h3 id="core-design-principles"><a class="header" href="#core-design-principles">Core Design Principles</a></h3>
+<ol>
+<li><strong>Self-Contained</strong>: Everything needed to reconstruct the database is in the manifest</li>
+<li><strong>Verifiable</strong>: Multiple cross-checks ensure integrity</li>
+<li><strong>Efficient</strong>: Optimized for rapid parsing and diff computation</li>
+<li><strong>Extensible</strong>: Forward-compatible with future enhancements</li>
+</ol>
 <h3 id="json-schema"><a class="header" href="#json-schema">JSON Schema</a></h3>
 <pre><code class="language-json">{
   "$schema": "http://json-schema.org/draft-07/schema#",
@@ -285,7 +303,9 @@
   "previous_version": "20240215_120000"
 }
 </code></pre>
-<h2 id="chunk-metadata"><a class="header" href="#chunk-metadata">Chunk Metadata</a></h2>
+<h2 id="chunk-metadata-the-building-blocks"><a class="header" href="#chunk-metadata-the-building-blocks">Chunk Metadata: The Building Blocks</a></h2>
+<p>Each chunk entry in the manifest provides complete information about that chunk without requiring access to the chunk itself. This enables intelligent decisions about which chunks to download.</p>
+<h3 id="understanding-chunk-metadata"><a class="header" href="#understanding-chunk-metadata">Understanding Chunk Metadata</a></h3>
 <p>Each chunk in the index contains:</p>
 <div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th><th>Example</th></tr></thead><tbody>
 <tr><td><code>hash</code></td><td>SHA256</td><td>Content hash of chunk</td><td><code>abc123...</code></td></tr>
@@ -296,7 +316,23 @@
 </tbody></table>
 </div>
 <p>Note: ChunkMetadata does not contain a <code>taxonomy_version</code> field. Taxonomy version is tracked at the manifest level.</p>
-<h2 id="etag-based-update-checking"><a class="header" href="#etag-based-update-checking">ETag-Based Update Checking</a></h2>
+<h2 id="etag-based-update-checking-efficiency-through-http"><a class="header" href="#etag-based-update-checking-efficiency-through-http">ETag-Based Update Checking: Efficiency Through HTTP</a></h2>
+<p>ETags (Entity Tags) are an HTTP mechanism originally designed for web caching, but CASG repurposes them brilliantly for database update detection. Instead of downloading megabytes to check for changes, we send a tiny HTTP header and get a definitive answer.</p>
+<h3 id="the-etag-advantage"><a class="header" href="#the-etag-advantage">The ETag Advantage</a></h3>
+<p>Traditional database update checking:</p>
+<ol>
+<li>Download the database (or at least its index)</li>
+<li>Compare with local version</li>
+<li>Realize nothing changed</li>
+<li>Waste: 100GB downloaded for nothing</li>
+</ol>
+<p>CASG with ETags:</p>
+<ol>
+<li>Send HTTP HEAD with cached ETag (1KB)</li>
+<li>Receive 304 Not Modified (instant)</li>
+<li>Done</li>
+<li>Savings: 99.999% bandwidth reduction</li>
+</ol>
 <h3 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h3>
 <pre class="mermaid">sequenceDiagram
     participant Client
@@ -333,7 +369,10 @@ async fn check_updates(cached_etag: Option&lt;&amp;str&gt;) -&gt; Result&lt;bool
     Ok(response.status() != StatusCode::NOT_MODIFIED)
 }
 <span class="boring">}</span></code></pre></pre>
-<h2 id="manifest-diffing"><a class="header" href="#manifest-diffing">Manifest Diffing</a></h2>
+<h2 id="manifest-diffing-surgical-precision-updates"><a class="header" href="#manifest-diffing-surgical-precision-updates">Manifest Diffing: Surgical Precision Updates</a></h2>
+<p>Manifest diffing is where CASG’s efficiency becomes apparent. By comparing two manifests, we can determine exactly which chunks changed, enabling surgical updates that download only what’s new.</p>
+<h3 id="the-diff-process"><a class="header" href="#the-diff-process">The Diff Process</a></h3>
+<p>Think of manifest diffing like comparing two shopping lists. Instead of buying everything again, you only buy what’s new or different. But unlike shopping lists, manifest diffs are computed in milliseconds and are cryptographically verifiable.</p>
 <h3 id="algorithm"><a class="header" href="#algorithm">Algorithm</a></h3>
 <p>When a new manifest is downloaded, compute the differential:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -394,7 +433,16 @@ async fn check_updates(cached_etag: Option&lt;&amp;str&gt;) -&gt; Result&lt;bool
     style D2 stroke:#d32f2f,stroke-width:2px
     style D3 stroke:#388e3c,stroke-width:2px
 </pre>
-<h2 id="discrepancy-tracking"><a class="header" href="#discrepancy-tracking">Discrepancy Tracking</a></h2>
+<h2 id="discrepancy-tracking-data-quality-assurance"><a class="header" href="#discrepancy-tracking-data-quality-assurance">Discrepancy Tracking: Data Quality Assurance</a></h2>
+<p>One of CASG’s unique features is active discrepancy detection and tracking. Biological databases often contain inconsistencies—sequences claimed to be from one organism but actually from another, outdated taxonomic classifications, or missing annotations. The manifest doesn’t hide these issues; it documents them.</p>
+<h3 id="why-track-discrepancies"><a class="header" href="#why-track-discrepancies">Why Track Discrepancies?</a></h3>
+<ol>
+<li><strong>Scientific Integrity</strong>: Researchers need to know about potential data quality issues</li>
+<li><strong>Reproducibility</strong>: Papers can reference specific discrepancies they handled</li>
+<li><strong>Continuous Improvement</strong>: Database maintainers can prioritize fixes</li>
+<li><strong>Audit Trail</strong>: Track how classifications change over time</li>
+</ol>
+<h3 id="discrepancy-format"><a class="header" href="#discrepancy-format">Discrepancy Format</a></h3>
 <p>The manifest includes detected discrepancies:</p>
 <pre><code class="language-json">{
   "discrepancies": [
@@ -419,7 +467,20 @@ async fn check_updates(cached_etag: Option&lt;&amp;str&gt;) -&gt; Result&lt;bool
   ]
 }
 </code></pre>
-<h2 id="bandwidth-optimization"><a class="header" href="#bandwidth-optimization">Bandwidth Optimization</a></h2>
+<h2 id="bandwidth-optimization-the-economics-of-updates"><a class="header" href="#bandwidth-optimization-the-economics-of-updates">Bandwidth Optimization: The Economics of Updates</a></h2>
+<p>Bandwidth costs money and time. For researchers in bandwidth-constrained environments or institutions with metered connections, CASG’s optimizations can mean the difference between feasible and impossible.</p>
+<h3 id="real-world-impact"><a class="header" href="#real-world-impact">Real-World Impact</a></h3>
+<p>Consider a lab checking for UniProt updates daily:</p>
+<ul>
+<li><strong>Traditional</strong>: 365 × 100GB = 36.5TB/year (mostly redundant)</li>
+<li><strong>CASG</strong>: 365 × 1KB checks + 12 × 2GB updates = 24GB/year</li>
+<li><strong>Savings</strong>: 99.93% bandwidth reduction</li>
+</ul>
+<p>For cloud users paying for egress:</p>
+<ul>
+<li><strong>Traditional</strong>: <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord">3</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord">285/</span><span class="mord mathnormal">ye</span><span class="mord mathnormal">a</span><span class="mord mathnormal" style="margin-right:0.02778em;">r</span><span class="mopen">(</span><span class="mord mathnormal">a</span><span class="mord mathnormal">t</span></span></span></span>0.09/GB)</li>
+<li><strong>CASG</strong>: <span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord">2.16/</span><span class="mord mathnormal">ye</span><span class="mord mathnormal">a</span><span class="mord mathnormal" style="margin-right:0.02778em;">r</span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.4653em;"></span><span class="mord">∗</span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">∗</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.8778em;vertical-align:-0.1944em;"></span><span class="mord mathnormal" style="margin-right:0.05764em;">S</span><span class="mord mathnormal">a</span><span class="mord mathnormal" style="margin-right:0.03588em;">v</span><span class="mord mathnormal">in</span><span class="mord mathnormal" style="margin-right:0.03588em;">g</span><span class="mord mathnormal">s</span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">∗</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.4653em;"></span><span class="mord">∗</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">:</span></span></span></span>3,283/year per database</li>
+</ul>
 <h3 id="size-comparison"><a class="header" href="#size-comparison">Size Comparison</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Component</th><th>Traditional</th><th>CASG</th><th>Savings</th></tr></thead><tbody>
 <tr><td>Check for updates</td><td>Download full DB (100GB)</td><td>HEAD request (1KB)</td><td>99.999%</td></tr>
@@ -460,7 +521,15 @@ async fn check_updates(cached_etag: Option&lt;&amp;str&gt;) -&gt; Result&lt;bool
     style Verify stroke:#388e3c,stroke-width:2px
     style Background stroke:#757575,stroke-width:2px,stroke-dasharray: 5 5
 </pre>
-<h2 id="compression"><a class="header" href="#compression">Compression</a></h2>
+<h2 id="compression-every-byte-counts"><a class="header" href="#compression-every-byte-counts">Compression: Every Byte Counts</a></h2>
+<p>While manifests are already small, compression reduces them further. This matters when serving millions of manifest checks daily or when every kilobyte counts in bandwidth-constrained environments.</p>
+<h3 id="compression-strategy"><a class="header" href="#compression-strategy">Compression Strategy</a></h3>
+<p>Manifests compress exceptionally well because:</p>
+<ol>
+<li><strong>Repetitive Structure</strong>: JSON has repeated keys</li>
+<li><strong>Hash Patterns</strong>: SHA256 hashes have predictable entropy</li>
+<li><strong>Taxonomic IDs</strong>: Often sequential or clustered</li>
+</ol>
 <p>Manifests support multiple compression formats:</p>
 <div class="table-wrapper"><table><thead><tr><th>Format</th><th>Extension</th><th>Typical Size</th><th>Use Case</th></tr></thead><tbody>
 <tr><td>Raw JSON</td><td><code>.json</code></td><td>200KB</td><td>Development</td></tr>
@@ -469,7 +538,16 @@ async fn check_updates(cached_etag: Option&lt;&amp;str&gt;) -&gt; Result&lt;bool
 <tr><td>Zstandard</td><td><code>.json.zst</code></td><td>40KB</td><td>Fast decompression</td></tr>
 </tbody></table>
 </div>
-<h2 id="security"><a class="header" href="#security">Security</a></h2>
+<h2 id="security-trust-through-verification"><a class="header" href="#security-trust-through-verification">Security: Trust Through Verification</a></h2>
+<p>In scientific computing, trust is earned through verification. CASG manifests include multiple layers of cryptographic proof, ensuring that the data you download is exactly what was published.</p>
+<h3 id="defense-in-depth"><a class="header" href="#defense-in-depth">Defense in Depth</a></h3>
+<p>CASG employs multiple security layers:</p>
+<ol>
+<li><strong>Content Addressing</strong>: Chunks are identified by their hash</li>
+<li><strong>Merkle Proofs</strong>: Prove chunks belong to the database</li>
+<li><strong>Manifest Integrity</strong>: ETags and internal consistency checks</li>
+<li><strong>Optional Signatures</strong>: Cryptographic signatures from publishers</li>
+</ol>
 <h3 id="integrity-verification"><a class="header" href="#integrity-verification">Integrity Verification</a></h3>
 <p>Every manifest includes cross-validation:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -518,7 +596,15 @@ async fn check_updates(cached_etag: Option&lt;&amp;str&gt;) -&gt; Result&lt;bool
     style C2 stroke:#0288d1,stroke-width:2px
     style C3 stroke:#0288d1,stroke-width:2px
 </pre>
-<h2 id="performance-metrics"><a class="header" href="#performance-metrics">Performance Metrics</a></h2>
+<h2 id="performance-metrics-speed-at-scale"><a class="header" href="#performance-metrics-speed-at-scale">Performance Metrics: Speed at Scale</a></h2>
+<p>Manifest operations are designed to be fast enough for interactive use while scaling to databases with millions of chunks.</p>
+<h3 id="optimization-techniques"><a class="header" href="#optimization-techniques">Optimization Techniques</a></h3>
+<ol>
+<li><strong>Streaming Parsers</strong>: Begin processing before download completes</li>
+<li><strong>Lazy Evaluation</strong>: Only parse what’s needed</li>
+<li><strong>Hash Tables</strong>: O(1) lookup for chunk comparison</li>
+<li><strong>Parallel Processing</strong>: Diff computation uses all CPU cores</li>
+</ol>
 <p>Typical manifest operations:</p>
 <div class="table-wrapper"><table><thead><tr><th>Operation</th><th>Time</th><th>Memory</th></tr></thead><tbody>
 <tr><td>Parse manifest (200KB)</td><td>&lt;10ms</td><td>2MB</td></tr>
@@ -527,14 +613,69 @@ async fn check_updates(cached_etag: Option&lt;&amp;str&gt;) -&gt; Result&lt;bool
 <tr><td>Generate subset manifest</td><td>&lt;20ms</td><td>10MB</td></tr>
 </tbody></table>
 </div>
-<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<h2 id="best-practices-lessons-from-production"><a class="header" href="#best-practices-lessons-from-production">Best Practices: Lessons from Production</a></h2>
+<h3 id="1-cache-manifests-locally"><a class="header" href="#1-cache-manifests-locally">1. Cache Manifests Locally</a></h3>
+<p>Always cache manifests with their ETags:</p>
+<pre><code class="language-bash">~/.talaria/cache/manifests/
+├── uniprot-swissprot-20240315.json
+├── uniprot-swissprot-20240315.etag
+└── ncbi-nr-20240310.json
+</code></pre>
+<p>This enables instant local operations and offline work.</p>
+<h3 id="2-check-updates-frequently"><a class="header" href="#2-check-updates-frequently">2. Check Updates Frequently</a></h3>
+<p>HEAD requests are essentially free:</p>
+<ul>
+<li>1KB request</li>
+<li>&lt;100ms response</li>
+<li>No computational cost</li>
+<li>Can check hourly without impact</li>
+</ul>
+<h3 id="3-batch-chunk-downloads"><a class="header" href="#3-batch-chunk-downloads">3. Batch Chunk Downloads</a></h3>
+<p>Download multiple chunks in parallel:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let chunks_to_download = vec![hash1, hash2, hash3];
+let downloads = chunks_to_download
+    .par_iter()
+    .map(|hash| download_chunk(hash))
+    .collect();
+<span class="boring">}</span></code></pre></pre>
+<p>10-20 parallel downloads optimal for most networks.</p>
+<h3 id="4-verify-manifest-integrity"><a class="header" href="#4-verify-manifest-integrity">4. Verify Manifest Integrity</a></h3>
+<p>Always verify before trusting:</p>
 <ol>
-<li><strong>Cache manifests locally</strong> with their ETags</li>
-<li><strong>Check updates frequently</strong> (HEAD requests are cheap)</li>
-<li><strong>Batch chunk downloads</strong> for efficiency</li>
-<li><strong>Verify manifest integrity</strong> before trusting</li>
-<li><strong>Keep manifest history</strong> for rollback capability</li>
+<li>Check ETag matches content</li>
+<li>Verify Merkle roots</li>
+<li>Validate chunk hashes during download</li>
+<li>Optional: Verify publisher signature</li>
 </ol>
+<h3 id="5-keep-manifest-history"><a class="header" href="#5-keep-manifest-history">5. Keep Manifest History</a></h3>
+<p>Maintain a git-like history:</p>
+<pre><code>manifests/
+├── current -&gt; 20240315_143022
+├── 20240315_143022/
+├── 20240215_120000/
+└── 20240115_090000/
+</code></pre>
+<p>Enables rollback and historical analysis.</p>
+<h3 id="6-implement-progressive-downloads"><a class="header" href="#6-implement-progressive-downloads">6. Implement Progressive Downloads</a></h3>
+<p>Prioritize important chunks:</p>
+<ol>
+<li>Download manifest</li>
+<li>Identify model organism chunks (high priority)</li>
+<li>Download those immediately</li>
+<li>Queue others for background download</li>
+<li>Users can work while rest downloads</li>
+</ol>
+<h3 id="7-monitor-manifest-metrics"><a class="header" href="#7-monitor-manifest-metrics">7. Monitor Manifest Metrics</a></h3>
+<p>Track key indicators:</p>
+<ul>
+<li>Update frequency (how often do manifests change?)</li>
+<li>Chunk churn (what percentage changes per update?)</li>
+<li>Download patterns (which chunks are hot?)</li>
+<li>Compression ratios achieved</li>
+</ul>
+<p>These metrics inform optimization strategies.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
 <li><a href="chunking.html">Chunking Algorithms</a></li>

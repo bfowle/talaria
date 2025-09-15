@@ -9,18 +9,21 @@ use crate::core::{
 };
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 pub struct Reducer {
     config: Config,
     progress_callback: Option<Box<dyn Fn(&str, f64) + Send + Sync>>,
     use_similarity: bool,
     use_alignment: bool,
+    use_taxonomy_weights: bool,
     silent: bool,
     no_deltas: bool,
     max_align_length: usize,
     input_file_size: u64,
     output_file_size: u64,
     all_vs_all: bool,
+    manifest_acc2taxid: Option<PathBuf>,
 }
 
 impl Reducer {
@@ -30,12 +33,14 @@ impl Reducer {
             progress_callback: None,
             use_similarity: false,
             use_alignment: false,
+            use_taxonomy_weights: false,
             silent: false,
             no_deltas: false,
             max_align_length: 10000,
             input_file_size: 0,
             output_file_size: 0,
             all_vs_all: false,
+            manifest_acc2taxid: None,
         }
     }
     
@@ -54,6 +59,11 @@ impl Reducer {
         self.use_alignment = use_alignment;
         self
     }
+
+    pub fn with_taxonomy_weights(mut self, use_weights: bool) -> Self {
+        self.use_taxonomy_weights = use_weights;
+        self
+    }
     
     pub fn with_silent(mut self, silent: bool) -> Self {
         self.silent = silent;
@@ -68,6 +78,11 @@ impl Reducer {
 
     pub fn with_all_vs_all(mut self, all_vs_all: bool) -> Self {
         self.all_vs_all = all_vs_all;
+        self
+    }
+
+    pub fn with_manifest_acc2taxid(mut self, path: Option<PathBuf>) -> Self {
+        self.manifest_acc2taxid = path;
         self
     }
     
@@ -109,33 +124,29 @@ impl Reducer {
         // Choose selection method based on configuration
         let selection_result = if reduction_ratio == 0.0 {
             // Auto-detection mode - no ratio specified
-            // Check if LAMBDA is available for more accurate alignment-based selection
-            if let Ok(manager) = crate::tools::ToolManager::new() {
-                if manager.is_installed(crate::tools::Tool::Lambda) {
-                    if !self.silent {
-                        println!("Using LAMBDA aligner for accurate auto-detection...");
-                    }
-                    match selector.select_references_with_lambda(sequences.clone()) {
-                        Ok(result) => result,
-                        Err(e) => {
-                            if !self.silent {
-                                eprintln!("LAMBDA alignment failed: {}, falling back to k-mer based auto-detection", e);
-                            }
-                            selector.select_references_auto(sequences.clone())
-                        }
-                    }
-                } else {
-                    if !self.silent {
-                        println!("Using k-mer based auto-detection (install LAMBDA for more accurate results)...");
-                    }
-                    selector.select_references_auto(sequences.clone())
-                }
-            } else {
-                if !self.silent {
-                    println!("Using k-mer based auto-detection...");
-                }
-                selector.select_references_auto(sequences.clone())
+            // LAMBDA is required for auto-detection
+            let manager = crate::tools::ToolManager::new()
+                .map_err(|e| crate::TalariaError::Config(format!("Failed to initialize tool manager: {}", e)))?;
+
+            if !manager.is_installed(crate::tools::Tool::Lambda) {
+                return Err(crate::TalariaError::Config(
+                    format!(
+                        "LAMBDA aligner is required for auto-detection mode.\n\n\
+                        To install LAMBDA:\n  \
+                        talaria tools install lambda\n\n\
+                        Or specify a fixed reduction ratio:\n  \
+                        talaria reduce -i input.fasta -o output.fasta -r 0.3\n\n\
+                        For more information: https://github.com/seqan/lambda3"
+                    )
+                ));
             }
+
+            if !self.silent {
+                println!("Using LAMBDA aligner for intelligent auto-detection...");
+            }
+
+            selector.select_references_with_lambda(sequences.clone())
+                .map_err(|e| crate::TalariaError::Alignment(format!("LAMBDA alignment failed: {}", e)))?
         } else if self.use_alignment {
             // Use full alignment-based selection
             selector.select_references_with_alignment(sequences.clone(), reduction_ratio)
@@ -245,7 +256,9 @@ impl Reducer {
             .with_min_length(self.config.reduction.min_sequence_length)
             .with_similarity_threshold(self.config.reduction.similarity_threshold)
             .with_taxonomy_aware(self.config.reduction.taxonomy_aware)
-            .with_all_vs_all(self.all_vs_all);
+            .with_taxonomy_weights(self.use_taxonomy_weights)
+            .with_all_vs_all(self.all_vs_all)
+            .with_manifest_acc2taxid(self.manifest_acc2taxid.clone());
         
         // Adjust selector based on target aligner
         match target_aligner {

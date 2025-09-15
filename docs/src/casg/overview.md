@@ -202,6 +202,114 @@ chunks:
     size: 104857600   # 100MB
 ```
 
+### 6. Delta-Compressed Storage: Evolution-Aware Compression
+
+Traditional compression treats each sequence independently, missing the fundamental truth of biology: sequences evolve from common ancestors. CASG's delta compression leverages evolutionary relationships to achieve compression ratios impossible with general-purpose algorithms.
+
+#### How Delta Compression Works in CASG
+
+Instead of storing every sequence independently, CASG identifies reference sequences and stores others as compact "deltas"—just the differences from their references. This mirrors how evolution works: genomes accumulate small changes over time.
+
+```mermaid
+graph LR
+    subgraph "Traditional Storage"
+        S1[E. coli K12<br/>5.2MB]
+        S2[E. coli O157<br/>5.3MB]
+        S3[E. coli UTI89<br/>5.1MB]
+    end
+
+    subgraph "Delta Storage"
+        R[Reference: K12<br/>5.2MB]
+        D1[Delta: O157<br/>~100KB]
+        D2[Delta: UTI89<br/>~80KB]
+        R --> D1
+        R --> D2
+    end
+
+    style S1 fill:#ffcdd2
+    style S2 fill:#ffcdd2
+    style S3 fill:#ffcdd2
+    style R fill:#c8e6c9
+    style D1 fill:#e1f5fe
+    style D2 fill:#e1f5fe
+```
+
+**Storage Savings**: Three similar E. coli genomes:
+- Traditional: 15.6MB
+- Delta-compressed: 5.4MB (65% reduction)
+- For 1000 strains: ~95% reduction
+
+#### Intelligent Reference Selection
+
+Not all sequences make good references. CASG uses sophisticated algorithms to choose optimal references based on:
+
+1. **Centrality**: References that are similar to many sequences
+2. **Stability**: Sequences unlikely to be revised
+3. **Completeness**: Full-length, high-quality sequences
+4. **Phylogenetic representation**: Coverage across the evolutionary tree
+
+#### Delta Types in CASG
+
+CASG supports multiple types of delta operations, matching biological variation patterns:
+
+```rust
+enum DeltaOperation {
+    // Point mutations (SNPs)
+    Substitute { pos: usize, new_base: u8 },
+
+    // Insertions/Deletions (InDels)
+    Insert { pos: usize, bases: Vec<u8> },
+    Delete { pos: usize, count: usize },
+
+    // Large-scale changes
+    UseReference { offset: usize, length: usize },
+
+    // Metadata changes
+    UpdateAnnotation { field: String, value: String },
+}
+```
+
+#### Incremental Updates via Deltas
+
+Delta compression enables efficient incremental updates. When a database updates:
+
+1. **New sequences**: Stored as deltas from existing references
+2. **Modified sequences**: Only the changes are transmitted
+3. **Unchanged sequences**: Zero bandwidth required
+
+Example update scenario:
+```yaml
+# January Database: 100GB
+references: 10GB
+deltas: 90GB
+
+# February Update: Only 500MB transmitted
+new_deltas: 400MB      # New sequences
+update_deltas: 100MB   # Corrections to existing sequences
+# Result: 100.5GB database from 500MB download
+```
+
+#### Delta Chain Management
+
+CASG prevents "delta chains" from growing too long, which would slow reconstruction:
+
+```
+Good: Reference → Delta (1 hop)
+OK:   Reference → Delta → Delta (2 hops)
+Bad:  Reference → Delta → Delta → Delta → ... (many hops)
+
+CASG automatically re-bases deep deltas to maintain performance
+```
+
+#### Integration with Talaria Reduction
+
+Delta compression in CASG is tightly integrated with Talaria's sequence reduction algorithms. When Talaria selects representative sequences for aligner optimization, these same sequences serve as ideal delta references, providing dual benefits:
+
+1. **Optimal for aligners**: Representatives chosen for biological diversity
+2. **Optimal for compression**: Same representatives minimize delta sizes
+
+This synergy means that a Talaria-reduced database is automatically optimized for both search performance and storage efficiency.
+
 ## Benefits: Real-World Impact
 
 ### For Individual Researchers

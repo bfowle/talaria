@@ -296,3 +296,94 @@ pub struct ChunkInfo {
     pub size: usize,
     pub compressed: bool,
 }
+
+/// Type of chunk content
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ChunkType {
+    /// Full sequence data in FASTA format
+    Full,
+    /// Delta-compressed sequences referencing other chunks
+    Delta {
+        reference_hash: SHA256Hash,
+        compression_ratio: f32,
+    },
+    /// Index chunk for fast lookups
+    Index,
+    /// Metadata-only chunk
+    Metadata,
+}
+
+/// Delta chunk containing compressed sequence differences
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeltaChunk {
+    /// Hash of this delta chunk
+    pub content_hash: SHA256Hash,
+    /// Reference to the base chunk this delta is computed from
+    pub reference_hash: SHA256Hash,
+    /// Type of chunk
+    pub chunk_type: ChunkType,
+    /// Taxonomy information
+    pub taxonomy_version: MerkleHash,
+    pub taxon_ids: Vec<TaxonId>,
+    /// Delta operations to reconstruct sequences
+    pub deltas: Vec<DeltaOperation>,
+    /// Sequence references in this chunk
+    pub sequences: Vec<SequenceRef>,
+    /// Temporal metadata
+    pub created_at: DateTime<Utc>,
+    pub valid_from: DateTime<Utc>,
+    pub valid_until: Option<DateTime<Utc>>,
+    /// Size information
+    pub original_size: usize,
+    pub compressed_size: usize,
+    pub compression_ratio: f32,
+}
+
+/// Operations for delta reconstruction
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DeltaOperation {
+    /// Use sequence from reference chunk
+    UseReference {
+        sequence_id: String,
+        reference_offset: usize,
+        length: usize,
+    },
+    /// Insert new sequence data
+    Insert {
+        sequence_id: String,
+        data: Vec<u8>,
+    },
+    /// Apply modifications to reference sequence
+    Modify {
+        sequence_id: String,
+        reference_offset: usize,
+        operations: Vec<SeqEdit>,
+    },
+    /// Delete sequence (tombstone)
+    Delete {
+        sequence_id: String,
+    },
+}
+
+/// Sequence edit operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SeqEdit {
+    Substitute { pos: usize, new_base: u8 },
+    Insert { pos: usize, bases: Vec<u8> },
+    Delete { pos: usize, count: usize },
+}
+
+/// Extended chunk metadata with delta support
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtendedChunkMetadata {
+    pub hash: SHA256Hash,
+    pub chunk_type: ChunkType,
+    pub taxon_ids: Vec<TaxonId>,
+    pub sequence_count: usize,
+    pub size: usize,
+    pub compressed_size: Option<usize>,
+    /// For delta chunks, the chain of references
+    pub reference_chain: Vec<SHA256Hash>,
+    /// Compression statistics
+    pub compression_ratio: Option<f32>,
+}

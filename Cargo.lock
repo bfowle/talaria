@@ -3592,6 +3592,7 @@ dependencies = [
  "tar",
  "tempfile",
  "termimad",
+ "terminal_size",
  "thiserror 1.0.69",
  "tokio",
  "toml",

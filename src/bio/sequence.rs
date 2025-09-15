@@ -59,10 +59,26 @@ impl Sequence {
     }
     
     pub fn header(&self) -> String {
+        let mut header = format!(">{}", self.id);
+
         if let Some(desc) = &self.description {
-            format!(">{} {}", self.id, desc)
-        } else {
-            format!(">{}", self.id)
+            header.push(' ');
+            header.push_str(desc);
         }
+
+        // Add TaxID to header if present and not already in description
+        if let Some(taxon) = self.taxon_id {
+            // Check if TaxID is already in the description to avoid duplication
+            let has_taxid = self.description
+                .as_ref()
+                .map(|d| d.contains("TaxID=") || d.contains("OX=") || d.contains("taxon:"))
+                .unwrap_or(false);
+
+            if !has_taxid {
+                header.push_str(&format!(" TaxID={}", taxon));
+            }
+        }
+
+        header
     }
 }

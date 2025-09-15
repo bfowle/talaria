@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod formatter;
 pub mod interactive;
 pub mod stats_display;
 pub mod visualize;
@@ -51,7 +52,7 @@ pub enum Commands {
     Interactive(commands::interactive::InteractiveArgs),
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TargetAligner {
     Lambda,
     Blast,

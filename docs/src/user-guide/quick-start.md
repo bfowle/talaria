@@ -93,6 +93,9 @@ talaria reduce uniprot/swissprot -a mmseqs2 -o mmseqs_db.fasta
 # Or use fixed ratios for specific size requirements:
 # talaria reduce uniprot/swissprot -r 0.3 -a blast -o blast_db.fasta
 # talaria reduce uniprot/swissprot -r 0.25 -a diamond -o diamond_db.fasta
+
+# For taxonomically diverse datasets, weight alignment scores by taxonomy:
+# talaria reduce uniprot/trembl --use-taxonomy-weights -a diamond -o trembl_tax.fasta
 ```
 
 ## Tips for Success
