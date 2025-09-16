@@ -101,12 +101,43 @@ impl<'a> FastaAssembler<'a> {
         hash: &SHA256Hash,
         writer: &mut W,
     ) -> Result<usize> {
-        // Use extract_sequences_from_chunk to handle both TaxonomyAwareChunk and FASTA
+        // Get chunk data to access taxonomy information
+        let chunk_data = self.storage.get_chunk(hash)
+            .with_context(|| format!("Failed to retrieve chunk {}", hash))?;
+
+        // Try to deserialize as TaxonomyAwareChunk to get taxon_ids
+        let taxon_id = if let Ok(chunk) = serde_json::from_slice::<crate::casg::TaxonomyAwareChunk>(&chunk_data) {
+            // Use the primary taxon ID if available
+            if !chunk.taxon_ids.is_empty() {
+                Some(chunk.taxon_ids[0].0)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Now extract sequences
         let sequences = self.extract_sequences_from_chunk(hash)?;
 
-        // Write sequences as FASTA
+        // Write sequences as FASTA with TaxID in header if available
         for seq in &sequences {
-            writeln!(writer, ">{}", seq.id)?;
+            // Build header with taxonomy information from CASG
+            if let Some(tid) = taxon_id.or(seq.taxon_id) {
+                // Include TaxID directly in header for LAMBDA to parse
+                if let Some(ref desc) = seq.description {
+                    writeln!(writer, ">{} {} TaxID={}", seq.id, desc, tid)?;
+                } else {
+                    writeln!(writer, ">{} TaxID={}", seq.id, tid)?;
+                }
+            } else {
+                // No taxonomy information available
+                if let Some(ref desc) = seq.description {
+                    writeln!(writer, ">{} {}", seq.id, desc)?;
+                } else {
+                    writeln!(writer, ">{}", seq.id)?;
+                }
+            }
             writer.write_all(&seq.sequence)?;
             writeln!(writer)?;
         }

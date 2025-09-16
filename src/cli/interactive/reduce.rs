@@ -225,7 +225,7 @@ pub fn run_reduce_wizard<B: Backend>(
                         }
                     };
                     
-                    let reducer = crate::core::reducer::Reducer::new(config)
+                    let mut reducer = crate::core::reducer::Reducer::new(config)
                         .with_progress_callback(progress_callback)
                         .with_silent(false);
                     

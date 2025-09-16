@@ -81,4 +81,73 @@ impl Sequence {
 
         header
     }
+
+    /// Check if sequence contains ambiguous amino acids
+    pub fn has_ambiguous_residues(&self) -> bool {
+        // Check for ambiguous amino acids: B, J, O, U, Z, X
+        // B = Aspartic acid or Asparagine
+        // J = Leucine or Isoleucine
+        // O = Pyrrolysine (rare)
+        // U = Selenocysteine (rare)
+        // Z = Glutamic acid or Glutamine
+        // X = Any amino acid
+        self.sequence.iter().any(|&aa| {
+            matches!(aa, b'B' | b'J' | b'O' | b'U' | b'Z' | b'X' | b'b' | b'j' | b'o' | b'u' | b'z' | b'x')
+        })
+    }
+
+    /// Remove ambiguous residues from sequence
+    pub fn sanitize(&mut self) -> usize {
+        let original_len = self.sequence.len();
+        self.sequence.retain(|&aa| {
+            !matches!(aa, b'B' | b'J' | b'O' | b'U' | b'Z' | b'X' | b'b' | b'j' | b'o' | b'u' | b'z' | b'x')
+        });
+        original_len - self.sequence.len()
+    }
+}
+
+/// Sanitize a collection of sequences, removing those with ambiguous residues
+/// Returns (sanitized sequences, number removed)
+pub fn sanitize_sequences(sequences: Vec<Sequence>) -> (Vec<Sequence>, usize) {
+    let total = sequences.len();
+    let mut removed_count = 0;
+    let mut removed_residues = 0;
+
+    let sanitized: Vec<Sequence> = sequences
+        .into_iter()
+        .filter_map(|mut seq| {
+            if seq.has_ambiguous_residues() {
+                // Try to sanitize by removing ambiguous residues
+                let removed = seq.sanitize();
+
+                // If too many residues were removed (>10% of sequence), discard it
+                if removed > 0 && seq.len() > 0 {
+                    let removal_ratio = removed as f64 / (seq.len() + removed) as f64;
+                    if removal_ratio > 0.1 {
+                        removed_count += 1;
+                        None
+                    } else {
+                        removed_residues += removed;
+                        Some(seq)
+                    }
+                } else if seq.is_empty() {
+                    removed_count += 1;
+                    None
+                } else {
+                    Some(seq)
+                }
+            } else {
+                Some(seq)
+            }
+        })
+        .filter(|seq| seq.len() > 0) // Remove empty sequences
+        .collect();
+
+    if removed_count > 0 || removed_residues > 0 {
+        println!("  Sanitized sequences: removed {} sequences with >10% ambiguous residues", removed_count);
+        println!("  Removed {} ambiguous residues from remaining sequences", removed_residues);
+        println!("  Sequences after sanitization: {} (from {})", sanitized.len(), total);
+    }
+
+    (sanitized, removed_count)
 }

@@ -726,7 +726,7 @@ Talaria can be configured using a TOML configuration file specified with `-c` or
 
 ### Configuration File
 
-Default location: `talaria.toml` in current directory or `~/.talaria/config.toml`
+Default location: `talaria.toml` in current directory or `${TALARIA_HOME}/config.toml`
 
 ```toml
 [database]

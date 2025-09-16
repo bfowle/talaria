@@ -109,7 +109,7 @@ talaria reduce uniprot/swissprot -a mmseqs2 -o mmseqs_db.fasta
 ### Storage Location
 ```bash
 # Default location
-~/.talaria/databases/
+${TALARIA_HOME}/databases/
 
 # Change it using environment variables
 export TALARIA_DATABASES_DIR=/fast/ssd/talaria-databases

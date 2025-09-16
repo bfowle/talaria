@@ -3,8 +3,10 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::path::PathBuf;
 use crate::cli::TargetAligner;
 use crate::cli::formatter::{self, TaskList, TaskStatus, info_box, print_success, print_error, print_tip, format_bytes};
+use crate::utils::casg_workspace::CasgWorkspaceManager;
+use std::sync::{Arc, Mutex};
 
-#[derive(Args)]
+#[derive(Args, Debug)]
 pub struct ReduceArgs {
     /// Database to reduce (e.g., "uniprot/swissprot", "ncbi/nr@2024-01-01")
     /// When specified, automatically stores result in database structure
@@ -78,6 +80,15 @@ pub struct ReduceArgs {
     #[arg(long)]
     pub use_taxonomy_weights: bool,
 
+    /// Enable batched processing for large datasets (default: false)
+    #[arg(long)]
+    pub batch: bool,
+
+    /// Maximum amino acids per batch for batched processing (default: 5000000)
+    /// Helps prevent memory issues with very long sequences
+    #[arg(long, default_value = "5000000")]
+    pub batch_size: usize,
+
     /// Skip delta encoding (much faster, but no reconstruction possible)
     #[arg(long)]
     pub no_deltas: bool,
@@ -85,7 +96,12 @@ pub struct ReduceArgs {
     /// Use all-vs-all alignment mode for Lambda (default: query-vs-reference)
     #[arg(long)]
     pub all_vs_all: bool,
-    
+
+    /// Selection algorithm to use for choosing reference sequences
+    /// Options: single-pass (default, O(n)), similarity-matrix (O(n²) but potentially more optimal)
+    #[arg(long, default_value = "single-pass", value_name = "ALGORITHM")]
+    pub selection_algorithm: String,
+
     /// Maximum sequence length for alignment (longer sequences skip delta encoding)
     #[arg(long, default_value = "10000")]
     pub max_align_length: usize,
@@ -103,9 +119,91 @@ pub struct ReduceArgs {
     #[arg(long)]
     pub casg_output: bool,
 
-    /// CASG repository path (default: ~/.talaria/databases)
+    /// CASG repository path (default: ${TALARIA_HOME}/databases)
     #[arg(long, value_name = "PATH")]
     pub casg_path: Option<PathBuf>,
+}
+
+/// Parse the selection algorithm string into the enum
+fn parse_selection_algorithm(algorithm: &str) -> anyhow::Result<crate::core::reference_selector::SelectionAlgorithm> {
+    use crate::core::reference_selector::SelectionAlgorithm;
+
+    match algorithm.to_lowercase().as_str() {
+        "single-pass" | "singlepass" | "single_pass" => Ok(SelectionAlgorithm::SinglePass),
+        "similarity-matrix" | "similarity_matrix" | "matrix" => Ok(SelectionAlgorithm::SimilarityMatrix),
+        "hybrid" => Ok(SelectionAlgorithm::Hybrid),
+        _ => anyhow::bail!("Invalid selection algorithm: '{}'. Options: single-pass, similarity-matrix", algorithm)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::reference_selector::SelectionAlgorithm;
+
+    #[test]
+    fn test_parse_selection_algorithm_valid() {
+        // Test valid inputs
+        assert_eq!(
+            parse_selection_algorithm("single-pass").unwrap(),
+            SelectionAlgorithm::SinglePass
+        );
+        assert_eq!(
+            parse_selection_algorithm("singlepass").unwrap(),
+            SelectionAlgorithm::SinglePass
+        );
+        assert_eq!(
+            parse_selection_algorithm("single_pass").unwrap(),
+            SelectionAlgorithm::SinglePass
+        );
+        assert_eq!(
+            parse_selection_algorithm("similarity-matrix").unwrap(),
+            SelectionAlgorithm::SimilarityMatrix
+        );
+        assert_eq!(
+            parse_selection_algorithm("similarity_matrix").unwrap(),
+            SelectionAlgorithm::SimilarityMatrix
+        );
+        assert_eq!(
+            parse_selection_algorithm("matrix").unwrap(),
+            SelectionAlgorithm::SimilarityMatrix
+        );
+        assert_eq!(
+            parse_selection_algorithm("hybrid").unwrap(),
+            SelectionAlgorithm::Hybrid
+        );
+    }
+
+    #[test]
+    fn test_parse_selection_algorithm_case_insensitive() {
+        assert_eq!(
+            parse_selection_algorithm("SINGLE-PASS").unwrap(),
+            SelectionAlgorithm::SinglePass
+        );
+        assert_eq!(
+            parse_selection_algorithm("SiMiLaRiTy-MaTrIx").unwrap(),
+            SelectionAlgorithm::SimilarityMatrix
+        );
+        assert_eq!(
+            parse_selection_algorithm("HYBRID").unwrap(),
+            SelectionAlgorithm::Hybrid
+        );
+    }
+
+    #[test]
+    fn test_parse_selection_algorithm_invalid() {
+        assert!(parse_selection_algorithm("invalid").is_err());
+        assert!(parse_selection_algorithm("").is_err());
+        assert!(parse_selection_algorithm("random-algo").is_err());
+    }
+
+    #[test]
+    fn test_reduce_args_default_algorithm() {
+        // Test that default algorithm string parses correctly
+        let default_algo = "single-pass";
+        let algo = parse_selection_algorithm(default_algo).unwrap();
+        assert_eq!(algo, SelectionAlgorithm::SinglePass);
+    }
 }
 
 pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
@@ -113,6 +211,13 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
 
     // Initialize formatter
     formatter::init();
+
+    // Initialize CASG workspace manager
+    let mut casg_manager = CasgWorkspaceManager::new()?;
+
+    // Create workspace for this reduction operation
+    let command = format!("reduce {:?}", &args);
+    let workspace = Arc::new(Mutex::new(casg_manager.create_workspace(&command)?));
 
     // Get threads from environment or default
     args.threads = std::env::var("TALARIA_THREADS")
@@ -153,13 +258,8 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
                 _ => anyhow::bail!("Unknown database: {}", db_ref_str),
             };
 
-            // Create temporary file for assembled FASTA
-            let temp_dir = std::env::temp_dir();
-            let timestamp = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs();
-            let temp_file = temp_dir.join(format!("talaria_casg_{}.fasta", timestamp));
+            // Create temporary file in workspace for assembled FASTA
+            let temp_file = workspace.lock().unwrap().get_file_path("input_fasta", "fasta");
 
             // Use spinner for assembly
             let spinner = ProgressBar::new_spinner();
@@ -307,18 +407,32 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     // Get input file size
     let input_size = get_file_size(&actual_input).unwrap_or(0);
     
+    // Update workspace metadata with input information
+    workspace.lock().unwrap().update_metadata(|m| {
+        m.input_file = Some(actual_input.to_string_lossy().to_string());
+        if let Some(output) = &args.output {
+            m.output_file = Some(output.to_string_lossy().to_string());
+        }
+    })?;
+
     // Parse input FASTA
     task_list.update_task(load_task, TaskStatus::InProgress);
     println!("  Reading FASTA file...");
     let sequences = crate::bio::fasta::parse_fasta(&actual_input)?;
+
+    // Update workspace stats
+    workspace.lock().unwrap().update_stats(|s| {
+        s.input_sequences = sequences.len();
+    })?;
+
     task_list.update_task(load_task, TaskStatus::Complete);
     println!("  Loaded {} sequences ({})",
         sequences.len(),
         format_bytes(input_size));
     
-    // Run reduction pipeline
+    // Run reduction pipeline with workspace
     task_list.update_task(select_task, TaskStatus::InProgress);
-    let reducer = crate::core::reducer::Reducer::new(config)
+    let mut reducer = crate::core::reducer::Reducer::new(config)
         .with_selection_mode(
             args.similarity_threshold.is_some() || args.align_select,
             args.align_select
@@ -328,7 +442,10 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         .with_all_vs_all(args.all_vs_all)
         .with_taxonomy_weights(args.use_taxonomy_weights)
         .with_manifest_acc2taxid(manifest_acc2taxid)
-        .with_file_sizes(input_size, 0);  // Output size will be set later
+        .with_batch_settings(args.batch, args.batch_size)
+        .with_selection_algorithm(parse_selection_algorithm(&args.selection_algorithm)?)
+        .with_file_sizes(input_size, 0)
+        .with_workspace(workspace.clone());  // Pass workspace to reducer
 
     // Run reduction with better error handling
     let reduction_result = reducer.reduce(
@@ -345,6 +462,9 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         }
         Err(e) => {
             task_list.update_task(select_task, TaskStatus::Failed);
+            // Mark workspace as failed
+            workspace.lock().unwrap().mark_error(&e.to_string())?;
+
             // Print a helpful error message
             print_error(&format!("Reference selection failed: {}", e));
 
@@ -357,11 +477,16 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
                 println!("  3. Ensure your FASTA headers include TaxID tags");
             }
 
+            // Workspace preserved for debugging
+            let ws_id = workspace.lock().unwrap().id.clone();
+            eprintln!("\nWorkspace preserved for debugging: {}", ws_id);
+            eprintln!("To inspect: talaria tools workspace inspect {}", ws_id);
+
             return Err(e.into());
         }
     };
 
-    // Update delta encoding status
+    // Update delta encoding status and workspace stats
     if args.no_deltas {
         task_list.update_task(encode_task, TaskStatus::Skipped);
     } else if !deltas.is_empty() {
@@ -370,6 +495,12 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     } else {
         task_list.update_task(encode_task, TaskStatus::Skipped);
     }
+
+    // Update workspace stats
+    workspace.lock().unwrap().update_stats(|s| {
+        s.selected_references = references.len();
+        s.final_output_sequences = references.len() + deltas.len();
+    })?;
     
     // Determine output paths - should_store is always false now (CASG doesn't support it yet)
     let (output_path, metadata_path) = {
@@ -403,7 +534,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
 
         let casg_path = args.casg_path.clone().unwrap_or_else(|| {
             use crate::core::paths;
-            paths::talaria_casg_dir()
+            paths::talaria_databases_dir()
         });
 
         store_reduction_in_casg(
@@ -473,7 +604,13 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     if !args.no_deltas && !deltas.is_empty() {
         print_tip("Use 'talaria reconstruct' to recover original sequences from the reduced set and deltas");
     }
-    
+
+    // Mark workspace as completed successfully
+    workspace.lock().unwrap().mark_completed()?;
+
+    // Log operation to CASG
+    casg_manager.log_operation("reduce", &format!("Completed: {} sequences -> {} references", original_count, references.len()))?;
+
     Ok(())
 }
 

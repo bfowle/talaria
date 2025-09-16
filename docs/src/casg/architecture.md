@@ -699,7 +699,7 @@ graph LR
 ### Directory Structure
 
 ```
-~/.talaria/databases/
+${TALARIA_HOME}/databases/
 ├── manifests/              # Manifest files
 │   ├── uniprot-swissprot.json
 │   └── ncbi-nr.json
@@ -819,7 +819,7 @@ export TALARIA_MANIFEST_SERVER=https://ceph-rgw.local/bucket/casg/manifests
 Manifests and chunks are stored locally:
 
 ```
-~/.talaria/databases/
+${TALARIA_HOME}/databases/
 ├── manifests/              # Database manifests
 │   ├── uniprot-swissprot.json
 │   └── ncbi-nr.json
@@ -1201,7 +1201,7 @@ contract CASGAnchor {
 
 3. **Incomplete downloads**
    - Resume supported automatically
-   - Track progress in `~/.talaria/databases/downloads.log`
+   - Track progress in `${TALARIA_HOME}/databases/downloads.log`
 
 ### Debugging
 
@@ -1212,7 +1212,7 @@ RUST_LOG=talaria::casg=debug talaria database download --use-casg
 
 Verify integrity:
 ```bash
-talaria casg verify --manifest ~/.talaria/databases/manifests/uniprot-swissprot.json
+talaria casg verify --manifest ${TALARIA_HOME}/databases/manifests/uniprot-swissprot.json
 ```
 
 ## See Also

@@ -31,7 +31,7 @@ talaria database add -i updated.fasta --name "team-proteins" --replace
 Custom databases are stored in the same versioned structure as public databases:
 
 ```
-~/.talaria/databases/data/
+${TALARIA_HOME}/databases/data/
 ├── custom/                    # Default source for custom databases
 │   ├── team-proteins/
 │   │   ├── 2024-01-15/       # Version (date added)

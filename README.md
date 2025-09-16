@@ -174,7 +174,7 @@ Talaria uses environment variables for flexible path configuration:
 
 ```bash
 # Path configuration
-export TALARIA_HOME="$HOME/.talaria"              # Base directory (default: ~/.talaria)
+export TALARIA_HOME="$HOME/.talaria"              # Base directory (default: $HOME/.talaria)
 export TALARIA_DATA_DIR="$TALARIA_HOME"           # Data directory
 export TALARIA_DATABASES_DIR="$TALARIA_DATA_DIR/databases"  # Database storage
 export TALARIA_TOOLS_DIR="$TALARIA_DATA_DIR/tools"         # External tools

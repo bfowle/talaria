@@ -23,7 +23,7 @@ No local CASG data found
 talaria casg init
 
 # Check manifest exists
-ls ~/.talaria/databases/manifests/
+ls ${TALARIA_HOME}/databases/manifests/
 
 # Re-download to fix manifest
 talaria database download uniprot/swissprot
@@ -71,13 +71,13 @@ Error: Failed to store chunk: Disk full
 
 ```bash
 # Check disk space
-df -h ~/.talaria/databases
+df -h ${TALARIA_HOME}/databases
 
 # Clean up old chunks manually
-find ~/.talaria/databases/chunks -type f -mtime +30 -delete
+find ${TALARIA_HOME}/databases/chunks -type f -mtime +30 -delete
 
 # Check permissions
-ls -la ~/.talaria/databases/chunks/
+ls -la ${TALARIA_HOME}/databases/chunks/
 ```
 
 ### 3. Database Not Found
@@ -102,7 +102,7 @@ talaria database list
 talaria database download uniprot -d swissprot
 
 # Check database path
-ls ~/.talaria/databases/manifests/
+ls ${TALARIA_HOME}/databases/manifests/
 ```
 
 ### 4. Custom Database Issues
@@ -151,14 +151,14 @@ Warning: Storage usage at 95%
 ```bash
 # Check storage usage
 talaria casg stats
-du -sh ~/.talaria/databases/
+du -sh ${TALARIA_HOME}/databases/
 
 # Remove unused databases manually
-rm -rf ~/.talaria/databases/chunks/[hash_prefix]/
+rm -rf ${TALARIA_HOME}/databases/chunks/[hash_prefix]/
 
 # Move storage to larger disk using symlink
-mv ~/.talaria/databases /data/casg
-ln -s /data/casg ~/.talaria/databases
+mv ${TALARIA_HOME}/databases /data/casg
+ln -s /data/casg ${TALARIA_HOME}/databases
 
 # Future: Garbage collection will be added
 # talaria casg gc  # Not yet implemented
@@ -216,7 +216,7 @@ export TALARIA_CACHE_SIZE=4G
 talaria casg assemble ncbi/nr -o nr.fasta
 
 # Use SSD for chunk storage
-ln -s /ssd/casg ~/.talaria/databases
+ln -s /ssd/casg ${TALARIA_HOME}/databases
 ```
 
 ### 8. Manifest Issues
@@ -236,14 +236,14 @@ Warning: Manifest not found
 
 ```bash
 # Check manifest location (should be database-specific)
-ls ~/.talaria/databases/manifests/
+ls ${TALARIA_HOME}/databases/manifests/
 # Should see: uniprot-swissprot.json, ncbi-nr.json, etc.
 
 # Re-download database to fix manifest
 talaria database download uniprot -d swissprot
 
 # Check manifest format
-cat ~/.talaria/databases/manifests/uniprot-swissprot.json | python -m json.tool | head -20
+cat ${TALARIA_HOME}/databases/manifests/uniprot-swissprot.json | python -m json.tool | head -20
 ```
 
 ### 9. List Sequences Issues
@@ -278,7 +278,7 @@ talaria database list-sequences uniprot/swissprot --ids-only
 
 **Symptoms:**
 ```
-Error: Lock file exists: ~/.talaria/databases/.lock
+Error: Lock file exists: ${TALARIA_HOME}/databases/.lock
 Warning: Another process is accessing the repository
 ```
 
@@ -294,7 +294,7 @@ Warning: Another process is accessing the repository
 ps aux | grep talaria
 
 # Remove stale lock (if no other processes)
-rm ~/.talaria/databases/.lock
+rm ${TALARIA_HOME}/databases/.lock
 
 # Use read-only mode
 talaria casg assemble uniprot/swissprot --read-only -o output.fasta
@@ -354,10 +354,10 @@ talaria database info uniprot/swissprot
 
 ```bash
 # Backup current state
-tar -czf casg_backup.tar.gz ~/.talaria/databases/
+tar -czf casg_backup.tar.gz ${TALARIA_HOME}/databases/
 
 # Manual reset (remove and reinitialize)
-rm -rf ~/.talaria/databases
+rm -rf ${TALARIA_HOME}/databases
 talaria casg init
 
 # Restore from backup
@@ -373,8 +373,8 @@ tar -xzf casg_backup.tar.gz -C ~/
 talaria database download uniprot -d swissprot -j 16
 
 # Move CASG storage to faster disk
-mv ~/.talaria/databases /fast/ssd/casg
-ln -s /fast/ssd/casg ~/.talaria/databases
+mv ${TALARIA_HOME}/databases /fast/ssd/casg
+ln -s /fast/ssd/casg ${TALARIA_HOME}/databases
 ```
 
 ### Future Configuration Support
@@ -382,7 +382,7 @@ ln -s /fast/ssd/casg ~/.talaria/databases
 Configuration file support is planned for future releases:
 
 ```toml
-# Future: ~/.talaria/config.toml
+# Future: ${TALARIA_HOME}/config.toml
 [casg]
 compression = "zstd"
 compression_level = 3
@@ -398,7 +398,7 @@ parallel_downloads = 8
 | `VerificationFailed` | Hash mismatch | Re-download database |
 | `NetworkTimeout` | Download timeout | Retry with `--resume` |
 | `StorageFull` | Disk space exhausted | Free space or move storage |
-| `PermissionDenied` | File permissions issue | Check `~/.talaria/databases/` permissions |
+| `PermissionDenied` | File permissions issue | Check `${TALARIA_HOME}/databases/` permissions |
 | `Database already exists` | Custom database exists | Use `--replace` flag |
 
 ## Getting Help

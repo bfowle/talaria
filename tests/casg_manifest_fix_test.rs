@@ -33,7 +33,7 @@ mod tests {
     #[test]
     fn test_manifest_saved_to_correct_path() {
         let temp_dir = TempDir::new().unwrap();
-        let casg_dir = temp_dir.path().join("casg");
+        let casg_dir = temp_dir.path().join("databases");
 
         // Expected path for SwissProt manifest
         let expected_path = casg_dir.join("manifests").join("uniprot-swissprot.json");
@@ -54,7 +54,7 @@ mod tests {
     #[test]
     fn test_multiple_database_manifests_coexist() {
         let temp_dir = TempDir::new().unwrap();
-        let casg_dir = temp_dir.path().join("casg");
+        let casg_dir = temp_dir.path().join("databases");
         let manifests_dir = casg_dir.join("manifests");
 
         // Create manifests for different databases
@@ -84,7 +84,7 @@ mod tests {
     #[test]
     fn test_old_manifest_migration() {
         let temp_dir = TempDir::new().unwrap();
-        let casg_dir = temp_dir.path().join("casg");
+        let casg_dir = temp_dir.path().join("databases");
         fs::create_dir_all(&casg_dir).unwrap();
 
         // Create old manifest
@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn test_manifest_directory_structure() {
         let temp_dir = TempDir::new().unwrap();
-        let casg_dir = temp_dir.path().join("casg");
+        let casg_dir = temp_dir.path().join("databases");
 
         // Expected structure
         let manifests_dir = casg_dir.join("manifests");

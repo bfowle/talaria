@@ -231,7 +231,7 @@ Examples:
 
 ### Directory Structure
 ```
-~/.talaria/databases/data/
+${TALARIA_HOME}/databases/data/
 ├── custom/                    # Custom databases
 │   └── team-proteins/
 │       └── YYYY-MM-DD/

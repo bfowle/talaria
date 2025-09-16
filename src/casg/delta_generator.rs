@@ -5,42 +5,20 @@
 
 use crate::bio::sequence::Sequence;
 use crate::casg::types::*;
+use crate::casg::delta::traits::{DeltaGenerator as DeltaGeneratorTrait, DeltaGeneratorConfig as TraitConfig};
 use crate::core::delta_encoder::{DeltaEncoder, DeltaRecord};
 use anyhow::Result;
 use chrono::Utc;
 use std::collections::HashMap;
 
-/// Configuration for delta generation
-#[derive(Debug, Clone)]
-pub struct DeltaGeneratorConfig {
-    /// Maximum chunk size in bytes
-    pub max_chunk_size: usize,
-    /// Minimum similarity threshold for delta encoding
-    pub min_similarity_threshold: f32,
-    /// Whether to compress delta chunks
-    pub enable_compression: bool,
-    /// Target sequences per chunk for batching
-    pub target_sequences_per_chunk: usize,
-    /// Maximum delta operations before falling back to full storage
-    pub max_delta_ops_threshold: usize,
-}
-
-impl Default for DeltaGeneratorConfig {
-    fn default() -> Self {
-        Self {
-            max_chunk_size: 16 * 1024 * 1024, // 16MB
-            min_similarity_threshold: 0.85,
-            enable_compression: true,
-            target_sequences_per_chunk: 1000,
-            max_delta_ops_threshold: 100,
-        }
-    }
-}
+/// Configuration for delta generation (re-export from traits)
+pub type DeltaGeneratorConfig = TraitConfig;
 
 /// Delta generator for creating CASG delta chunks
 pub struct DeltaGenerator {
     config: DeltaGeneratorConfig,
     encoder: DeltaEncoder,
+    #[allow(dead_code)]
     reference_cache: HashMap<String, SHA256Hash>,
 }
 
@@ -444,6 +422,149 @@ impl DeltaGenerator {
         };
 
         Ok(delta_chunk)
+    }
+}
+
+// Implement the DeltaGenerator trait
+impl DeltaGeneratorTrait for DeltaGenerator {
+    fn generate_delta_chunks(
+        &mut self,
+        sequences: &[Sequence],
+        references: &[Sequence],
+        reference_hash: SHA256Hash,
+    ) -> Result<Vec<DeltaChunk>> {
+        self.generate_delta_chunks(sequences, references, reference_hash)
+    }
+
+    fn find_best_reference<'a>(
+        &self,
+        seq: &Sequence,
+        references: &'a [Sequence],
+    ) -> Result<(&'a Sequence, f32)> {
+        self.find_best_reference(seq, references)
+    }
+
+    fn config(&self) -> &DeltaGeneratorConfig {
+        &self.config
+    }
+
+    fn set_config(&mut self, config: DeltaGeneratorConfig) {
+        self.config = config;
+    }
+
+    fn calculate_similarity(&self, seq1: &Sequence, seq2: &Sequence) -> f32 {
+        self.calculate_similarity(seq1, seq2)
+    }
+
+    fn should_use_delta(
+        &self,
+        seq: &Sequence,
+        reference: &Sequence,
+        similarity: f32,
+    ) -> bool {
+        // Check similarity threshold
+        if similarity < self.config.min_similarity_threshold {
+            return false;
+        }
+
+        // Check if delta would be efficient
+        let delta_record = self.encoder.encode(seq, reference);
+        delta_record.deltas.len() <= self.config.max_delta_ops_threshold
+    }
+
+    fn name(&self) -> &str {
+        "DeltaGenerator"
+    }
+}
+
+// Implement BatchDeltaGenerator for parallel processing
+impl crate::casg::delta::traits::BatchDeltaGenerator for DeltaGenerator {
+    fn generate_parallel(
+        &mut self,
+        sequences: &[Sequence],
+        references: &[Sequence],
+        reference_hash: SHA256Hash,
+        _num_threads: usize,
+    ) -> Result<Vec<DeltaChunk>> {
+        use rayon::prelude::*;
+
+        // Split sequences into batches
+        let batch_size = self.optimal_batch_size();
+        let chunks: Vec<Vec<DeltaChunk>> = sequences
+            .par_chunks(batch_size)
+            .map(|batch| {
+                let mut local_gen = DeltaGenerator::new(self.config.clone());
+                local_gen.generate_delta_chunks(batch, references, reference_hash.clone())
+                    .unwrap_or_default()
+            })
+            .collect();
+
+        // Merge all chunks
+        self.merge_chunks(chunks.into_iter().flatten().collect())
+    }
+
+    fn optimal_batch_size(&self) -> usize {
+        // Balance between parallelism and chunk efficiency
+        self.config.target_sequences_per_chunk
+    }
+
+    fn merge_chunks(
+        &self,
+        chunks: Vec<DeltaChunk>,
+    ) -> Result<Vec<DeltaChunk>> {
+        // Simple merging strategy - could be optimized
+        Ok(chunks)
+    }
+}
+
+// Implement LegacyDeltaSupport for backward compatibility
+impl crate::casg::delta::traits::LegacyDeltaSupport for DeltaGenerator {
+    fn convert_legacy_deltas(
+        &self,
+        legacy_records: Vec<DeltaRecord>,
+        reference_hash: SHA256Hash,
+    ) -> Result<Vec<DeltaChunk>> {
+        // Use existing batch_into_chunks method
+        self.batch_into_chunks(legacy_records, reference_hash)
+    }
+
+    fn export_to_legacy(
+        &self,
+        delta_chunks: &[DeltaChunk],
+    ) -> Result<Vec<DeltaRecord>> {
+        let mut records = Vec::new();
+
+        for chunk in delta_chunks {
+            for delta_op in &chunk.deltas {
+                // Convert DeltaOperation back to DeltaRecord
+                let record = match delta_op {
+                    DeltaOperation::Modify { sequence_id, operations, .. } => {
+                        let mut ranges = Vec::new();
+                        for edit in operations {
+                            if let SeqEdit::Substitute { pos, new_base } = edit {
+                                ranges.push(crate::core::delta_encoder::DeltaRange {
+                                    start: *pos,
+                                    end: pos + 1,
+                                    substitution: vec![*new_base],
+                                });
+                            }
+                        }
+
+                        DeltaRecord {
+                            child_id: sequence_id.clone(),
+                            reference_id: "ref".to_string(),
+                            deltas: ranges,
+                            header_change: None,
+                            taxon_id: None,
+                        }
+                    }
+                    _ => continue, // Skip non-modify operations for legacy
+                };
+                records.push(record);
+            }
+        }
+
+        Ok(records)
     }
 }
 

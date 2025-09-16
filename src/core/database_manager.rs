@@ -643,17 +643,25 @@ impl DatabaseManager {
 
         let mut mapping = HashMap::new();
 
-        println!("Processing {} chunks from manifest", manifest.chunk_index.len());
+        let pb = crate::utils::progress::create_progress_bar(
+            manifest.chunk_index.len() as u64,
+            &format!("Processing {} chunks from manifest", manifest.chunk_index.len())
+        );
+
+        let mut chunks_with_taxids = 0;
+        let mut chunks_without_taxids = 0;
 
         // For each chunk, we need to load its sequences to get the accessions
         // and map them to the chunk's TaxIDs
-        for (idx, chunk_meta) in manifest.chunk_index.iter().enumerate() {
+        for (_idx, chunk_meta) in manifest.chunk_index.iter().enumerate() {
+            pb.inc(1);
+
             if chunk_meta.taxon_ids.is_empty() {
-                println!("  Chunk {}: No taxon IDs, skipping", idx);
+                chunks_without_taxids += 1;
                 continue; // Skip chunks without taxonomy
             }
 
-            println!("  Chunk {}: {} taxon IDs", idx, chunk_meta.taxon_ids.len());
+            chunks_with_taxids += 1;
 
             // Load the chunk to get sequence headers
             let chunk_data = self.repository.storage.get_chunk(&chunk_meta.hash)?;
@@ -679,7 +687,13 @@ impl DatabaseManager {
             }
         }
 
-        println!("Extracted {} accession-to-taxid mappings from manifest", mapping.len());
+        pb.finish_with_message(format!(
+            "Processed {} chunks ({} with taxonomy, {} without). Extracted {} mappings",
+            manifest.chunk_index.len(),
+            chunks_with_taxids,
+            chunks_without_taxids,
+            mapping.len()
+        ));
         Ok(mapping)
     }
 

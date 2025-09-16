@@ -12,7 +12,7 @@ pub struct UpdateTaxonomyArgs {
     #[arg(short = 'c', long)]
     pub check_only: bool,
 
-    /// Database repository path (default: ~/.talaria/databases)
+    /// Database repository path (default: ${TALARIA_HOME}/databases)
     #[arg(long)]
     pub db_path: Option<std::path::PathBuf>,
 }

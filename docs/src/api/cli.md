@@ -476,7 +476,7 @@ talaria search \
 
 # Search against stored database
 talaria search \
-    -d ~/.talaria/databases/data/uniprot/swissprot/current/reduced/blast-30/swissprot.fasta \
+    -d ${TALARIA_HOME}/databases/data/uniprot/swissprot/current/reduced/blast-30/swissprot.fasta \
     -q query.fasta
 ```
 
@@ -541,14 +541,14 @@ This launches a menu-driven interface for:
 Talaria uses TOML configuration files for advanced settings.
 
 ### Default Configuration Location
-- `~/.talaria/config.toml` (user)
+- `${TALARIA_HOME}/config.toml` (user)
 - `./talaria.toml` (project)
 
 ### Configuration Structure
 
 ```toml
 [database]
-database_dir = "~/.talaria/databases/data"
+database_dir = "${TALARIA_HOME}/databases/data"
 retention_count = 3
 
 [reduction]

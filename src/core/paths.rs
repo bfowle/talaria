@@ -10,7 +10,7 @@ static TALARIA_CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
 static TALARIA_TAXONOMY_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 /// Get the Talaria home directory
-/// Checks TALARIA_HOME environment variable, falls back to ~/.talaria
+/// Checks TALARIA_HOME environment variable, falls back to ${HOME}/.talaria
 pub fn talaria_home() -> PathBuf {
     TALARIA_HOME.get_or_init(|| {
         if let Ok(path) = std::env::var("TALARIA_HOME") {
@@ -46,11 +46,6 @@ pub fn talaria_databases_dir() -> PathBuf {
             talaria_data_dir().join("databases")
         }
     }).clone()
-}
-
-/// Compatibility alias for old code
-pub fn talaria_casg_dir() -> PathBuf {
-    talaria_databases_dir()
 }
 
 /// Get the tools directory
@@ -94,29 +89,14 @@ pub fn database_path(source: &str, dataset: &str) -> PathBuf {
     talaria_databases_dir().join(source).join(dataset)
 }
 
-/// Compatibility alias
-pub fn casg_database_path(source: &str, dataset: &str) -> PathBuf {
-    database_path(source, dataset)
-}
-
 /// Get storage path
 pub fn storage_path() -> PathBuf {
     talaria_databases_dir().join("chunks")
 }
 
-/// Compatibility alias
-pub fn casg_storage_path() -> PathBuf {
-    storage_path()
-}
-
 /// Get manifest path for a specific database
 pub fn manifest_path(source: &str, dataset: &str) -> PathBuf {
     talaria_databases_dir().join("manifests").join(format!("{}-{}.json", source, dataset))
-}
-
-/// Compatibility alias
-pub fn casg_manifest_path(source: &str, dataset: &str) -> PathBuf {
-    manifest_path(source, dataset)
 }
 
 /// Check if running in a custom data directory

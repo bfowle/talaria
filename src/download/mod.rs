@@ -100,7 +100,7 @@ pub fn get_database_configs() -> Vec<DatabaseConfig> {
     ]
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum DatabaseSource {
     UniProt(UniProtDatabase),
     NCBI(NCBIDatabase),

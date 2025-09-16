@@ -262,7 +262,7 @@ clustering_mode = 0  # 0: Greedy set cover, 1: Connected component, 2: Greedy in
 Configure where Talaria stores data using environment variables:
 
 ```bash
-# Base directory for all Talaria data (default: ~/.talaria)
+# Base directory for all Talaria data (default: ${TALARIA_HOME})
 export TALARIA_HOME="/opt/talaria"
 
 # Data directory (default: $TALARIA_HOME)

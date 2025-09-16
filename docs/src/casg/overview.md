@@ -516,7 +516,7 @@ Let's walk through your first CASG interaction to see the system in action:
 # 1. Initialize CASG repository (one-time setup)
 talaria casg init
 ```
-This creates the CASG storage structure in `~/.talaria/databases/`. The system is now ready to manage any number of databases efficiently.
+This creates the CASG storage structure in `${TALARIA_HOME}/databases/`. The system is now ready to manage any number of databases efficiently.
 
 ```bash
 # 2. Download a database (uses CASG automatically)

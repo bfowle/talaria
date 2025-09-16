@@ -4,6 +4,7 @@ pub mod cli;
 pub mod core;
 pub mod download;
 pub mod index;
+pub mod processing;
 pub mod report;
 pub mod storage;
 pub mod tools;

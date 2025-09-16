@@ -4,6 +4,14 @@ use anyhow::Result;
 pub mod text;
 pub mod html;
 pub mod json;
+pub mod traits;
+
+pub use traits::{
+    Reporter, InteractiveReporter, StreamingReporter, TemplateReporter,
+    ReportData, ReportSection, SectionContent, TableData, ChartData,
+    Dataset, ChartType, CodeBlock, ReportStatistics, StatValue,
+    ReportFormat as TraitReportFormat, InteractiveOptions, TemplateError, TemplateHelper,
+};
 
 #[derive(Debug, Clone)]
 pub struct ReportOptions {

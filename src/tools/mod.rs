@@ -1,14 +1,16 @@
 /// Tool management for external bioinformatics tools
-/// 
+///
 /// This module provides functionality to download, install, and manage
 /// external tools like LAMBDA, BLAST, and DIAMOND that are used for
 /// alignment-based sequence reduction.
 
 pub mod tool_manager;
 pub mod lambda;
+pub mod traits;
 
 pub use tool_manager::{ToolManager, ToolInfo};
 pub use lambda::LambdaAligner;
+pub use traits::{Aligner, AlignmentResult, AlignmentConfig, ConfigurableAligner};
 
 use anyhow::Result;
 use serde::{Serialize, Deserialize};

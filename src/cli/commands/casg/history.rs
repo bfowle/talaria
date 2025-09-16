@@ -57,7 +57,7 @@ pub fn run(args: HistoryArgs) -> Result<()> {
         path
     } else {
         use crate::core::paths;
-        paths::talaria_casg_dir()
+        paths::talaria_databases_dir()
     };
 
     if !casg_path.exists() {

@@ -244,7 +244,7 @@ impl Manifest {
 
         // Load taxonomy managers for both versions
         use crate::core::paths;
-        let _tax_path = paths::talaria_casg_dir().join("taxonomy");
+        let _tax_path = paths::talaria_databases_dir().join("taxonomy");
 
         let mut reclassifications = Vec::new();
         let mut new_taxa = Vec::new();

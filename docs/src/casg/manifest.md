@@ -477,7 +477,7 @@ Typical manifest operations:
 ### 1. Cache Manifests Locally
 Always cache manifests with their ETags:
 ```bash
-~/.talaria/cache/manifests/
+${TALARIA_HOME}/cache/manifests/
 ├── uniprot-swissprot-20240315.json
 ├── uniprot-swissprot-20240315.etag
 └── ncbi-nr-20240310.json

@@ -78,7 +78,7 @@ impl Default for Config {
                 cache_alignments: true,
             },
             database: DatabaseConfig {
-                database_dir: None,  // Will default to ~/.talaria/databases/data/
+                database_dir: None,  // Will default to ${TALARIA_HOME}/databases/data/
                 retention_count: 3,  // Keep 3 old versions by default
                 auto_update_check: false,
                 preferred_mirror: Some("ebi".to_string()),  // Use EBI mirror by default

@@ -24,7 +24,7 @@ pub struct ReconstructArgs {
     #[arg(long, value_name = "PROFILE")]
     pub casg_profile: Option<String>,
 
-    /// CASG repository path (default: ~/.talaria/databases)
+    /// CASG repository path (default: ${TALARIA_HOME}/databases)
     #[arg(long, value_name = "PATH")]
     pub casg_path: Option<PathBuf>,
     
@@ -256,7 +256,7 @@ fn reconstruct_from_casg(
 
     let casg_path = casg_path.clone().unwrap_or_else(|| {
         use crate::core::paths;
-        paths::talaria_casg_dir()
+        paths::talaria_databases_dir()
     });
 
     // Open CASG storage

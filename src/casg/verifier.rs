@@ -292,7 +292,7 @@ impl<'a> CASGVerifier<'a> {
 
     fn verify_taxonomy_consistency(&self) -> Result<()> {
         // Load taxonomy manager
-        let taxonomy = crate::casg::taxonomy::TaxonomyManager::new(&self.storage.base_path.join("taxonomy"))?;
+        let taxonomy = crate::casg::taxonomy::TaxonomyManager::new(&self.storage.base_path)?;
 
         if !taxonomy.has_taxonomy() {
             eprintln!("Warning: No taxonomy loaded, skipping consistency checks");

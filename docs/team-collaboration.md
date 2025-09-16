@@ -14,7 +14,7 @@ The database management system provides:
 ## Directory Structure
 
 ```
-~/.talaria/databases/
+${TALARIA_HOME}/databases/
 ├── data/                    # All database files
 │   └── uniprot/
 │       └── swissprot/

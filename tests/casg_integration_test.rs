@@ -83,7 +83,7 @@ fn test_casg_to_reduce_workflow() {
 
     // Step 3: Run reduce on assembled FASTA
     let config = Config::default();
-    let reducer = Reducer::new(config).with_silent(true);
+    let mut reducer = Reducer::new(config).with_silent(true);
     let (reduced_sequences, _deltas, original_count) = reducer
         .reduce(assembled_sequences.clone(), 0.5, TargetAligner::Generic)
         .unwrap();
@@ -202,7 +202,7 @@ fn test_taxonomic_subset_with_reduce() {
 
     // Run reduce on taxonomic subset
     let config = Config::default();
-    let reducer = Reducer::new(config).with_silent(true);
+    let mut reducer = Reducer::new(config).with_silent(true);
     let (reduced, _, _) = reducer
         .reduce(ecoli_sequences.clone(), 0.5, TargetAligner::Generic)
         .unwrap();
@@ -284,7 +284,7 @@ fn test_large_database_simulation() {
 
     // Run reduce on large dataset
     let config = Config::default();
-    let reducer = Reducer::new(config).with_silent(true);
+    let mut reducer = Reducer::new(config).with_silent(true);
     let (reduced, deltas, _) = reducer
         .reduce(assembled, 0.3, TargetAligner::Generic)
         .unwrap();

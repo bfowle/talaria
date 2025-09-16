@@ -84,7 +84,7 @@ fn test_sequence_reduction() {
     ];
     
     let config = Config::default();
-    let reducer = Reducer::new(config).with_silent(true);
+    let mut reducer = Reducer::new(config).with_silent(true);
     let (reduced_sequences, _deltas, _original_count) = reducer.reduce(sequences, 0.5, TargetAligner::Generic).unwrap();
     
     // Should have reduced the sequences

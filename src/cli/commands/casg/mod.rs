@@ -55,7 +55,7 @@ fn run_init(args: InitArgs) -> anyhow::Result<()> {
         p
     } else {
         use crate::core::paths;
-        paths::talaria_casg_dir()
+        paths::talaria_databases_dir()
     };
 
     println!("{} Initializing CASG repository at {}...",
@@ -87,7 +87,7 @@ fn run_stats(args: StatsArgs) -> anyhow::Result<()> {
         p
     } else {
         use crate::core::paths;
-        paths::talaria_casg_dir()
+        paths::talaria_databases_dir()
     };
 
     if !path.exists() {

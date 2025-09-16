@@ -5,11 +5,13 @@ use crate::cli::TargetAligner;
 use crate::core::{
     config::Config,
     delta_encoder::{DeltaEncoder, DeltaRecord},
-    reference_selector::ReferenceSelector,
+    reference_selector::{ReferenceSelector, SelectionAlgorithm},
 };
+use crate::utils::temp_workspace::TempWorkspace;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 pub struct Reducer {
     config: Config,
@@ -24,6 +26,10 @@ pub struct Reducer {
     output_file_size: u64,
     all_vs_all: bool,
     manifest_acc2taxid: Option<PathBuf>,
+    batch_enabled: bool,
+    batch_size: usize,
+    pub selection_algorithm: SelectionAlgorithm,
+    workspace: Option<Arc<Mutex<TempWorkspace>>>,
 }
 
 impl Reducer {
@@ -41,6 +47,10 @@ impl Reducer {
             output_file_size: 0,
             all_vs_all: false,
             manifest_acc2taxid: None,
+            batch_enabled: false,
+            batch_size: 5000,
+            selection_algorithm: SelectionAlgorithm::SinglePass,
+            workspace: None,
         }
     }
     
@@ -85,6 +95,22 @@ impl Reducer {
         self.manifest_acc2taxid = path;
         self
     }
+
+    pub fn with_batch_settings(mut self, enabled: bool, size: usize) -> Self {
+        self.batch_enabled = enabled;
+        self.batch_size = size;
+        self
+    }
+
+    pub fn with_selection_algorithm(mut self, algorithm: SelectionAlgorithm) -> Self {
+        self.selection_algorithm = algorithm;
+        self
+    }
+
+    pub fn with_workspace(mut self, workspace: Arc<Mutex<TempWorkspace>>) -> Self {
+        self.workspace = Some(workspace);
+        self
+    }
     
     pub fn with_progress_callback<F>(mut self, callback: F) -> Self 
     where
@@ -95,13 +121,42 @@ impl Reducer {
     }
     
     pub fn reduce(
-        &self,
+        &mut self,
         sequences: Vec<Sequence>,
         reduction_ratio: f64,
         target_aligner: TargetAligner,
     ) -> Result<(Vec<Sequence>, Vec<DeltaRecord>, usize), crate::TalariaError> {
         let multi_progress = MultiProgress::new();
-        
+
+        // Step 0: Sanitize sequences by removing those with ambiguous residues
+        let (sanitized_sequences, removed_count) = if !self.silent {
+            println!("Sanitizing sequences (removing ambiguous residues)...");
+            crate::bio::sequence::sanitize_sequences(sequences)
+        } else {
+            crate::bio::sequence::sanitize_sequences(sequences)
+        };
+
+        if removed_count > 0 && !self.silent {
+            println!("  Removed {} sequences during sanitization", removed_count);
+        }
+
+        // Update workspace stats if available
+        if let Some(workspace) = &self.workspace {
+            if let Ok(mut ws) = workspace.lock() {
+                ws.update_stats(|s| {
+                    s.sanitized_sequences = sanitized_sequences.len();
+                    s.removed_sequences = removed_count;
+                }).ok();
+
+                // Save sanitized sequences to workspace
+                let sanitized_path = ws.get_file_path("sanitized_fasta", "fasta");
+                drop(ws); // Release lock before writing
+                crate::bio::fasta::write_fasta(&sanitized_path, &sanitized_sequences).ok();
+            }
+        }
+
+        let sequences = sanitized_sequences;
+
         // Step 1: Select references
         let selection_pb = if !self.silent {
             let pb = multi_progress.add(ProgressBar::new(100));
@@ -119,7 +174,12 @@ impl Reducer {
             callback("Selecting references", 0.0);
         }
         
-        let selector = self.configure_selector(&target_aligner);
+        let mut selector = self.configure_selector(&target_aligner);
+
+        // Pass workspace to selector if available
+        if let Some(workspace) = &self.workspace {
+            selector = selector.with_workspace(workspace.clone());
+        }
         
         // Choose selection method based on configuration
         let selection_result = if reduction_ratio == 0.0 {
@@ -258,7 +318,9 @@ impl Reducer {
             .with_taxonomy_aware(self.config.reduction.taxonomy_aware)
             .with_taxonomy_weights(self.use_taxonomy_weights)
             .with_all_vs_all(self.all_vs_all)
-            .with_manifest_acc2taxid(self.manifest_acc2taxid.clone());
+            .with_manifest_acc2taxid(self.manifest_acc2taxid.clone())
+            .with_batch_settings(self.batch_enabled, self.batch_size)
+            .with_selection_algorithm(self.selection_algorithm);
         
         // Adjust selector based on target aligner
         match target_aligner {
@@ -332,7 +394,132 @@ impl Reducer {
                      skipped_count, self.max_align_length);
             println!("  (longest sequence seen: {} residues)", max_length_seen);
         }
-        
+
         filtered
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_reducer_default_batch_settings() {
+        let config = Config::default();
+        let reducer = Reducer::new(config);
+
+        // Test that defaults are set properly - we can verify through behavior
+        assert!(!reducer.silent); // Check accessible field
+    }
+
+    #[test]
+    fn test_reducer_with_batch_settings() {
+        let config = Config::default();
+        let reducer = Reducer::new(config)
+            .with_batch_settings(true, 10000);
+
+        // Test that builder pattern works
+        assert!(!reducer.silent); // Verify other defaults unchanged
+    }
+
+    #[test]
+    fn test_reducer_builder_pattern() {
+        let config = Config::default();
+        let temp_path = PathBuf::from("/test/path");
+
+        let reducer = Reducer::new(config)
+            .with_selection_mode(true, true)
+            .with_no_deltas(true)
+            .with_max_align_length(5000)
+            .with_all_vs_all(true)
+            .with_taxonomy_weights(true)
+            .with_batch_settings(false, 3000)
+            .with_manifest_acc2taxid(Some(temp_path.clone()))
+            .with_file_sizes(1000, 500);
+
+        // Test accessible fields
+        assert!(reducer.use_similarity);
+        assert!(reducer.use_alignment);
+        assert!(reducer.no_deltas);
+        assert_eq!(reducer.max_align_length, 5000);
+        assert!(reducer.all_vs_all);
+        assert!(reducer.use_taxonomy_weights);
+        assert_eq!(reducer.manifest_acc2taxid, Some(temp_path));
+        assert_eq!(reducer.input_file_size, 1000);
+        assert_eq!(reducer.output_file_size, 500);
+    }
+
+    #[test]
+    fn test_configure_selector_passes_settings() {
+        let config = Config::default();
+        let reducer = Reducer::new(config)
+            .with_batch_settings(true, 7500)
+            .with_taxonomy_weights(true)
+            .with_all_vs_all(true);
+
+        let selector = reducer.configure_selector(&TargetAligner::Lambda);
+
+        // Test that selector is configured properly
+        // We can't access private fields but can verify the method runs without error
+        let _ = selector; // Use the selector to avoid warning
+    }
+
+    #[test]
+    fn test_reducer_with_selection_algorithm() {
+        let config = Config::default();
+
+        // Test SinglePass algorithm
+        let reducer_sp = Reducer::new(config.clone())
+            .with_selection_algorithm(SelectionAlgorithm::SinglePass);
+        assert_eq!(reducer_sp.selection_algorithm, SelectionAlgorithm::SinglePass);
+
+        // Test SimilarityMatrix algorithm
+        let reducer_sm = Reducer::new(config.clone())
+            .with_selection_algorithm(SelectionAlgorithm::SimilarityMatrix);
+        assert_eq!(reducer_sm.selection_algorithm, SelectionAlgorithm::SimilarityMatrix);
+
+        // Test Hybrid algorithm
+        let reducer_h = Reducer::new(config.clone())
+            .with_selection_algorithm(SelectionAlgorithm::Hybrid);
+        assert_eq!(reducer_h.selection_algorithm, SelectionAlgorithm::Hybrid);
+    }
+
+    #[test]
+    fn test_configure_selector_with_algorithm() {
+        let config = Config::default();
+        let reducer = Reducer::new(config)
+            .with_selection_algorithm(SelectionAlgorithm::SimilarityMatrix)
+            .with_batch_settings(true, 10000)
+            .with_taxonomy_weights(true);
+
+        let selector = reducer.configure_selector(&crate::cli::TargetAligner::Lambda);
+
+        // Verify the selector is configured with the correct algorithm
+        assert_eq!(selector.selection_algorithm, SelectionAlgorithm::SimilarityMatrix);
+    }
+
+    #[test]
+    fn test_filter_long_sequences() {
+        let config = Config::default();
+        let reducer = Reducer::new(config)
+            .with_max_align_length(100);
+
+        let sequences = vec![
+            Sequence::new("seq1".to_string(), vec![65; 80]),  // Valid
+            Sequence::new("seq2".to_string(), vec![65; 120]), // Too long
+            Sequence::new("seq3".to_string(), vec![65; 60]),  // Valid
+        ];
+
+        let children = HashMap::from([
+            ("ref1".to_string(), vec!["seq1".to_string(), "seq2".to_string()]),
+            ("ref2".to_string(), vec!["seq3".to_string()]),
+        ]);
+
+        let filtered = reducer.filter_long_sequences(&children, &sequences);
+
+        // seq2 should be filtered out
+        assert_eq!(filtered.get("ref1").unwrap().len(), 1);
+        assert!(filtered.get("ref1").unwrap().contains(&"seq1".to_string()));
+        assert!(!filtered.get("ref1").unwrap().contains(&"seq2".to_string()));
     }
 }

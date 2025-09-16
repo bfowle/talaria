@@ -25,7 +25,7 @@ Talaria provides comprehensive database management using the Content-Addressed S
 
 ### CASG Directory Structure
 ```
-~/.talaria/databases/
+${TALARIA_HOME}/databases/
 ├── manifests/                      # Database-specific manifest files
 │   ├── uniprot-swissprot.json     # SwissProt manifest
 │   ├── ncbi-nr.json                # NR database manifest
@@ -116,7 +116,7 @@ talaria database update-taxonomy
 talaria database download uniprot \
   -d swissprot \
   --taxonomy
-# Downloads to: ~/.talaria/databases/data/uniprot/swissprot/YYYY-MM-DD/
+# Downloads to: ${TALARIA_HOME}/databases/data/uniprot/swissprot/YYYY-MM-DD/
 ```
 
 ### NCBI
@@ -328,7 +328,7 @@ Configure database management in `talaria.toml`:
 
 ```toml
 [database]
-# Base directory for databases (default: ~/.talaria/databases/data/)
+# Base directory for databases (default: ${TALARIA_HOME}/databases/data/)
 database_dir = "/data/talaria/databases"
 
 # Number of old versions to keep (0 = keep all)
