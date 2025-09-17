@@ -8,16 +8,12 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Args, Debug)]
 pub struct ReduceArgs {
-    /// Database to reduce (e.g., "uniprot/swissprot", "ncbi/nr@2024-01-01")
-    /// When specified, automatically stores result in database structure
+    /// Database to reduce (e.g., "uniprot/swissprot", "custom/taxids_9606")
+    /// Must be a database that exists in the CASG repository
     #[arg(value_name = "DATABASE")]
-    pub database: Option<String>,
-    
-    /// Input FASTA file (required if database not specified)
-    #[arg(short, long, value_name = "FILE")]
-    pub input: Option<PathBuf>,
-    
-    /// Output reduced FASTA file (required if database not specified and --store not used)
+    pub database: String,
+
+    /// Output reduced FASTA file (optional - stores in CASG by default)
     #[arg(short, long, value_name = "FILE")]
     pub output: Option<PathBuf>,
     
@@ -122,6 +118,15 @@ pub struct ReduceArgs {
     /// CASG repository path (default: ${TALARIA_HOME}/databases)
     #[arg(long, value_name = "PATH")]
     pub casg_path: Option<PathBuf>,
+
+    /// Skip visualization charts in output
+    #[arg(long)]
+    pub no_visualize: bool,
+
+
+    /// Generate HTML report with visualization
+    #[arg(long)]
+    pub html_report: Option<PathBuf>,
 }
 
 /// Parse the selection algorithm string into the enum
@@ -232,91 +237,124 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         }
     }
     
-    // Validate arguments: either database or input must be specified
-    if args.database.is_none() && args.input.is_none() {
-        anyhow::bail!("Must specify either a database reference or input file (-i)");
-    }
-    
-    if args.database.is_some() && args.input.is_some() {
-        anyhow::bail!("Cannot specify both database reference and input file (-i). Use one or the other.");
-    }
-    
-    // Handle database reference and optional manifest-based taxonomy
-    let (actual_input, manifest_acc2taxid) = if let Some(db_ref_str) = &args.database {
-            // Assemble FASTA from chunks on-demand
-            use crate::core::database_manager::DatabaseManager;
-            use crate::download::{DatabaseSource, NCBIDatabase, UniProtDatabase};
+    // Validate database exists
+    use crate::core::database_manager::DatabaseManager;
+    let db_manager = DatabaseManager::new(None)?;
 
-            let manager = DatabaseManager::new(None)?;
-
-            // Parse database reference to determine source
-            let database_source = match db_ref_str.as_str() {
-                s if s.starts_with("uniprot/swissprot") => DatabaseSource::UniProt(UniProtDatabase::SwissProt),
-                s if s.starts_with("uniprot/trembl") => DatabaseSource::UniProt(UniProtDatabase::TrEMBL),
-                s if s.starts_with("ncbi/nr") => DatabaseSource::NCBI(NCBIDatabase::NR),
-                s if s.starts_with("ncbi/nt") => DatabaseSource::NCBI(NCBIDatabase::NT),
-                _ => anyhow::bail!("Unknown database: {}", db_ref_str),
-            };
-
-            // Create temporary file in workspace for assembled FASTA
-            let temp_file = workspace.lock().unwrap().get_file_path("input_fasta", "fasta");
-
-            // Use spinner for assembly
-            let spinner = ProgressBar::new_spinner();
-            spinner.set_style(
-                ProgressStyle::default_spinner()
-                    .template("{spinner:.cyan} {msg}")
-                    .unwrap()
-                    .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
-            );
-            spinner.set_message("Assembling database from chunks...");
-            spinner.enable_steady_tick(std::time::Duration::from_millis(100));
-
-            manager.assemble_database(&database_source, &temp_file)?;
-
-            spinner.finish_with_message("Database assembled successfully");
-
-            // Create accession2taxid mapping from manifest if using LAMBDA
-            let acc2taxid_file = if args.target_aligner == TargetAligner::Lambda {
-                spinner.set_message("Creating taxonomy mapping from manifest...");
-                spinner.enable_steady_tick(std::time::Duration::from_millis(100));
-
-                match manager.create_accession2taxid_from_manifest(&database_source) {
-                    Ok(path) => {
-                        spinner.finish_with_message("Taxonomy mapping created from manifest");
-                        Some(path)
-                    }
-                    Err(e) => {
-                        spinner.finish_with_message("Warning: Could not create taxonomy mapping from manifest");
-                        println!("  {}", e);
-                        None
-                    }
-                }
-            } else {
-                None
-            };
-
-            (temp_file, acc2taxid_file)
+    // Parse database reference
+    let (source, dataset) = if args.database.contains('/') {
+        let parts: Vec<&str> = args.database.split('/').collect();
+        if parts.len() != 2 {
+            anyhow::bail!("Invalid database reference format. Use 'source/dataset' (e.g., 'uniprot/swissprot')")
+        }
+        (parts[0].to_string(), parts[1].to_string())
     } else {
-        // Traditional file-based usage
-        let input = args.input.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Input file (-i) is required when not using database reference"))?;
-
-        if !input.exists() {
-            anyhow::bail!("Input file does not exist: {:?}", input);
-        }
-
-        if !args.store && args.output.is_none() {
-            anyhow::bail!("Output file (-o) is required when not using database reference or --store");
-        }
-
-        // CASG doesn't support --store yet
-        if args.store {
-            anyhow::bail!("--store option not yet implemented for CASG. Please specify an output file with -o instead.");
-        }
-
-        (input.clone(), None)  // No manifest-based taxonomy for file input
+        // Assume custom source if no slash
+        ("custom".to_string(), args.database.clone())
     };
+
+    // Check if database exists
+    let databases = db_manager.list_databases()?;
+    let db_full_name = format!("{}/{}", source, dataset);
+    if !databases.iter().any(|db| db.name == db_full_name) {
+        anyhow::bail!("Database '{}' not found. Use 'talaria database list' to see available databases.", db_full_name);
+    }
+    // Assemble FASTA from CASG chunks
+    let temp_file = workspace.lock().unwrap().get_file_path("input_fasta", "fasta");
+
+    // Map database to internal source enum if it's a standard database
+    use crate::download::{DatabaseSource, NCBIDatabase, UniProtDatabase};
+    let database_source = match db_full_name.as_str() {
+        "uniprot/swissprot" => Some(DatabaseSource::UniProt(UniProtDatabase::SwissProt)),
+        "uniprot/trembl" => Some(DatabaseSource::UniProt(UniProtDatabase::TrEMBL)),
+        "ncbi/nr" => Some(DatabaseSource::NCBI(NCBIDatabase::NR)),
+        "ncbi/nt" => Some(DatabaseSource::NCBI(NCBIDatabase::NT)),
+        _ => None,  // Custom database
+    };
+
+    // Use spinner for assembly
+    let spinner = ProgressBar::new_spinner();
+    spinner.set_style(
+        ProgressStyle::default_spinner()
+            .template("{spinner:.cyan} {msg}")
+            .unwrap()
+            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+    );
+    spinner.set_message("Assembling database from CASG chunks...");
+    spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+
+    // Assemble the database from CASG
+    if let Some(db_source) = &database_source {
+        db_manager.assemble_database(db_source, &temp_file)?;
+    } else {
+        // For custom databases, assemble from chunks referenced in manifest
+        use crate::casg::assembler::FastaAssembler;
+        use crate::casg::types::TemporalManifest;
+        use crate::core::paths;
+        use std::fs;
+
+        // Find the manifest
+        let db_path = paths::talaria_databases_dir().join(&source).join(&dataset);
+        let mut manifest_path = db_path.join("manifest.json");
+
+        if !manifest_path.exists() {
+            // Try the manifests directory
+            manifest_path = paths::talaria_databases_dir()
+                .join("manifests")
+                .join(format!("{}-{}.json", source, dataset));
+            if !manifest_path.exists() {
+                anyhow::bail!("Cannot find manifest for database: {}", db_full_name);
+            }
+        }
+
+        // Load the manifest
+        let manifest_content = fs::read_to_string(&manifest_path)?;
+        let manifest: TemporalManifest = serde_json::from_str(&manifest_content)?;
+
+        // Assemble from the chunks referenced in the manifest
+        let assembler = FastaAssembler::new(db_manager.get_storage());
+        let chunk_hashes: Vec<_> = manifest.chunk_index.iter().map(|c| c.hash.clone()).collect();
+        let sequences = assembler.assemble_from_chunks(&chunk_hashes)?;
+
+        // Write to temp file
+        crate::bio::fasta::write_fasta(&temp_file, &sequences)?;
+    }
+
+    spinner.finish_with_message("Database assembled successfully");
+
+    // Create accession2taxid mapping from manifest if using LAMBDA
+    let manifest_acc2taxid = if args.target_aligner == TargetAligner::Lambda && database_source.is_some() {
+        spinner.set_message("Creating taxonomy mapping from manifest...");
+        spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+
+        match db_manager.create_accession2taxid_from_manifest(database_source.as_ref().unwrap()) {
+            Ok(path) => {
+                spinner.finish_with_message("Taxonomy mapping created from manifest");
+                Some(path)
+            }
+            Err(e) => {
+                spinner.finish_with_message("Warning: Could not create taxonomy mapping from manifest");
+                println!("  {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let actual_input = temp_file;
+
+    // Generate output database name for reduced version
+    let _profile_or_ratio = if let Some(profile) = &args.profile {
+        profile.clone()
+    } else if args.reduction_ratio.is_some() && args.reduction_ratio.unwrap() > 0.0 {
+        format!("{}pct", (args.reduction_ratio.unwrap() * 100.0) as u32)
+    } else {
+        "auto".to_string()
+    };
+
+    // Note: We don't create a new database name for reductions anymore
+    // Reductions are stored as profiles associated with the original database
 
     // Use reduction ratio if provided, otherwise use auto-detection
     let reduction_ratio = if let Some(ratio) = args.reduction_ratio {
@@ -333,13 +371,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     let mut task_list = TaskList::new();
 
     // Print header
-    let header = if let Some(db) = &args.database {
-        format!("Reduction Pipeline: {}", db)
-    } else if let Some(input) = &args.input {
-        format!("Reduction Pipeline: {}", input.display())
-    } else {
-        "Reduction Pipeline".to_string()
-    };
+    let header = format!("Reduction Pipeline: {}", db_full_name);
     task_list.print_header(&header);
 
     // Show reduction mode info
@@ -378,13 +410,13 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         .build_global() {
         // Thread pool already initialized, that's fine
     }
-    
-    println!("  Using {} threads", threads);
+
+    task_list.set_task_message(init_task, &format!("Using {} threads", threads));
     task_list.update_task(init_task, TaskStatus::Complete);
     
     // Load configuration if provided
     let mut config = if let Some(config_path) = &args.config {
-        println!("  Loading configuration from {:?}...", config_path);
+        task_list.set_task_message(init_task, &format!("Loading configuration from {:?}...", config_path));
         crate::core::config::load_config(config_path)?
     } else {
         crate::core::config::default_config()
@@ -417,18 +449,25 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
 
     // Parse input FASTA
     task_list.update_task(load_task, TaskStatus::InProgress);
-    println!("  Reading FASTA file...");
+    task_list.set_task_message(load_task, "Reading FASTA file...");
     let sequences = crate::bio::fasta::parse_fasta(&actual_input)?;
+
+    // Keep a copy for the HTML report if needed
+    let original_sequences = if args.html_report.is_some() {
+        sequences.clone()
+    } else {
+        vec![]
+    };
 
     // Update workspace stats
     workspace.lock().unwrap().update_stats(|s| {
         s.input_sequences = sequences.len();
     })?;
 
-    task_list.update_task(load_task, TaskStatus::Complete);
-    println!("  Loaded {} sequences ({})",
+    task_list.set_task_message(load_task, &format!("Loaded {} sequences ({})",
         sequences.len(),
-        format_bytes(input_size));
+        format_bytes(input_size)));
+    task_list.update_task(load_task, TaskStatus::Complete);
     
     // Run reduction pipeline with workspace
     task_list.update_task(select_task, TaskStatus::InProgress);
@@ -456,8 +495,8 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
 
     let (references, deltas, original_count) = match reduction_result {
         Ok(result) => {
+            task_list.set_task_message(select_task, &format!("Selected {} reference sequences", result.0.len()));
             task_list.update_task(select_task, TaskStatus::Complete);
-            println!("  Selected {} reference sequences", result.0.len());
             result
         }
         Err(e) => {
@@ -490,8 +529,8 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     if args.no_deltas {
         task_list.update_task(encode_task, TaskStatus::Skipped);
     } else if !deltas.is_empty() {
+        task_list.set_task_message(encode_task, &format!("Encoded {} child sequences as deltas", deltas.len()));
         task_list.update_task(encode_task, TaskStatus::Complete);
-        println!("  Encoded {} child sequences as deltas", deltas.len());
     } else {
         task_list.update_task(encode_task, TaskStatus::Skipped);
     }
@@ -502,17 +541,17 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         s.final_output_sequences = references.len() + deltas.len();
     })?;
     
-    // Determine output paths - should_store is always false now (CASG doesn't support it yet)
-    let (output_path, metadata_path) = {
-        // Use specified output paths
-        let output = args.output.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Output file (-o) is required"))?;
-        
+    // Determine output method
+    let use_casg_storage = args.output.is_none();
+
+    // Generate output paths
+    let (output_path, metadata_path) = if let Some(specified_output) = &args.output {
+        // Traditional file output to specified location
         let metadata_path = if let Some(path) = &args.metadata {
             path.clone()
         } else {
             // Auto-generate based on output filename
-            let mut delta_path = output.clone();
+            let mut delta_path = specified_output.clone();
             if let Some(ext) = delta_path.extension() {
                 let mut new_name = delta_path.file_stem().unwrap().to_os_string();
                 new_name.push(".deltas.");
@@ -523,14 +562,16 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
             }
             delta_path
         };
-        
-        (output.clone(), metadata_path)
+        (specified_output.clone(), metadata_path)
+    } else {
+        // CASG storage mode - these are placeholder paths as actual storage goes to CASG repository
+        (PathBuf::from("casg_storage"), PathBuf::from("casg_storage.deltas"))
     };
     
-    // Choose output method: CASG or traditional files
-    let output_size = if args.casg_output {
+    // Choose output method: CASG storage (default) or traditional files
+    let output_size = if use_casg_storage || args.casg_output {
         // Output to CASG repository
-        println!("  Storing reduction in CASG repository...");
+        task_list.set_task_message(write_task, "Storing reduction in CASG repository...");
 
         let casg_path = args.casg_path.clone().unwrap_or_else(|| {
             use crate::core::paths;
@@ -546,11 +587,12 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
             reduction_ratio,
             original_count,
             input_size,
+            Some(&db_full_name),  // Use original database name, not a new one
         )?
     } else {
         // Traditional file output
         task_list.update_task(write_task, TaskStatus::InProgress);
-        println!("  Writing output files...");
+        task_list.set_task_message(write_task, "Writing output files...");
 
         crate::bio::fasta::write_fasta(&output_path, &references)?;
 
@@ -560,7 +602,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         // Write deltas if they were computed
         if !args.no_deltas && !deltas.is_empty() {
             crate::storage::metadata::write_metadata(&metadata_path, &deltas)?;
-            println!("  Saved deltas to {:?}", metadata_path);
+            task_list.set_task_message(write_task, &format!("Saved deltas to {:?}", metadata_path));
         }
 
         task_list.update_task(write_task, TaskStatus::Complete);
@@ -570,13 +612,14 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     
     // Print statistics using the new stats display
     use crate::cli::stats_display::create_reduction_stats;
-    
+    use crate::cli::charts::{create_reduction_summary_chart, create_length_histogram};
+
     let avg_deltas = if deltas.is_empty() {
         0.0
     } else {
         deltas.iter().map(|d| d.deltas.len()).sum::<usize>() as f64 / deltas.len() as f64
     };
-    
+
     let stats = create_reduction_stats(
         original_count,
         references.len(),
@@ -585,8 +628,28 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         output_size,
         avg_deltas,
     );
-    
+
     println!("\n{}", stats);
+
+    // Show visualization charts
+    if !args.no_visualize {
+        // Reduction summary chart
+        let coverage = (references.len() + deltas.len()) as f64 / original_count as f64 * 100.0;
+        let summary_chart = create_reduction_summary_chart(
+            original_count,
+            references.len(),
+            deltas.len(),
+            coverage
+        );
+        println!("{}", summary_chart);
+
+        // Length distribution histogram
+        let lengths: Vec<usize> = references.iter().map(|s| s.len()).collect();
+        if !lengths.is_empty() {
+            let length_histogram = create_length_histogram(&lengths);
+            println!("{}", length_histogram);
+        }
+    }
     
     // Show completion message with nice formatting
     let file_size_reduction = if input_size > 0 && output_size > 0 {
@@ -595,6 +658,38 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         0.0
     };
     let sequence_coverage = (references.len() + deltas.len()) as f64 / original_count as f64 * 100.0;
+
+    // Generate HTML report if requested
+    if let Some(html_path) = &args.html_report {
+        task_list.set_task_message(write_task, "Generating HTML report...");
+
+        // Create selection result for report
+        let selection_result = crate::core::reference_selector::SelectionResult {
+            references: references.clone(),
+            children: {
+                let mut children_map = std::collections::HashMap::new();
+                for delta in &deltas {
+                    children_map.insert(delta.reference_id.clone(), vec![delta.child_id.clone()]);
+                }
+                children_map
+            },
+            discarded: std::collections::HashSet::new(), // We don't track discarded sequences here
+        };
+
+        // Generate HTML report
+        let html_content = crate::report::reduction_html::generate_reduction_html_report(
+            &actual_input,
+            &output_path,
+            &original_sequences,
+            &selection_result,
+            sequence_coverage,
+            None, // No taxonomic stats for now - could be added later
+        )?;
+
+        // Write HTML report to file
+        std::fs::write(&html_path, html_content)?;
+        task_list.set_task_message(write_task, &format!("✓ HTML report saved to: {}", html_path.display()));
+    }
 
     print_success(&format!("Reduction complete: {:.1}% file size reduction, {:.1}% sequence coverage",
         file_size_reduction,
@@ -624,6 +719,7 @@ fn store_reduction_in_casg(
     reduction_ratio: f64,
     original_count: usize,
     input_size: u64,
+    database_name: Option<&str>,
 ) -> anyhow::Result<u64> {
     use crate::casg::{CASGRepository, delta_generator::{DeltaGenerator, DeltaGeneratorConfig}, reduction::{ReductionManifest, ReductionParameters, ReferenceChunk, DeltaChunkRef}};
     use crate::casg::chunker::TaxonomicChunker;
@@ -649,11 +745,15 @@ fn store_reduction_in_casg(
         }
     });
 
-    // Get source database info (if available)
-    let source_database = input_path.file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown")
-        .to_string();
+    // Use provided database name or derive from input path
+    let source_database = if let Some(db_name) = database_name {
+        db_name.to_string()
+    } else {
+        input_path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string()
+    };
 
     // Create reduction parameters
     let parameters = ReductionParameters {
@@ -694,12 +794,12 @@ fn store_reduction_in_casg(
     let mut manifest = ReductionManifest::new(
         profile_name.clone(),
         source_manifest_hash,
-        source_database,
+        source_database.clone(),
         parameters,
     );
 
     // Chunk and store reference sequences
-    println!("📦 Chunking reference sequences...");
+    println!("◆ Chunking reference sequences...");
     use crate::casg::types::ChunkingStrategy;
     let strategy = ChunkingStrategy {
         target_chunk_size: 1024 * 1024,  // 1MB
@@ -739,7 +839,7 @@ fn store_reduction_in_casg(
 
     // Process and store delta chunks if present
     if !deltas.is_empty() && !args.no_deltas {
-        println!("📦 Storing delta chunks...");
+        println!("◆ Storing delta chunks...");
 
         // Group deltas by reference sequence
         let mut deltas_by_ref: HashMap<String, Vec<crate::core::delta_encoder::DeltaRecord>> = HashMap::new();
@@ -813,13 +913,18 @@ fn store_reduction_in_casg(
     let elapsed = start.elapsed().as_secs();
     manifest.calculate_statistics(original_count, input_size, elapsed);
 
-    // Store the manifest
+    // Store the reduction manifest as a profile
+    // This will automatically create the profile reference in /profiles/ directory
     let manifest_hash = casg.storage.store_reduction_manifest(&manifest)?;
+
+    // Note: We do NOT create a new database manifest here
+    // The reduction is stored as a profile associated with the original database
 
     // Calculate total size
     let total_size = manifest.statistics.total_size_with_deltas;
 
     println!("✓ Reduction stored in CASG repository");
+    println!("   Database: {}", source_database);
     println!("   Profile: {}", profile_name);
     println!("   Manifest: {}", manifest_hash);
     println!("   References: {} chunks", manifest.reference_chunks.len());
@@ -828,6 +933,9 @@ fn store_reduction_in_casg(
     }
     println!("   Merkle root: {}", manifest.reduction_merkle_root);
     println!("   Deduplication ratio: {:.1}%", manifest.statistics.deduplication_ratio * 100.0);
+    println!();
+    println!("→ View with: talaria database list");
+    println!("→ Info: talaria database info {}", source_database);
 
     Ok(total_size)
 }

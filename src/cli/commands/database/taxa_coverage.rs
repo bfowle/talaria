@@ -9,13 +9,13 @@ use std::path::PathBuf;
 
 #[derive(Args)]
 pub struct TaxaCoverageArgs {
-    /// Input FASTA file or directory
-    #[arg(short, long)]
-    pub input: PathBuf,
+    /// Database reference (e.g., "uniprot/swissprot" or path to FASTA file)
+    /// Supports full version/profile syntax: source/dataset[@version][:profile]
+    pub database: String,
 
     /// Second database for comparison (optional)
-    #[arg(short = 'c', long)]
-    pub compare: Option<PathBuf>,
+    /// Can be another database reference or FASTA file path
+    pub compare: Option<String>,
 
     /// Path to NCBI taxonomy database
     #[arg(short = 't', long)]
@@ -43,22 +43,43 @@ pub struct TaxaCoverageArgs {
 }
 
 pub fn run(args: TaxaCoverageArgs) -> Result<()> {
+    use crate::utils::database_ref::parse_database_reference;
+    use crate::cli::commands::database::export::run as export_database;
+    use crate::cli::commands::database::export::ExportArgs;
+    use std::path::Path;
+
     // Load or download taxonomy database
     let taxonomy_db = load_taxonomy(&args.taxonomy)?;
+
+    // Determine if input is a database reference or file path
+    let primary_path = resolve_database_input(&args.database)?;
 
     // Process primary database
     println!("{} Analyzing taxonomic coverage for {}...",
              "►".cyan().bold(),
-             args.input.display());
+             args.database);
 
-    let primary_coverage = analyze_database(&args.input, &taxonomy_db)?;
+    let primary_coverage = if primary_path.exists() {
+        analyze_database(&primary_path, &taxonomy_db)?
+    } else {
+        // It's a database reference, need to export first
+        let exported = export_database_to_temp(&args.database)?;
+        analyze_database(&exported, &taxonomy_db)?
+    };
 
     // Process comparison database if provided
-    let comparison = if let Some(compare_path) = &args.compare {
+    let comparison = if let Some(ref compare) = args.compare {
         println!("{} Analyzing comparison database {}...",
                  "►".cyan().bold(),
-                 compare_path.display());
-        Some(analyze_database(compare_path, &taxonomy_db)?)
+                 compare);
+
+        let compare_path = resolve_database_input(compare)?;
+        if compare_path.exists() {
+            Some(analyze_database(&compare_path, &taxonomy_db)?)
+        } else {
+            let exported = export_database_to_temp(compare)?;
+            Some(analyze_database(&exported, &taxonomy_db)?)
+        }
     } else {
         None
     };
@@ -328,6 +349,63 @@ fn generate_csv_report(
     }
 
     Ok(csv)
+}
+
+/// Resolve a database input to a file path
+/// Returns the path if it's a file, or an empty PathBuf if it's a database reference
+fn resolve_database_input(input: &str) -> Result<PathBuf> {
+    use std::path::Path;
+
+    let path = Path::new(input);
+    if path.exists() && path.is_file() {
+        // It's a direct file path
+        Ok(path.to_path_buf())
+    } else if input.contains('/') && !input.contains('.') {
+        // Likely a database reference (e.g., "uniprot/swissprot")
+        Ok(PathBuf::new()) // Return empty path to signal it needs export
+    } else {
+        // Try as a file path one more time
+        let expanded = PathBuf::from(input);
+        if expanded.exists() {
+            Ok(expanded)
+        } else {
+            // Assume it's a database reference
+            Ok(PathBuf::new())
+        }
+    }
+}
+
+/// Export a database to a temporary file for analysis
+fn export_database_to_temp(database_ref: &str) -> Result<PathBuf> {
+    use crate::cli::commands::database::export::{ExportArgs, ExportFormat};
+    use std::env;
+
+    println!("  Exporting {} to temporary file for analysis...", database_ref);
+
+    // Create a temporary file path
+    let temp_dir = env::temp_dir();
+    let timestamp = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
+    let temp_filename = format!("talaria_taxa_coverage_{}.fasta", timestamp);
+    let temp_path = temp_dir.join(temp_filename);
+
+    // Export the database to the temp file
+    let export_args = ExportArgs {
+        database: database_ref.to_string(),
+        output: Some(temp_path.clone()),
+        force: false,
+        format: ExportFormat::Fasta,
+        compress: false,
+        no_cache: false,
+        cached_only: false,
+        with_taxonomy: true,
+        quiet: true,
+        stream: true,
+    };
+
+    crate::cli::commands::database::export::run(export_args)
+        .context("Failed to export database")?;
+
+    Ok(temp_path)
 }
 
 fn generate_html_report(

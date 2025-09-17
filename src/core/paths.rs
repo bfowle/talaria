@@ -8,6 +8,7 @@ static TALARIA_DATABASES_DIR: OnceLock<PathBuf> = OnceLock::new();
 static TALARIA_TOOLS_DIR: OnceLock<PathBuf> = OnceLock::new();
 static TALARIA_CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
 static TALARIA_TAXONOMY_DIR: OnceLock<PathBuf> = OnceLock::new();
+static TALARIA_WORKSPACE_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 /// Get the Talaria home directory
 /// Checks TALARIA_HOME environment variable, falls back to ${HOME}/.talaria
@@ -80,6 +81,20 @@ pub fn talaria_taxonomy_dir() -> PathBuf {
             PathBuf::from(path)
         } else {
             talaria_databases_dir().join("taxonomy")
+        }
+    }).clone()
+}
+
+/// Get the workspace directory for temporal workspaces
+/// Checks TALARIA_WORKSPACE_DIR environment variable, falls back to /tmp/talaria or $TMPDIR/talaria
+pub fn talaria_workspace_dir() -> PathBuf {
+    TALARIA_WORKSPACE_DIR.get_or_init(|| {
+        if let Ok(path) = std::env::var("TALARIA_WORKSPACE_DIR") {
+            PathBuf::from(path)
+        } else if let Ok(tmpdir) = std::env::var("TMPDIR") {
+            PathBuf::from(tmpdir).join("talaria")
+        } else {
+            PathBuf::from("/tmp/talaria")
         }
     }).clone()
 }

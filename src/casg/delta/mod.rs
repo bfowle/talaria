@@ -4,6 +4,6 @@ pub mod traits;
 
 pub use traits::{
     DeltaGenerator, DeltaReconstructor, CompressionAwareDeltaGenerator,
-    BatchDeltaGenerator, LegacyDeltaSupport, DeltaGeneratorConfig,
+    BatchDeltaGenerator, DeltaGeneratorConfig,
     DeltaGenerationStats, EncodingStrategy,
 };

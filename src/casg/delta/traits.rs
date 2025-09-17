@@ -6,7 +6,6 @@
 use anyhow::Result;
 use crate::bio::sequence::Sequence;
 use crate::casg::types::*;
-use crate::core::delta_encoder::DeltaRecord;
 
 /// Configuration for delta generation
 #[derive(Debug, Clone)]
@@ -176,20 +175,4 @@ pub trait BatchDeltaGenerator: DeltaGenerator {
         &self,
         chunks: Vec<DeltaChunk>,
     ) -> Result<Vec<DeltaChunk>>;
-}
-
-/// Legacy delta support for backward compatibility
-pub trait LegacyDeltaSupport: DeltaGenerator {
-    /// Convert legacy delta records to new format
-    fn convert_legacy_deltas(
-        &self,
-        legacy_records: Vec<DeltaRecord>,
-        reference_hash: SHA256Hash,
-    ) -> Result<Vec<DeltaChunk>>;
-
-    /// Export to legacy format
-    fn export_to_legacy(
-        &self,
-        delta_chunks: &[DeltaChunk],
-    ) -> Result<Vec<DeltaRecord>>;
 }

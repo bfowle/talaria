@@ -1,6 +1,6 @@
 use clap::Args;
-use comfy_table::{Table, presets::UTF8_FULL, Cell, Attribute, Color};
 use crate::tools::ToolManager;
+use crate::cli::output::*;
 
 #[derive(Args)]
 pub struct ListArgs {
@@ -14,13 +14,15 @@ pub struct ListArgs {
 }
 
 pub fn run(args: ListArgs) -> anyhow::Result<()> {
+    section_header("Installed Tools");
+
     let manager = ToolManager::new()?;
     let tools = manager.list_all_tools()?;
-    
+
     if tools.is_empty() {
-        println!("No tools installed");
-        println!("\nInstall tools with: talaria tools install <tool>");
-        println!("Available tools: lambda, blast, diamond, mmseqs2");
+        empty("No tools installed");
+        info("Install tools with: talaria tools install <tool>");
+        info("Available tools: lambda, blast, diamond, mmseqs2");
         return Ok(());
     }
     
@@ -30,39 +32,47 @@ pub fn run(args: ListArgs) -> anyhow::Result<()> {
             println!("{}", json);
         }
         _ => {
-            // Text format with table
-            let mut table = Table::new();
-            table.load_preset(UTF8_FULL);
-            
-            table.set_header(vec![
-                Cell::new("Tool").add_attribute(Attribute::Bold),
-                Cell::new("Version").add_attribute(Attribute::Bold),
-                Cell::new("Status").add_attribute(Attribute::Bold),
-                Cell::new("Installed").add_attribute(Attribute::Bold),
-                Cell::new("Path").add_attribute(Attribute::Bold),
-            ]);
-            
-            for (tool, versions) in tools {
-                if args.all_versions {
-                    // Show all versions
-                    for version in versions {
+            // Tree format for detailed view or table for normal
+            if args.all_versions {
+                // Tree structure showing all versions
+                for (i, (tool, versions)) in tools.iter().enumerate() {
+                    let is_last_tool = i == tools.len() - 1;
+                    tree_item(false, &tool.display_name(), None);
+
+                    for (j, version) in versions.iter().enumerate() {
+                        let is_last_version = j == versions.len() - 1;
                         let status = if version.is_current {
-                            Cell::new("current").fg(Color::Green)
+                            format!("v{} ✓ current", version.version)
                         } else {
-                            Cell::new("")
+                            format!("v{}", version.version)
                         };
-                        
-                        table.add_row(vec![
-                            Cell::new(tool.display_name()),
-                            Cell::new(&version.version),
-                            status,
-                            Cell::new(version.installed_date.format("%Y-%m-%d").to_string()),
-                            Cell::new(version.binary_path.display().to_string()),
-                        ]);
+
+                        if is_last_version {
+                            tree_item_continued_last(&status, Some(&version.installed_date.format("%Y-%m-%d").to_string()));
+                        } else {
+                            tree_item_continued(&status, Some(&version.installed_date.format("%Y-%m-%d").to_string()));
+                        }
                     }
-                } else {
-                    // Show only current version
+
+                    if !is_last_tool {
+                        println!();
+                    }
+                }
+            } else {
+                // Table format for current versions only
+                let mut table = create_standard_table();
+
+                table.set_header(vec![
+                    header_cell("Tool"),
+                    header_cell("Version"),
+                    header_cell("Status"),
+                    header_cell("Installed"),
+                    header_cell("Path"),
+                ]);
+
+                for (tool, versions) in tools {
                     if let Some(current) = versions.iter().find(|v| v.is_current) {
+                        use comfy_table::{Cell, Color};
                         table.add_row(vec![
                             Cell::new(tool.display_name()),
                             Cell::new(&current.version),
@@ -72,13 +82,9 @@ pub fn run(args: ListArgs) -> anyhow::Result<()> {
                         ]);
                     }
                 }
-            }
-            
-            println!("\nInstalled Tools");
-            println!("{}", table);
-            
-            if !args.all_versions {
-                println!("\nUse --all-versions to see all installed versions");
+
+                println!("{}", table);
+                info("\nUse --all-versions to see all installed versions");
             }
         }
     }

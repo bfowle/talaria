@@ -27,9 +27,14 @@ Talaria provides comprehensive database management using the Content-Addressed S
 ```
 ${TALARIA_HOME}/databases/
 ├── manifests/                      # Database-specific manifest files
-│   ├── uniprot-swissprot.json     # SwissProt manifest
+│   ├── uniprot-swissprot.json     # SwissProt manifest (filename uses -)
 │   ├── ncbi-nr.json                # NR database manifest
 │   └── custom-mydb.json            # Custom database manifests
+├── profiles/                       # Reduction profiles
+│   ├── 30-percent                 # Hash reference to 30% reduction manifest
+│   ├── 50-percent                 # Hash reference to 50% reduction manifest
+│   ├── auto-detect                # Auto-detected reduction profile
+│   └── blast-optimized            # Custom named profile
 ├── chunks/                         # Content-addressed chunk storage
 │   ├── ab/                         # Two-letter prefix directories
 │   │   └── abc123...               # SHA256-named chunk files
@@ -40,6 +45,11 @@ ${TALARIA_HOME}/databases/
         ├── nodes.dmp
         └── names.dmp
 ```
+
+**Note on Naming Conventions:**
+- Database references use "/" separator: `uniprot/swissprot`, `custom/mydb`
+- Manifest filenames use "-" separator: `uniprot-swissprot.json`
+- Reduction profiles are stored separately, not as new databases
 
 
 ## Database Download

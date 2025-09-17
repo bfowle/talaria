@@ -2,6 +2,7 @@
 
 use crate::bio::sequence::Sequence;
 use crate::bio::alignment::Alignment;
+use crate::cli::output::{format_number, tree_section};
 use crate::utils::temp_workspace::TempWorkspace;
 use dashmap::DashMap;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -723,12 +724,13 @@ impl ReferenceSelector {
         use crate::tools::{ToolManager, Tool};
         use crate::tools::lambda::LambdaAligner;
 
-        println!("Starting LAMBDA-based reference selection...");
-        println!("  Processing {} sequences", sequences.len());
+        use crate::cli::output::{section_header, info, action, success, warning, subsection_header};
+        section_header("LAMBDA-based Reference Selection");
+        info(&format!("Processing {} sequences", format_number(sequences.len())));
 
         // Step 1: Pre-filter by taxonomy if enabled
         let (sequences_to_process, taxonomy_groups) = if self.taxonomy_aware {
-            println!("\nGrouping sequences by taxonomy...");
+            action("Grouping sequences by taxonomy...");
             let mut taxon_groups: HashMap<u32, Vec<Sequence>> = HashMap::new();
             let mut no_taxon_sequences = Vec::new();
 
@@ -740,10 +742,11 @@ impl ReferenceSelector {
                 }
             }
 
-            println!("  Found {} taxonomic groups", taxon_groups.len());
-            if !no_taxon_sequences.is_empty() {
-                println!("  {} sequences without taxonomy ID", no_taxon_sequences.len());
-            }
+            let taxonomy_items = vec![
+                ("Taxonomic groups", format_number(taxon_groups.len())),
+                ("Without taxonomy", format_number(no_taxon_sequences.len())),
+            ];
+            tree_section("Taxonomy Summary", taxonomy_items, false);
 
             (sequences, Some(taxon_groups))
         } else {
@@ -753,7 +756,7 @@ impl ReferenceSelector {
         // Check if LAMBDA is installed
         let manager = ToolManager::new()?;
         let lambda_path = manager.get_current_tool_path(Tool::Lambda)?;
-        println!("  LAMBDA binary: {:?}", lambda_path);
+        info(&format!("LAMBDA binary: {:?}", lambda_path));
 
         // Create LAMBDA aligner with optional manifest-based taxonomy
         let mut aligner = LambdaAligner::new(lambda_path)?;
@@ -774,24 +777,24 @@ impl ReferenceSelector {
 
             if taxdump_dir.exists() {
                 aligner = aligner.with_taxonomy(Some(acc2taxid_path.clone()), Some(taxdump_dir));
-                println!("  Using manifest-based taxonomy mapping");
+                success("Using manifest-based taxonomy mapping");
             } else {
-                println!("  Warning: taxdump directory not found, taxonomy features disabled");
+                warning("taxdump directory not found, taxonomy features disabled");
             }
         }
 
-        println!("  LAMBDA aligner initialized");
+        success("LAMBDA aligner initialized");
 
         // Run alignments with LAMBDA
-        println!("\nRunning LAMBDA alignments...");
-        println!("  Mode: {}", if self.all_vs_all { "all-vs-all" } else { "query-vs-reference" });
+        section_header("Running LAMBDA Alignments");
+        info(&format!("Mode: {}", if self.all_vs_all { "all-vs-all" } else { "query-vs-reference" }));
 
         let alignments = if self.all_vs_all {
             // All-vs-all mode: self-alignment within the dataset
             aligner.search_all_vs_all(&sequences_to_process)?
         } else if self.taxonomy_aware && taxonomy_groups.is_some() {
             // Process each taxonomic group separately for better performance
-            println!("  Processing by taxonomic groups for better performance...");
+            action("Processing by taxonomic groups for better performance...");
             let mut all_alignments = Vec::new();
             let taxon_groups = taxonomy_groups.unwrap();
 
@@ -802,7 +805,7 @@ impl ReferenceSelector {
                     continue;
                 }
 
-                println!("    Processing taxon {} ({} sequences)", taxon_id, group_sequences.len());
+                subsection_header(&format!("Taxon {} ({} sequences)", taxon_id, format_number(group_sequences.len())));
 
                 // Sort by length within the group
                 let mut sorted_group = group_sequences.clone();
@@ -827,7 +830,7 @@ impl ReferenceSelector {
                 .collect();
 
             if !no_taxon.is_empty() && no_taxon.len() >= 10 {
-                println!("    Processing {} sequences without taxonomy", no_taxon.len());
+                subsection_header(&format!("Processing {} sequences without taxonomy", format_number(no_taxon.len())));
                 let mut sorted_group = no_taxon.clone();
                 sorted_group.sort_by_key(|s| std::cmp::Reverse(s.len()));
 
@@ -855,13 +858,16 @@ impl ReferenceSelector {
                 .cloned()
                 .collect();
 
-            println!("  Query sequences: {}", sequences_to_process.len());
-            println!("  Reference sequences: {} (top 20% longest)", reference_sequences.len());
+            let alignment_items = vec![
+                ("Query sequences", format_number(sequences_to_process.len())),
+                ("Reference sequences", format!("{} (top 20% longest)", format_number(reference_sequences.len()))),
+            ];
+            tree_section("Alignment Setup", alignment_items, false);
 
             // All sequences are queries
             aligner.search(&sequences_to_process, &reference_sequences)?
         };
-        println!("\nLAMBDA alignments complete: {} alignments found", alignments.len());
+        success(&format!("LAMBDA alignments complete: {} alignments found", format_number(alignments.len())));
 
         // Dispatch to appropriate algorithm
         match self.selection_algorithm {
@@ -873,7 +879,7 @@ impl ReferenceSelector {
             }
             SelectionAlgorithm::Hybrid => {
                 // For now, default to single-pass
-                println!("  Hybrid algorithm not yet implemented, using SinglePass");
+                warning("Hybrid algorithm not yet implemented, using SinglePass");
                 self.select_with_single_pass(alignments, sequences_to_process)
             }
         }
@@ -900,9 +906,11 @@ impl ReferenceSelector {
                 ));
         }
 
-        println!("  Grouped {} alignments by {} unique queries",
-                 query_alignments.values().map(|v| v.len()).sum::<usize>(),
-                 query_alignments.len());
+        let grouping_items = vec![
+            ("Total alignments", format_number(query_alignments.values().map(|v| v.len()).sum::<usize>())),
+            ("Unique queries", format_number(query_alignments.len())),
+        ];
+        tree_section("Alignment Grouping", grouping_items, false);
 
         // Create sequence length lookup
         let seq_lengths: HashMap<String, usize> = sequences.iter()
@@ -1034,7 +1042,9 @@ impl ReferenceSelector {
         alignments: Vec<crate::tools::traits::AlignmentResult>,
         sequences: Vec<Sequence>,
     ) -> anyhow::Result<SelectionResult> {
-        println!("\nUsing similarity matrix algorithm (O(n²) - slower but potentially more optimal)");
+        use crate::cli::output::{section_header, info, warning};
+        section_header("Similarity Matrix Algorithm");
+        info("Using O(n²) algorithm - slower but potentially more optimal");
 
         // Build similarity matrix from alignments
         let mut similarity_matrix: HashMap<(String, String), f64> = HashMap::new();
@@ -1046,7 +1056,7 @@ impl ReferenceSelector {
             similarity_matrix.insert(reverse_key, alignment.identity);
         }
 
-        println!("  Built similarity matrix with {} entries", similarity_matrix.len());
+        info(&format!("Built similarity matrix with {} entries", format_number(similarity_matrix.len())));
 
         // Greedy selection based on alignment coverage
         let mut references = Vec::new();
@@ -1132,7 +1142,7 @@ impl ReferenceSelector {
 
             // If no good reference found, add remaining as individual references
             if best_reference.is_none() || best_coverage.is_empty() {
-                println!("\n  No more good references found after {} iterations", iteration);
+                info(&format!("No more good references found after {} iterations", iteration));
                 // Add remaining sequences as their own references
                 for seq_id in uncovered.iter() {
                     if let Some(seq) = sorted_sequences.iter().find(|s| &s.id == seq_id) {
@@ -1162,7 +1172,7 @@ impl ReferenceSelector {
 
             // Early termination for very large datasets
             if iteration > 1000 {
-                println!("\n  Warning: Reached maximum iterations (1000), terminating early");
+                warning("Reached maximum iterations (1000), terminating early");
                 break;
             }
         }

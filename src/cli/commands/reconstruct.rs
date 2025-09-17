@@ -1,5 +1,6 @@
 use clap::Args;
 use std::path::PathBuf;
+use crate::cli::output::*;
 
 #[derive(Args)]
 pub struct ReconstructArgs {
@@ -203,15 +204,25 @@ pub fn run(args: ReconstructArgs) -> anyhow::Result<()> {
     let output_size = get_file_size(&output_path).unwrap_or(0);
 
     // Print summary with progress bar completion
-    if let Some((dataset, profile)) = db_info {
-        pb.finish_with_message(format!("Reconstructed {} sequences from {}:{} to {} ({})",
-                                      reconstructed.len(), dataset, profile,
-                                      output_path.display(), format_bytes(output_size)));
-    } else {
-        pb.finish_with_message(format!("Reconstructed {} sequences to {} ({})",
-                                      reconstructed.len(), output_path.display(),
-                                      format_bytes(output_size)));
+    pb.finish_and_clear();
+
+    subsection_header("Reconstruction Summary");
+
+    let summary_items = vec![
+        ("Total sequences", format_number(reconstructed.len())),
+        ("Output file", output_path.display().to_string()),
+        ("File size", format_bytes(output_size)),
+    ];
+
+    for (i, (label, value)) in summary_items.iter().enumerate() {
+        tree_item(i == summary_items.len() - 1, label, Some(value));
     }
+
+    if let Some((dataset, profile)) = db_info {
+        info(&format!("Reconstructed from {}:{}", dataset, profile));
+    }
+
+    success("Reconstruction complete!");
 
     Ok(())
 }

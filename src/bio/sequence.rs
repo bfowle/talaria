@@ -144,9 +144,13 @@ pub fn sanitize_sequences(sequences: Vec<Sequence>) -> (Vec<Sequence>, usize) {
         .collect();
 
     if removed_count > 0 || removed_residues > 0 {
-        println!("  Sanitized sequences: removed {} sequences with >10% ambiguous residues", removed_count);
-        println!("  Removed {} ambiguous residues from remaining sequences", removed_residues);
-        println!("  Sequences after sanitization: {} (from {})", sanitized.len(), total);
+        use crate::cli::output::*;
+        let sanitization_items = vec![
+            ("Removed sequences", format!("{} (>10% ambiguous)", format_number(removed_count))),
+            ("Removed residues", format_number(removed_residues)),
+            ("Sequences remaining", format!("{} (from {})", format_number(sanitized.len()), format_number(total))),
+        ];
+        tree_section("Sanitization Results", sanitization_items, false);
     }
 
     (sanitized, removed_count)

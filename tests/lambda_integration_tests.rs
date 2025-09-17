@@ -172,7 +172,7 @@ fn test_extreme_sequence_threshold() {
 fn test_ambiguous_content_threshold() {
     // Test the 5% ambiguous content threshold
     let sequence_length = 100;
-    let threshold_percent = 5;
+    let _threshold_percent = 5;
     let max_ambiguous = sequence_length / 20; // 5%
 
     assert_eq!(max_ambiguous, 5, "Should allow 5 ambiguous residues in 100");

@@ -219,11 +219,16 @@
 </ul>
 <h2 id="directory-structure"><a class="header" href="#directory-structure">Directory Structure</a></h2>
 <h3 id="casg-directory-structure"><a class="header" href="#casg-directory-structure">CASG Directory Structure</a></h3>
-<pre><code>~/.talaria/databases/
+<pre><code>${TALARIA_HOME}/databases/
 ├── manifests/                      # Database-specific manifest files
-│   ├── uniprot-swissprot.json     # SwissProt manifest
+│   ├── uniprot-swissprot.json     # SwissProt manifest (filename uses -)
 │   ├── ncbi-nr.json                # NR database manifest
 │   └── custom-mydb.json            # Custom database manifests
+├── profiles/                       # Reduction profiles
+│   ├── 30-percent                 # Hash reference to 30% reduction manifest
+│   ├── 50-percent                 # Hash reference to 50% reduction manifest
+│   ├── auto-detect                # Auto-detected reduction profile
+│   └── blast-optimized            # Custom named profile
 ├── chunks/                         # Content-addressed chunk storage
 │   ├── ab/                         # Two-letter prefix directories
 │   │   └── abc123...               # SHA256-named chunk files
@@ -234,6 +239,12 @@
         ├── nodes.dmp
         └── names.dmp
 </code></pre>
+<p><strong>Note on Naming Conventions:</strong></p>
+<ul>
+<li>Database references use “/” separator: <code>uniprot/swissprot</code>, <code>custom/mydb</code></li>
+<li>Manifest filenames use “-” separator: <code>uniprot-swissprot.json</code></li>
+<li>Reduction profiles are stored separately, not as new databases</li>
+</ul>
 <h2 id="database-download"><a class="header" href="#database-download">Database Download</a></h2>
 <h3 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h3>
 <p>The <code>database download</code> command intelligently handles both initial downloads and updates:</p>
@@ -304,7 +315,7 @@ talaria database update-taxonomy
 <pre><code class="language-bash">talaria database download uniprot \
   -d swissprot \
   --taxonomy
-# Downloads to: ~/.talaria/databases/data/uniprot/swissprot/YYYY-MM-DD/
+# Downloads to: ${TALARIA_HOME}/databases/data/uniprot/swissprot/YYYY-MM-DD/
 </code></pre>
 <h3 id="ncbi"><a class="header" href="#ncbi">NCBI</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Dataset</th><th>Size</th><th>Description</th><th>Command</th></tr></thead><tbody>
@@ -466,7 +477,7 @@ talaria database info database.fasta --format json
 <h3 id="database-settings"><a class="header" href="#database-settings">Database Settings</a></h3>
 <p>Configure database management in <code>talaria.toml</code>:</p>
 <pre><code class="language-toml">[database]
-# Base directory for databases (default: ~/.talaria/databases/data/)
+# Base directory for databases (default: ${TALARIA_HOME}/databases/data/)
 database_dir = "/data/talaria/databases"
 
 # Number of old versions to keep (0 = keep all)

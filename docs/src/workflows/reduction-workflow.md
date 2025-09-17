@@ -53,10 +53,18 @@ export TALARIA_THREADS=16             # Number of parallel threads
 
 ### Step 1: Initialize Workspace
 
-When reduction begins, Talaria creates a structured temporary workspace under `${TALARIA_HOME}/casg/temporal/`:
+When reduction begins, Talaria creates a structured temporary workspace. The location is configurable via the `TALARIA_WORKSPACE_DIR` environment variable (default: `/tmp/talaria`):
 
+```bash
+# Configure custom workspace location (optional)
+export TALARIA_WORKSPACE_DIR=/fast/ssd/talaria  # Use fast SSD
+# or
+export TALARIA_WORKSPACE_DIR=/scratch/talaria   # Use scratch space on HPC
 ```
-${TALARIA_HOME}/casg/temporal/{timestamp}_{uuid}/
+
+Workspace structure:
+```
+${TALARIA_WORKSPACE_DIR}/{timestamp}_{uuid}/    # Default: /tmp/talaria/{timestamp}_{uuid}/
 ├── input/                 # Original input files
 ├── sanitized/            # Cleaned sequences
 ├── reference_selection/  # Selection process files
@@ -249,16 +257,35 @@ for chunk in chunks {
 
 Finally, Talaria produces the reduced database and metadata:
 
-#### 6.1 Reference FASTA
+#### 6.1 For Database Reductions (from CASG)
+When reducing a database from the repository (e.g., `talaria reduce custom/cholera`):
+- **Profile Storage**: Reduction is stored as a profile in `${TALARIA_HOME}/databases/profiles/`
+- **No New Database**: Does NOT create a separate database entry
+- **Association**: Profile is associated with the original database
+
 ```bash
-# Output location: specified output file or ${TALARIA_HOME}/databases/
+# Example: After reducing custom/cholera
+${TALARIA_HOME}/databases/
+├── profiles/
+│   └── auto-detect          # Hash reference to reduction manifest
+├── manifests/
+│   └── custom-cholera.json  # Original database (unchanged)
+└── chunks/                  # Shared chunk storage
+```
+
+#### 6.2 For File-based Reductions
+When reducing a standalone FASTA file with `-o` option:
+
+##### Reference FASTA
+```bash
+# Output location: specified output file
 >sp|P12345|PROT_HUMAN Human protein
 MKTIIALSYIFCLVFADYKDDDDK...
 >sp|Q67890|PROT_MOUSE Mouse protein
 MKTIIALSYIFCLVFADYKDDDDK...
 ```
 
-#### 6.2 Delta File
+##### Delta File
 ```bash
 # Automatically generated: output.deltas.tal
 {
@@ -382,10 +409,14 @@ talaria reduce --no-align-select
 #### 3. Workspace Errors
 ```bash
 # Check workspace
-ls -la ${TALARIA_HOME}/casg/temporal/
+ls -la ${TALARIA_WORKSPACE_DIR}/
+# or if using default
+ls -la /tmp/talaria/
 
 # Clean corrupted workspaces
-rm -rf ${TALARIA_HOME}/casg/temporal/*
+rm -rf ${TALARIA_WORKSPACE_DIR}/*
+# or if using default
+rm -rf /tmp/talaria/*
 
 # Check disk space
 df -h ${TALARIA_HOME}

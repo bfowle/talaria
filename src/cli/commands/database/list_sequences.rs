@@ -42,13 +42,19 @@ pub enum OutputFormat {
 pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
     use crate::core::database_manager::DatabaseManager;
     use crate::casg::assembler::FastaAssembler;
+    use crate::utils::progress::create_spinner;
     use std::io::Write;
+
+    // Show loading spinner while initializing
+    let spinner = create_spinner("Loading database information...");
 
     // Initialize database manager
     use crate::core::paths;
     let base_path = paths::talaria_databases_dir();
 
     let manager = DatabaseManager::new(Some(base_path.to_string_lossy().to_string()))?;
+
+    spinner.finish_and_clear();
 
     // Parse database reference
     let parts: Vec<&str> = args.database.split('/').collect();

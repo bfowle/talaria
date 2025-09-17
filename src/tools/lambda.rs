@@ -526,10 +526,11 @@ impl LambdaAligner {
             }
         }
 
+        use crate::cli::output::*;
         if std::env::var("TALARIA_DEBUG").is_ok() {
-            println!("    Found {} unique TaxIDs in FASTA headers", needed_taxids.len());
+            info(&format!("Found {} unique TaxIDs in FASTA headers", format_number(needed_taxids.len())));
         }
-        println!("    Found {} sequence-to-taxid mappings", acc2taxid_entries.len());
+        info(&format!("Found {} sequence-to-taxid mappings", format_number(acc2taxid_entries.len())));
 
         if needed_taxids.is_empty() {
             return Err(anyhow::anyhow!("No TaxIDs found in FASTA headers"));
@@ -546,7 +547,7 @@ impl LambdaAligner {
         for (accession, taxid) in &acc2taxid_entries {
             writeln!(acc_file, "{}\t{}\t{}\t0", accession, accession, taxid)?;
         }
-        println!("    Created accession2taxid file with {} entries", acc2taxid_entries.len());
+        success(&format!("Created accession2taxid file with {} entries", format_number(acc2taxid_entries.len())));
 
         // Load nodes.dmp to find all ancestors
         let nodes_file = taxdump_dir.join("nodes.dmp");
@@ -578,7 +579,11 @@ impl LambdaAligner {
             }
         }
 
-        println!("    With ancestors: {} total TaxIDs", all_taxids.len());
+        let taxonomy_items = vec![
+            ("Direct TaxIDs", format_number(needed_taxids.len())),
+            ("With ancestors", format_number(all_taxids.len())),
+        ];
+        tree_section("Taxonomy Summary", taxonomy_items, false);
 
         // Create filtered taxdump directory (clean if exists)
         let filtered_dir = self.get_temp_path("filtered_taxdump");
@@ -700,7 +705,8 @@ impl LambdaAligner {
             }
         }
 
-        println!("    With ancestors: {} total TaxIDs", all_needed_taxids.len());
+        use crate::cli::output::{success, format_number};
+        success(&format!("With ancestors: {} total TaxIDs", format_number(all_needed_taxids.len())));
 
         // Filter nodes.dmp
         let filtered_nodes = filtered_dir.join("nodes.dmp");
@@ -816,6 +822,7 @@ impl LambdaAligner {
 
     /// Create a LAMBDA index from a FASTA file
     pub fn create_index(&mut self, fasta_path: &Path) -> Result<PathBuf> {
+        use crate::cli::output::{tree_section, warning, info, success};
         let index_path = self.get_temp_path("lambda_index.lba");
 
         // Clean up any existing index file to avoid conflicts
@@ -868,16 +875,19 @@ impl LambdaAligner {
                         Ok((filtered_dir, acc2taxid_file)) => {
                             cmd.arg("--tax-dump-dir").arg(&filtered_dir);
                             cmd.arg("--acc-tax-map").arg(&acc2taxid_file);
-                            println!("    Using filtered taxonomy database: {:?}", filtered_dir);
-                            println!("    Using header-based accession2taxid: {:?}", acc2taxid_file.file_name().unwrap_or_default());
+                            let taxonomy_config = vec![
+                                ("Database", format!("{:?}", filtered_dir)),
+                                ("Accession mapping", format!("{:?}", acc2taxid_file.file_name().unwrap_or_default())),
+                            ];
+                            tree_section("Taxonomy Configuration", taxonomy_config, false);
                         }
                         Err(e) => {
-                            eprintln!("    Warning: Failed to filter taxonomy: {}", e);
+                            warning(&format!("Failed to filter taxonomy: {}", e));
                             cmd.arg("--tax-dump-dir").arg(tax_dump_dir);
-                            println!("    Using full taxonomy database: {:?}", tax_dump_dir);
+                            info(&format!("Using full taxonomy database: {:?}", tax_dump_dir));
                         }
                     }
-                    println!("  Taxonomy enabled via TaxID in headers (CASG source of truth)");
+                    success("Taxonomy enabled via TaxID in headers (CASG source of truth)");
                 } else if has_idmapping {
                     // Fallback to traditional accession mapping approach
                     println!("  No TaxID in headers, using accession2taxid mapping...");
@@ -918,13 +928,18 @@ impl LambdaAligner {
 
                     // Use filtered resources
                     cmd.arg("--tax-dump-dir").arg(&filtered_taxdump);
-                    println!("  Using taxonomy database: {:?}", filtered_taxdump);
 
                     if let Some(acc_map) = filtered_acc_map {
                         cmd.arg("--acc-tax-map").arg(&acc_map);
-                        println!("  Using accession-to-taxid mapping: {:?}", acc_map.file_name().unwrap_or_default());
+                        let taxonomy_items = vec![
+                            ("Database", format!("{:?}", filtered_taxdump)),
+                            ("Accession mapping", format!("{:?}", acc_map.file_name().unwrap_or_default())),
+                        ];
+                        tree_section("Taxonomy Configuration", taxonomy_items, false);
+                    } else {
+                        info(&format!("Using taxonomy database: {:?}", filtered_taxdump));
                     }
-                    println!("  Full taxonomy features enabled");
+                    success("Full taxonomy features enabled");
                 }
             } else if tax_dump_dir.exists() {
                 // We have taxdump but no way to map sequences
@@ -1047,12 +1062,13 @@ impl LambdaAligner {
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
 
-        println!("  Starting LAMBDA search...");
+        use crate::cli::output::*;
+        action("Starting LAMBDA search...");
         let mut child = cmd.spawn()
             .context("Failed to start LAMBDA searchp")?;
 
         let pid = child.id();
-        println!("  LAMBDA process PID: {} (monitor with: ps aux | grep {})", pid, pid);
+        info(&format!("LAMBDA process PID: {} (monitor with: ps aux | grep {})", pid, pid));
 
         // Start memory monitoring thread if debug mode
         let monitor_handle = if std::env::var("TALARIA_DEBUG").is_ok() {
@@ -1221,12 +1237,13 @@ impl LambdaAligner {
         let mut extreme_sequences = Vec::new();
 
         // Create index once for all batches
-        println!("Creating reference index...");
+        use crate::cli::output::*;
+        action("Creating reference index...");
         let reference_path = self.get_temp_path("reference.fasta");
         Self::write_fasta_with_taxid(&reference_path, reference_sequences)?;
         let index_path = self.create_index(&reference_path)?;
-        println!("  Reference index created (size: {:.1} MB)",
-            fs::metadata(&index_path).map(|m| m.len() as f64 / 1_048_576.0).unwrap_or(0.0));
+        success(&format!("Reference index created (size: {:.1} MB)",
+            fs::metadata(&index_path).map(|m| m.len() as f64 / 1_048_576.0).unwrap_or(0.0)));
 
         // Pre-scan for problematic sequences and separate extreme ones
         for seq in query_sequences {
@@ -1292,9 +1309,12 @@ impl LambdaAligner {
         // Calculate total amino acids for informational purposes
         let total_aa: usize = query_sequences.iter().map(|s| s.len()).sum();
 
-        println!("Processing {} sequences ({} total amino acids)",
-                 total_sequences, total_aa);
-        println!("  Max amino acids per batch: {}", max_batch_aa);
+        let processing_items = vec![
+            ("Total sequences", format_number(total_sequences)),
+            ("Total amino acids", format_number(total_aa)),
+            ("Max AA per batch", format_number(max_batch_aa)),
+        ];
+        tree_section("Processing Setup", processing_items, false);
 
         for seq in query_sequences {
             let seq_len = seq.len();
@@ -1305,11 +1325,11 @@ impl LambdaAligner {
                 // Process current batch before the extreme sequence
                 total_batches += 1;
                 let percent_complete = sequences_processed as f64 / total_sequences as f64 * 100.0;
-                println!("\n  Processing batch {} ({:.1}% complete) - {} sequences, {} aa...",
-                         total_batches, percent_complete, current_batch.len(), current_batch_aa);
+                subsection_header(&format!("Batch {} ({:.1}% complete) - {} sequences, {} aa",
+                         total_batches, percent_complete, format_number(current_batch.len()), format_number(current_batch_aa)));
 
                 let batch_results = self.process_batch(&current_batch, &index_path, batch_idx)?;
-                println!("    Found {} alignments", batch_results.len());
+                success(&format!("Found {} alignments", format_number(batch_results.len())));
                 all_results.extend(batch_results);
                 sequences_processed += current_batch.len();
 
@@ -1323,11 +1343,11 @@ impl LambdaAligner {
                 // Process current batch
                 total_batches += 1;
                 let percent_complete = sequences_processed as f64 / total_sequences as f64 * 100.0;
-                println!("\n  Processing batch {} ({:.1}% complete) - {} sequences, {} aa...",
-                         total_batches, percent_complete, current_batch.len(), current_batch_aa);
+                subsection_header(&format!("Batch {} ({:.1}% complete) - {} sequences, {} aa",
+                         total_batches, percent_complete, format_number(current_batch.len()), format_number(current_batch_aa)));
 
                 let batch_results = self.process_batch(&current_batch, &index_path, batch_idx)?;
-                println!("    Found {} alignments", batch_results.len());
+                success(&format!("Found {} alignments", format_number(batch_results.len())));
                 all_results.extend(batch_results);
                 sequences_processed += current_batch.len();
 
@@ -1356,7 +1376,7 @@ impl LambdaAligner {
                              total_batches, percent_complete, current_batch.len(), current_batch_aa);
 
                     let batch_results = self.process_batch(&current_batch, &index_path, batch_idx)?;
-                    println!("    Found {} alignments", batch_results.len());
+                    success(&format!("Found {} alignments", format_number(batch_results.len())));
                     all_results.extend(batch_results);
                     sequences_processed += current_batch.len();
 
@@ -1372,7 +1392,7 @@ impl LambdaAligner {
                          total_batches, percent_complete, seq_len);
 
                 let batch_results = self.process_batch(&[seq.clone()], &index_path, batch_idx)?;
-                println!("    Found {} alignments", batch_results.len());
+                success(&format!("Found {} alignments", format_number(batch_results.len())));
                 all_results.extend(batch_results);
                 sequences_processed += 1;
                 batch_idx += 1;
@@ -1514,12 +1534,13 @@ impl LambdaAligner {
 
     /// Run all-vs-all alignment (self-alignment) - optional behavior
     pub fn search_all_vs_all(&mut self, sequences: &[Sequence]) -> Result<Vec<AlignmentResult>> {
-        println!("Running LAMBDA all-vs-all alignment on {} sequences...", sequences.len());
+        use crate::cli::output::*;
+        section_header(&format!("LAMBDA All-vs-All Alignment ({} sequences)", format_number(sequences.len())));
 
         // For large datasets, use sampling
         const MAX_SEQUENCES_FOR_FULL: usize = 5000;
         let sequences_to_use = if sequences.len() > MAX_SEQUENCES_FOR_FULL {
-            println!("Large dataset detected, sampling {} sequences...", MAX_SEQUENCES_FOR_FULL);
+            warning(&format!("Large dataset detected, sampling {} sequences...", format_number(MAX_SEQUENCES_FOR_FULL)));
             return self.run_sampled_alignment(sequences, MAX_SEQUENCES_FOR_FULL);
         } else {
             sequences
@@ -2191,7 +2212,7 @@ mod tests {
         std::env::set_var("TALARIA_PRESERVE_LAMBDA_ON_FAILURE", "1");
 
         let temp_dir = TempDir::new().unwrap();
-        let mut aligner = LambdaAligner::new(temp_dir.path().join("lambda3")).ok();
+        let aligner = LambdaAligner::new(temp_dir.path().join("lambda3")).ok();
 
         // Clean up env var
         std::env::remove_var("TALARIA_PRESERVE_LAMBDA_ON_FAILURE");
@@ -2298,7 +2319,7 @@ mod tests {
 
         // Create aligner with workspace
         let temp_dir = TempDir::new().unwrap();
-        let mut aligner = LambdaAligner::new(temp_dir.path().join("lambda3"))
+        let aligner = LambdaAligner::new(temp_dir.path().join("lambda3"))
             .unwrap_or_else(|_| LambdaAligner {
                 binary_path: PathBuf::from("/dummy"),
                 temp_dir: PathBuf::new(),
@@ -2360,8 +2381,6 @@ mod tests {
 
     #[test]
     fn test_workspace_fallback() {
-        use crate::utils::temp_workspace::{TempWorkspace, WorkspaceConfig};
-        use std::sync::{Arc, Mutex};
 
         // Test that aligner falls back to regular temp dir when no workspace
         let mut aligner = LambdaAligner {

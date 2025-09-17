@@ -44,6 +44,7 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     use crate::casg::types::{ChunkingStrategy, ChunkMetadata, TemporalManifest, SHA256Hash};
     use crate::bio::fasta::parse_fasta;
     use crate::utils::progress::create_progress_bar;
+    use crate::cli::output::*;
     use chrono::Utc;
 
     // Validate input file
@@ -76,16 +77,16 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
         );
     }
 
-    eprintln!("\u{25cf} Adding custom database: {}/{}", args.source, dataset);
+    info(&format!("Adding database: {}/{}", args.source, dataset));
 
     // Create directories
     std::fs::create_dir_all(&db_path)?;
 
     // Read FASTA file
-    eprintln!("\u{25cf} Reading FASTA file: {:?}", args.input);
+    action(&format!("Reading FASTA file: {:?}", args.input));
     let sequences = parse_fasta(&args.input)?;
     let sequence_count = sequences.len();
-    eprintln!("  Read {} sequences", sequence_count);
+    tree_item(false, "Sequences read", Some(&format_number(sequence_count)));
 
     // Create chunker
     let strategy = ChunkingStrategy {
@@ -99,9 +100,9 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     let chunker = TaxonomicChunker::new(strategy);
 
     // Chunk the sequences
-    eprintln!("\u{25cf} Chunking sequences...");
+    action("Chunking sequences...");
     let chunks = chunker.chunk_sequences(sequences)?;
-    eprintln!("  Created {} chunks", chunks.len());
+    tree_item(false, "Chunks created", Some(&format_number(chunks.len())));
 
     // Store chunks in CASG
     let pb = create_progress_bar(chunks.len() as u64, "Storing chunks");

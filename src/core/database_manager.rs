@@ -21,10 +21,6 @@ pub struct DatabaseManager {
 
 impl DatabaseManager {
     /// Create a new CASG database manager
-    pub fn get_storage(&self) -> &crate::casg::storage::CASGStorage {
-        &self.repository.storage
-    }
-
     pub fn new(base_dir: Option<String>) -> Result<Self> {
         let base_path = if let Some(dir) = base_dir {
             PathBuf::from(dir)
@@ -58,33 +54,7 @@ impl DatabaseManager {
     ) -> Result<DownloadResult> {
         // Check if we have a cached manifest
         let manifest_path = self.get_manifest_path(source);
-        let mut has_existing = manifest_path.exists();
-
-        // Check for old manifest location and migrate if needed
-        if !has_existing {
-            let old_manifest_path = self.base_path.join("manifest.json");
-            if old_manifest_path.exists() {
-                progress_callback("Migrating manifest from old location...");
-
-                // Ensure manifests directory exists
-                if let Some(parent) = manifest_path.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-
-                // Copy the old manifest to the new location
-                std::fs::copy(&old_manifest_path, &manifest_path)?;
-
-                // Also copy .etag file if it exists
-                let old_etag = old_manifest_path.with_extension("etag");
-                if old_etag.exists() {
-                    let new_etag = manifest_path.with_extension("etag");
-                    std::fs::copy(old_etag, new_etag).ok();
-                }
-
-                has_existing = true;
-                progress_callback("Manifest migration complete");
-            }
-        }
+        let has_existing = manifest_path.exists();
 
         // If we have an existing manifest, check for updates
         if has_existing {
@@ -889,6 +859,30 @@ impl DatabaseManager {
         Ok(())
     }
 
+    /// Get reduction profiles for a specific database
+    pub fn get_reduction_profiles_for_database(&self, db_name: &str) -> Result<Vec<String>> {
+        use crate::storage::traits::ReductionStorage;
+
+        let mut matching_profiles = Vec::new();
+
+        // List all profiles
+        let profiles = self.repository.storage.list_reduction_profiles()?;
+
+        // Check each profile to see if it belongs to this database
+        for profile_name in &profiles {
+            if let Ok(Some(manifest)) = self.repository.storage.get_reduction_by_profile(profile_name) {
+                // Check if the source_database matches
+                if manifest.source_database == db_name ||
+                   manifest.source_database == db_name.replace('-', "/") ||
+                   manifest.source_database == db_name.replace('/', "-") {
+                    matching_profiles.push(profile_name.clone());
+                }
+            }
+        }
+
+        Ok(matching_profiles)
+    }
+
     /// List all available databases in CASG
     pub fn list_databases(&self) -> Result<Vec<DatabaseInfo>> {
         let mut databases = Vec::new();
@@ -914,20 +908,18 @@ impl DatabaseManager {
                 if let Ok(content) = std::fs::read_to_string(&path) {
                     if let Ok(manifest) = serde_json::from_str::<crate::casg::TemporalManifest>(&content) {
                         // Use source_database field if available, otherwise parse from filename
-                        let name = if let Some(ref source_db) = manifest.source_database {
-                            // Ensure slash format even for old manifests that might have hyphens
-                            if source_db.contains('-') && !source_db.contains('/') {
-                                source_db.replace('-', "/")
-                            } else {
-                                source_db.clone()
-                            }
-                        } else {
-                            // Parse from filename like "uniprot-swissprot.json"
-                            path.file_stem()
-                                .and_then(|s| s.to_str())
-                                .map(|s| s.replace('-', "/"))
-                                .unwrap_or_else(|| "unknown/database".to_string())
-                        };
+                        let name = manifest.source_database.clone()
+                            .unwrap_or_else(|| {
+                                // Parse from filename like "custom-cholera.json" -> "custom/cholera"
+                                path.file_stem()
+                                    .and_then(|s| s.to_str())
+                                    .map(|s| s.replace('-', "/"))
+                                    .unwrap_or_else(|| "unknown/database".to_string())
+                            });
+
+                        // Get reduction profiles for this database
+                        let reduction_profiles = self.get_reduction_profiles_for_database(&name)
+                            .unwrap_or_default();
 
                         databases.push(DatabaseInfo {
                             name,
@@ -935,63 +927,8 @@ impl DatabaseManager {
                             created_at: manifest.created_at,
                             chunk_count: manifest.chunk_index.len(),
                             total_size: manifest.chunk_index.iter().map(|c| c.size).sum(),
+                            reduction_profiles,
                         });
-                    }
-                }
-            }
-        }
-
-        // Iterate through source directories (e.g., uniprot, ncbi, custom)
-        for source_entry in std::fs::read_dir(&self.base_path)? {
-            let source_entry = source_entry?;
-            let source_path = source_entry.path();
-
-            // Skip non-directories and special directories
-            if !source_path.is_dir() {
-                continue;
-            }
-
-            let source_name = source_path.file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or_default();
-
-            // Skip system directories
-            if source_name.starts_with('.') ||
-               source_name == "chunks" ||
-               source_name == "temporal" ||
-               source_name == "taxonomy" ||
-               source_name == "storage" {
-                continue;
-            }
-
-            // Look for database directories within each source
-            for db_entry in std::fs::read_dir(&source_path)? {
-                let db_entry = db_entry?;
-                let db_path = db_entry.path();
-
-                if !db_path.is_dir() {
-                    continue;
-                }
-
-                // Check for manifest.json in this database directory
-                let manifest_path = db_path.join("manifest.json");
-                if manifest_path.exists() {
-                    if let Ok(content) = std::fs::read_to_string(&manifest_path) {
-                        if let Ok(manifest) = serde_json::from_str::<crate::casg::TemporalManifest>(&content) {
-                            let db_name = db_path.file_name()
-                                .and_then(|s| s.to_str())
-                                .unwrap_or("unknown");
-
-                            let full_name = format!("{}/{}", source_name, db_name);
-
-                            databases.push(DatabaseInfo {
-                                name: full_name,
-                                version: manifest.version,
-                                created_at: manifest.created_at,
-                                chunk_count: manifest.chunk_index.len(),
-                                total_size: manifest.chunk_index.iter().map(|c| c.size).sum(),
-                            });
-                        }
                     }
                 }
             }
@@ -1060,6 +997,11 @@ impl DatabaseManager {
     /// Clean up expired processing states
     pub fn cleanup_expired_states(&self) -> Result<usize> {
         self.repository.storage.cleanup_expired_states()
+    }
+
+    /// Get access to the underlying storage
+    pub fn get_storage(&self) -> &crate::casg::CASGStorage {
+        &self.repository.storage
     }
 
     /// Check for taxonomy updates and download if available
@@ -1285,6 +1227,7 @@ pub struct DatabaseInfo {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub chunk_count: usize,
     pub total_size: usize,
+    pub reduction_profiles: Vec<String>,
 }
 
 #[derive(Debug)]

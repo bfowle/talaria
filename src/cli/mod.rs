@@ -1,6 +1,8 @@
+pub mod charts;
 pub mod commands;
 pub mod formatter;
 pub mod interactive;
+pub mod output;
 pub mod stats_display;
 pub mod visualize;
 

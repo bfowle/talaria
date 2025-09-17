@@ -5,6 +5,7 @@ pub mod text;
 pub mod html;
 pub mod json;
 pub mod traits;
+pub mod reduction_html;
 
 pub use traits::{
     Reporter, InteractiveReporter, StreamingReporter, TemplateReporter,

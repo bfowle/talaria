@@ -130,15 +130,14 @@ impl Reducer {
 
         // Step 0: Sanitize sequences by removing those with ambiguous residues
         let (sanitized_sequences, removed_count) = if !self.silent {
-            println!("Sanitizing sequences (removing ambiguous residues)...");
+            use crate::cli::output::*;
+            action("Sanitizing sequences (removing ambiguous residues)...");
             crate::bio::sequence::sanitize_sequences(sequences)
         } else {
             crate::bio::sequence::sanitize_sequences(sequences)
         };
 
-        if removed_count > 0 && !self.silent {
-            println!("  Removed {} sequences during sanitization", removed_count);
-        }
+        // Sanitization results are now shown by sanitize_sequences function
 
         // Update workspace stats if available
         if let Some(workspace) = &self.workspace {
@@ -202,7 +201,8 @@ impl Reducer {
             }
 
             if !self.silent {
-                println!("Using LAMBDA aligner for intelligent auto-detection...");
+                use crate::cli::output::*;
+                info("Using LAMBDA aligner for intelligent auto-detection...");
             }
 
             selector.select_references_with_lambda(sequences.clone())
@@ -232,7 +232,8 @@ impl Reducer {
         let deltas = if self.no_deltas {
             // Skip delta encoding entirely
             if !self.silent {
-                println!("Skipping delta encoding (--no-deltas flag)");
+                use crate::cli::output::*;
+                info("Skipping delta encoding (--no-deltas flag)");
             }
             Vec::new()
         } else {
@@ -241,11 +242,15 @@ impl Reducer {
             
             // Print informative message about delta encoding
             if !self.silent && total_before_filter > 0 {
-                println!("\nStarting delta encoding for {} child sequences...", total_before_filter);
+                use crate::cli::output::*;
+                section_header(&format!("Delta Encoding ({} sequences)", format_number(total_before_filter)));
                 if total_before_filter > 10000 {
-                    println!("  Note: This may take several minutes for large datasets.");
-                    println!("  Consider using --no-deltas for faster processing without reconstruction capability.");
-                    println!("  Or use --max-align-length to limit alignment to shorter sequences.");
+                    let tips = vec![
+                        ("Time estimate", "Several minutes for large datasets".to_string()),
+                        ("Speed tip", "Use --no-deltas for faster processing".to_string()),
+                        ("Alternative", "Use --max-align-length to limit sequence length".to_string()),
+                    ];
+                    tree_section("Performance Notes", tips, false);
                 }
             }
             
@@ -273,7 +278,8 @@ impl Reducer {
             }
             
             if !self.silent && total_children > 0 {
-                println!("  Processing {} sequences for delta encoding...", total_children);
+                use crate::cli::output::*;
+                action(&format!("Processing {} sequences for delta encoding...", format_number(total_children)));
             }
             
             let encoder = DeltaEncoder::new();
@@ -390,9 +396,13 @@ impl Reducer {
         }
         
         if skipped_count > 0 && !self.silent {
-            println!("  Filtered out {} sequences longer than {} residues", 
-                     skipped_count, self.max_align_length);
-            println!("  (longest sequence seen: {} residues)", max_length_seen);
+            use crate::cli::output::*;
+            let filter_items = vec![
+                ("Filtered sequences", format_number(skipped_count)),
+                ("Length threshold", format!("{} residues", format_number(self.max_align_length))),
+                ("Longest seen", format!("{} residues", format_number(max_length_seen))),
+            ];
+            tree_section("Sequence Filtering", filter_items, false);
         }
 
         filtered

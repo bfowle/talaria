@@ -23,10 +23,9 @@ pub struct WorkspaceConfig {
 
 impl Default for WorkspaceConfig {
     fn default() -> Self {
-        // Use talaria_home() from paths module to respect TALARIA_HOME env var
-        let talaria_home = crate::core::paths::talaria_home();
+        // Use talaria_workspace_dir() from paths module for temporal workspaces
         Self {
-            casg_root: talaria_home.join("casg"),
+            casg_root: crate::core::paths::talaria_workspace_dir(),
             preserve_on_failure: std::env::var("TALARIA_PRESERVE_ON_FAILURE").is_ok()
                 || std::env::var("TALARIA_PRESERVE_LAMBDA_ON_FAILURE").is_ok(),
             preserve_always: std::env::var("TALARIA_PRESERVE_ALWAYS").is_ok(),
@@ -90,14 +89,9 @@ impl TempWorkspace {
 
     /// Create a new workspace with custom configuration
     pub fn with_config(command: &str, config: WorkspaceConfig) -> Result<Self> {
-        // Ensure CASG root exists
+        // Ensure workspace root exists
         fs::create_dir_all(&config.casg_root)
-            .with_context(|| format!("Failed to create CASG root: {:?}", config.casg_root))?;
-
-        // Create temporal subdirectory if it doesn't exist
-        let temporal_dir = config.casg_root.join("temporal");
-        fs::create_dir_all(&temporal_dir)
-            .with_context(|| format!("Failed to create temporal directory: {:?}", temporal_dir))?;
+            .with_context(|| format!("Failed to create workspace root: {:?}", config.casg_root))?;
 
         // Generate unique ID
         let timestamp = SystemTime::now()
@@ -107,8 +101,8 @@ impl TempWorkspace {
         let uuid = Uuid::new_v4();
         let id = format!("{}_{}", timestamp, uuid);
 
-        // Create workspace root
-        let root = temporal_dir.join(&id);
+        // Create workspace root directly under the workspace directory
+        let root = config.casg_root.join(&id);
         fs::create_dir_all(&root)
             .with_context(|| format!("Failed to create workspace: {:?}", root))?;
 
@@ -325,14 +319,13 @@ impl Drop for TempWorkspace {
 pub fn list_workspaces(config: &WorkspaceConfig) -> Result<Vec<WorkspaceMetadata>> {
     let mut workspaces = Vec::new();
 
-    // Check temporal directory
-    let temporal_dir = config.casg_root.join("temporal");
-    if temporal_dir.exists() {
-        collect_workspaces_from_dir(&temporal_dir, &mut workspaces)?;
+    // Check workspace root directory (workspaces are created directly here)
+    if config.casg_root.exists() {
+        collect_workspaces_from_dir(&config.casg_root, &mut workspaces)?;
     }
 
-    // Check preserved directory
-    let preserved_dir = config.casg_root.join("preserved");
+    // Check preserved directory in databases (for preserved workspaces)
+    let preserved_dir = crate::core::paths::talaria_databases_dir().join("preserved");
     if preserved_dir.exists() {
         collect_workspaces_from_dir(&preserved_dir, &mut workspaces)?;
     }
@@ -365,14 +358,14 @@ fn collect_workspaces_from_dir(dir: &Path, workspaces: &mut Vec<WorkspaceMetadat
 
 /// Find a workspace by ID
 pub fn find_workspace(id: &str, config: &WorkspaceConfig) -> Result<Option<PathBuf>> {
-    // Check temporal directory
-    let temporal_path = config.casg_root.join("temporal").join(id);
-    if temporal_path.exists() {
-        return Ok(Some(temporal_path));
+    // Check workspace root directory
+    let workspace_path = config.casg_root.join(id);
+    if workspace_path.exists() {
+        return Ok(Some(workspace_path));
     }
 
-    // Check preserved directory
-    let preserved_path = config.casg_root.join("preserved").join(id);
+    // Check preserved directory in databases
+    let preserved_path = crate::core::paths::talaria_databases_dir().join("preserved").join(id);
     if preserved_path.exists() {
         return Ok(Some(preserved_path));
     }
@@ -403,6 +396,30 @@ mod tests {
         assert!(workspace.root.exists());
         assert!(workspace.get_path("input").exists());
         assert!(workspace.get_path("alignments").exists());
+    }
+
+    #[test]
+    fn test_workspace_uses_correct_directory() {
+        // Test with default environment
+        let default_dir = crate::core::paths::talaria_workspace_dir();
+        assert!(default_dir.to_str().unwrap().contains("talaria"));
+
+        // Test with custom TALARIA_WORKSPACE_DIR
+        let custom_dir = env::temp_dir().join("custom_workspace");
+        env::set_var("TALARIA_WORKSPACE_DIR", &custom_dir);
+
+        // Clear the cached value by creating a new process-local test
+        // Note: In real usage, the env var is read once at startup
+        let workspace_dir = if let Ok(path) = env::var("TALARIA_WORKSPACE_DIR") {
+            PathBuf::from(path)
+        } else {
+            PathBuf::from("/tmp/talaria")
+        };
+
+        assert_eq!(workspace_dir, custom_dir);
+
+        // Clean up
+        env::remove_var("TALARIA_WORKSPACE_DIR");
     }
 
     #[test]

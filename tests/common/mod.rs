@@ -10,7 +10,7 @@ use talaria::utils::temp_workspace::{TempWorkspace, WorkspaceConfig};
 
 /// Test environment that manages temporary directories and cleanup
 pub struct TestEnvironment {
-    temp_dir: TempDir,
+    _temp_dir: TempDir,
     pub talaria_home: PathBuf,
 }
 
@@ -22,12 +22,13 @@ impl TestEnvironment {
         std::fs::create_dir_all(&talaria_home).expect("Failed to create test home");
 
         TestEnvironment {
-            temp_dir,
+            _temp_dir: temp_dir,
             talaria_home,
         }
     }
 
     /// Get a path within the test environment
+    #[allow(dead_code)]
     pub fn path(&self, relative: &str) -> PathBuf {
         self.talaria_home.join(relative)
     }

@@ -1,8 +1,7 @@
 use clap::Args;
 use std::path::PathBuf;
-use comfy_table::{Table, Cell, Attribute, ContentArrangement, Color};
-use comfy_table::presets::UTF8_FULL;
-use comfy_table::modifiers::UTF8_ROUND_CORNERS;
+use crate::cli::output::*;
+use colored::*;
 
 #[derive(Args)]
 pub struct ListArgs {
@@ -38,12 +37,12 @@ pub enum SortField {
     Date,
 }
 
-pub fn run(_args: ListArgs) -> anyhow::Result<()> {
+pub fn run(args: ListArgs) -> anyhow::Result<()> {
     use crate::core::database_manager::DatabaseManager;
     use crate::utils::progress::create_spinner;
     use humansize::{format_size, BINARY};
 
-    println!("[•] Database Repository\n");
+    section_header("Database Repository");
 
     // Initialize database manager
     let spinner = create_spinner("Scanning for databases...");
@@ -52,45 +51,104 @@ pub fn run(_args: ListArgs) -> anyhow::Result<()> {
     spinner.finish_and_clear();
 
     if databases.is_empty() {
-        println!("No databases found in repository.");
-        println!("Use 'talaria database download' to get started.");
+        empty("No databases found in repository");
+        info("Use 'talaria database download' to get started.");
         return Ok(());
     }
 
-    // Create table
-    let mut table = Table::new();
-    table
-        .load_preset(UTF8_FULL)
-        .apply_modifier(UTF8_ROUND_CORNERS)
-        .set_content_arrangement(ContentArrangement::Dynamic);
+    // Use tree structure for detailed view or table for normal view
+    if args.detailed {
+        // Tree structure view
+        for (i, db) in databases.iter().enumerate() {
+            let is_last = i == databases.len() - 1;
+            tree_item(false, &db.name, None);
 
-    table.set_header(vec![
-        Cell::new("Database").add_attribute(Attribute::Bold).fg(Color::Green),
-        Cell::new("Version").add_attribute(Attribute::Bold).fg(Color::Green),
-        Cell::new("Chunks").add_attribute(Attribute::Bold).fg(Color::Green),
-        Cell::new("Size").add_attribute(Attribute::Bold).fg(Color::Green),
-        Cell::new("Created").add_attribute(Attribute::Bold).fg(Color::Green),
-    ]);
+            let items = vec![
+                ("Version", db.version.clone()),
+                ("Created", db.created_at.format("%Y-%m-%d").to_string()),
+                ("Chunks", format_number(db.chunk_count)),
+                ("Size", format_size(db.total_size, BINARY)),
+            ];
 
-    for db in databases {
-        table.add_row(vec![
-            Cell::new(&db.name),
-            Cell::new(&db.version),
-            Cell::new(db.chunk_count.to_string()),
-            Cell::new(format_size(db.total_size, BINARY)),
-            Cell::new(db.created_at.format("%Y-%m-%d").to_string()),
+            // Add reductions if present
+            if !db.reduction_profiles.is_empty() {
+                tree_item_continued("Storage", None);
+                for (label, value) in &items {
+                    println!("│  │  {} {}: {}", "├─".dimmed(), label, value);
+                }
+                tree_item_continued_last("Reductions", None);
+                for (j, profile) in db.reduction_profiles.iter().enumerate() {
+                    let is_last_profile = j == db.reduction_profiles.len() - 1;
+                    if is_last_profile {
+                        println!("│     {} {}", "└─".dimmed(), profile);
+                    } else {
+                        println!("│     {} {}", "├─".dimmed(), profile);
+                    }
+                }
+            } else {
+                for (j, (label, value)) in items.iter().enumerate() {
+                    let is_last_item = j == items.len() - 1;
+                    if is_last_item {
+                        tree_item_continued_last(label, Some(value));
+                    } else {
+                        tree_item_continued(label, Some(value));
+                    }
+                }
+            }
+
+            if !is_last {
+                println!();
+            }
+        }
+    } else {
+        // Table view
+        let mut table = create_standard_table();
+
+        table.set_header(vec![
+            header_cell("Database"),
+            header_cell("Version"),
+            header_cell("Chunks"),
+            header_cell("Size"),
+            header_cell("Reductions"),
+            header_cell("Created"),
         ]);
+
+        for db in databases {
+            use comfy_table::Cell;
+
+            // Format reduction profiles
+            let reductions = if db.reduction_profiles.is_empty() {
+                "-".to_string()
+            } else {
+                db.reduction_profiles.join(", ")
+            };
+
+            table.add_row(vec![
+                Cell::new(&db.name),
+                Cell::new(&db.version),
+                Cell::new(format_number(db.chunk_count)),
+                Cell::new(format_size(db.total_size, BINARY)),
+                Cell::new(&reductions),
+                Cell::new(db.created_at.format("%Y-%m-%d").to_string()),
+            ]);
+        }
+
+        println!("{}", table);
     }
 
-    println!("{}", table);
-
-    // Show repository stats
+    // Show repository stats as tree
     let stats = manager.get_stats()?;
-    println!("\n● Repository Statistics:");
-    println!("   Total chunks: {}", stats.total_chunks);
-    println!("   Total size: {}", format_size(stats.total_size, BINARY));
-    println!("   Compressed chunks: {}", stats.compressed_chunks);
-    println!("   Deduplication ratio: {:.2}x", stats.deduplication_ratio);
+    subsection_header("Repository Statistics");
+    let stats_items = vec![
+        ("Total chunks", format_number(stats.total_chunks)),
+        ("Total size", format_size(stats.total_size, BINARY)),
+        ("Compressed chunks", format_number(stats.compressed_chunks)),
+        ("Deduplication ratio", format!("{:.2}x", stats.deduplication_ratio)),
+    ];
+
+    for (i, (label, value)) in stats_items.iter().enumerate() {
+        tree_item(i == stats_items.len() - 1, label, Some(value));
+    }
 
     Ok(())
 }

@@ -517,56 +517,6 @@ impl crate::casg::delta::traits::BatchDeltaGenerator for DeltaGenerator {
     }
 }
 
-// Implement LegacyDeltaSupport for backward compatibility
-impl crate::casg::delta::traits::LegacyDeltaSupport for DeltaGenerator {
-    fn convert_legacy_deltas(
-        &self,
-        legacy_records: Vec<DeltaRecord>,
-        reference_hash: SHA256Hash,
-    ) -> Result<Vec<DeltaChunk>> {
-        // Use existing batch_into_chunks method
-        self.batch_into_chunks(legacy_records, reference_hash)
-    }
-
-    fn export_to_legacy(
-        &self,
-        delta_chunks: &[DeltaChunk],
-    ) -> Result<Vec<DeltaRecord>> {
-        let mut records = Vec::new();
-
-        for chunk in delta_chunks {
-            for delta_op in &chunk.deltas {
-                // Convert DeltaOperation back to DeltaRecord
-                let record = match delta_op {
-                    DeltaOperation::Modify { sequence_id, operations, .. } => {
-                        let mut ranges = Vec::new();
-                        for edit in operations {
-                            if let SeqEdit::Substitute { pos, new_base } = edit {
-                                ranges.push(crate::core::delta_encoder::DeltaRange {
-                                    start: *pos,
-                                    end: pos + 1,
-                                    substitution: vec![*new_base],
-                                });
-                            }
-                        }
-
-                        DeltaRecord {
-                            child_id: sequence_id.clone(),
-                            reference_id: "ref".to_string(),
-                            deltas: ranges,
-                            header_change: None,
-                            taxon_id: None,
-                        }
-                    }
-                    _ => continue, // Skip non-modify operations for legacy
-                };
-                records.push(record);
-            }
-        }
-
-        Ok(records)
-    }
-}
 
 #[cfg(test)]
 mod tests {

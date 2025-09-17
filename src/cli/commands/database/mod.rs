@@ -5,8 +5,12 @@ pub mod list;
 pub mod list_sequences;
 pub mod info;
 pub mod add;
+pub mod export;
+pub mod fetch;
 pub mod taxa_coverage;
 pub mod update_taxonomy;
+pub mod update;
+pub mod versions;
 
 use clap::{Args, Subcommand};
 
@@ -18,17 +22,32 @@ pub struct DatabaseArgs {
 
 #[derive(Subcommand)]
 pub enum DatabaseCommands {
-    /// Download biological databases
-    Download(download::DownloadArgs),
-
-    /// Add a custom database from a local FASTA file
-    Add(add::AddArgs),
-
     /// List downloaded databases
     List(list::ListArgs),
 
     /// Show information about a database
     Info(info::InfoArgs),
+
+    /// Download biological databases
+    Download(download::DownloadArgs),
+
+    /// Update existing databases (check for new versions)
+    Update(update::UpdateArgs),
+
+    /// Add a custom database from a local FASTA file
+    Add(add::AddArgs),
+
+    /// Export database from CASG to FASTA format
+    Export(export::ExportArgs),
+
+    /// Manage database versions
+    Versions(versions::VersionsArgs),
+
+    /// Fetch sequences by TaxID from UniProt
+    Fetch(fetch::FetchArgs),
+
+    /// Show repository statistics
+    Stats,
 
     /// List sequences in a database
     ListSequences(list_sequences::ListSequencesArgs),
@@ -39,23 +58,24 @@ pub enum DatabaseCommands {
     /// Update NCBI taxonomy data
     UpdateTaxonomy(update_taxonomy::UpdateTaxonomyArgs),
 
-    /// Show repository statistics
-    Stats,
-
     /// Initialize database repository
     Init,
 }
 
 pub fn run(args: DatabaseArgs) -> anyhow::Result<()> {
     match args.command {
-        DatabaseCommands::Download(args) => download::run(args),
-        DatabaseCommands::Add(args) => add::run(args),
         DatabaseCommands::List(args) => list::run(args),
         DatabaseCommands::Info(args) => info::run(args),
+        DatabaseCommands::Download(args) => download::run(args),
+        DatabaseCommands::Update(args) => update::run(args),
+        DatabaseCommands::Add(args) => add::run(args),
+        DatabaseCommands::Export(args) => export::run(args),
+        DatabaseCommands::Versions(args) => versions::run(args),
+        DatabaseCommands::Fetch(args) => fetch::run(args),
+        DatabaseCommands::Stats => run_stats(),
         DatabaseCommands::ListSequences(args) => list_sequences::run(args),
         DatabaseCommands::TaxaCoverage(args) => taxa_coverage::run(args),
         DatabaseCommands::UpdateTaxonomy(args) => update_taxonomy::run(args),
-        DatabaseCommands::Stats => run_stats(),
         DatabaseCommands::Init => run_init(),
     }
 }

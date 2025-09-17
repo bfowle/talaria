@@ -51,6 +51,9 @@ pub fn run(args: HistoryArgs) -> Result<()> {
     use crate::casg::CASGRepository;
     use crate::casg::temporal::TemporalIndex;
     use crate::utils::progress::create_spinner;
+    use crate::cli::output::*;
+
+    section_header("Version History");
 
     // Determine CASG path
     let casg_path = if let Some(path) = args.path.clone() {
@@ -92,9 +95,7 @@ pub fn run(args: HistoryArgs) -> Result<()> {
     if let Some(output_path) = args.output.clone() {
         std::fs::write(&output_path, report)
             .context("Failed to write output file")?;
-        println!("{} Report saved to {}",
-                 "✓".green().bold(),
-                 output_path.display());
+        success(&format!("Report saved to {}", output_path.display()));
     } else {
         println!("{}", report);
     }
@@ -108,11 +109,9 @@ fn generate_text_report(
     args: &HistoryArgs,
 ) -> Result<String> {
     use std::fmt::Write;
+    use crate::cli::output::*;
     let mut report = String::new();
 
-    writeln!(report, "\n{}", "═".repeat(80))?;
-    writeln!(report, "{:^80}", "VERSION HISTORY REPORT")?;
-    writeln!(report, "{}", "═".repeat(80))?;
     writeln!(report)?;
 
     // Get version history
@@ -128,13 +127,12 @@ fn generate_text_report(
 
     // Show timeline if requested
     if args.timeline {
-        writeln!(report, "{}", "Timeline:".bold().underline())?;
+        writeln!(report, "{}", "Timeline:".bold().cyan())?;
         generate_ascii_timeline(&mut report, &filtered_history)?;
         writeln!(report)?;
     }
 
-    // Show version details
-    writeln!(report, "{}", "Version History:".bold().underline())?;
+    // Show version details using tree structure
     writeln!(report)?;
 
     for (i, version) in filtered_history.iter().enumerate() {
@@ -142,15 +140,12 @@ fn generate_text_report(
             break;
         }
 
-        // Version header
-        writeln!(report, "{} Version: {}",
-                 "●".cyan().bold(),
+        // Version as tree root
+        writeln!(report, "├─ Version: {}",
                  version.version.bold())?;
-        writeln!(report, "  {}: {}",
-                 "Date".bold(),
+        writeln!(report, "│  ├─ Date: {}",
                  version.timestamp.format("%Y-%m-%d %H:%M:%S UTC"))?;
-        writeln!(report, "  {}: {}",
-                 "Type".bold(),
+        writeln!(report, "│  ├─ Type: {}",
                  version.version_type)?;
 
         if args.detailed {

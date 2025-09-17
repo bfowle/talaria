@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Content-Addressed Sequence Graph (CASG) represents a paradigm shift in how we store, distribute, and manage biological sequence databases. As genomic data doubles every seven months and protein databases grow exponentially, the traditional approach of downloading entire databases for each update has become unsustainable. CASG solves this crisis through a combination of content-addressed storage, cryptographic verification, and intelligent chunking that reduces update bandwidth by 99% while maintaining perfect data integrity.
+The Content-Addressed Sequence Graph (CASG) represents a paradigm shift in how we store, distribute, and manage biological sequence databases. As genomic data doubles every seven months and protein databases grow exponentially, the traditional approach of downloading entire databases for each update has become unsustainable. Talaria solves this crisis through a combination of content-addressed storage, cryptographic verification, and intelligent chunking that reduces update bandwidth by 99% while maintaining perfect data integrity.
 
 ### The Problem: Database Update Explosion
 

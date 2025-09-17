@@ -1,5 +1,5 @@
 use crate::bio::stats::SequenceStats;
-use crate::cli::visualize::{ascii_histogram, progress_bar, format_number};
+use crate::cli::visualize::{ascii_histogram, progress_bar};
 use clap::Args;
 use colored::*;
 use std::path::PathBuf;
@@ -75,88 +75,110 @@ pub fn run(args: StatsArgs) -> anyhow::Result<()> {
 }
 
 fn print_text_stats(stats: &SequenceStats, detailed: bool) -> anyhow::Result<()> {
-    println!("{}", "═══════════════════════════════════════════════════════════".blue());
-    println!("{}", "                    FASTA STATISTICS REPORT".blue().bold());
-    println!("{}", "═══════════════════════════════════════════════════════════".blue());
-    println!();
-    
-    // Basic metrics
-    println!("{} {}", "● SEQUENCE METRICS".yellow().bold(), "");
-    println!("  {} {}", "Total Sequences:".green(), format_number(stats.total_sequences));
-    println!("  {} {}", "Total Bases:".green(), format_number(stats.total_length));
-    println!("  {} {:.1} bp", "Average Length:".green(), stats.average_length);
-    println!("  {} {} bp", "Median Length:".green(), format_number(stats.median_length));
-    println!("  {} {} bp", "Min/Max Length:".green(), 
-             format!("{} / {}", format_number(stats.min_length), format_number(stats.max_length)));
-    println!("  {} {} bp", "N50:".green(), format_number(stats.n50));
-    println!("  {} {} bp", "N90:".green(), format_number(stats.n90));
+    use crate::cli::output::*;
+
+    section_header_with_line("FASTA Statistics Report");
+
+    // Sequence metrics as tree
+    subsection_header("Sequence Metrics");
+    tree_item(false, "Total Sequences", Some(&format_number(stats.total_sequences)));
+    tree_item(false, "Total Bases", Some(&format_number(stats.total_length)));
+
+    // Length statistics subtree
+    let length_items = vec![
+        ("Average", format!("{:.1} bp", stats.average_length)),
+        ("Median", format!("{} bp", format_number(stats.median_length))),
+        ("Min/Max", format!("{} / {} bp", format_number(stats.min_length), format_number(stats.max_length))),
+        ("N50", format!("{} bp", format_number(stats.n50))),
+        ("N90", format!("{} bp", format_number(stats.n90))),
+    ];
+    tree_section("Length Statistics", length_items, false);
     println!();
     
     // Composition
-    println!("{} {}", "◆ COMPOSITION ANALYSIS".yellow().bold(), "");
-    
+    subsection_header("Composition Analysis");
+
     use crate::bio::sequence::SequenceType;
     if stats.primary_type == SequenceType::Nucleotide {
-        println!("  {} {:.1}%", "GC Content:".green(), stats.gc_content);
-        println!("  {} {:.1}%", "AT Content:".green(), stats.at_content);
-        
+        let comp_items = vec![
+            ("GC Content", format!("{:.1}%", stats.gc_content)),
+            ("AT Content", format!("{:.1}%", stats.at_content)),
+        ];
+        tree_section("Composition", comp_items, false);
+
         if detailed && !stats.nucleotide_frequencies.is_empty() {
-            println!("\n  {}:", "Nucleotide Frequencies".cyan());
+            let mut nuc_items = Vec::new();
             let mut nucs: Vec<_> = stats.nucleotide_frequencies.iter().collect();
             nucs.sort_by_key(|(k, _)| **k);
             for (nuc, freq) in nucs {
                 if *nuc as char != 'N' && *nuc as char != '-' {
-                    println!("    {}: {:.1}%", *nuc as char, freq);
+                    nuc_items.push((String::from(*nuc as char), format!("{:.1}%", freq)));
                 }
+            }
+            if !nuc_items.is_empty() {
+                // Convert to owned strings for the tree
+                let nuc_items_owned: Vec<(&str, String)> = nuc_items.iter()
+                    .map(|(k, v)| (k.as_str(), v.clone()))
+                    .collect();
+                tree_section("Nucleotide Frequencies", nuc_items_owned, false);
             }
         }
     } else {
-        println!("  {} Protein", "Sequence Type:".green());
-        
+        tree_item(false, "Sequence Type", Some("Protein"));
+
         if detailed && !stats.amino_acid_frequencies.is_empty() {
-            println!("\n  {}:", "Amino Acid Frequencies".cyan());
+            let mut aa_items = Vec::new();
             let mut aas: Vec<_> = stats.amino_acid_frequencies.iter().collect();
-            aas.sort_by_key(|(k, _)| **k);
-            let mut count = 0;
-            for (aa, freq) in aas {
-                if *aa as char != 'X' && *aa as char != '*' && *aa as char != '-' {
-                    if count % 4 == 0 && count > 0 {
-                        println!();
-                    }
-                    print!("    {}: {:5.1}%", *aa as char, freq);
-                    count += 1;
+            aas.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap());
+
+            // Show top 10 amino acids
+            for (aa, freq) in aas.iter().take(10) {
+                if **aa as char != 'X' && **aa as char != '*' && **aa as char != '-' {
+                    aa_items.push((
+                        String::from(**aa as char),
+                        format!("{:.1}%", freq)
+                    ));
                 }
             }
-            if count > 0 {
-                println!();
+
+            if !aa_items.is_empty() {
+                let aa_items_owned: Vec<(&str, String)> = aa_items.iter()
+                    .map(|(k, v)| (k.as_ref(), v.clone()))
+                    .collect();
+                tree_section("Top Amino Acids", aa_items_owned, false);
             }
         }
     }
     println!();
     
     // Complexity
-    println!("{} {}", "■ COMPLEXITY METRICS".yellow().bold(), "");
-    println!("  {} {:.2}", "Shannon Entropy:".green(), stats.shannon_entropy);
-    println!("  {} {:.4}", "Simpson Diversity:".green(), stats.simpson_diversity);
-    println!("  {} {:.1}%", "Low Complexity:".green(), stats.low_complexity_percentage);
-    println!("  {} {}", "Ambiguous Bases:".green(), format_number(stats.ambiguous_bases));
-    println!("  {} {}", "Gaps:".green(), format_number(stats.gap_count));
+    stats_header("Complexity Metrics");
+    let complexity_items = vec![
+        ("Shannon Entropy", format!("{:.2}", stats.shannon_entropy)),
+        ("Simpson Diversity", format!("{:.4}", stats.simpson_diversity)),
+        ("Low Complexity", format!("{:.1}%", stats.low_complexity_percentage)),
+        ("Ambiguous Bases", format_number(stats.ambiguous_bases)),
+        ("Gaps", format_number(stats.gap_count)),
+    ];
+
+    for (i, (label, value)) in complexity_items.iter().enumerate() {
+        tree_item(i == complexity_items.len() - 1, label, Some(value));
+    }
     
     Ok(())
 }
 
 fn print_visual_stats(stats: &SequenceStats, detailed: bool) -> anyhow::Result<()> {
-    println!("{}", "═══════════════════════════════════════════════════════════".blue());
-    println!("{}", "                    FASTA STATISTICS REPORT".blue().bold());
-    println!("{}", "═══════════════════════════════════════════════════════════".blue());
-    println!();
-    
-    // Basic metrics with visual elements
-    println!("{} {}", "● SEQUENCE METRICS".yellow().bold(), "");
-    println!("├─ {} {}", "Total Sequences:".green(), format_number(stats.total_sequences));
-    println!("├─ {} {}", "Total Bases:".green(), format_number(stats.total_length));
-    println!("├─ {} {:.1} bp", "Average Length:".green(), stats.average_length);
-    println!("└─ {} {} bp", "N50:".green(), format_number(stats.n50));
+    use crate::cli::output::*;
+
+    section_header_with_line("FASTA Statistics Report");
+
+    // Basic metrics with tree structure
+    subsection_header("Sequence Metrics");
+    tree_item(false, "Total Sequences", Some(&format_number(stats.total_sequences)));
+    tree_item(false, "Total Bases", Some(&format_number(stats.total_length)));
+    tree_item(false, "Average Length", Some(&format!("{:.1} bp", stats.average_length)));
+    tree_item(true, "N50", Some(&format!("{} bp", format_number(stats.n50))));
     println!();
     
     // Length distribution histogram
@@ -306,21 +328,25 @@ fn print_csv_stats(stats: &SequenceStats) {
 }
 
 fn print_reduction_stats(sequences: &[crate::bio::sequence::Sequence], delta_path: &std::path::Path) -> anyhow::Result<()> {
-    println!();
-    println!("{}", "═══════════════════════════════════════════════════════════".blue());
-    println!("{}", "                   REDUCTION STATISTICS".blue().bold());
-    println!("{}", "═══════════════════════════════════════════════════════════".blue());
-    
+    use crate::cli::output::*;
+
+    section_header_with_line("Reduction Statistics");
+
     let deltas = crate::storage::metadata::load_metadata(delta_path)?;
     let num_references = sequences.len();
     let num_deltas = deltas.len();
     let total = num_references + num_deltas;
     let reduction_ratio = num_references as f64 / total as f64;
-    
-    println!();
-    println!("  {} {}", "References:".green(), format_number(num_references));
-    println!("  {} {}", "Delta-encoded:".green(), format_number(num_deltas));
-    println!("  {} {}", "Total Original:".green(), format_number(total));
+
+    let reduction_items = vec![
+        ("References", format_number(num_references)),
+        ("Delta-encoded", format_number(num_deltas)),
+        ("Total Original", format_number(total)),
+    ];
+
+    for (label, value) in &reduction_items {
+        tree_item(false, label, Some(value));
+    }
     println!();
     
     // Visual representation

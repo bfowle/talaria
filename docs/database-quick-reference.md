@@ -156,24 +156,28 @@ talaria reduce -i input.fasta -o reduced.fasta -r 0.3
 talaria reduce -i input.fasta -o reduced.fasta -r 0.3 --target-aligner blast
 ```
 
-### Store in Database Structure
+### Store as Reduction Profile
 ```bash
-# Store with automatic profile name (e.g., "30-percent")
-talaria reduce \
-  -i /path/to/database.fasta \
-  -o /tmp/reduced.fasta \
-  --store \
-  --database uniprot/swissprot \
-  --reduction-ratio 0.3
+# Reduce a database from CASG repository (creates a profile, not a new database)
+talaria reduce custom/cholera -a lambda
+# Creates profile: auto-detect
 
-# Store with custom profile name
-talaria reduce \
-  -i /path/to/database.fasta \
-  -o /tmp/reduced.fasta \
-  --store \
-  --database uniprot/swissprot \
+# Reduce with specific ratio (profile name: "30-percent")
+talaria reduce uniprot/swissprot -r 0.3
+# Creates profile: 30-percent
+
+# Reduce with custom profile name
+talaria reduce uniprot/swissprot \
   --profile blast-optimized \
   --reduction-ratio 0.3
+# Creates profile: blast-optimized
+
+# List databases shows profiles under "Reductions" column
+talaria database list
+# Output:
+# Database          | Reductions
+# custom/cholera    | auto-detect
+# uniprot/swissprot | 30-percent, blast-optimized
 ```
 
 ### Advanced Reduction Options

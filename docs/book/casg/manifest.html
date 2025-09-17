@@ -616,7 +616,7 @@ async fn check_updates(cached_etag: Option&lt;&amp;str&gt;) -&gt; Result&lt;bool
 <h2 id="best-practices-lessons-from-production"><a class="header" href="#best-practices-lessons-from-production">Best Practices: Lessons from Production</a></h2>
 <h3 id="1-cache-manifests-locally"><a class="header" href="#1-cache-manifests-locally">1. Cache Manifests Locally</a></h3>
 <p>Always cache manifests with their ETags:</p>
-<pre><code class="language-bash">~/.talaria/cache/manifests/
+<pre><code class="language-bash">${TALARIA_HOME}/cache/manifests/
 ├── uniprot-swissprot-20240315.json
 ├── uniprot-swissprot-20240315.etag
 └── ncbi-nr-20240310.json

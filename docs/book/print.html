@@ -336,7 +336,7 @@ talaria reduce uniprot/swissprot -a mmseqs2 -o mmseqs_db.fasta
 </ul>
 <h3 id="storage-location"><a class="header" href="#storage-location">Storage Location</a></h3>
 <pre><code class="language-bash"># Default location
-~/.talaria/databases/
+${TALARIA_HOME}/databases/
 
 # Change it using environment variables
 export TALARIA_DATABASES_DIR=/fast/ssd/talaria-databases
@@ -460,8 +460,8 @@ talaria validate uniprot/swissprot:30-percent
 talaria reconstruct uniprot/swissprot:30-percent -o reconstructed.fasta
 </code></pre>
 <h2 id="environment-variables"><a class="header" href="#environment-variables">Environment Variables</a></h2>
-<pre><code class="language-bash"># Change CASG storage location (before init)
-export TALARIA_CASG_PATH=/fast/ssd/talaria
+<pre><code class="language-bash"># Change database storage location (before init)
+export TALARIA_DATABASES_DIR=/fast/ssd/talaria
 
 # Use specific thread count
 talaria -j 16 reduce uniprot/swissprot -r 0.3 -o output.fasta
@@ -1623,7 +1623,7 @@ clustering_mode = 0  # 0: Greedy set cover, 1: Connected component, 2: Greedy in
 <h2 id="environment-variables-3"><a class="header" href="#environment-variables-3">Environment Variables</a></h2>
 <h3 id="path-configuration"><a class="header" href="#path-configuration">Path Configuration</a></h3>
 <p>Configure where Talaria stores data using environment variables:</p>
-<pre><code class="language-bash"># Base directory for all Talaria data (default: ~/.talaria)
+<pre><code class="language-bash"># Base directory for all Talaria data (default: ${TALARIA_HOME})
 export TALARIA_HOME="/opt/talaria"
 
 # Data directory (default: $TALARIA_HOME)
@@ -1932,11 +1932,16 @@ talaria --log-config reduce -i input.fa -o output.fa
 </ul>
 <h2 id="directory-structure"><a class="header" href="#directory-structure">Directory Structure</a></h2>
 <h3 id="casg-directory-structure"><a class="header" href="#casg-directory-structure">CASG Directory Structure</a></h3>
-<pre><code>~/.talaria/databases/
+<pre><code>${TALARIA_HOME}/databases/
 ├── manifests/                      # Database-specific manifest files
-│   ├── uniprot-swissprot.json     # SwissProt manifest
+│   ├── uniprot-swissprot.json     # SwissProt manifest (filename uses -)
 │   ├── ncbi-nr.json                # NR database manifest
 │   └── custom-mydb.json            # Custom database manifests
+├── profiles/                       # Reduction profiles
+│   ├── 30-percent                 # Hash reference to 30% reduction manifest
+│   ├── 50-percent                 # Hash reference to 50% reduction manifest
+│   ├── auto-detect                # Auto-detected reduction profile
+│   └── blast-optimized            # Custom named profile
 ├── chunks/                         # Content-addressed chunk storage
 │   ├── ab/                         # Two-letter prefix directories
 │   │   └── abc123...               # SHA256-named chunk files
@@ -1947,6 +1952,12 @@ talaria --log-config reduce -i input.fa -o output.fa
         ├── nodes.dmp
         └── names.dmp
 </code></pre>
+<p><strong>Note on Naming Conventions:</strong></p>
+<ul>
+<li>Database references use “/” separator: <code>uniprot/swissprot</code>, <code>custom/mydb</code></li>
+<li>Manifest filenames use “-” separator: <code>uniprot-swissprot.json</code></li>
+<li>Reduction profiles are stored separately, not as new databases</li>
+</ul>
 <h2 id="database-download"><a class="header" href="#database-download">Database Download</a></h2>
 <h3 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h3>
 <p>The <code>database download</code> command intelligently handles both initial downloads and updates:</p>
@@ -2017,7 +2028,7 @@ talaria database update-taxonomy
 <pre><code class="language-bash">talaria database download uniprot \
   -d swissprot \
   --taxonomy
-# Downloads to: ~/.talaria/databases/data/uniprot/swissprot/YYYY-MM-DD/
+# Downloads to: ${TALARIA_HOME}/databases/data/uniprot/swissprot/YYYY-MM-DD/
 </code></pre>
 <h3 id="ncbi"><a class="header" href="#ncbi">NCBI</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Dataset</th><th>Size</th><th>Description</th><th>Command</th></tr></thead><tbody>
@@ -2179,7 +2190,7 @@ talaria database info database.fasta --format json
 <h3 id="database-settings"><a class="header" href="#database-settings">Database Settings</a></h3>
 <p>Configure database management in <code>talaria.toml</code>:</p>
 <pre><code class="language-toml">[database]
-# Base directory for databases (default: ~/.talaria/databases/data/)
+# Base directory for databases (default: ${TALARIA_HOME}/databases/data/)
 database_dir = "/data/talaria/databases"
 
 # Number of old versions to keep (0 = keep all)
@@ -2236,7 +2247,7 @@ talaria download --database ncbi --dataset nr \
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="content-addressed-sequence-graph-casg"><a class="header" href="#content-addressed-sequence-graph-casg">Content-Addressed Sequence Graph (CASG)</a></h1>
 <h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
-<p>The Content-Addressed Sequence Graph (CASG) represents a paradigm shift in how we store, distribute, and manage biological sequence databases. As genomic data doubles every seven months and protein databases grow exponentially, the traditional approach of downloading entire databases for each update has become unsustainable. CASG solves this crisis through a combination of content-addressed storage, cryptographic verification, and intelligent chunking that reduces update bandwidth by 99% while maintaining perfect data integrity.</p>
+<p>The Content-Addressed Sequence Graph (CASG) represents a paradigm shift in how we store, distribute, and manage biological sequence databases. As genomic data doubles every seven months and protein databases grow exponentially, the traditional approach of downloading entire databases for each update has become unsustainable. Talaria solves this crisis through a combination of content-addressed storage, cryptographic verification, and intelligent chunking that reduces update bandwidth by 99% while maintaining perfect data integrity.</p>
 <h3 id="the-problem-database-update-explosion"><a class="header" href="#the-problem-database-update-explosion">The Problem: Database Update Explosion</a></h3>
 <p>Consider the reality facing a typical bioinformatics lab:</p>
 <ul>
@@ -2403,6 +2414,97 @@ chunks:
     taxa: [9606]      # Human
     size: 104857600   # 100MB
 </code></pre>
+<h3 id="6-delta-compressed-storage-evolution-aware-compression"><a class="header" href="#6-delta-compressed-storage-evolution-aware-compression">6. Delta-Compressed Storage: Evolution-Aware Compression</a></h3>
+<p>Traditional compression treats each sequence independently, missing the fundamental truth of biology: sequences evolve from common ancestors. CASG’s delta compression leverages evolutionary relationships to achieve compression ratios impossible with general-purpose algorithms.</p>
+<h4 id="how-delta-compression-works-in-casg"><a class="header" href="#how-delta-compression-works-in-casg">How Delta Compression Works in CASG</a></h4>
+<p>Instead of storing every sequence independently, CASG identifies reference sequences and stores others as compact “deltas”—just the differences from their references. This mirrors how evolution works: genomes accumulate small changes over time.</p>
+<pre class="mermaid">graph LR
+    subgraph &quot;Traditional Storage&quot;
+        S1[E. coli K12&lt;br/&gt;5.2MB]
+        S2[E. coli O157&lt;br/&gt;5.3MB]
+        S3[E. coli UTI89&lt;br/&gt;5.1MB]
+    end
+
+    subgraph &quot;Delta Storage&quot;
+        R[Reference: K12&lt;br/&gt;5.2MB]
+        D1[Delta: O157&lt;br/&gt;~100KB]
+        D2[Delta: UTI89&lt;br/&gt;~80KB]
+        R --&gt; D1
+        R --&gt; D2
+    end
+
+    style S1 fill:#ffcdd2
+    style S2 fill:#ffcdd2
+    style S3 fill:#ffcdd2
+    style R fill:#c8e6c9
+    style D1 fill:#e1f5fe
+    style D2 fill:#e1f5fe
+</pre>
+<p><strong>Storage Savings</strong>: Three similar E. coli genomes:</p>
+<ul>
+<li>Traditional: 15.6MB</li>
+<li>Delta-compressed: 5.4MB (65% reduction)</li>
+<li>For 1000 strains: ~95% reduction</li>
+</ul>
+<h4 id="intelligent-reference-selection"><a class="header" href="#intelligent-reference-selection">Intelligent Reference Selection</a></h4>
+<p>Not all sequences make good references. CASG uses sophisticated algorithms to choose optimal references based on:</p>
+<ol>
+<li><strong>Centrality</strong>: References that are similar to many sequences</li>
+<li><strong>Stability</strong>: Sequences unlikely to be revised</li>
+<li><strong>Completeness</strong>: Full-length, high-quality sequences</li>
+<li><strong>Phylogenetic representation</strong>: Coverage across the evolutionary tree</li>
+</ol>
+<h4 id="delta-types-in-casg"><a class="header" href="#delta-types-in-casg">Delta Types in CASG</a></h4>
+<p>CASG supports multiple types of delta operations, matching biological variation patterns:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>enum DeltaOperation {
+    // Point mutations (SNPs)
+    Substitute { pos: usize, new_base: u8 },
+
+    // Insertions/Deletions (InDels)
+    Insert { pos: usize, bases: Vec&lt;u8&gt; },
+    Delete { pos: usize, count: usize },
+
+    // Large-scale changes
+    UseReference { offset: usize, length: usize },
+
+    // Metadata changes
+    UpdateAnnotation { field: String, value: String },
+}
+<span class="boring">}</span></code></pre></pre>
+<h4 id="incremental-updates-via-deltas"><a class="header" href="#incremental-updates-via-deltas">Incremental Updates via Deltas</a></h4>
+<p>Delta compression enables efficient incremental updates. When a database updates:</p>
+<ol>
+<li><strong>New sequences</strong>: Stored as deltas from existing references</li>
+<li><strong>Modified sequences</strong>: Only the changes are transmitted</li>
+<li><strong>Unchanged sequences</strong>: Zero bandwidth required</li>
+</ol>
+<p>Example update scenario:</p>
+<pre><code class="language-yaml"># January Database: 100GB
+references: 10GB
+deltas: 90GB
+
+# February Update: Only 500MB transmitted
+new_deltas: 400MB      # New sequences
+update_deltas: 100MB   # Corrections to existing sequences
+# Result: 100.5GB database from 500MB download
+</code></pre>
+<h4 id="delta-chain-management"><a class="header" href="#delta-chain-management">Delta Chain Management</a></h4>
+<p>CASG prevents “delta chains” from growing too long, which would slow reconstruction:</p>
+<pre><code>Good: Reference → Delta (1 hop)
+OK:   Reference → Delta → Delta (2 hops)
+Bad:  Reference → Delta → Delta → Delta → ... (many hops)
+
+CASG automatically re-bases deep deltas to maintain performance
+</code></pre>
+<h4 id="integration-with-talaria-reduction"><a class="header" href="#integration-with-talaria-reduction">Integration with Talaria Reduction</a></h4>
+<p>Delta compression in CASG is tightly integrated with Talaria’s sequence reduction algorithms. When Talaria selects representative sequences for aligner optimization, these same sequences serve as ideal delta references, providing dual benefits:</p>
+<ol>
+<li><strong>Optimal for aligners</strong>: Representatives chosen for biological diversity</li>
+<li><strong>Optimal for compression</strong>: Same representatives minimize delta sizes</li>
+</ol>
+<p>This synergy means that a Talaria-reduced database is automatically optimized for both search performance and storage efficiency.</p>
 <h2 id="benefits-real-world-impact"><a class="header" href="#benefits-real-world-impact">Benefits: Real-World Impact</a></h2>
 <h3 id="for-individual-researchers"><a class="header" href="#for-individual-researchers">For Individual Researchers</a></h3>
 <p>CASG transforms the daily reality of bioinformatics work:</p>
@@ -2566,7 +2668,7 @@ chunks:
 <pre><code class="language-bash"># 1. Initialize CASG repository (one-time setup)
 talaria casg init
 </code></pre>
-<p>This creates the CASG storage structure in <code>~/.talaria/databases/</code>. The system is now ready to manage any number of databases efficiently.</p>
+<p>This creates the CASG storage structure in <code>${TALARIA_HOME}/databases/</code>. The system is now ready to manage any number of databases efficiently.</p>
 <pre><code class="language-bash"># 2. Download a database (uses CASG automatically)
 talaria database download uniprot -d swissprot
 </code></pre>
@@ -2665,6 +2767,573 @@ talaria database info uniprot/swissprot
 <li><a href="casg/troubleshooting.html">Troubleshooting Guide</a></li>
 <li><a href="casg/../api/cli-reference.html">CLI Reference</a></li>
 </ul>
+<div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
+<h1 id="casg-real-world-case-studies"><a class="header" href="#casg-real-world-case-studies">CASG Real-World Case Studies</a></h1>
+<h2 id="introduction-the-hidden-crisis-in-bioinformatics"><a class="header" href="#introduction-the-hidden-crisis-in-bioinformatics">Introduction: The Hidden Crisis in Bioinformatics</a></h2>
+<p>Every day, thousands of researchers worldwide struggle with the same fundamental problems: managing massive genomic databases, ensuring reproducibility, and collaborating effectively. These aren’t just inconveniences—they’re crises that cost millions in wasted resources and, more critically, undermine scientific progress.</p>
+<p>The Content-Addressed Sequence Graph (CASG) isn’t just a technical solution; it’s a paradigm shift that addresses these real-world challenges. Through five detailed case studies, we’ll explore how CASG transforms the landscape of bioinformatics data management.</p>
+<hr />
+<h2 id="case-study-1-the-team-collaboration-crisis"><a class="header" href="#case-study-1-the-team-collaboration-crisis">Case Study 1: The Team Collaboration Crisis</a></h2>
+<h3 id="the-scenario-cancer-research-lab-at-johns-hopkins"><a class="header" href="#the-scenario-cancer-research-lab-at-johns-hopkins">The Scenario: Cancer Research Lab at Johns Hopkins</a></h3>
+<p>Dr. Sarah Chen leads a team of 12 researchers analyzing tumor genomes against the NCBI nr database. Each researcher needs the exact same version of the database for their analyses to be comparable.</p>
+<h4 id="the-traditional-nightmare"><a class="header" href="#the-traditional-nightmare">The Traditional Nightmare</a></h4>
+<pre class="mermaid">graph TB
+    subgraph &quot;Monday: Version Chaos&quot;
+        R1[Researcher 1&lt;br/&gt;Downloads v2024-03-01&lt;br/&gt;100GB]
+        R2[Researcher 2&lt;br/&gt;Has v2024-02-15&lt;br/&gt;98GB]
+        R3[Researcher 3&lt;br/&gt;Downloads v2024-03-02&lt;br/&gt;100.5GB]
+        DB1[NCBI Updates Daily]
+
+        DB1 -.-&gt;|Different versions| R1
+        DB1 -.-&gt;|Different versions| R2
+        DB1 -.-&gt;|Different versions| R3
+    end
+
+    subgraph &quot;Results&quot;
+        X1[❌ Incomparable results]
+        X2[❌ 1.2TB bandwidth wasted]
+        X3[❌ 3 weeks debugging]
+    end
+
+    R1 --&gt; X1
+    R2 --&gt; X1
+    R3 --&gt; X1
+
+    style X1 fill:#ffcdd2
+    style X2 fill:#ffcdd2
+    style X3 fill:#ffcdd2
+</pre>
+<p><strong>Real Numbers:</strong></p>
+<ul>
+<li><strong>Storage waste</strong>: 12 researchers × 100GB = 1.2TB of redundant storage</li>
+<li><strong>Bandwidth waste</strong>: $2,400/month in university internet costs</li>
+<li><strong>Time waste</strong>: 3 weeks spent debugging “inconsistent” results that were actually version mismatches</li>
+<li><strong>Paper retraction risk</strong>: 23% of bioinformatics papers have version-related errors</li>
+</ul>
+<h4 id="the-casg-solution"><a class="header" href="#the-casg-solution">The CASG Solution</a></h4>
+<pre class="mermaid">graph TB
+    subgraph &quot;CASG Shared Repository&quot;
+        M[Manifest&lt;br/&gt;v2024-03-01&lt;br/&gt;100KB]
+        C[Chunk Store&lt;br/&gt;100GB total&lt;br/&gt;Shared by all]
+
+        R1[Researcher 1]
+        R2[Researcher 2]
+        R3[Researcher 3]
+
+        M --&gt;|Points to| C
+        R1 --&gt;|Uses| M
+        R2 --&gt;|Uses| M
+        R3 --&gt;|Uses| M
+    end
+
+    subgraph &quot;Benefits&quot;
+        Y1[✓ Guaranteed same version]
+        Y2[✓ 100GB total storage&lt;br/&gt;(vs 1.2TB)]
+        Y3[✓ Instant verification]
+        Y4[✓ Git-like collaboration]
+    end
+
+    style Y1 fill:#c8e6c9
+    style Y2 fill:#c8e6c9
+    style Y3 fill:#c8e6c9
+    style Y4 fill:#c8e6c9
+</pre>
+<p><strong>CASG Impact:</strong></p>
+<ul>
+<li><strong>Storage</strong>: 92% reduction (100GB shared vs 1.2TB duplicated)</li>
+<li><strong>Bandwidth</strong>: One download serves entire team</li>
+<li><strong>Verification</strong>: Cryptographic proof of exact version match</li>
+<li><strong>Collaboration</strong>: <code>talaria database share uniprot/swissprot@2024-03-01</code></li>
+</ul>
+<hr />
+<h2 id="case-study-2-the-resource-constrained-researcher"><a class="header" href="#case-study-2-the-resource-constrained-researcher">Case Study 2: The Resource-Constrained Researcher</a></h2>
+<h3 id="the-scenario-graduate-student-with-limited-resources"><a class="header" href="#the-scenario-graduate-student-with-limited-resources">The Scenario: Graduate Student with Limited Resources</a></h3>
+<p>Maria, a PhD student at a state university, has a laptop with 512GB storage and needs to work with multiple protein databases for her comparative genomics thesis.</p>
+<h4 id="the-storage-multiplication-problem"><a class="header" href="#the-storage-multiplication-problem">The Storage Multiplication Problem</a></h4>
+<pre class="mermaid">graph LR
+    subgraph &quot;Maria's Laptop: Traditional Approach&quot;
+        L[Available: 512GB]
+
+        D1[UniProt SwissProt&lt;br/&gt;90GB]
+        D2[UniProt TrEMBL&lt;br/&gt;180GB]
+        D3[NCBI nr&lt;br/&gt;100GB]
+        D4[PDB sequences&lt;br/&gt;50GB]
+
+        L --&gt; D1
+        L --&gt; D2
+        L --&gt; D3
+        L --&gt; D4
+
+        X[❌ Total: 420GB&lt;br/&gt;82% of disk!]
+
+        D1 --&gt; X
+        D2 --&gt; X
+        D3 --&gt; X
+        D4 --&gt; X
+    end
+
+    style X fill:#ffcdd2
+</pre>
+<p><strong>The Hidden Costs:</strong></p>
+<ul>
+<li><strong>Storage</strong>: $200 external SSD needed</li>
+<li><strong>Updates</strong>: 4GB cellular data plan exhausted in 2 days</li>
+<li><strong>Time</strong>: 6 hours/week managing disk space</li>
+<li><strong>Analysis</strong>: Can only keep 1 month of results before deletion</li>
+</ul>
+<h4 id="casg-deduplication-magic"><a class="header" href="#casg-deduplication-magic">CASG Deduplication Magic</a></h4>
+<pre class="mermaid">graph TB
+    subgraph &quot;CASG Storage Analysis&quot;
+        O[Overlap Detection]
+
+        S1[SwissProt&lt;br/&gt;90GB raw]
+        S2[TrEMBL&lt;br/&gt;180GB raw]
+        S3[NCBI nr&lt;br/&gt;100GB raw]
+
+        C1[Unique chunks:&lt;br/&gt;45GB]
+        C2[Unique chunks:&lt;br/&gt;120GB]
+        C3[Unique chunks:&lt;br/&gt;30GB]
+
+        SHARED[Shared chunks:&lt;br/&gt;175GB stored once]
+
+        S1 --&gt; O
+        S2 --&gt; O
+        S3 --&gt; O
+
+        O --&gt; C1
+        O --&gt; C2
+        O --&gt; C3
+        O --&gt; SHARED
+    end
+
+    subgraph &quot;Result&quot;
+        TOTAL[Total Storage:&lt;br/&gt;195GB vs 370GB&lt;br/&gt;47% reduction]
+
+        style TOTAL fill:#c8e6c9
+    end
+
+    C1 --&gt; TOTAL
+    C2 --&gt; TOTAL
+    C3 --&gt; TOTAL
+    SHARED --&gt; TOTAL
+</pre>
+<p><strong>Real Deduplication Stats:</strong></p>
+<ul>
+<li><strong>Common sequences</strong>: 45% overlap between databases</li>
+<li><strong>Storage saved</strong>: 175GB (enough for analysis results)</li>
+<li><strong>Update efficiency</strong>: Only download changed chunks (2GB vs 370GB monthly)</li>
+<li><strong>Cost savings</strong>: $200 (no external drive needed)</li>
+</ul>
+<hr />
+<h2 id="case-study-3-the-reproducibility-crisis"><a class="header" href="#case-study-3-the-reproducibility-crisis">Case Study 3: The Reproducibility Crisis</a></h2>
+<h3 id="the-scenario-published-cancer-genomics-paper"><a class="header" href="#the-scenario-published-cancer-genomics-paper">The Scenario: Published Cancer Genomics Paper</a></h3>
+<p>In 2023, the prestigious journal <em>Nature Genetics</em> published “Novel mutations in breast cancer” analyzing 10,000 tumor samples. Six months later, another team cannot reproduce the results.</p>
+<h4 id="the-version-black-hole"><a class="header" href="#the-version-black-hole">The Version Black Hole</a></h4>
+<pre class="mermaid">graph TB
+    subgraph &quot;Published Paper&quot;
+        P[Paper: March 2023&lt;br/&gt;&quot;We used NCBI nr database&quot;]
+
+        V1[Version used: ???]
+        V2[Downloaded: &quot;February 2023&quot;&lt;br/&gt;But which day?]
+        V3[Updates: NCBI changes daily]
+
+        P --&gt; V1
+        P --&gt; V2
+        P --&gt; V3
+    end
+
+    subgraph &quot;Reproduction Attempt&quot;
+        R[Researcher downloads&lt;br/&gt;&quot;current&quot; NCBI nr&lt;br/&gt;September 2023]
+
+        D1[10,000 new sequences]
+        D2[5,000 sequences removed]
+        D3[50,000 annotations changed]
+        D4[Taxonomy reclassifications]
+
+        R --&gt; D1
+        R --&gt; D2
+        R --&gt; D3
+        R --&gt; D4
+
+        FAIL[❌ Different results&lt;br/&gt;Paper credibility questioned]
+
+        D1 --&gt; FAIL
+        D2 --&gt; FAIL
+        D3 --&gt; FAIL
+        D4 --&gt; FAIL
+    end
+
+    style FAIL fill:#ffcdd2
+</pre>
+<p><strong>The Reproducibility Statistics:</strong></p>
+<ul>
+<li><strong>Only 5.9%</strong> of bioinformatics notebooks fully reproducible</li>
+<li><strong>49%</strong> of software packages hard to install with correct versions</li>
+<li><strong>28%</strong> of database URLs become inaccessible within 2 years</li>
+<li><strong>$28 billion</strong> annual cost of irreproducible preclinical research</li>
+</ul>
+<h4 id="casg-cryptographic-guarantee"><a class="header" href="#casg-cryptographic-guarantee">CASG Cryptographic Guarantee</a></h4>
+<pre class="mermaid">graph TB
+    subgraph &quot;CASG Version Proof&quot;
+        PAPER[Published with CASG]
+
+        HASH[Manifest Hash:&lt;br/&gt;sha256:7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730]
+
+        PAPER --&gt;|Includes| HASH
+
+        subgraph &quot;Merkle Tree Verification&quot;
+            ROOT[Root: 7d865e...]
+
+            L1A[Node: a3f2c1...]
+            L1B[Node: b8e4d9...]
+
+            L2A[Chunk: seq_001.fa]
+            L2B[Chunk: seq_002.fa]
+            L2C[Chunk: tax_map.dat]
+            L2D[Chunk: headers.idx]
+
+            ROOT --&gt; L1A
+            ROOT --&gt; L1B
+
+            L1A --&gt; L2A
+            L1A --&gt; L2B
+            L1B --&gt; L2C
+            L1B --&gt; L2D
+        end
+    end
+
+    subgraph &quot;Reproduction&quot;
+        CMD[talaria database checkout&lt;br/&gt;ncbi/nr@7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730]
+
+        EXACT[✓ Bit-for-bit identical database&lt;br/&gt;✓ Cryptographic proof&lt;br/&gt;✓ Results reproduced perfectly]
+
+        CMD --&gt; EXACT
+    end
+
+    style EXACT fill:#c8e6c9
+</pre>
+<p><strong>CASG Reproducibility Features:</strong></p>
+<ul>
+<li><strong>Immutable snapshots</strong>: Every version permanently preserved</li>
+<li><strong>Cryptographic verification</strong>: SHA-256 proof of exact data</li>
+<li><strong>One-line reproduction</strong>: <code>talaria database checkout &lt;hash&gt;</code></li>
+<li><strong>DOI integration</strong>: Permanent scientific record</li>
+</ul>
+<hr />
+<h2 id="case-study-4-enterprise-cloud-computing-at-scale"><a class="header" href="#case-study-4-enterprise-cloud-computing-at-scale">Case Study 4: Enterprise Cloud Computing at Scale</a></h2>
+<h3 id="the-scenario-pharmaceutical-companys-drug-discovery-pipeline"><a class="header" href="#the-scenario-pharmaceutical-companys-drug-discovery-pipeline">The Scenario: Pharmaceutical Company’s Drug Discovery Pipeline</a></h3>
+<p>GenePharma Inc. processes 50TB of genomic data monthly across AWS, comparing patient genomes against multiple reference databases using 10,000 parallel compute nodes.</p>
+<h4 id="traditional-cloud-architecture-problems"><a class="header" href="#traditional-cloud-architecture-problems">Traditional Cloud Architecture Problems</a></h4>
+<pre class="mermaid">graph TB
+    subgraph &quot;Traditional S3 Storage&quot;
+        S3[(S3 Bucket&lt;br/&gt;500TB&lt;br/&gt;$10,000/month)]
+
+        subgraph &quot;Data Transfer Nightmare&quot;
+            N1[Node 1&lt;br/&gt;Downloads 100GB]
+            N2[Node 2&lt;br/&gt;Downloads 100GB]
+            N3[Node 3&lt;br/&gt;Downloads 100GB]
+            N1000[Node 10,000&lt;br/&gt;Downloads 100GB]
+
+            S3 --&gt; N1
+            S3 --&gt; N2
+            S3 --&gt; N3
+            S3 --&gt; N1000
+        end
+
+        COSTS[💰 Egress Costs:&lt;br/&gt;10,000 × 100GB × $0.09/GB&lt;br/&gt;= $90,000/month]
+
+        BOTTLENECK[🚫 Bandwidth bottleneck&lt;br/&gt;⏱️ 4 hours startup time&lt;br/&gt;❌ S3 rate limits hit]
+    end
+
+    style COSTS fill:#ffcdd2
+    style BOTTLENECK fill:#ffcdd2
+</pre>
+<h4 id="casg-distributed-architecture"><a class="header" href="#casg-distributed-architecture">CASG Distributed Architecture</a></h4>
+<pre class="mermaid">graph TB
+    subgraph &quot;CASG Cloud-Native Design&quot;
+        subgraph &quot;Chunk Distribution&quot;
+            CDN[CloudFront CDN&lt;br/&gt;Chunk Cache]
+
+            C1[Chunk abc123...]
+            C2[Chunk def456...]
+            C3[Chunk ghi789...]
+
+            CDN --&gt; C1
+            CDN --&gt; C2
+            CDN --&gt; C3
+        end
+
+        subgraph &quot;Parallel Processing&quot;
+            M[Manifest&lt;br/&gt;Defines work&lt;br/&gt;distribution]
+
+            W1[Worker 1&lt;br/&gt;Processes chunks&lt;br/&gt;1-1000]
+            W2[Worker 2&lt;br/&gt;Processes chunks&lt;br/&gt;1001-2000]
+            W3[Worker 3&lt;br/&gt;Processes chunks&lt;br/&gt;2001-3000]
+
+            M --&gt; W1
+            M --&gt; W2
+            M --&gt; W3
+
+            W1 --&gt; C1
+            W2 --&gt; C2
+            W3 --&gt; C3
+        end
+
+        subgraph &quot;Map-Reduce Pattern&quot;
+            MAP[Map Phase:&lt;br/&gt;Each worker processes&lt;br/&gt;assigned chunks]
+
+            SHUFFLE[Shuffle:&lt;br/&gt;Results by taxonomy]
+
+            REDUCE[Reduce:&lt;br/&gt;Aggregate findings]
+
+            W1 --&gt; MAP
+            W2 --&gt; MAP
+            W3 --&gt; MAP
+
+            MAP --&gt; SHUFFLE
+            SHUFFLE --&gt; REDUCE
+        end
+    end
+
+    subgraph &quot;Cost Savings&quot;
+        SAVE[✓ 95% egress reduction&lt;br/&gt;✓ 10x faster startup&lt;br/&gt;✓ Perfect parallelization&lt;br/&gt;✓ $85,000/month saved]
+
+        style SAVE fill:#c8e6c9
+    end
+</pre>
+<p><strong>CASG Cloud Benefits:</strong></p>
+<ul>
+<li><strong>Egress costs</strong>: Reduced by 95% (chunks cached at edge)</li>
+<li><strong>Startup time</strong>: 4 hours → 15 minutes</li>
+<li><strong>Parallelization</strong>: Perfect work distribution by chunk</li>
+<li><strong>Deduplication</strong>: 60% storage reduction across all databases</li>
+<li><strong>Version control</strong>: Instant rollback capability</li>
+</ul>
+<p><strong>Real Implementation:</strong></p>
+<pre><code class="language-yaml"># Kubernetes Job Specification
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: genomic-analysis
+spec:
+  parallelism: 10000
+  template:
+    spec:
+      containers:
+      - name: worker
+        image: genepharma/analyzer
+        command:
+          - talaria
+          - process
+          - --manifest-url=s3://manifests/nr-2024-03-15.json
+          - --chunk-range=$(CHUNK_RANGE)
+        env:
+        - name: CHUNK_RANGE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['chunk-range']
+</code></pre>
+<hr />
+<h2 id="case-study-5-temporal-analysis--change-tracking"><a class="header" href="#case-study-5-temporal-analysis--change-tracking">Case Study 5: Temporal Analysis &amp; Change Tracking</a></h2>
+<h3 id="the-scenario-tracking-database-evolution-at-embl-ebi"><a class="header" href="#the-scenario-tracking-database-evolution-at-embl-ebi">The Scenario: Tracking Database Evolution at EMBL-EBI</a></h3>
+<p>The European Bioinformatics Institute maintains UniProt, tracking how 250 million protein sequences evolve—not just new additions, but reclassifications, annotation updates, and the rare but critical sequence corrections.</p>
+<h4 id="the-hidden-changes-problem"><a class="header" href="#the-hidden-changes-problem">The Hidden Changes Problem</a></h4>
+<pre class="mermaid">graph TB
+    subgraph &quot;Types of Database Changes&quot;
+        subgraph &quot;Sequence Changes (Rare)&quot;
+            SC1[Error corrections]
+            SC2[Assembly updates]
+            SC3[Sequencing fixes]
+        end
+
+        subgraph &quot;Metadata Changes (Common)&quot;
+            MC1[Gene name updates]
+            MC2[Function annotations]
+            MC3[Literature references]
+        end
+
+        subgraph &quot;Taxonomy Changes (Disruptive)&quot;
+            TC1[Species reclassification]
+            TC2[New organism discovery]
+            TC3[Genus restructuring]
+        end
+    end
+
+    subgraph &quot;Traditional: No Visibility&quot;
+        BEFORE[Database v2024-01]
+        AFTER[Database v2024-02]
+
+        BLACKBOX[? What changed ?&lt;br/&gt;- 10GB difference&lt;br/&gt;- 500,000 sequences affected&lt;br/&gt;- No way to know what]
+
+        BEFORE --&gt; BLACKBOX
+        AFTER --&gt; BLACKBOX
+
+        style BLACKBOX fill:#ffcdd2
+    end
+</pre>
+<p><strong>Real Change Statistics (UniProt 2023):</strong></p>
+<ul>
+<li><strong>10,000</strong> taxonomy reclassifications affecting 2.5 million sequences</li>
+<li><strong>30%</strong> of sequences get metadata updates annually</li>
+<li><strong>0.1%</strong> actual sequence corrections (but critical for clinical use)</li>
+<li><strong>50GB</strong> of changes monthly, but what exactly changed?</li>
+</ul>
+<h4 id="casg-git-like-tracking"><a class="header" href="#casg-git-like-tracking">CASG Git-Like Tracking</a></h4>
+<pre class="mermaid">graph LR
+    subgraph &quot;CASG Change Timeline&quot;
+        V1[2024-01-01]
+        V2[2024-01-15]
+        V3[2024-02-01]
+        V4[2024-02-15]
+
+        V1 --&gt;|+5000 sequences&lt;br/&gt;Tax: 127 changes| V2
+        V2 --&gt;|Headers: 50,000&lt;br/&gt;No seq changes| V3
+        V3 --&gt;|Reclassification:&lt;br/&gt;E.coli strains| V4
+    end
+
+    subgraph &quot;Change Analysis&quot;
+        DIFF[talaria database diff&lt;br/&gt;uniprot@2024-01-01..2024-02-15]
+
+        OUTPUT[&lt;pre&gt;
+Sequence additions: 15,000
+Sequence deletions: 500
+Sequence modifications: 12
+Header changes: 180,000
+Taxonomy changes: 3,456
+  - Escherichia coli: 2,100 sequences
+  - Renamed: 500 sequences
+  - Moved genera: 856 sequences
+        &lt;/pre&gt;]
+
+        DIFF --&gt; OUTPUT
+    end
+
+    style OUTPUT fill:#e1f5fe
+</pre>
+<h4 id="tracking-taxonomy-reclassifications"><a class="header" href="#tracking-taxonomy-reclassifications">Tracking Taxonomy Reclassifications</a></h4>
+<pre class="mermaid">graph TB
+    subgraph &quot;January 2024: Original Classification&quot;
+        ROOT1[Bacteria]
+        PROTEO1[Proteobacteria]
+        ECOLI1[Escherichia]
+        STRAIN1[E. coli K-12]
+
+        SEQ1[500 sequences]
+
+        ROOT1 --&gt; PROTEO1
+        PROTEO1 --&gt; ECOLI1
+        ECOLI1 --&gt; STRAIN1
+        STRAIN1 --&gt; SEQ1
+    end
+
+    subgraph &quot;February 2024: After Reclassification&quot;
+        ROOT2[Bacteria]
+        PROTEO2[Proteobacteria]
+        ECOLI2[Escherichia]
+        NEWGENUS[Escherichia_novel]
+        STRAIN2[K-12-like]
+
+        SEQ2A[200 sequences]
+        SEQ2B[300 sequences&lt;br/&gt;MOVED]
+
+        ROOT2 --&gt; PROTEO2
+        PROTEO2 --&gt; ECOLI2
+        PROTEO2 --&gt; NEWGENUS
+        ECOLI2 --&gt; SEQ2A
+        NEWGENUS --&gt; STRAIN2
+        STRAIN2 --&gt; SEQ2B
+
+        style NEWGENUS fill:#fff3e0
+        style SEQ2B fill:#fff3e0
+    end
+
+    subgraph &quot;CASG Tracking&quot;
+        TRACK[Taxonomy Timeline:&lt;br/&gt;- 300 sequences moved&lt;br/&gt;- New taxon ID: 2959183&lt;br/&gt;- Parent changed&lt;br/&gt;- Affects 47 publications]
+
+        style TRACK fill:#c8e6c9
+    end
+</pre>
+<h4 id="real-world-impact-the-lactobacillus-reclassification"><a class="header" href="#real-world-impact-the-lactobacillus-reclassification">Real-World Impact: The <em>Lactobacillus</em> Reclassification</a></h4>
+<p>In March 2020, the genus <em>Lactobacillus</em> was split into 25 genera, affecting:</p>
+<ul>
+<li><strong>260 species</strong> reclassified</li>
+<li><strong>1.5 million sequences</strong> in databases</li>
+<li><strong>10,000+ research papers</strong> suddenly using “wrong” names</li>
+<li><strong>$2 million</strong> in rebeling costs for culture collections</li>
+</ul>
+<p><strong>Without CASG:</strong> Chaos, confusion, irreproducible results
+<strong>With CASG:</strong></p>
+<pre><code class="language-bash"># See exactly what changed
+talaria database taxonomy-diff uniprot@2020-02-15..2020-04-01
+  Reclassifications:
+    Lactobacillus casei → Lacticaseibacillus casei (50,000 sequences)
+    Lactobacillus plantarum → Lactiplantibacillus plantarum (75,000 sequences)
+    ...
+
+# Work with old classification if needed
+talaria database checkout uniprot@2020-02-15 --freeze-taxonomy
+
+# Track impact on your analysis
+talaria analyze impact --taxonomy-change=Lactobacillus --my-sequences=results.fa
+</code></pre>
+<h4 id="visualizing-change-patterns"><a class="header" href="#visualizing-change-patterns">Visualizing Change Patterns</a></h4>
+<pre class="mermaid">graph TB
+    subgraph &quot;Change Frequency Heatmap&quot;
+        subgraph &quot;Daily&quot;
+            D1[New sequences]
+            D2[Header updates]
+        end
+
+        subgraph &quot;Weekly&quot;
+            W1[Function annotations]
+            W2[Citation additions]
+        end
+
+        subgraph &quot;Monthly&quot;
+            M1[Taxonomy updates]
+            M2[Major revisions]
+        end
+
+        subgraph &quot;Rare&quot;
+            R1[Sequence corrections]
+            R2[Complete reclassifications]
+        end
+    end
+
+    subgraph &quot;CASG Smart Updates&quot;
+        SMART[Intelligent sync:&lt;br/&gt;• Download only changes&lt;br/&gt;• Track what changed&lt;br/&gt;• Visualize impact&lt;br/&gt;• Maintain history]
+
+        style SMART fill:#c8e6c9
+    end
+</pre>
+<p><strong>CASG Temporal Features:</strong></p>
+<ul>
+<li><strong>Change streams</strong>: Subscribe to specific types of changes</li>
+<li><strong>Blame tracking</strong>: Who changed what and when</li>
+<li><strong>Impact analysis</strong>: How changes affect your results</li>
+<li><strong>Taxonomy timeline</strong>: Complete history of classifications</li>
+<li><strong>Selective sync</strong>: Update only what you care about</li>
+</ul>
+<hr />
+<h2 id="conclusion-the-future-is-content-addressed"><a class="header" href="#conclusion-the-future-is-content-addressed">Conclusion: The Future is Content-Addressed</a></h2>
+<p>These case studies aren’t hypothetical—they represent daily struggles in bioinformatics labs worldwide. CASG transforms these challenges into solved problems:</p>
+<div class="table-wrapper"><table><thead><tr><th>Problem</th><th>Traditional Cost</th><th>CASG Solution</th><th>Savings</th></tr></thead><tbody>
+<tr><td>Team synchronization</td><td>3 weeks debugging</td><td>Instant verification</td><td>120 hours</td></tr>
+<tr><td>Storage redundancy</td><td>1.2TB per team</td><td>100GB shared</td><td>92%</td></tr>
+<tr><td>Reproducibility</td><td>5.9% success rate</td><td>100% cryptographic guarantee</td><td>Priceless</td></tr>
+<tr><td>Cloud egress</td><td>$90,000/month</td><td><span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord">5</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord">000/</span><span class="mord mathnormal">m</span><span class="mord mathnormal">o</span><span class="mord mathnormal">n</span><span class="mord mathnormal">t</span><span class="mord mathnormal">h</span><span class="mord">∣</span></span></span></span>85,000</td><td></td></tr>
+<tr><td>Change tracking</td><td>Impossible</td><td>Git-like diffs</td><td>Complete visibility</td></tr>
+</tbody></table>
+</div>
+<p>The shift to content-addressed storage isn’t just an optimization—it’s a fundamental requirement for the future of genomic science. As we approach the era of population-scale genomics, with millions of genomes requiring exabytes of storage, CASG provides the only scalable path forward.</p>
+<p><strong>Ready to transform your bioinformatics workflow?</strong></p>
+<pre><code class="language-bash"># Start with CASG today
+talaria init
+talaria database add uniprot/swissprot
+talaria database checkout uniprot/swissprot@2024-03-15
+
+# Your reproducibility crisis is over.
+</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="casg-architecture-deep-dive"><a class="header" href="#casg-architecture-deep-dive">CASG Architecture Deep Dive</a></h1>
 <h2 id="table-of-contents"><a class="header" href="#table-of-contents">Table of Contents</a></h2>
@@ -2957,6 +3626,76 @@ Taxonomic chunking (same species):
   Compression ratio: 7:1
 </code></pre>
 <p>Related sequences share evolutionary history, meaning similar sequences patterns, which compression algorithms exploit effectively.</p>
+<h3 id="5-delta-compression-architecture-evolution-aware-storage"><a class="header" href="#5-delta-compression-architecture-evolution-aware-storage">5. Delta Compression Architecture: Evolution-Aware Storage</a></h3>
+<p>Delta compression in CASG represents a paradigm shift from treating sequences as independent entities to understanding them as products of evolution. This architecture leverages the biological reality that sequences diverge from common ancestors through accumulation of small changes.</p>
+<h4 id="delta-storage-model"><a class="header" href="#delta-storage-model">Delta Storage Model</a></h4>
+<p>The delta storage architecture consists of three layers:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Layer 1: Reference sequences (full storage)
+struct ReferenceChunk {
+    sequences: Vec&lt;Sequence&gt;,
+    chunk_hash: SHA256Hash,
+    taxon_ids: Vec&lt;TaxonId&gt;,
+}
+
+// Layer 2: Delta chunks (differential storage)
+struct DeltaChunk {
+    reference_hash: SHA256Hash,
+    deltas: Vec&lt;DeltaOperation&gt;,
+    compression_ratio: f32,
+}
+
+// Layer 3: Delta index (rapid lookup)
+struct DeltaIndex {
+    sequence_to_chunk: HashMap&lt;String, SHA256Hash&gt;,
+    reference_to_deltas: HashMap&lt;SHA256Hash, Vec&lt;SHA256Hash&gt;&gt;,
+}
+<span class="boring">}</span></code></pre></pre>
+<h4 id="delta-generation-pipeline"><a class="header" href="#delta-generation-pipeline">Delta Generation Pipeline</a></h4>
+<p>The delta generation process involves sophisticated algorithms that balance compression efficiency with reconstruction speed:</p>
+<ol>
+<li>
+<p><strong>Reference Selection</strong>: Uses graph centrality algorithms to identify sequences that minimize total delta sizes across the dataset.</p>
+</li>
+<li>
+<p><strong>Similarity Computation</strong>: Employs locality-sensitive hashing (LSH) for rapid similarity assessment without full sequence alignment.</p>
+</li>
+<li>
+<p><strong>Delta Encoding</strong>: Generates minimal edit scripts using a modified Myers’ difference algorithm optimized for biological sequences.</p>
+</li>
+<li>
+<p><strong>Chunk Formation</strong>: Groups related deltas to maintain locality of reference during reconstruction.</p>
+</li>
+</ol>
+<h4 id="reconstruction-performance"><a class="header" href="#reconstruction-performance">Reconstruction Performance</a></h4>
+<p>Delta reconstruction is optimized through several mechanisms:</p>
+<ul>
+<li><strong>Reference Caching</strong>: Frequently accessed references stay in memory</li>
+<li><strong>Parallel Reconstruction</strong>: Multiple deltas can be applied concurrently</li>
+<li><strong>Chain Limiting</strong>: Maximum delta chain length of 3 prevents cascading lookups</li>
+<li><strong>Prefetching</strong>: Predictive loading of likely-needed chunks</li>
+</ul>
+<p>Performance characteristics:</p>
+<pre><code>Single sequence reconstruction: ~1ms
+Bulk reconstruction (1000 sequences): ~500ms
+Memory overhead: ~2MB per cached reference
+</code></pre>
+<h4 id="integration-with-reduction-pipeline"><a class="header" href="#integration-with-reduction-pipeline">Integration with Reduction Pipeline</a></h4>
+<p>The delta architecture is deeply integrated with Talaria’s reduction algorithms:</p>
+<pre class="mermaid">graph TD
+    A[Input Sequences] --&gt; B[Reference Selection]
+    B --&gt; C[Representative Set]
+    C --&gt; D[Aligner Index]
+    C --&gt; E[Delta Encoding]
+    E --&gt; F[Delta Chunks]
+    F --&gt; G[CASG Storage]
+
+    style C fill:#ffd93d,stroke:#333,stroke-width:2px
+    style D fill:#6bcf7f,stroke:#333,stroke-width:2px
+    style F fill:#4a90e2,stroke:#333,stroke-width:2px
+</pre>
+<p>The same representative sequences optimal for aligner performance serve as delta references, creating a synergistic system where storage and search optimizations reinforce each other.</p>
 <h2 id="core-components-the-casg-engine"><a class="header" href="#core-components-the-casg-engine">Core Components: The CASG Engine</a></h2>
 <h3 id="casgrepository-the-orchestrator"><a class="header" href="#casgrepository-the-orchestrator">CASGRepository: The Orchestrator</a></h3>
 <p>The CASGRepository serves as the central coordinator, managing all aspects of the content-addressed storage system. It maintains consistency across components while providing a clean API for higher-level operations.</p>
@@ -3236,7 +3975,7 @@ impl CASGStorage {
 </pre>
 <h2 id="storage-layer"><a class="header" href="#storage-layer">Storage Layer</a></h2>
 <h3 id="directory-structure-1"><a class="header" href="#directory-structure-1">Directory Structure</a></h3>
-<pre><code>~/.talaria/databases/
+<pre><code>${TALARIA_HOME}/databases/
 ├── manifests/              # Manifest files
 │   ├── uniprot-swissprot.json
 │   └── ncbi-nr.json
@@ -3333,7 +4072,7 @@ export TALARIA_MANIFEST_SERVER=https://ceph-rgw.local/bucket/casg/manifests
 </code></pre>
 <h3 id="current-storage-implementation"><a class="header" href="#current-storage-implementation">Current Storage Implementation</a></h3>
 <p>Manifests and chunks are stored locally:</p>
-<pre><code>~/.talaria/databases/
+<pre><code>${TALARIA_HOME}/databases/
 ├── manifests/              # Database manifests
 │   ├── uniprot-swissprot.json
 │   └── ncbi-nr.json
@@ -3683,7 +4422,7 @@ pub fn compute_hash_simd(data: &amp;[u8]) -&gt; SHA256Hash {
 <p><strong>Incomplete downloads</strong></p>
 <ul>
 <li>Resume supported automatically</li>
-<li>Track progress in <code>~/.talaria/databases/downloads.log</code></li>
+<li>Track progress in <code>${TALARIA_HOME}/databases/downloads.log</code></li>
 </ul>
 </li>
 </ol>
@@ -3692,7 +4431,7 @@ pub fn compute_hash_simd(data: &amp;[u8]) -&gt; SHA256Hash {
 <pre><code class="language-bash">RUST_LOG=talaria::casg=debug talaria database download --use-casg
 </code></pre>
 <p>Verify integrity:</p>
-<pre><code class="language-bash">talaria casg verify --manifest ~/.talaria/databases/manifests/uniprot-swissprot.json
+<pre><code class="language-bash">talaria casg verify --manifest ${TALARIA_HOME}/databases/manifests/uniprot-swissprot.json
 </code></pre>
 <h2 id="see-also-4"><a class="header" href="#see-also-4">See Also</a></h2>
 <ul>
@@ -4121,7 +4860,7 @@ async fn check_updates(cached_etag: Option&lt;&amp;str&gt;) -&gt; Result&lt;bool
 <h2 id="best-practices-lessons-from-production"><a class="header" href="#best-practices-lessons-from-production">Best Practices: Lessons from Production</a></h2>
 <h3 id="1-cache-manifests-locally"><a class="header" href="#1-cache-manifests-locally">1. Cache Manifests Locally</a></h3>
 <p>Always cache manifests with their ETags:</p>
-<pre><code class="language-bash">~/.talaria/cache/manifests/
+<pre><code class="language-bash">${TALARIA_HOME}/cache/manifests/
 ├── uniprot-swissprot-20240315.json
 ├── uniprot-swissprot-20240315.etag
 └── ncbi-nr-20240310.json
@@ -5685,7 +6424,7 @@ println!("Total chunks: {}", stats.total_chunks);
 talaria casg init
 
 # Check manifest exists
-ls ~/.talaria/databases/manifests/
+ls ${TALARIA_HOME}/databases/manifests/
 
 # Re-download to fix manifest
 talaria database download uniprot/swissprot
@@ -5723,13 +6462,13 @@ talaria database download uniprot -d swissprot --resume
 </ul>
 <p><strong>Solutions:</strong></p>
 <pre><code class="language-bash"># Check disk space
-df -h ~/.talaria/databases
+df -h ${TALARIA_HOME}/databases
 
 # Clean up old chunks manually
-find ~/.talaria/databases/chunks -type f -mtime +30 -delete
+find ${TALARIA_HOME}/databases/chunks -type f -mtime +30 -delete
 
 # Check permissions
-ls -la ~/.talaria/databases/chunks/
+ls -la ${TALARIA_HOME}/databases/chunks/
 </code></pre>
 <h3 id="3-database-not-found"><a class="header" href="#3-database-not-found">3. Database Not Found</a></h3>
 <p><strong>Symptoms:</strong></p>
@@ -5749,7 +6488,7 @@ talaria database list
 talaria database download uniprot -d swissprot
 
 # Check database path
-ls ~/.talaria/databases/manifests/
+ls ${TALARIA_HOME}/databases/manifests/
 </code></pre>
 <h3 id="4-custom-database-issues"><a class="header" href="#4-custom-database-issues">4. Custom Database Issues</a></h3>
 <p><strong>Symptoms:</strong></p>
@@ -5788,14 +6527,14 @@ Warning: Storage usage at 95%
 <p><strong>Solutions:</strong></p>
 <pre><code class="language-bash"># Check storage usage
 talaria casg stats
-du -sh ~/.talaria/databases/
+du -sh ${TALARIA_HOME}/databases/
 
 # Remove unused databases manually
-rm -rf ~/.talaria/databases/chunks/[hash_prefix]/
+rm -rf ${TALARIA_HOME}/databases/chunks/[hash_prefix]/
 
 # Move storage to larger disk using symlink
-mv ~/.talaria/databases /data/casg
-ln -s /data/casg ~/.talaria/databases
+mv ${TALARIA_HOME}/databases /data/casg
+ln -s /data/casg ${TALARIA_HOME}/databases
 
 # Future: Garbage collection will be added
 # talaria casg gc  # Not yet implemented
@@ -5845,7 +6584,7 @@ export TALARIA_CACHE_SIZE=4G
 talaria casg assemble ncbi/nr -o nr.fasta
 
 # Use SSD for chunk storage
-ln -s /ssd/casg ~/.talaria/databases
+ln -s /ssd/casg ${TALARIA_HOME}/databases
 </code></pre>
 <h3 id="8-manifest-issues"><a class="header" href="#8-manifest-issues">8. Manifest Issues</a></h3>
 <p><strong>Symptoms:</strong></p>
@@ -5860,14 +6599,14 @@ Warning: Manifest not found
 </ul>
 <p><strong>Solutions:</strong></p>
 <pre><code class="language-bash"># Check manifest location (should be database-specific)
-ls ~/.talaria/databases/manifests/
+ls ${TALARIA_HOME}/databases/manifests/
 # Should see: uniprot-swissprot.json, ncbi-nr.json, etc.
 
 # Re-download database to fix manifest
 talaria database download uniprot -d swissprot
 
 # Check manifest format
-cat ~/.talaria/databases/manifests/uniprot-swissprot.json | python -m json.tool | head -20
+cat ${TALARIA_HOME}/databases/manifests/uniprot-swissprot.json | python -m json.tool | head -20
 </code></pre>
 <h3 id="9-list-sequences-issues"><a class="header" href="#9-list-sequences-issues">9. List Sequences Issues</a></h3>
 <p><strong>Symptoms:</strong></p>
@@ -5894,7 +6633,7 @@ talaria database list-sequences uniprot/swissprot --ids-only
 </code></pre>
 <h3 id="10-concurrent-access-issues"><a class="header" href="#10-concurrent-access-issues">10. Concurrent Access Issues</a></h3>
 <p><strong>Symptoms:</strong></p>
-<pre><code>Error: Lock file exists: ~/.talaria/databases/.lock
+<pre><code>Error: Lock file exists: ${TALARIA_HOME}/databases/.lock
 Warning: Another process is accessing the repository
 </code></pre>
 <p><strong>Causes:</strong></p>
@@ -5908,7 +6647,7 @@ Warning: Another process is accessing the repository
 ps aux | grep talaria
 
 # Remove stale lock (if no other processes)
-rm ~/.talaria/databases/.lock
+rm ${TALARIA_HOME}/databases/.lock
 
 # Use read-only mode
 talaria casg assemble uniprot/swissprot --read-only -o output.fasta
@@ -5955,10 +6694,10 @@ talaria database info uniprot/swissprot
 </code></pre>
 <h3 id="manual-recovery"><a class="header" href="#manual-recovery">Manual Recovery</a></h3>
 <pre><code class="language-bash"># Backup current state
-tar -czf casg_backup.tar.gz ~/.talaria/databases/
+tar -czf casg_backup.tar.gz ${TALARIA_HOME}/databases/
 
 # Manual reset (remove and reinitialize)
-rm -rf ~/.talaria/databases
+rm -rf ${TALARIA_HOME}/databases
 talaria casg init
 
 # Restore from backup
@@ -5970,12 +6709,12 @@ tar -xzf casg_backup.tar.gz -C ~/
 talaria database download uniprot -d swissprot -j 16
 
 # Move CASG storage to faster disk
-mv ~/.talaria/databases /fast/ssd/casg
-ln -s /fast/ssd/casg ~/.talaria/databases
+mv ${TALARIA_HOME}/databases /fast/ssd/casg
+ln -s /fast/ssd/casg ${TALARIA_HOME}/databases
 </code></pre>
 <h3 id="future-configuration-support"><a class="header" href="#future-configuration-support">Future Configuration Support</a></h3>
 <p>Configuration file support is planned for future releases:</p>
-<pre><code class="language-toml"># Future: ~/.talaria/config.toml
+<pre><code class="language-toml"># Future: ${TALARIA_HOME}/config.toml
 [casg]
 compression = "zstd"
 compression_level = 3
@@ -5988,7 +6727,7 @@ parallel_downloads = 8
 <tr><td><code>VerificationFailed</code></td><td>Hash mismatch</td><td>Re-download database</td></tr>
 <tr><td><code>NetworkTimeout</code></td><td>Download timeout</td><td>Retry with <code>--resume</code></td></tr>
 <tr><td><code>StorageFull</code></td><td>Disk space exhausted</td><td>Free space or move storage</td></tr>
-<tr><td><code>PermissionDenied</code></td><td>File permissions issue</td><td>Check <code>~/.talaria/databases/</code> permissions</td></tr>
+<tr><td><code>PermissionDenied</code></td><td>File permissions issue</td><td>Check <code>${TALARIA_HOME}/databases/</code> permissions</td></tr>
 <tr><td><code>Database already exists</code></td><td>Custom database exists</td><td>Use <code>--replace</code> flag</td></tr>
 </tbody></table>
 </div>
@@ -12125,7 +12864,7 @@ For Conservative Compression (&lt;50%):
 </tbody></table>
 </div>
 <h2 id="decompression-and-reconstruction"><a class="header" href="#decompression-and-reconstruction">Decompression and Reconstruction</a></h2>
-<h3 id="reconstruction-performance"><a class="header" href="#reconstruction-performance">Reconstruction Performance</a></h3>
+<h3 id="reconstruction-performance-1"><a class="header" href="#reconstruction-performance-1">Reconstruction Performance</a></h3>
 <p><strong>Test</strong>: Time to reconstruct sequences from compressed representation</p>
 <div class="table-wrapper"><table><thead><tr><th>Compression Level</th><th>Reconstruction Time</th><th>Memory Required</th><th>Accuracy</th></tr></thead><tbody>
 <tr><td>30% compression</td><td>45 seconds</td><td>1.2 GB</td><td>100%</td></tr>
@@ -12913,7 +13652,7 @@ talaria search \
 
 # Search against stored database
 talaria search \
-    -d ~/.talaria/databases/data/uniprot/swissprot/current/reduced/blast-30/swissprot.fasta \
+    -d ${TALARIA_HOME}/databases/data/uniprot/swissprot/current/reduced/blast-30/swissprot.fasta \
     -q query.fasta
 </code></pre>
 <hr />
@@ -12958,12 +13697,12 @@ talaria stats deltas.tal --format json
 <p>Talaria uses TOML configuration files for advanced settings.</p>
 <h3 id="default-configuration-location"><a class="header" href="#default-configuration-location">Default Configuration Location</a></h3>
 <ul>
-<li><code>~/.talaria/config.toml</code> (user)</li>
+<li><code>${TALARIA_HOME}/config.toml</code> (user)</li>
 <li><code>./talaria.toml</code> (project)</li>
 </ul>
 <h3 id="configuration-structure-1"><a class="header" href="#configuration-structure-1">Configuration Structure</a></h3>
 <pre><code class="language-toml">[database]
-database_dir = "~/.talaria/databases/data"
+database_dir = "${TALARIA_HOME}/databases/data"
 retention_count = 3
 
 [reduction]

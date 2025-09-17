@@ -20,7 +20,7 @@ impl TaskStatus {
     pub fn symbol(&self) -> &str {
         match self {
             TaskStatus::Pending => "○",
-            TaskStatus::InProgress => "◐",
+            TaskStatus::InProgress => "●",
             TaskStatus::Complete => "✓",
             TaskStatus::Failed => "✗",
             TaskStatus::Skipped => "─",
@@ -44,6 +44,7 @@ pub struct Task {
     pub description: String,
     pub status: TaskStatus,
     pub progress: Option<ProgressBar>,
+    pub message: Option<String>,
 }
 
 /// Task list for tracking multi-step operations
@@ -107,6 +108,7 @@ impl TaskList {
                 description: description.to_string(),
                 status: TaskStatus::Pending,
                 progress: None,
+                message: None,
             });
             handle
         }; // Release the lock here
@@ -131,6 +133,20 @@ impl TaskList {
                 }
                 self.current_spinner = None;
             }
+        }
+        drop(tasks);
+
+        // Only update display if not paused
+        if !self.silent && !self.updates_paused {
+            self.print_task_list();
+        }
+    }
+
+    /// Set a message for a task (shown alongside the task description)
+    pub fn set_task_message(&mut self, handle: TaskHandle, message: &str) {
+        let mut tasks = self.tasks.lock().unwrap();
+        if let Some(task) = tasks.get_mut(handle.0) {
+            task.message = Some(message.to_string());
         }
         drop(tasks);
 
@@ -192,35 +208,41 @@ impl TaskList {
             return;
         }
 
+        use std::io::{self, Write};
+
         let tasks = self.tasks.lock().unwrap();
 
-        // Move cursor up to the start of our task list and clear each line
+        // Clear previous lines using carriage returns and ANSI clear
         if self.printed_lines > 0 {
-            // Move cursor up by the number of lines we printed last time
-            print!("\x1B[{}A", self.printed_lines);
-            // Clear each line
+            // Use simpler approach: move up and clear
             for _ in 0..self.printed_lines {
-                print!("\r\x1B[K"); // Clear line
-                print!("\x1B[1B"); // Move down
+                // Move up one line and clear it
+                print!("\x1B[1A\x1B[2K");
             }
-            // Move back up to start position
-            print!("\x1B[{}A", self.printed_lines);
+            io::stdout().flush().ok();
         }
 
         // Print all tasks
         for task in tasks.iter() {
-            println!("  {} {}",
-                task.status.colored_symbol(),
-                if task.status == TaskStatus::InProgress {
-                    task.description.yellow()
-                } else if task.status == TaskStatus::Complete {
-                    task.description.green()
-                } else if task.status == TaskStatus::Failed {
-                    task.description.red()
-                } else {
-                    task.description.normal()
-                }
-            );
+            let desc = if task.status == TaskStatus::InProgress {
+                task.description.yellow()
+            } else if task.status == TaskStatus::Complete {
+                task.description.green()
+            } else if task.status == TaskStatus::Failed {
+                task.description.red()
+            } else {
+                task.description.normal()
+            };
+
+            if let Some(ref msg) = task.message {
+                println!("  {} {} - {}",
+                    task.status.colored_symbol(),
+                    desc,
+                    msg.dimmed()
+                );
+            } else {
+                println!("  {} {}", task.status.colored_symbol(), desc);
+            }
         }
 
         // Update the count of printed lines
@@ -288,7 +310,7 @@ pub fn print_error(message: &str) {
 
 /// Print a success message
 pub fn print_success(message: &str) {
-    println!("\n{} {}", "✓".green(), message.green());
+    println!("\n{} {}", "✓".green().bold(), message);
 }
 
 /// Print a tip
@@ -375,6 +397,64 @@ pub fn format_bytes(bytes: u64) -> String {
 /// Check if colors should be disabled
 pub fn colors_enabled() -> bool {
     std::env::var("NO_COLOR").is_err() && std::env::var("CLICOLOR").unwrap_or_else(|_| "1".to_string()) != "0"
+}
+
+/// Print a structured section with proper formatting
+pub fn print_structured_section(title: &str) {
+    println!("\n{} {}", "▶".cyan().bold(), title.bold());
+}
+
+/// Print a structured item with tree-like formatting
+pub fn print_structured_item(message: &str, level: usize, is_last: bool) {
+    let prefix = match level {
+        0 => {
+            if is_last {
+                "└─".dimmed()
+            } else {
+                "├─".dimmed()
+            }
+        }
+        1 => {
+            if is_last {
+                "  └─".dimmed()
+            } else {
+                "  ├─".dimmed()
+            }
+        }
+        _ => {
+            let indent = "  ".repeat(level);
+            if is_last {
+                format!("{}└─", indent).dimmed()
+            } else {
+                format!("{}├─", indent).dimmed()
+            }
+        }
+    };
+    println!("  {} {}", prefix, message);
+}
+
+/// Print a progress message with a filled circle
+pub fn print_progress(message: &str) {
+    println!("  {} {}", "●".yellow(), message);
+}
+
+/// Print a sub-item with proper indentation
+pub fn print_sub_item(message: &str, indent: usize) {
+    let spaces = "  ".repeat(indent + 1);
+    println!("{}{}", spaces, message.dimmed());
+}
+
+/// Print formatted number with thousands separator
+pub fn format_number(n: usize) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            result.push(',');
+        }
+        result.push(c);
+    }
+    result.chars().rev().collect()
 }
 
 /// Initialize the formatter (sets up colored output)

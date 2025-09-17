@@ -199,7 +199,7 @@
                         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="content-addressed-sequence-graph-casg"><a class="header" href="#content-addressed-sequence-graph-casg">Content-Addressed Sequence Graph (CASG)</a></h1>
 <h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
-<p>The Content-Addressed Sequence Graph (CASG) represents a paradigm shift in how we store, distribute, and manage biological sequence databases. As genomic data doubles every seven months and protein databases grow exponentially, the traditional approach of downloading entire databases for each update has become unsustainable. CASG solves this crisis through a combination of content-addressed storage, cryptographic verification, and intelligent chunking that reduces update bandwidth by 99% while maintaining perfect data integrity.</p>
+<p>The Content-Addressed Sequence Graph (CASG) represents a paradigm shift in how we store, distribute, and manage biological sequence databases. As genomic data doubles every seven months and protein databases grow exponentially, the traditional approach of downloading entire databases for each update has become unsustainable. Talaria solves this crisis through a combination of content-addressed storage, cryptographic verification, and intelligent chunking that reduces update bandwidth by 99% while maintaining perfect data integrity.</p>
 <h3 id="the-problem-database-update-explosion"><a class="header" href="#the-problem-database-update-explosion">The Problem: Database Update Explosion</a></h3>
 <p>Consider the reality facing a typical bioinformatics lab:</p>
 <ul>
@@ -366,6 +366,97 @@ chunks:
     taxa: [9606]      # Human
     size: 104857600   # 100MB
 </code></pre>
+<h3 id="6-delta-compressed-storage-evolution-aware-compression"><a class="header" href="#6-delta-compressed-storage-evolution-aware-compression">6. Delta-Compressed Storage: Evolution-Aware Compression</a></h3>
+<p>Traditional compression treats each sequence independently, missing the fundamental truth of biology: sequences evolve from common ancestors. CASG’s delta compression leverages evolutionary relationships to achieve compression ratios impossible with general-purpose algorithms.</p>
+<h4 id="how-delta-compression-works-in-casg"><a class="header" href="#how-delta-compression-works-in-casg">How Delta Compression Works in CASG</a></h4>
+<p>Instead of storing every sequence independently, CASG identifies reference sequences and stores others as compact “deltas”—just the differences from their references. This mirrors how evolution works: genomes accumulate small changes over time.</p>
+<pre class="mermaid">graph LR
+    subgraph &quot;Traditional Storage&quot;
+        S1[E. coli K12&lt;br/&gt;5.2MB]
+        S2[E. coli O157&lt;br/&gt;5.3MB]
+        S3[E. coli UTI89&lt;br/&gt;5.1MB]
+    end
+
+    subgraph &quot;Delta Storage&quot;
+        R[Reference: K12&lt;br/&gt;5.2MB]
+        D1[Delta: O157&lt;br/&gt;~100KB]
+        D2[Delta: UTI89&lt;br/&gt;~80KB]
+        R --&gt; D1
+        R --&gt; D2
+    end
+
+    style S1 fill:#ffcdd2
+    style S2 fill:#ffcdd2
+    style S3 fill:#ffcdd2
+    style R fill:#c8e6c9
+    style D1 fill:#e1f5fe
+    style D2 fill:#e1f5fe
+</pre>
+<p><strong>Storage Savings</strong>: Three similar E. coli genomes:</p>
+<ul>
+<li>Traditional: 15.6MB</li>
+<li>Delta-compressed: 5.4MB (65% reduction)</li>
+<li>For 1000 strains: ~95% reduction</li>
+</ul>
+<h4 id="intelligent-reference-selection"><a class="header" href="#intelligent-reference-selection">Intelligent Reference Selection</a></h4>
+<p>Not all sequences make good references. CASG uses sophisticated algorithms to choose optimal references based on:</p>
+<ol>
+<li><strong>Centrality</strong>: References that are similar to many sequences</li>
+<li><strong>Stability</strong>: Sequences unlikely to be revised</li>
+<li><strong>Completeness</strong>: Full-length, high-quality sequences</li>
+<li><strong>Phylogenetic representation</strong>: Coverage across the evolutionary tree</li>
+</ol>
+<h4 id="delta-types-in-casg"><a class="header" href="#delta-types-in-casg">Delta Types in CASG</a></h4>
+<p>CASG supports multiple types of delta operations, matching biological variation patterns:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>enum DeltaOperation {
+    // Point mutations (SNPs)
+    Substitute { pos: usize, new_base: u8 },
+
+    // Insertions/Deletions (InDels)
+    Insert { pos: usize, bases: Vec&lt;u8&gt; },
+    Delete { pos: usize, count: usize },
+
+    // Large-scale changes
+    UseReference { offset: usize, length: usize },
+
+    // Metadata changes
+    UpdateAnnotation { field: String, value: String },
+}
+<span class="boring">}</span></code></pre></pre>
+<h4 id="incremental-updates-via-deltas"><a class="header" href="#incremental-updates-via-deltas">Incremental Updates via Deltas</a></h4>
+<p>Delta compression enables efficient incremental updates. When a database updates:</p>
+<ol>
+<li><strong>New sequences</strong>: Stored as deltas from existing references</li>
+<li><strong>Modified sequences</strong>: Only the changes are transmitted</li>
+<li><strong>Unchanged sequences</strong>: Zero bandwidth required</li>
+</ol>
+<p>Example update scenario:</p>
+<pre><code class="language-yaml"># January Database: 100GB
+references: 10GB
+deltas: 90GB
+
+# February Update: Only 500MB transmitted
+new_deltas: 400MB      # New sequences
+update_deltas: 100MB   # Corrections to existing sequences
+# Result: 100.5GB database from 500MB download
+</code></pre>
+<h4 id="delta-chain-management"><a class="header" href="#delta-chain-management">Delta Chain Management</a></h4>
+<p>CASG prevents “delta chains” from growing too long, which would slow reconstruction:</p>
+<pre><code>Good: Reference → Delta (1 hop)
+OK:   Reference → Delta → Delta (2 hops)
+Bad:  Reference → Delta → Delta → Delta → ... (many hops)
+
+CASG automatically re-bases deep deltas to maintain performance
+</code></pre>
+<h4 id="integration-with-talaria-reduction"><a class="header" href="#integration-with-talaria-reduction">Integration with Talaria Reduction</a></h4>
+<p>Delta compression in CASG is tightly integrated with Talaria’s sequence reduction algorithms. When Talaria selects representative sequences for aligner optimization, these same sequences serve as ideal delta references, providing dual benefits:</p>
+<ol>
+<li><strong>Optimal for aligners</strong>: Representatives chosen for biological diversity</li>
+<li><strong>Optimal for compression</strong>: Same representatives minimize delta sizes</li>
+</ol>
+<p>This synergy means that a Talaria-reduced database is automatically optimized for both search performance and storage efficiency.</p>
 <h2 id="benefits-real-world-impact"><a class="header" href="#benefits-real-world-impact">Benefits: Real-World Impact</a></h2>
 <h3 id="for-individual-researchers"><a class="header" href="#for-individual-researchers">For Individual Researchers</a></h3>
 <p>CASG transforms the daily reality of bioinformatics work:</p>
@@ -529,7 +620,7 @@ chunks:
 <pre><code class="language-bash"># 1. Initialize CASG repository (one-time setup)
 talaria casg init
 </code></pre>
-<p>This creates the CASG storage structure in <code>~/.talaria/databases/</code>. The system is now ready to manage any number of databases efficiently.</p>
+<p>This creates the CASG storage structure in <code>${TALARIA_HOME}/databases/</code>. The system is now ready to manage any number of databases efficiently.</p>
 <pre><code class="language-bash"># 2. Download a database (uses CASG automatically)
 talaria database download uniprot -d swissprot
 </code></pre>
@@ -637,7 +728,7 @@ talaria database info uniprot/swissprot
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../casg/architecture.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../casg/case-studies.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -651,7 +742,7 @@ talaria database info uniprot/swissprot
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../casg/architecture.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../casg/case-studies.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

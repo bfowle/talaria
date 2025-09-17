@@ -37,38 +37,34 @@ pub struct ValidateArgs {
 /// Validate database reduction from CASG system
 fn validate_from_casg(_db_ref_str: &str, profile: String) -> Result<()> {
     use crate::casg::storage::CASGStorage;
-    
+    use crate::cli::output::*;
 
     // Initialize CASG storage
     let casg_path = crate::core::paths::talaria_databases_dir();
-
     let storage = CASGStorage::open(&casg_path)?;
 
     // Get the reduction manifest for the profile
     let manifest = storage.get_reduction_by_profile(&profile)?
         .ok_or_else(|| anyhow::anyhow!("Reduction manifest not found for profile: {}", profile))?;
 
-    // Verify reconstruction capability
-    println!("✓ Manifest loaded");
-    println!("✓ Reduction profile: {}", profile);
-    println!("✓ Reference chunks: {}", manifest.reference_chunks.len());
-    println!("✓ Delta chunks: {}", manifest.delta_chunks.len());
-    println!("✓ Reduction statistics: {:.1}% coverage",
-        manifest.statistics.sequence_coverage * 100.0);
+    // Display validation results as tree
+    success("Manifest loaded");
+    tree_item(false, "Reduction profile", Some(&profile));
+    tree_item(false, "Reference chunks", Some(&manifest.reference_chunks.len().to_string()));
+    tree_item(false, "Delta chunks", Some(&manifest.delta_chunks.len().to_string()));
+    tree_item(true, "Coverage", Some(&format!("{:.1}%", manifest.statistics.sequence_coverage * 100.0)));
 
     Ok(())
 }
 
 pub fn run(args: ValidateArgs) -> anyhow::Result<()> {
-    use indicatif::{ProgressBar, ProgressStyle};
+    use crate::utils::progress::create_spinner;
     use crate::utils::format::{format_bytes, get_file_size};
-    
-    let pb = ProgressBar::new_spinner();
-    pb.set_style(
-        ProgressStyle::default_spinner()
-            .template("{spinner:.green} {msg}")
-            .unwrap()
-    );
+    use crate::cli::output::*;
+
+    section_header("Validation Report");
+
+    let pb = create_spinner("Initializing validation...");
     
     // Validate arguments: either database or all file paths must be specified
     if args.database.is_none() && (args.original.is_none() || args.reduced.is_none() || args.deltas.is_none()) {
@@ -142,29 +138,43 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<()> {
     
     pb.finish_and_clear();
     
-    // Print results
-    use crate::cli::stats_display::create_validation_stats;
-    
-    let stats = create_validation_stats(
-        metrics.total_sequences,
-        metrics.reference_count,
-        metrics.child_count,
-        metrics.covered_sequences,
-        metrics.sequence_coverage,
-        metrics.covered_taxa,
-        metrics.total_taxa,
-        metrics.taxonomic_coverage,
-        metrics.original_file_size,
-        metrics.reduced_file_size,
-        metrics.avg_delta_size,
-    );
-    
-    println!("\n{}", stats);
-    
+    // Print results using tree structure
+    subsection_header("Coverage Metrics");
+
+    let coverage_items = vec![
+        ("Sequences", format!("{:.1}%", metrics.sequence_coverage * 100.0)),
+        ("Taxonomy", format!("{:.1}%", metrics.taxonomic_coverage * 100.0)),
+    ];
+    tree_section("Coverage", coverage_items, false);
+
+    let reduction_items = vec![
+        ("References", format_number(metrics.reference_count)),
+        ("Deltas", format_number(metrics.child_count)),
+        ("Total Original", format_number(metrics.total_sequences)),
+        ("Ratio", format!("{:.1}%", (metrics.reference_count as f64 / metrics.total_sequences as f64) * 100.0)),
+    ];
+    tree_section("Reduction", reduction_items, false);
+
+    let size_items = vec![
+        ("Original", format_bytes(metrics.original_file_size)),
+        ("Reduced", format_bytes(metrics.reduced_file_size)),
+        ("Compression", format!("{:.1}%", (1.0 - metrics.reduced_file_size as f64 / metrics.original_file_size as f64) * 100.0)),
+    ];
+    tree_section("File Sizes", size_items, false);
+
+    // Status indicator
+    if metrics.sequence_coverage > 0.99 && metrics.taxonomic_coverage > 0.95 {
+        tree_item(true, "Status", Some("✓ Valid"));
+    } else if metrics.sequence_coverage > 0.95 {
+        tree_item(true, "Status", Some("⚠ Partial Coverage"));
+    } else {
+        tree_item(true, "Status", Some("✗ Low Coverage"));
+    }
+
     if let Some(report_path) = args.report {
         let report = serde_json::to_string_pretty(&metrics)?;
         std::fs::write(&report_path, report)?;
-        println!("\nDetailed report saved to {:?}", report_path);
+        info(&format!("Detailed report saved to {:?}", report_path));
     }
     
     Ok(())

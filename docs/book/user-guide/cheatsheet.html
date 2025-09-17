@@ -263,8 +263,8 @@ talaria validate uniprot/swissprot:30-percent
 talaria reconstruct uniprot/swissprot:30-percent -o reconstructed.fasta
 </code></pre>
 <h2 id="environment-variables"><a class="header" href="#environment-variables">Environment Variables</a></h2>
-<pre><code class="language-bash"># Change CASG storage location (before init)
-export TALARIA_CASG_PATH=/fast/ssd/talaria
+<pre><code class="language-bash"># Change database storage location (before init)
+export TALARIA_DATABASES_DIR=/fast/ssd/talaria
 
 # Use specific thread count
 talaria -j 16 reduce uniprot/swissprot -r 0.3 -o output.fasta

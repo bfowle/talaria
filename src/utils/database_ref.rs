@@ -1,6 +1,136 @@
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
+
+/// Represents a complete database reference with version and profile
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DatabaseReference {
+    /// Source system (e.g., "uniprot", "ncbi", "custom")
+    pub source: String,
+
+    /// Dataset name (e.g., "swissprot", "nr", "trembl")
+    pub dataset: String,
+
+    /// Version specification (e.g., "2024_04", "current", "stable")
+    /// None means use the current/latest version
+    pub version: Option<String>,
+
+    /// Reduction profile (e.g., "50-percent", "auto-detect")
+    /// None means use the auto-detect profile
+    pub profile: Option<String>,
+}
+
+impl DatabaseReference {
+    /// Create a new database reference
+    pub fn new(source: String, dataset: String) -> Self {
+        Self {
+            source,
+            dataset,
+            version: None,
+            profile: None,
+        }
+    }
+
+    /// Create with all fields
+    pub fn with_all(
+        source: String,
+        dataset: String,
+        version: Option<String>,
+        profile: Option<String>,
+    ) -> Self {
+        Self {
+            source,
+            dataset,
+            version,
+            profile,
+        }
+    }
+
+    /// Format as a string for display
+    pub fn to_string(&self) -> String {
+        let mut result = format!("{}/{}", self.source, self.dataset);
+
+        if let Some(ref version) = self.version {
+            result.push('@');
+            result.push_str(version);
+        }
+
+        if let Some(ref profile) = self.profile {
+            result.push(':');
+            result.push_str(profile);
+        }
+
+        result
+    }
+
+    /// Get the base reference without version or profile
+    pub fn base_ref(&self) -> String {
+        format!("{}/{}", self.source, self.dataset)
+    }
+
+    /// Get version or default
+    pub fn version_or_default(&self) -> &str {
+        self.version.as_deref().unwrap_or("current")
+    }
+
+    /// Get profile or default
+    pub fn profile_or_default(&self) -> &str {
+        self.profile.as_deref().unwrap_or("auto-detect")
+    }
+}
+
+impl std::fmt::Display for DatabaseReference {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
+}
+
+/// Parse a database reference with full syntax support
+///
+/// Format: `source/dataset[@version][:profile]`
+///
+/// # Examples
+/// - "uniprot/swissprot" -> defaults to current version, auto-detect profile
+/// - "uniprot/swissprot@2024_04" -> specific version, auto-detect profile
+/// - "uniprot/swissprot:50-percent" -> current version, 50% reduction
+/// - "uniprot/swissprot@2024_04:50-percent" -> specific version and profile
+/// - "ncbi/nr@stable" -> stable alias
+/// - "custom/mydb@paper-2024:minimal" -> custom alias and profile
+pub fn parse_database_reference(input: &str) -> Result<DatabaseReference> {
+    // First, find the base reference (source/dataset)
+    let version_split: Vec<&str> = input.splitn(2, '@').collect();
+    let base_and_profile = version_split[0];
+    let version = version_split.get(1);
+
+    // Now split the base_and_profile by ':' to separate base from profile
+    let profile_split: Vec<&str> = base_and_profile.splitn(2, ':').collect();
+    let base = profile_split[0];
+    let mut profile = profile_split.get(1).map(|s| s.to_string());
+
+    // If we have a version part, it might also contain a profile after ':'
+    let mut final_version = None;
+    if let Some(version_part) = version {
+        let version_profile_split: Vec<&str> = version_part.splitn(2, ':').collect();
+        final_version = Some(version_profile_split[0].to_string());
+
+        // Profile in version part takes precedence
+        if let Some(profile_in_version) = version_profile_split.get(1) {
+            profile = Some(profile_in_version.to_string());
+        }
+    }
+
+    // Parse the base reference (source/dataset)
+    let (source, dataset) = parse_database_ref(base)?;
+
+    Ok(DatabaseReference {
+        source,
+        dataset,
+        version: final_version,
+        profile,
+    })
+}
 
 /// Parse a database reference in the format "source/dataset"
+/// This is the legacy function for backward compatibility
 ///
 /// # Examples
 /// - "uniprot/swissprot" -> ("uniprot", "swissprot")
@@ -84,6 +214,65 @@ mod tests {
         assert!(parse_database_ref("too/many/slashes").is_err());
         assert!(parse_database_ref("/empty").is_err());
         assert!(parse_database_ref("empty/").is_err());
+    }
+
+    #[test]
+    fn test_parse_database_reference_full() {
+        // Test basic reference
+        let ref1 = parse_database_reference("uniprot/swissprot").unwrap();
+        assert_eq!(ref1.source, "uniprot");
+        assert_eq!(ref1.dataset, "swissprot");
+        assert_eq!(ref1.version, None);
+        assert_eq!(ref1.profile, None);
+
+        // Test with version
+        let ref2 = parse_database_reference("uniprot/swissprot@2024_04").unwrap();
+        assert_eq!(ref2.source, "uniprot");
+        assert_eq!(ref2.dataset, "swissprot");
+        assert_eq!(ref2.version, Some("2024_04".to_string()));
+        assert_eq!(ref2.profile, None);
+
+        // Test with profile
+        let ref3 = parse_database_reference("uniprot/swissprot:50-percent").unwrap();
+        assert_eq!(ref3.source, "uniprot");
+        assert_eq!(ref3.dataset, "swissprot");
+        assert_eq!(ref3.version, None);
+        assert_eq!(ref3.profile, Some("50-percent".to_string()));
+
+        // Test with both version and profile
+        let ref4 = parse_database_reference("uniprot/swissprot@2024_04:50-percent").unwrap();
+        assert_eq!(ref4.source, "uniprot");
+        assert_eq!(ref4.dataset, "swissprot");
+        assert_eq!(ref4.version, Some("2024_04".to_string()));
+        assert_eq!(ref4.profile, Some("50-percent".to_string()));
+
+        // Test with aliases
+        let ref5 = parse_database_reference("ncbi/nr@stable:minimal").unwrap();
+        assert_eq!(ref5.source, "ncbi");
+        assert_eq!(ref5.dataset, "nr");
+        assert_eq!(ref5.version, Some("stable".to_string()));
+        assert_eq!(ref5.profile, Some("minimal".to_string()));
+    }
+
+    #[test]
+    fn test_database_reference_display() {
+        let ref1 = DatabaseReference::new("uniprot".to_string(), "swissprot".to_string());
+        assert_eq!(ref1.to_string(), "uniprot/swissprot");
+
+        let ref2 = DatabaseReference::with_all(
+            "uniprot".to_string(),
+            "swissprot".to_string(),
+            Some("2024_04".to_string()),
+            Some("50-percent".to_string()),
+        );
+        assert_eq!(ref2.to_string(), "uniprot/swissprot@2024_04:50-percent");
+    }
+
+    #[test]
+    fn test_database_reference_defaults() {
+        let ref1 = DatabaseReference::new("uniprot".to_string(), "swissprot".to_string());
+        assert_eq!(ref1.version_or_default(), "current");
+        assert_eq!(ref1.profile_or_default(), "auto-detect");
     }
 
     #[test]

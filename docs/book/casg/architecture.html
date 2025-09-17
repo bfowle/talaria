@@ -488,6 +488,76 @@ Taxonomic chunking (same species):
   Compression ratio: 7:1
 </code></pre>
 <p>Related sequences share evolutionary history, meaning similar sequences patterns, which compression algorithms exploit effectively.</p>
+<h3 id="5-delta-compression-architecture-evolution-aware-storage"><a class="header" href="#5-delta-compression-architecture-evolution-aware-storage">5. Delta Compression Architecture: Evolution-Aware Storage</a></h3>
+<p>Delta compression in CASG represents a paradigm shift from treating sequences as independent entities to understanding them as products of evolution. This architecture leverages the biological reality that sequences diverge from common ancestors through accumulation of small changes.</p>
+<h4 id="delta-storage-model"><a class="header" href="#delta-storage-model">Delta Storage Model</a></h4>
+<p>The delta storage architecture consists of three layers:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Layer 1: Reference sequences (full storage)
+struct ReferenceChunk {
+    sequences: Vec&lt;Sequence&gt;,
+    chunk_hash: SHA256Hash,
+    taxon_ids: Vec&lt;TaxonId&gt;,
+}
+
+// Layer 2: Delta chunks (differential storage)
+struct DeltaChunk {
+    reference_hash: SHA256Hash,
+    deltas: Vec&lt;DeltaOperation&gt;,
+    compression_ratio: f32,
+}
+
+// Layer 3: Delta index (rapid lookup)
+struct DeltaIndex {
+    sequence_to_chunk: HashMap&lt;String, SHA256Hash&gt;,
+    reference_to_deltas: HashMap&lt;SHA256Hash, Vec&lt;SHA256Hash&gt;&gt;,
+}
+<span class="boring">}</span></code></pre></pre>
+<h4 id="delta-generation-pipeline"><a class="header" href="#delta-generation-pipeline">Delta Generation Pipeline</a></h4>
+<p>The delta generation process involves sophisticated algorithms that balance compression efficiency with reconstruction speed:</p>
+<ol>
+<li>
+<p><strong>Reference Selection</strong>: Uses graph centrality algorithms to identify sequences that minimize total delta sizes across the dataset.</p>
+</li>
+<li>
+<p><strong>Similarity Computation</strong>: Employs locality-sensitive hashing (LSH) for rapid similarity assessment without full sequence alignment.</p>
+</li>
+<li>
+<p><strong>Delta Encoding</strong>: Generates minimal edit scripts using a modified Myers’ difference algorithm optimized for biological sequences.</p>
+</li>
+<li>
+<p><strong>Chunk Formation</strong>: Groups related deltas to maintain locality of reference during reconstruction.</p>
+</li>
+</ol>
+<h4 id="reconstruction-performance"><a class="header" href="#reconstruction-performance">Reconstruction Performance</a></h4>
+<p>Delta reconstruction is optimized through several mechanisms:</p>
+<ul>
+<li><strong>Reference Caching</strong>: Frequently accessed references stay in memory</li>
+<li><strong>Parallel Reconstruction</strong>: Multiple deltas can be applied concurrently</li>
+<li><strong>Chain Limiting</strong>: Maximum delta chain length of 3 prevents cascading lookups</li>
+<li><strong>Prefetching</strong>: Predictive loading of likely-needed chunks</li>
+</ul>
+<p>Performance characteristics:</p>
+<pre><code>Single sequence reconstruction: ~1ms
+Bulk reconstruction (1000 sequences): ~500ms
+Memory overhead: ~2MB per cached reference
+</code></pre>
+<h4 id="integration-with-reduction-pipeline"><a class="header" href="#integration-with-reduction-pipeline">Integration with Reduction Pipeline</a></h4>
+<p>The delta architecture is deeply integrated with Talaria’s reduction algorithms:</p>
+<pre class="mermaid">graph TD
+    A[Input Sequences] --&gt; B[Reference Selection]
+    B --&gt; C[Representative Set]
+    C --&gt; D[Aligner Index]
+    C --&gt; E[Delta Encoding]
+    E --&gt; F[Delta Chunks]
+    F --&gt; G[CASG Storage]
+
+    style C fill:#ffd93d,stroke:#333,stroke-width:2px
+    style D fill:#6bcf7f,stroke:#333,stroke-width:2px
+    style F fill:#4a90e2,stroke:#333,stroke-width:2px
+</pre>
+<p>The same representative sequences optimal for aligner performance serve as delta references, creating a synergistic system where storage and search optimizations reinforce each other.</p>
 <h2 id="core-components-the-casg-engine"><a class="header" href="#core-components-the-casg-engine">Core Components: The CASG Engine</a></h2>
 <h3 id="casgrepository-the-orchestrator"><a class="header" href="#casgrepository-the-orchestrator">CASGRepository: The Orchestrator</a></h3>
 <p>The CASGRepository serves as the central coordinator, managing all aspects of the content-addressed storage system. It maintains consistency across components while providing a clean API for higher-level operations.</p>
@@ -767,7 +837,7 @@ impl CASGStorage {
 </pre>
 <h2 id="storage-layer"><a class="header" href="#storage-layer">Storage Layer</a></h2>
 <h3 id="directory-structure"><a class="header" href="#directory-structure">Directory Structure</a></h3>
-<pre><code>~/.talaria/databases/
+<pre><code>${TALARIA_HOME}/databases/
 ├── manifests/              # Manifest files
 │   ├── uniprot-swissprot.json
 │   └── ncbi-nr.json
@@ -864,7 +934,7 @@ export TALARIA_MANIFEST_SERVER=https://ceph-rgw.local/bucket/casg/manifests
 </code></pre>
 <h3 id="current-storage-implementation"><a class="header" href="#current-storage-implementation">Current Storage Implementation</a></h3>
 <p>Manifests and chunks are stored locally:</p>
-<pre><code>~/.talaria/databases/
+<pre><code>${TALARIA_HOME}/databases/
 ├── manifests/              # Database manifests
 │   ├── uniprot-swissprot.json
 │   └── ncbi-nr.json
@@ -1214,7 +1284,7 @@ pub fn compute_hash_simd(data: &amp;[u8]) -&gt; SHA256Hash {
 <p><strong>Incomplete downloads</strong></p>
 <ul>
 <li>Resume supported automatically</li>
-<li>Track progress in <code>~/.talaria/databases/downloads.log</code></li>
+<li>Track progress in <code>${TALARIA_HOME}/databases/downloads.log</code></li>
 </ul>
 </li>
 </ol>
@@ -1223,7 +1293,7 @@ pub fn compute_hash_simd(data: &amp;[u8]) -&gt; SHA256Hash {
 <pre><code class="language-bash">RUST_LOG=talaria::casg=debug talaria database download --use-casg
 </code></pre>
 <p>Verify integrity:</p>
-<pre><code class="language-bash">talaria casg verify --manifest ~/.talaria/databases/manifests/uniprot-swissprot.json
+<pre><code class="language-bash">talaria casg verify --manifest ${TALARIA_HOME}/databases/manifests/uniprot-swissprot.json
 </code></pre>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
@@ -1237,7 +1307,7 @@ pub fn compute_hash_simd(data: &amp;[u8]) -&gt; SHA256Hash {
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../casg/overview.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../casg/case-studies.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
@@ -1251,7 +1321,7 @@ pub fn compute_hash_simd(data: &amp;[u8]) -&gt; SHA256Hash {
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../casg/overview.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../casg/case-studies.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 

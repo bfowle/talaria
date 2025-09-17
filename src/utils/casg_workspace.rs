@@ -20,8 +20,8 @@ pub struct CasgWorkspaceManager {
 impl CasgWorkspaceManager {
     /// Initialize CASG workspace manager
     pub fn new() -> Result<Self> {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        let casg_root = PathBuf::from(home).join(".talaria").join("casg");
+        // Use the centralized workspace directory configuration
+        let casg_root = crate::core::paths::talaria_workspace_dir();
 
         // Ensure CASG structure exists
         Self::initialize_casg_structure(&casg_root)?;
@@ -34,20 +34,10 @@ impl CasgWorkspaceManager {
 
     /// Initialize the CASG directory structure
     fn initialize_casg_structure(root: &Path) -> Result<()> {
-        let dirs = [
-            "temporal",      // Active workspaces
-            "preserved",     // Preserved workspaces for debugging
-            "content",       // Content-addressed storage
-            "indices",       // Database indices
-            "cache",         // Alignment cache
-            "logs",          // System logs
-        ];
-
-        for dir in &dirs {
-            let path = root.join(dir);
-            fs::create_dir_all(&path)
-                .with_context(|| format!("Failed to create CASG directory: {:?}", path))?;
-        }
+        // For workspace directory, we only need the root - workspaces will be created as subdirectories
+        // No need for subdirectories like temporal, preserved, etc. since this IS the temporal directory
+        fs::create_dir_all(root)
+            .with_context(|| format!("Failed to create workspace directory: {:?}", root))?;
 
         Ok(())
     }

@@ -14,6 +14,9 @@ Talaria is a high-performance Rust tool that intelligently reduces biological se
 - **Multi-aligner support**: Optimized for LAMBDA, BLAST, Kraken, Diamond, MMseqs2
 - **Memory efficient**: Streaming architecture for databases of any size
 - **Built-in validation**: Quality metrics and coverage analysis
+- **UniProt integration**: Direct fetching by TaxID for targeted reduction
+- **Optimized selection**: Single LAMBDA index strategy with caching for speed
+- **Rich visualizations**: ASCII charts and interactive HTML reports
 
 ## Quick Start
 
@@ -43,6 +46,15 @@ talaria reduce -i input.fasta -o reduced.fasta -r 0.4
 
 # Save delta metadata for reconstruction
 talaria reduce -i input.fasta -o reduced.fasta -m deltas.dat
+
+# Fetch and reduce sequences by TaxID (e.g., human and mouse)
+talaria reduce --taxids "9606,10090" -o human_mouse_reduced.fasta
+
+# Use a file with TaxIDs
+talaria reduce --taxid-list organisms.txt -o reduced.fasta
+
+# Generate an HTML report with interactive visualizations
+talaria reduce -i input.fasta -o reduced.fasta --html-report report.html
 ```
 
 ### Integration with LAMBDA
@@ -87,6 +99,10 @@ Options:
   --protein                       Force protein scoring
   --nucleotide                    Force nucleotide scoring
   --skip-validation               Skip validation step
+  --taxids <TAXIDS>               Comma-separated TaxIDs to fetch from UniProt
+  --taxid-list <FILE>             File with TaxIDs to fetch (one per line)
+  --html-report <FILE>            Generate interactive HTML report with visualizations
+  --no-visualize                  Skip ASCII visualization charts in output
 ```
 
 ### `stats`
@@ -167,6 +183,14 @@ Talaria uses a multi-phase approach:
 2. **Similarity Clustering**: Group similar sequences using k-mer overlap
 3. **Delta Encoding**: Encode child sequences as compact deltas from references
 4. **Optimization**: Target-specific optimizations for different aligners
+
+### Key Optimizations
+
+- **Single Index Strategy**: Build one LAMBDA index for all sequences instead of per-taxon indices
+- **Alignment Caching**: DashMap-based cache for alignment scores and k-mer profiles
+- **Taxonomic Grouping**: Process sequences by taxonomy while sharing computational resources
+- **Memory-Mapped I/O**: Efficient handling of large sequence databases
+- **Parallel Processing**: Rayon-based parallelization for multi-core systems
 
 ## Environment Variables
 
