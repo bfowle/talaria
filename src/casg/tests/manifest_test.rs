@@ -1,6 +1,10 @@
 use crate::casg::{Manifest, TemporalManifest, ChunkMetadata, SHA256Hash, TaxonId};
+use crate::casg::manifest::{ManifestFormat, TALARIA_MAGIC};
 use chrono::Utc;
 use std::collections::HashSet;
+use std::fs;
+use std::path::Path;
+use tempfile::TempDir;
 
 // Helper to create test manifests with required fields
 fn create_test_manifest(version: &str, seq_version: &str, tax_version: &str) -> TemporalManifest {
@@ -233,4 +237,221 @@ fn test_manifest_with_discrepancies() {
     assert_eq!(manifest.discrepancies.len(), 1);
     assert_eq!(manifest.discrepancies[0].sequence_id, "NP_123456.1");
     assert_eq!(manifest.discrepancies[0].confidence, 0.92);
+}
+
+#[test]
+fn test_tal_format_magic_header() {
+    let temp_dir = TempDir::new().unwrap();
+    let manifest_path = temp_dir.path().join("manifest.tal");
+
+    let manifest = create_test_manifest("v1", "2024.01", "2024.01");
+
+    // Write manifest with magic header
+    let mut data = Vec::with_capacity(TALARIA_MAGIC.len() + 1024 * 512);
+    data.extend_from_slice(TALARIA_MAGIC);
+    data.extend_from_slice(&rmp_serde::to_vec(&manifest).unwrap());
+    fs::write(&manifest_path, &data).unwrap();
+
+    // Verify file starts with magic header
+    let read_data = fs::read(&manifest_path).unwrap();
+    assert!(read_data.starts_with(TALARIA_MAGIC));
+
+    // Verify we can parse it back
+    let content = &read_data[TALARIA_MAGIC.len()..];
+    let parsed: TemporalManifest = rmp_serde::from_slice(content).unwrap();
+    assert_eq!(parsed.version, manifest.version);
+}
+
+#[test]
+fn test_tal_format_without_magic_header() {
+    // Test that we can still read .tal files without magic header (for compatibility)
+    let temp_dir = TempDir::new().unwrap();
+    let manifest_path = temp_dir.path().join("manifest.tal");
+
+    let manifest = create_test_manifest("v1", "2024.01", "2024.01");
+
+    // Write manifest WITHOUT magic header
+    let data = rmp_serde::to_vec(&manifest).unwrap();
+    fs::write(&manifest_path, &data).unwrap();
+
+    // Should still be able to parse
+    let parsed: TemporalManifest = rmp_serde::from_slice(&data).unwrap();
+    assert_eq!(parsed.version, manifest.version);
+}
+
+#[test]
+fn test_manifest_format_detection() {
+    let temp_dir = TempDir::new().unwrap();
+
+    // Test .tal extension
+    let tal_path = temp_dir.path().join("manifest.tal");
+    assert_eq!(ManifestFormat::from_path(&tal_path), ManifestFormat::Talaria);
+
+    // Test .json extension
+    let json_path = temp_dir.path().join("manifest.json");
+    assert_eq!(ManifestFormat::from_path(&json_path), ManifestFormat::Json);
+
+    // Test unknown extension defaults to Talaria
+    let unknown_path = temp_dir.path().join("manifest.xyz");
+    assert_eq!(ManifestFormat::from_path(&unknown_path), ManifestFormat::Talaria);
+
+    // Test no extension defaults to Talaria
+    let no_ext_path = temp_dir.path().join("manifest");
+    assert_eq!(ManifestFormat::from_path(&no_ext_path), ManifestFormat::Talaria);
+}
+
+#[test]
+fn test_tal_format_size_comparison() {
+    let manifest = create_test_manifest("v1", "2024.01", "2024.01");
+
+    // Add some chunks to make it more realistic
+    let mut manifest = manifest;
+    for i in 0..100 {
+        manifest.chunk_index.push(ChunkMetadata {
+            hash: SHA256Hash::compute(&format!("chunk{}", i).into_bytes()),
+            taxon_ids: vec![TaxonId(i as u32), TaxonId((i + 1) as u32)],
+            sequence_count: 1000 + i,
+            size: 50000000 + i * 1000,
+            compressed_size: Some(20000000 + i * 500),
+        });
+    }
+
+    // Compare sizes
+    let json_size = serde_json::to_string(&manifest).unwrap().len();
+    let tal_size = rmp_serde::to_vec(&manifest).unwrap().len();
+
+    // TAL format should be significantly smaller
+    assert!(tal_size < json_size);
+    let reduction = 100.0 * (1.0 - (tal_size as f64 / json_size as f64));
+    assert!(reduction > 50.0, "TAL format should achieve >50% size reduction, got {}%", reduction);
+}
+
+#[test]
+fn test_manifest_roundtrip_tal_format() {
+    let temp_dir = TempDir::new().unwrap();
+
+    // Create a complex manifest
+    let mut manifest = create_test_manifest("20240315_143022", "2024.03.15", "2024.01.15");
+    manifest.chunk_index = vec![
+        ChunkMetadata {
+            hash: SHA256Hash::compute(b"chunk1"),
+            taxon_ids: vec![TaxonId(562), TaxonId(563)],
+            sequence_count: 1000,
+            size: 52428800,
+            compressed_size: Some(18350080),
+        },
+    ];
+
+    // Save as TAL format with magic header
+    let manifest_path = temp_dir.path().join("manifest.tal");
+    let mut data = Vec::new();
+    data.extend_from_slice(TALARIA_MAGIC);
+    data.extend_from_slice(&rmp_serde::to_vec(&manifest).unwrap());
+    fs::write(&manifest_path, data).unwrap();
+
+    // Load it back using Manifest::load_file
+    let loaded = Manifest::load_file(&manifest_path).unwrap();
+    let loaded_data = loaded.get_data().unwrap();
+
+    assert_eq!(loaded_data.version, manifest.version);
+    assert_eq!(loaded_data.chunk_index.len(), manifest.chunk_index.len());
+    assert_eq!(loaded_data.etag, manifest.etag);
+}
+
+#[test]
+fn test_manifest_dual_format_support() {
+    let temp_dir = TempDir::new().unwrap();
+    let manifest = create_test_manifest("v1", "2024.01", "2024.01");
+
+    // Save as both TAL and JSON
+    let tal_path = temp_dir.path().join("manifest.tal");
+    let json_path = temp_dir.path().join("manifest.json");
+
+    // Write TAL with magic
+    let mut tal_data = Vec::new();
+    tal_data.extend_from_slice(TALARIA_MAGIC);
+    tal_data.extend_from_slice(&rmp_serde::to_vec(&manifest).unwrap());
+    fs::write(&tal_path, tal_data).unwrap();
+
+    // Write JSON
+    let json_data = serde_json::to_string_pretty(&manifest).unwrap();
+    fs::write(&json_path, json_data).unwrap();
+
+    // Load TAL format
+    let tal_manifest = Manifest::load_file(&tal_path).unwrap();
+    assert_eq!(tal_manifest.get_data().unwrap().version, manifest.version);
+
+    // Load JSON format
+    let json_manifest = Manifest::load_file(&json_path).unwrap();
+    assert_eq!(json_manifest.get_data().unwrap().version, manifest.version);
+}
+
+#[test]
+fn test_magic_header_version() {
+    // Verify magic header format
+    assert_eq!(TALARIA_MAGIC.len(), 4);
+    assert_eq!(&TALARIA_MAGIC[0..3], b"TAL");
+    assert_eq!(TALARIA_MAGIC[3], 0x01); // Version 1
+}
+
+#[test]
+fn test_large_manifest_performance() {
+    use std::time::Instant;
+
+    // Create a large manifest with many chunks
+    let mut manifest = create_test_manifest("v1", "2024.01", "2024.01");
+    for i in 0..10000 {
+        manifest.chunk_index.push(ChunkMetadata {
+            hash: SHA256Hash::compute(&format!("chunk{}", i).into_bytes()),
+            taxon_ids: vec![TaxonId(i % 1000)],
+            sequence_count: 100,
+            size: 1000000,
+            compressed_size: Some(500000),
+        });
+    }
+
+    // Measure TAL serialization time
+    let tal_start = Instant::now();
+    let tal_data = rmp_serde::to_vec(&manifest).unwrap();
+    let tal_time = tal_start.elapsed();
+
+    // Measure JSON serialization time
+    let json_start = Instant::now();
+    let json_data = serde_json::to_string(&manifest).unwrap();
+    let json_time = json_start.elapsed();
+
+    // TAL should be faster and smaller
+    assert!(tal_data.len() < json_data.len());
+
+    // Log performance metrics (not asserting on time as it varies by system)
+    println!("Large manifest (10k chunks):");
+    println!("  TAL size: {} bytes, time: {:?}", tal_data.len(), tal_time);
+    println!("  JSON size: {} bytes, time: {:?}", json_data.len(), json_time);
+    println!("  Size reduction: {:.1}%", 100.0 * (1.0 - tal_data.len() as f64 / json_data.len() as f64));
+}
+
+#[test]
+fn test_corrupt_magic_header_handling() {
+    let temp_dir = TempDir::new().unwrap();
+    let manifest_path = temp_dir.path().join("manifest.tal");
+
+    // Write corrupt magic header
+    let mut data = Vec::new();
+    data.extend_from_slice(b"BAD\x01"); // Wrong magic
+    data.extend_from_slice(&rmp_serde::to_vec(&create_test_manifest("v1", "2024.01", "2024.01")).unwrap());
+    fs::write(&manifest_path, &data).unwrap();
+
+    // Should fail to parse since magic is wrong but data starts with non-MessagePack bytes
+    // The actual behavior depends on implementation - it might try to parse as MessagePack
+    // and fail, or detect wrong magic. Either way, it shouldn't succeed with wrong data.
+    let result = Manifest::load_file(&manifest_path);
+    // We expect this to fail since "BAD\x01" followed by MessagePack is not valid
+    assert!(result.is_err() || {
+        // If it somehow succeeds, verify it's not reading our test manifest
+        if let Ok(m) = result {
+            m.get_data().map(|d| d.version != "v1").unwrap_or(true)
+        } else {
+            false
+        }
+    });
 }

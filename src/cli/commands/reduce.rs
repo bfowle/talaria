@@ -3,6 +3,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::path::PathBuf;
 use crate::cli::TargetAligner;
 use crate::cli::formatter::{self, TaskList, TaskStatus, info_box, print_success, print_error, print_tip, format_bytes};
+use crate::cli::output::*;
 use crate::utils::casg_workspace::CasgWorkspaceManager;
 use std::sync::{Arc, Mutex};
 
@@ -334,7 +335,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
             }
             Err(e) => {
                 spinner.finish_with_message("Warning: Could not create taxonomy mapping from manifest");
-                println!("  {}", e);
+                warning(&e.to_string());
                 None
             }
         }
@@ -510,16 +511,16 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
             // Check if it's a LAMBDA error
             if e.to_string().contains("LAMBDA") && e.to_string().contains("taxonomy") {
                 print_tip("This error often occurs when sequences lack taxonomy IDs.");
-                print_tip("Try one of these solutions:");
-                println!("  1. Use a fixed reduction ratio: -r 0.3");
-                println!("  2. Skip auto-detection and use simple selection");
-                println!("  3. Ensure your FASTA headers include TaxID tags");
+                subsection_header("Try one of these solutions");
+                tree_item(false, "Use a fixed reduction ratio: -r 0.3", None);
+                tree_item(false, "Skip auto-detection and use simple selection", None);
+                tree_item(true, "Ensure your FASTA headers include TaxID tags", None);
             }
 
             // Workspace preserved for debugging
             let ws_id = workspace.lock().unwrap().id.clone();
-            eprintln!("\nWorkspace preserved for debugging: {}", ws_id);
-            eprintln!("To inspect: talaria tools workspace inspect {}", ws_id);
+            warning(&format!("Workspace preserved for debugging: {}", ws_id));
+            info(&format!("To inspect: talaria tools workspace inspect {}", ws_id));
 
             return Err(e.into());
         }
@@ -799,7 +800,7 @@ fn store_reduction_in_casg(
     );
 
     // Chunk and store reference sequences
-    println!("◆ Chunking reference sequences...");
+    action("Chunking reference sequences...");
     use crate::casg::types::ChunkingStrategy;
     let strategy = ChunkingStrategy {
         target_chunk_size: 1024 * 1024,  // 1MB
@@ -839,7 +840,7 @@ fn store_reduction_in_casg(
 
     // Process and store delta chunks if present
     if !deltas.is_empty() && !args.no_deltas {
-        println!("◆ Storing delta chunks...");
+        action("Storing delta chunks...");
 
         // Group deltas by reference sequence
         let mut deltas_by_ref: HashMap<String, Vec<crate::core::delta_encoder::DeltaRecord>> = HashMap::new();
@@ -923,19 +924,25 @@ fn store_reduction_in_casg(
     // Calculate total size
     let total_size = manifest.statistics.total_size_with_deltas;
 
-    println!("✓ Reduction stored in CASG repository");
-    println!("   Database: {}", source_database);
-    println!("   Profile: {}", profile_name);
-    println!("   Manifest: {}", manifest_hash);
-    println!("   References: {} chunks", manifest.reference_chunks.len());
+    success("Reduction stored in CASG repository");
+
+    let mut details = vec![
+        ("Database", source_database.clone()),
+        ("Profile", profile_name.clone()),
+        ("Manifest", manifest_hash.to_string()),
+        ("References", format!("{} chunks", format_number(manifest.reference_chunks.len()))),
+    ];
     if !args.no_deltas {
-        println!("   Deltas: {} chunks", manifest.delta_chunks.len());
+        details.push(("Deltas", format!("{} chunks", format_number(manifest.delta_chunks.len()))));
     }
-    println!("   Merkle root: {}", manifest.reduction_merkle_root);
-    println!("   Deduplication ratio: {:.1}%", manifest.statistics.deduplication_ratio * 100.0);
-    println!();
-    println!("→ View with: talaria database list");
-    println!("→ Info: talaria database info {}", source_database);
+    details.push(("Merkle root", manifest.reduction_merkle_root.to_string()));
+    details.push(("Deduplication", format!("{:.1}%", manifest.statistics.deduplication_ratio * 100.0)));
+
+    tree_section("Storage Summary", details, false);
+
+    subsection_header("Next Steps");
+    info(&format!("View with: talaria database list"));
+    info(&format!("Info: talaria database info {}", source_database));
 
     Ok(total_size)
 }

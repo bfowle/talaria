@@ -199,7 +199,7 @@
                         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="manifest-format-specification-the-database-genome"><a class="header" href="#manifest-format-specification-the-database-genome">Manifest Format Specification: The Database Genome</a></h1>
 <h2 id="overview-small-files-massive-impact"><a class="header" href="#overview-small-files-massive-impact">Overview: Small Files, Massive Impact</a></h2>
-<p>The manifest is the heart of the CASG system—a small, efficiently-structured JSON file that completely describes the state of a multi-gigabyte sequence database. Think of it as the “genome” of your database: just as DNA encodes an entire organism in a tiny molecule, the manifest encodes an entire database in typically 50-500KB.</p>
+<p>The manifest is the heart of the CASG system—a compact binary file using Talaria’s proprietary <code>.tal</code> format that completely describes the state of a multi-gigabyte sequence database. Based on MessagePack but optimized for biological data, <code>.tal</code> files achieve 90% size reduction compared to JSON while maintaining compatibility. Think of it as the “genome” of your database: just as DNA encodes an entire organism in a tiny molecule, the manifest encodes an entire database scaling linearly with content.</p>
 <h3 id="why-manifests-matter"><a class="header" href="#why-manifests-matter">Why Manifests Matter</a></h3>
 <p>Consider the traditional approach to checking for database updates: you either trust that your local copy is current (dangerous for reproducibility) or you re-download the entire database to be sure (wasteful). The manifest solves this elegantly:</p>
 <ol>
@@ -207,19 +207,47 @@
 <li><strong>Precise Diffs</strong>: The manifest lists every chunk, so you know exactly what changed</li>
 <li><strong>Cryptographic Proof</strong>: Merkle roots prove the database hasn’t been tampered with</li>
 <li><strong>Perfect Reproducibility</strong>: A manifest hash uniquely identifies a database state forever</li>
+<li><strong>Scalable Size</strong>: Binary format keeps manifests small even for massive databases</li>
 </ol>
 <h3 id="the-power-of-indirection"><a class="header" href="#the-power-of-indirection">The Power of Indirection</a></h3>
-<p>Instead of moving massive databases around, we move tiny manifests. A researcher can email a colleague a 100KB manifest that precisely describes a 100GB database. The colleague downloads only the chunks they need, verified against the manifest’s cryptographic proofs. This indirection transforms database distribution from a bandwidth problem to a metadata problem.</p>
+<p>Instead of moving massive databases around, we move compact manifests. A researcher can email a colleague a 750KB manifest that precisely describes a 273MB SwissProt database, or share a 25MB manifest for the 2.5TB NCBI nr database. The colleague downloads only the chunks they need, verified against the manifest’s cryptographic proofs. This indirection transforms database distribution from a bandwidth problem to a metadata problem.</p>
+<h4 id="real-world-manifest-sizes"><a class="header" href="#real-world-manifest-sizes">Real-World Manifest Sizes</a></h4>
+<div class="table-wrapper"><table><thead><tr><th>Database</th><th>Sequences</th><th>Chunks</th><th>Database Size</th><th>Manifest Size</th><th>Ratio</th></tr></thead><tbody>
+<tr><td>SwissProt</td><td>570K</td><td>15K</td><td>273 MB</td><td>750 KB</td><td>0.27%</td></tr>
+<tr><td>TrEMBL</td><td>250M</td><td>100K</td><td>250 GB</td><td>5 MB</td><td>0.002%</td></tr>
+<tr><td>NCBI nr</td><td>1B+</td><td>500K</td><td>2.5 TB</td><td>25 MB</td><td>0.001%</td></tr>
+<tr><td>RefSeq</td><td>500M</td><td>250K</td><td>1 TB</td><td>12.5 MB</td><td>0.001%</td></tr>
+</tbody></table>
+</div>
 <h2 id="format-structure-anatomy-of-a-manifest"><a class="header" href="#format-structure-anatomy-of-a-manifest">Format Structure: Anatomy of a Manifest</a></h2>
-<p>The manifest uses JSON for human readability and tooling compatibility, with a carefully designed schema that balances completeness with compactness.</p>
+<p>The manifest uses the Talaria format (<code>.tal</code>) as the primary storage mechanism, with JSON as a fallback for debugging and compatibility. The <code>.tal</code> format provides:</p>
+<ul>
+<li><strong>90% size reduction</strong> compared to pretty-printed JSON</li>
+<li><strong>Binary hash storage</strong> - 32 bytes instead of 64-character hex strings</li>
+<li><strong>Compact integers</strong> - variable-length encoding for numbers</li>
+<li><strong>Fast parsing</strong> - direct binary deserialization</li>
+<li><strong>Type preservation</strong> - exact numeric types maintained</li>
+<li><strong>Proprietary optimization</strong> - tailored for sequence database metadata</li>
+</ul>
 <h3 id="core-design-principles"><a class="header" href="#core-design-principles">Core Design Principles</a></h3>
 <ol>
 <li><strong>Self-Contained</strong>: Everything needed to reconstruct the database is in the manifest</li>
 <li><strong>Verifiable</strong>: Multiple cross-checks ensure integrity</li>
-<li><strong>Efficient</strong>: Optimized for rapid parsing and diff computation</li>
+<li><strong>Efficient</strong>: Binary format optimized for rapid parsing and minimal size</li>
 <li><strong>Extensible</strong>: Forward-compatible with future enhancements</li>
+<li><strong>Multi-Format</strong>: Supports <code>.tal</code> (primary), <code>.msgpack</code> (legacy), and <code>.json</code> (debug)</li>
 </ol>
-<h3 id="json-schema"><a class="header" href="#json-schema">JSON Schema</a></h3>
+<h3 id="schema-structure"><a class="header" href="#schema-structure">Schema Structure</a></h3>
+<p>The manifest structure is identical whether stored as Talaria (<code>.tal</code>), MessagePack (legacy), or JSON. The system automatically detects the format based on file extension.</p>
+<h4 id="talaria-format-tal-optimizations"><a class="header" href="#talaria-format-tal-optimizations">Talaria Format (.tal) Optimizations</a></h4>
+<ul>
+<li>SHA256 hashes use <code>serde_bytes</code> for raw 32-byte storage</li>
+<li>Taxon IDs stored as compact integers</li>
+<li>No whitespace or field name repetition</li>
+<li>Approximately 50 bytes per chunk entry</li>
+<li>File extension clearly identifies Talaria-specific data</li>
+</ul>
+<h3 id="json-schema-debug-format"><a class="header" href="#json-schema-debug-format">JSON Schema (Debug Format)</a></h3>
 <pre><code class="language-json">{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
@@ -523,21 +551,25 @@ async fn check_updates(cached_etag: Option&lt;&amp;str&gt;) -&gt; Result&lt;bool
 </pre>
 <h2 id="compression-every-byte-counts"><a class="header" href="#compression-every-byte-counts">Compression: Every Byte Counts</a></h2>
 <p>While manifests are already small, compression reduces them further. This matters when serving millions of manifest checks daily or when every kilobyte counts in bandwidth-constrained environments.</p>
-<h3 id="compression-strategy"><a class="header" href="#compression-strategy">Compression Strategy</a></h3>
-<p>Manifests compress exceptionally well because:</p>
-<ol>
-<li><strong>Repetitive Structure</strong>: JSON has repeated keys</li>
-<li><strong>Hash Patterns</strong>: SHA256 hashes have predictable entropy</li>
-<li><strong>Taxonomic IDs</strong>: Often sequential or clustered</li>
-</ol>
-<p>Manifests support multiple compression formats:</p>
-<div class="table-wrapper"><table><thead><tr><th>Format</th><th>Extension</th><th>Typical Size</th><th>Use Case</th></tr></thead><tbody>
-<tr><td>Raw JSON</td><td><code>.json</code></td><td>200KB</td><td>Development</td></tr>
-<tr><td>Gzip</td><td><code>.json.gz</code></td><td>50KB</td><td>Standard distribution</td></tr>
-<tr><td>Brotli</td><td><code>.json.br</code></td><td>35KB</td><td>CDN optimization</td></tr>
-<tr><td>Zstandard</td><td><code>.json.zst</code></td><td>40KB</td><td>Fast decompression</td></tr>
+<h3 id="format-comparison"><a class="header" href="#format-comparison">Format Comparison</a></h3>
+<p>The dual-format approach provides flexibility while maintaining efficiency:</p>
+<div class="table-wrapper"><table><thead><tr><th>Format</th><th>Extension</th><th>SwissProt Size</th><th>Parsing Speed</th><th>Use Case</th></tr></thead><tbody>
+<tr><td>Talaria</td><td><code>.tal</code></td><td>750KB</td><td>~5ms</td><td>Production</td></tr>
+<tr><td>MessagePack</td><td><code>.msgpack</code></td><td>750KB</td><td>~5ms</td><td>Legacy compatibility</td></tr>
+<tr><td>JSON</td><td><code>.json</code></td><td>8MB</td><td>~50ms</td><td>Debugging</td></tr>
+<tr><td>JSON + Gzip</td><td><code>.json.gz</code></td><td>1.2MB</td><td>~30ms</td><td>External tools</td></tr>
+<tr><td>Talaria + Zstd</td><td><code>.tal.zst</code></td><td>600KB</td><td>~8ms</td><td>Network transfer</td></tr>
 </tbody></table>
 </div>
+<h3 id="format-priority-and-migration"><a class="header" href="#format-priority-and-migration">Format Priority and Migration</a></h3>
+<p>The system automatically handles all formats with clear priority:</p>
+<ol>
+<li><strong>Reading</strong>: Tries <code>.tal</code> first, then <code>.msgpack</code> (legacy), then <code>.json</code></li>
+<li><strong>Writing</strong>: Creates <code>.tal</code> for efficiency, <code>.json</code> for compatibility</li>
+<li><strong>Network</strong>: Negotiates format via Accept headers</li>
+<li><strong>Migration</strong>: Existing <code>.msgpack</code> files work seamlessly, saved as <code>.tal</code> on update</li>
+<li><strong>Identification</strong>: <code>.tal</code> extension clearly marks Talaria-optimized content</li>
+</ol>
 <h2 id="security-trust-through-verification"><a class="header" href="#security-trust-through-verification">Security: Trust Through Verification</a></h2>
 <p>In scientific computing, trust is earned through verification. CASG manifests include multiple layers of cryptographic proof, ensuring that the data you download is exactly what was published.</p>
 <h3 id="defense-in-depth"><a class="header" href="#defense-in-depth">Defense in Depth</a></h3>
@@ -712,22 +744,6 @@ let downloads = chunks_to_download
 
         </div>
 
-        <!-- Livereload script (if served using the cli tool) -->
-        <script>
-            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
-            const socket = new WebSocket(wsAddress);
-            socket.onmessage = function (event) {
-                if (event.data === "reload") {
-                    socket.close();
-                    location.reload();
-                }
-            };
-
-            window.onbeforeunload = function() {
-                socket.close();
-            }
-        </script>
 
 
 

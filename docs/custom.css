@@ -47,3 +47,74 @@ mjx-container[jax="CHTML"][display="true"] {
   display: inline-block !important;
   vertical-align: middle;
 }
+
+/* Global Mermaid Diagram Styling */
+/* Define common color scheme for all CASG documentation */
+.mermaid {
+  --mermaid-error-color: #d32f2f;      /* Red for errors/problems */
+  --mermaid-success-color: #388e3c;    /* Green for success/benefits */
+  --mermaid-primary-color: #1976d2;    /* Blue for primary elements */
+  --mermaid-secondary-color: #0288d1;  /* Light blue for secondary */
+  --mermaid-warning-color: #f57c00;    /* Orange for changes/updates */
+  --mermaid-info-color: #00796b;       /* Teal for information */
+  --mermaid-special-color: #7b1fa2;    /* Purple for special/root */
+  --mermaid-muted-color: #757575;      /* Gray for remote/external */
+}
+
+/* Override default Mermaid node styles for consistency */
+.mermaid .node rect,
+.mermaid .node circle,
+.mermaid .node ellipse,
+.mermaid .node polygon,
+.mermaid .node path {
+  stroke-width: 2px !important;
+}
+
+/* Style for dashed/external elements */
+.mermaid .node.external rect,
+.mermaid .node.external circle,
+.mermaid .node.external ellipse {
+  stroke-dasharray: 5 5 !important;
+}
+
+/* Ensure subgraph labels are readable */
+.mermaid .cluster-label {
+  font-weight: bold !important;
+}
+
+/* Edge label styling - white text for visibility */
+.mermaid .edgeLabel {
+  color: white !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Style p tags inside edge labels */
+.mermaid .edgeLabel p {
+  margin: 0 !important;
+  padding: 2px 6px !important;
+  background: transparent !important;
+}
+
+/* Hide empty edge labels (fixes grey box issue) */
+/* Target the container div that has the background */
+.mermaid .labelBkg:has(.edgeLabel:empty) {
+  display: none !important;
+}
+
+/* Also hide if the foreignObject parent is effectively empty */
+.mermaid .label foreignObject:has(.edgeLabel:empty) {
+  display: none !important;
+}
+
+/* For the top-left grey box, hide the entire label group if empty */
+.mermaid g.label:has(.edgeLabel:empty) {
+  display: none !important;
+}
+
+/* Improve readability of node text */
+.mermaid .nodeLabel {
+  font-size: 14px !important;
+  line-height: 1.2 !important;
+}

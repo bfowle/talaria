@@ -343,28 +343,43 @@
 └── Environmental (grouped by phylum)
     └── Proteobacteria → large shared chunks
 </code></pre>
-<h3 id="5-manifest-based-updates-the-100kb-solution-to-100gb-problems"><a class="header" href="#5-manifest-based-updates-the-100kb-solution-to-100gb-problems">5. Manifest-Based Updates: The 100KB Solution to 100GB Problems</a></h3>
-<p>The manifest is CASG’s secret weapon—a tiny JSON file (typically under 100KB) that completely describes a multi-gigabyte database. By checking the manifest first, CASG can determine exactly what changed without downloading anything else.</p>
+<h3 id="5-manifest-based-updates-the-talaria-advantage"><a class="header" href="#5-manifest-based-updates-the-talaria-advantage">5. Manifest-Based Updates: The Talaria Advantage</a></h3>
+<p>The manifest is CASG’s secret weapon—a compact binary file (<code>.tal</code> format) that completely describes a multi-gigabyte database. Using our proprietary Talaria format (MessagePack-based) with efficient hash encoding, manifests scale linearly with database size while remaining remarkably small. By checking the manifest first, CASG can determine exactly what changed without downloading anything else.</p>
 <h4 id="how-manifests-enable-efficient-updates"><a class="header" href="#how-manifests-enable-efficient-updates">How Manifests Enable Efficient Updates</a></h4>
 <p>Think of a manifest like a restaurant menu. You don’t need to order every dish to know what’s available—the menu tells you everything. Similarly, the manifest lists every chunk in the database with its hash, size, and taxonomic content. When checking for updates:</p>
 <ol>
-<li><strong>Download new manifest</strong> (100KB, &lt;1 second)</li>
-<li><strong>Compare with local manifest</strong> (instant)</li>
+<li><strong>Download new manifest</strong> (750KB for SwissProt, &lt;2 seconds)</li>
+<li><strong>Compare with local manifest</strong> (instant binary comparison)</li>
 <li><strong>Download only changed chunks</strong> (typically 1-5% of database)</li>
 </ol>
+<h4 id="talaria-format-tal-advantages"><a class="header" href="#talaria-format-tal-advantages">Talaria Format (.tal) Advantages</a></h4>
+<ul>
+<li><strong>91% smaller</strong> than JSON (8MB → 750KB for SwissProt)</li>
+<li><strong>Proprietary</strong> - optimized specifically for biological databases</li>
+<li><strong>Faster parsing</strong> - binary deserialization vs text parsing</li>
+<li><strong>Type-safe</strong> - preserves exact numeric types</li>
+<li><strong>Backward compatible</strong> - reads .tal, .msgpack (legacy), and .json</li>
+</ul>
 <p>This transforms the update problem:</p>
-<pre><code class="language-yaml"># Manifest (&lt; 100KB)
+<h4 id="manifest-size-scaling"><a class="header" href="#manifest-size-scaling">Manifest Size Scaling</a></h4>
+<ul>
+<li><strong>SwissProt</strong> (570K sequences, 15K chunks): ~750KB manifest (0.3% of 273MB database)</li>
+<li><strong>TrEMBL</strong> (250M sequences, 100K chunks): ~5MB manifest (0.002% of 250GB database)</li>
+<li><strong>NCBI nr</strong> (1B sequences, 500K chunks): ~25MB manifest (0.001% of 2.5TB database)</li>
+</ul>
+<pre><code class="language-yaml"># Manifest structure (Talaria .tal format)
 version: "2024-03-15"
 etag: "W/\"5e3b-1234567890\""
-taxonomy_root: sha256:abc123...
-sequence_root: sha256:def456...
+taxonomy_root: &lt;32-byte hash&gt;
+sequence_root: &lt;32-byte hash&gt;
 chunks:
-  - hash: sha256:chunk1...
-    taxa: [562, 563]  # E. coli strains
-    size: 52428800    # 50MB
-  - hash: sha256:chunk2...
-    taxa: [9606]      # Human
-    size: 104857600   # 100MB
+  - hash: &lt;32-byte hash&gt;     # Stored as raw bytes in .tal format
+    taxa: [562, 563]         # Compact integer encoding
+    size: 52428800           # Variable-length integer
+  - hash: &lt;32-byte hash&gt;
+    taxa: [9606]
+    size: 104857600
+# Note: Above shows logical structure. Actual .tal files are binary.
 </code></pre>
 <h3 id="6-delta-compressed-storage-evolution-aware-compression"><a class="header" href="#6-delta-compressed-storage-evolution-aware-compression">6. Delta-Compressed Storage: Evolution-Aware Compression</a></h3>
 <p>Traditional compression treats each sequence independently, missing the fundamental truth of biology: sequences evolve from common ancestors. CASG’s delta compression leverages evolutionary relationships to achieve compression ratios impossible with general-purpose algorithms.</p>
@@ -385,12 +400,12 @@ chunks:
         R --&gt; D2
     end
 
-    style S1 fill:#ffcdd2
-    style S2 fill:#ffcdd2
-    style S3 fill:#ffcdd2
-    style R fill:#c8e6c9
-    style D1 fill:#e1f5fe
-    style D2 fill:#e1f5fe
+    style S1 stroke:#d32f2f,stroke-width:2px
+    style S2 stroke:#d32f2f,stroke-width:2px
+    style S3 stroke:#d32f2f,stroke-width:2px
+    style R stroke:#388e3c,stroke-width:2px
+    style D1 stroke:#1976d2,stroke-width:2px
+    style D2 stroke:#1976d2,stroke-width:2px
 </pre>
 <p><strong>Storage Savings</strong>: Three similar E. coli genomes:</p>
 <ul>
@@ -749,22 +764,6 @@ talaria database info uniprot/swissprot
 
         </div>
 
-        <!-- Livereload script (if served using the cli tool) -->
-        <script>
-            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
-            const socket = new WebSocket(wsAddress);
-            socket.onmessage = function (event) {
-                if (event.data === "reload") {
-                    socket.close();
-                    location.reload();
-                }
-            };
-
-            window.onbeforeunload = function() {
-                socket.close();
-            }
-        </script>
 
 
 

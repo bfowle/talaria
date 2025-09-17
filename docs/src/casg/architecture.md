@@ -69,26 +69,70 @@ The Merkle Directed Acyclic Graph (DAG) structure transforms a flat database int
 
 #### Conceptual Foundation
 
-```
-                    Root Hash (Universe of Trust)
-                   /                            \
-            Sequence DAG                    Taxonomy DAG
-               /    \                          /    \
-         Bacteria  Eukarya              Kingdom    Family
-           /  \      /  \                  /  \      /  \
-      E.coli Sal. Human Mouse        Proteo. Firm. Chor. Arth.
-        |     |     |     |             |     |     |     |
-     [Chunk] [Chunk][Chunk][Chunk]  [TaxData][TaxData]...
+```mermaid
+graph TD
+    Root[Root Hash<br/>Universe of Trust]
+    SD[Sequence DAG]
+    TD[Taxonomy DAG]
+
+    Root --> SD
+    Root --> TD
+
+    B[Bacteria]
+    E[Eukarya]
+    K[Kingdom]
+    F[Family]
+
+    SD --> B
+    SD --> E
+    TD --> K
+    TD --> F
+
+    EC[E.coli<br/>Chunk]
+    SAL[Salmonella<br/>Chunk]
+    HUM[Human<br/>Chunk]
+    MOU[Mouse<br/>Chunk]
+
+    B --> EC
+    B --> SAL
+    E --> HUM
+    E --> MOU
+
+    PRO[Proteobacteria<br/>TaxData]
+    FIR[Firmicutes<br/>TaxData]
+    CHO[Chordata<br/>TaxData]
+    ART[Arthropoda<br/>TaxData]
+
+    K --> PRO
+    K --> FIR
+    F --> CHO
+    F --> ART
+
+    style Root stroke:#7b1fa2,stroke-width:3px
+    style SD stroke:#1976d2,stroke-width:2px
+    style TD stroke:#388e3c,stroke-width:2px
+    style B stroke:#1976d2,stroke-width:2px
+    style E stroke:#1976d2,stroke-width:2px
+    style K stroke:#388e3c,stroke-width:2px
+    style F stroke:#388e3c,stroke-width:2px
+    style EC stroke:#0288d1,stroke-width:2px
+    style SAL stroke:#0288d1,stroke-width:2px
+    style HUM stroke:#0288d1,stroke-width:2px
+    style MOU stroke:#0288d1,stroke-width:2px
+    style PRO stroke:#2e7d32,stroke-width:2px
+    style FIR stroke:#2e7d32,stroke-width:2px
+    style CHO stroke:#2e7d32,stroke-width:2px
+    style ART stroke:#2e7d32,stroke-width:2px
 ```
 
 #### Mathematical Properties
 
 For a database with $n$ chunks, the Merkle DAG provides:
 
-**Proof Size**: $O(\log n)$ - A database with 1 million chunks needs only ~20 hashes for any proof
-**Verification Time**: $O(\log n)$ - Near-instant verification regardless of database size
-**Update Propagation**: $O(\log n)$ - Changing one chunk updates only the path to root
-**Storage Overhead**: $O(n)$ - Linear in number of chunks, not data size
+- **Proof Size**: $O(\log n)$ - A database with 1 million chunks needs only ~20 hashes for any proof
+- **Verification Time**: $O(\log n)$ - Near-instant verification regardless of database size
+- **Update Propagation**: $O(\log n)$ - Changing one chunk updates only the path to root
+- **Storage Overhead**: $O(n)$ - Linear in number of chunks, not data size
 
 #### Implementation Details
 
@@ -392,9 +436,9 @@ graph TD
     E --> F[Delta Chunks]
     F --> G[CASG Storage]
 
-    style C fill:#ffd93d,stroke:#333,stroke-width:2px
-    style D fill:#6bcf7f,stroke:#333,stroke-width:2px
-    style F fill:#4a90e2,stroke:#333,stroke-width:2px
+    style C stroke:#f57c00,stroke-width:2px
+    style D stroke:#388e3c,stroke-width:2px
+    style F stroke:#1976d2,stroke-width:2px
 ```
 
 The same representative sequences optimal for aligner performance serve as delta references, creating a synergistic system where storage and search optimizations reinforce each other.

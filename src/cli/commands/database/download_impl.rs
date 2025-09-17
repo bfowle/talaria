@@ -1,13 +1,25 @@
 /// Database download implementation using content-addressed storage
 
 use crate::cli::commands::database::download::DownloadArgs;
-use crate::cli::formatter::{self, TaskList, TaskStatus, info_box, print_success, print_tip, format_bytes};
+use crate::cli::formatter::{self, TaskList, TaskStatus, info_box, print_tip, format_bytes};
+use crate::cli::output::*;
 use crate::core::database_manager::{DatabaseManager, DownloadResult};
 use crate::download::DatabaseSource;
 use anyhow::Result;
 use std::sync::{Arc, Mutex};
 
 pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource) -> Result<()> {
+    // Apply CLI flag overrides for environment variables
+    if let Some(ref manifest_server) = args.manifest_server {
+        std::env::set_var("TALARIA_MANIFEST_SERVER", manifest_server);
+    }
+    if let Some(ref talaria_home) = args.talaria_home {
+        std::env::set_var("TALARIA_HOME", talaria_home);
+    }
+    if args.preserve_lambda_on_failure {
+        std::env::set_var("TALARIA_PRESERVE_LAMBDA_ON_FAILURE", "1");
+    }
+
     let runtime = tokio::runtime::Runtime::new()?;
 
     // Initialize formatter
@@ -32,8 +44,8 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
     let init_task = task_list.add_task("Initialize CASG repository");
     let spinner = task_list.start_spinner(init_task, "Setting up storage system...");
 
-    // Initialize database manager
-    let mut manager = DatabaseManager::new(None)?;
+    // Initialize database manager with JSON flag
+    let mut manager = DatabaseManager::with_options(None, args.json)?;
 
     if let Some(spinner) = spinner {
         spinner.finish_and_clear();
@@ -47,9 +59,10 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
 
         let resumable_ops = manager.list_resumable_operations()?;
         if !resumable_ops.is_empty() {
-            println!("\n  Found {} resumable operation(s):", resumable_ops.len());
-            for (op_id, state) in &resumable_ops {
-                println!("    • {}: {}", op_id, state.summary());
+            subsection_header(&format!("Found {} resumable operation(s)", resumable_ops.len()));
+            for (i, (op_id, state)) in resumable_ops.iter().enumerate() {
+                let is_last = i == resumable_ops.len() - 1;
+                tree_item(is_last, &format!("{}: {}", op_id, state.summary()), None);
             }
             task_list.update_task(resume_task, TaskStatus::Complete);
         } else {
@@ -131,27 +144,27 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
         }
     }
 
-    // Add a blank line after task list completes
-    println!();
-
     // Report results with nice formatting
     match result {
         DownloadResult::UpToDate => {
-            print_success("Database is already up to date!");
-            println!("  No downloads needed - saved bandwidth and time");
+            success("Database is already up to date!");
+            info("No downloads needed - saved bandwidth and time");
         }
         DownloadResult::Updated { chunks_added, chunks_removed } => {
-            print_success("Database updated successfully!");
-            println!("  • Added {} new chunks", chunks_added);
+            success("Database updated successfully!");
+            let mut items = vec![
+                ("Added", format!("{} new chunks", format_number(chunks_added))),
+            ];
             if chunks_removed > 0 {
-                println!("  • Removed {} obsolete chunks", chunks_removed);
+                items.push(("Removed", format!("{} obsolete chunks", format_number(chunks_removed))));
             }
-            println!("  • Only downloaded what changed - efficient!");
+            items.push(("Efficiency", "Only downloaded what changed".to_string()));
+            tree_section("Update Summary", items, true);
         }
         DownloadResult::InitialDownload => {
-            print_success("Initial database setup complete!");
-            println!("  • Database has been chunked and stored");
-            println!("  • Future updates will only download changed chunks");
+            success("Initial database setup complete!");
+            info("Database has been chunked and stored");
+            info("Future updates will only download changed chunks");
             print_tip("Set TALARIA_MANIFEST_SERVER environment variable to enable incremental updates from a manifest server");
         }
     }

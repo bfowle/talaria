@@ -173,33 +173,46 @@ Chunk Strategy:
     └── Proteobacteria → large shared chunks
 ```
 
-### 5. Manifest-Based Updates: The 100KB Solution to 100GB Problems
+### 5. Manifest-Based Updates: The Talaria Advantage
 
-The manifest is CASG's secret weapon—a tiny JSON file (typically under 100KB) that completely describes a multi-gigabyte database. By checking the manifest first, CASG can determine exactly what changed without downloading anything else.
+The manifest is CASG's secret weapon—a compact binary file (`.tal` format) that completely describes a multi-gigabyte database. Using our proprietary Talaria format (MessagePack-based) with efficient hash encoding, manifests scale linearly with database size while remaining remarkably small. By checking the manifest first, CASG can determine exactly what changed without downloading anything else.
 
 #### How Manifests Enable Efficient Updates
 
 Think of a manifest like a restaurant menu. You don't need to order every dish to know what's available—the menu tells you everything. Similarly, the manifest lists every chunk in the database with its hash, size, and taxonomic content. When checking for updates:
 
-1. **Download new manifest** (100KB, <1 second)
-2. **Compare with local manifest** (instant)
+1. **Download new manifest** (750KB for SwissProt, <2 seconds)
+2. **Compare with local manifest** (instant binary comparison)
 3. **Download only changed chunks** (typically 1-5% of database)
+
+#### Talaria Format (.tal) Advantages
+- **91% smaller** than JSON (8MB → 750KB for SwissProt)
+- **Proprietary** - optimized specifically for biological databases
+- **Faster parsing** - binary deserialization vs text parsing
+- **Type-safe** - preserves exact numeric types
+- **Backward compatible** - reads .tal, .msgpack (legacy), and .json
 
 This transforms the update problem:
 
+#### Manifest Size Scaling
+- **SwissProt** (570K sequences, 15K chunks): ~750KB manifest (0.3% of 273MB database)
+- **TrEMBL** (250M sequences, 100K chunks): ~5MB manifest (0.002% of 250GB database)
+- **NCBI nr** (1B sequences, 500K chunks): ~25MB manifest (0.001% of 2.5TB database)
+
 ```yaml
-# Manifest (< 100KB)
+# Manifest structure (Talaria .tal format)
 version: "2024-03-15"
 etag: "W/\"5e3b-1234567890\""
-taxonomy_root: sha256:abc123...
-sequence_root: sha256:def456...
+taxonomy_root: <32-byte hash>
+sequence_root: <32-byte hash>
 chunks:
-  - hash: sha256:chunk1...
-    taxa: [562, 563]  # E. coli strains
-    size: 52428800    # 50MB
-  - hash: sha256:chunk2...
-    taxa: [9606]      # Human
-    size: 104857600   # 100MB
+  - hash: <32-byte hash>     # Stored as raw bytes in .tal format
+    taxa: [562, 563]         # Compact integer encoding
+    size: 52428800           # Variable-length integer
+  - hash: <32-byte hash>
+    taxa: [9606]
+    size: 104857600
+# Note: Above shows logical structure. Actual .tal files are binary.
 ```
 
 ### 6. Delta-Compressed Storage: Evolution-Aware Compression
@@ -226,12 +239,12 @@ graph LR
         R --> D2
     end
 
-    style S1 fill:#ffcdd2
-    style S2 fill:#ffcdd2
-    style S3 fill:#ffcdd2
-    style R fill:#c8e6c9
-    style D1 fill:#e1f5fe
-    style D2 fill:#e1f5fe
+    style S1 stroke:#d32f2f,stroke-width:2px
+    style S2 stroke:#d32f2f,stroke-width:2px
+    style S3 stroke:#d32f2f,stroke-width:2px
+    style R stroke:#388e3c,stroke-width:2px
+    style D1 stroke:#1976d2,stroke-width:2px
+    style D2 stroke:#1976d2,stroke-width:2px
 ```
 
 **Storage Savings**: Three similar E. coli genomes:

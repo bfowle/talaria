@@ -1,5 +1,9 @@
 use clap::Args;
 use std::path::PathBuf;
+use crate::cli::output::*;
+
+/// Magic bytes for Talaria manifest format
+const TALARIA_MAGIC: &[u8] = b"TAL\x01";
 
 #[derive(Args)]
 pub struct AddArgs {
@@ -153,21 +157,33 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
         previous_version: None,
     };
 
-    // Save manifest
+    // Save manifest in Talaria format (.tal) with magic header
+    let manifest_path_tal = db_path.join("manifest.tal");
+    let mut tal_content = Vec::with_capacity(TALARIA_MAGIC.len() + 1024 * 512);
+    tal_content.extend_from_slice(TALARIA_MAGIC);
+    tal_content.extend_from_slice(&rmp_serde::to_vec(&temporal_manifest)?);
+    std::fs::write(&manifest_path_tal, tal_content)?;
+
+    // Also save JSON for debugging/compatibility
     let manifest_path = db_path.join("manifest.json");
-    let manifest_content = serde_json::to_string_pretty(&temporal_manifest)?;
-    std::fs::write(&manifest_path, manifest_content)?;
+    let json_content = serde_json::to_string_pretty(&temporal_manifest)?;
+    std::fs::write(&manifest_path, json_content)?;
 
-    eprintln!("\u{2713} Successfully added custom database: {}/{}", args.source, dataset);
-    eprintln!("  Version: {}", version);
-    eprintln!("  Sequences: {}", sequence_count);
-    eprintln!("  Chunks: {}", chunk_infos.len());
-    eprintln!("  Location: {:?}", db_path);
+    success(&format!("Successfully added custom database: {}/{}", args.source, dataset));
 
-    // Optionally remove original file if moving (not copying)
+    // Build tree of database details
+    let details = vec![
+        ("Version", version.clone()),
+        ("Sequences", format_number(sequence_count)),
+        ("Chunks", format_number(chunk_infos.len())),
+        ("Location", db_path.display().to_string()),
+    ];
+    tree_section("Database Details", details, false);
+
+    // Note about file handling
     if !args.copy {
-        eprintln!("\u{25cf} Note: Original file kept at {:?}", args.input);
-        eprintln!("  Use --copy=false to move the file instead");
+        info(&format!("Original file kept at: {}", args.input.display()));
+        info("Use --copy=false to move the file instead");
     }
 
     Ok(())

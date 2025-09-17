@@ -30,6 +30,21 @@ pub struct DownloadArgs {
     #[arg(long)]
     pub list_datasets: bool,
 
+    /// Save manifest in JSON format instead of binary .tal format
+    #[arg(long)]
+    pub json: bool,
+
+    /// Manifest server URL (overrides TALARIA_MANIFEST_SERVER env var)
+    #[arg(long)]
+    pub manifest_server: Option<String>,
+
+    /// Home directory for Talaria (overrides TALARIA_HOME env var)
+    #[arg(long)]
+    pub talaria_home: Option<String>,
+
+    /// Preserve LAMBDA tool on failure (overrides TALARIA_PRESERVE_LAMBDA_ON_FAILURE env var)
+    #[arg(long)]
+    pub preserve_lambda_on_failure: bool,
 }
 
 pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
@@ -256,6 +271,10 @@ fn download_uniprot_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
         interactive: false,
         skip_verify: false,
         list_datasets: false,
+        json: false,
+        manifest_server: None,
+        talaria_home: None,
+        preserve_lambda_on_failure: false,
     };
 
     show_info(&format!("Downloading {}...", database_ref));
@@ -309,6 +328,10 @@ fn download_ncbi_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
         interactive: false,
         skip_verify: false,
         list_datasets: false,
+        json: false,
+        manifest_server: None,
+        talaria_home: None,
+        preserve_lambda_on_failure: false,
     };
 
     show_info(&format!("Downloading {}...", database_ref));

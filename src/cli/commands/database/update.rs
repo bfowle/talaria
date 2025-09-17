@@ -116,7 +116,7 @@ pub fn run(args: UpdateArgs) -> Result<()> {
                 let update_spinner = create_spinner(&format!("Updating {}...", db));
 
                 // Perform actual update
-                match perform_update(&mut manager, db) {
+                match perform_update(db) {
                     Ok(()) => {
                         update_spinner.finish_with_message(format!("{} {}", "✓".green(), db));
                     }
@@ -223,10 +223,7 @@ fn check_taxonomy_update(
     }
 }
 
-fn perform_update(
-    manager: &mut crate::core::database_manager::DatabaseManager,
-    database: &str
-) -> Result<()> {
+fn perform_update(database: &str) -> Result<()> {
     if database == "ncbi/taxonomy" || database.contains("taxonomy") {
         // Update taxonomy - for now we just indicate it needs async runtime
         // In production, this would be handled properly with async

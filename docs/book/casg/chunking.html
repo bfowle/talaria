@@ -360,12 +360,14 @@ impl TaxonomicChunker {
 </pre>
 <h3 id="chunking-rules-by-taxonomic-level"><a class="header" href="#chunking-rules-by-taxonomic-level">Chunking Rules by Taxonomic Level</a></h3>
 <p>Different taxonomic levels require different strategies based on sequence diversity and access patterns:</p>
-<p>| Taxonomic Level | Strategy | Typical Chunk Size | Example | Rationale |
-| <strong>Species (important)</strong> | Dedicated chunks | 50-100MB | E. coli, Human | Frequently accessed, deserve quick retrieval |
-| <strong>Species (rare)</strong> | Group with genus | 10-50MB | Obscure bacteria | Infrequent access, can share chunks |
-| <strong>Genus</strong> | Group related species | 50-200MB | Lactobacillus | Balance between specificity and efficiency |
-| <strong>Family</strong> | Large shared chunks | 100-500MB | Enterobacteriaceae | Related enough for good compression |
-| <strong>Order/Class</strong> | Merged chunks | 200-1000MB | Environmental samples | Bulk analysis, less specific access |</p>
+<div class="table-wrapper"><table><thead><tr><th>Taxonomic Level</th><th>Strategy</th><th>Typical Chunk Size</th><th>Example</th><th>Rationale</th></tr></thead><tbody>
+<tr><td><strong>Species (important)</strong></td><td>Dedicated chunks</td><td>50-100MB</td><td>E. coli, Human</td><td>Frequently accessed, deserve quick retrieval</td></tr>
+<tr><td><strong>Species (rare)</strong></td><td>Group with genus</td><td>10-50MB</td><td>Obscure bacteria</td><td>Infrequent access, can share chunks</td></tr>
+<tr><td><strong>Genus</strong></td><td>Group related species</td><td>50-200MB</td><td>Lactobacillus</td><td>Balance between specificity and efficiency</td></tr>
+<tr><td><strong>Family</strong></td><td>Large shared chunks</td><td>100-500MB</td><td>Enterobacteriaceae</td><td>Related enough for good compression</td></tr>
+<tr><td><strong>Order/Class</strong></td><td>Merged chunks</td><td>200-1000MB</td><td>Environmental samples</td><td>Bulk analysis, less specific access</td></tr>
+</tbody></table>
+</div>
 <h3 id="special-taxa-handling"><a class="header" href="#special-taxa-handling">Special Taxa Handling</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -506,13 +508,15 @@ fn find_transferable_sequences(
 <span class="boring">}</span></code></pre></pre>
 <h3 id="compression-strategy-tailored-to-biology"><a class="header" href="#compression-strategy-tailored-to-biology">Compression Strategy: Tailored to Biology</a></h3>
 <p>Different biological sequences have different statistical properties requiring tailored compression strategies:</p>
-<p>| Chunk Type | Compression Method | Typical Ratio | Use Case | Why It Works |
-| <strong>Protein sequences</strong> | Zstandard level 3 | 3.5:1 | General storage | 20 amino acids have moderate entropy |
-| <strong>DNA sequences</strong> | 2-bit encoding + Zstd | 8:1 | Large genomes | Only 4 bases, highly compressible |
-| <strong>Aligned sequences</strong> | Run-length + Zstd | 10:1 | MSA data | Gaps create long runs of same character |
-| <strong>Metadata chunks</strong> | Brotli level 11 | 5:1 | Annotations | Text compresses well with dictionary |
-| <strong>Repetitive DNA</strong> | LZMA2 | 15:1 | Repeat regions | Excellent for highly repetitive data |
-| <strong>Diverse proteins</strong> | LZ4 | 2:1 | Fast access needed | Trades compression for speed |</p>
+<div class="table-wrapper"><table><thead><tr><th>Chunk Type</th><th>Compression Method</th><th>Typical Ratio</th><th>Use Case</th><th>Why It Works</th></tr></thead><tbody>
+<tr><td><strong>Protein sequences</strong></td><td>Zstandard level 3</td><td>3.5:1</td><td>General storage</td><td>20 amino acids have moderate entropy</td></tr>
+<tr><td><strong>DNA sequences</strong></td><td>2-bit encoding + Zstd</td><td>8:1</td><td>Large genomes</td><td>Only 4 bases, highly compressible</td></tr>
+<tr><td><strong>Aligned sequences</strong></td><td>Run-length + Zstd</td><td>10:1</td><td>MSA data</td><td>Gaps create long runs of same character</td></tr>
+<tr><td><strong>Metadata chunks</strong></td><td>Brotli level 11</td><td>5:1</td><td>Annotations</td><td>Text compresses well with dictionary</td></tr>
+<tr><td><strong>Repetitive DNA</strong></td><td>LZMA2</td><td>15:1</td><td>Repeat regions</td><td>Excellent for highly repetitive data</td></tr>
+<tr><td><strong>Diverse proteins</strong></td><td>LZ4</td><td>2:1</td><td>Fast access needed</td><td>Trades compression for speed</td></tr>
+</tbody></table>
+</div>
 <h2 id="performance-characteristics-real-world-impact"><a class="header" href="#performance-characteristics-real-world-impact">Performance Characteristics: Real-World Impact</a></h2>
 <p>The effectiveness of taxonomic chunking becomes clear when examining real-world performance:</p>
 <h3 id="chunking-performance-from-raw-data-to-organized-chunks"><a class="header" href="#chunking-performance-from-raw-data-to-organized-chunks">Chunking Performance: From Raw Data to Organized Chunks</a></h3>
@@ -543,13 +547,15 @@ fn find_transferable_sequences(
     style O1 stroke:#388e3c,stroke-width:3px
 </pre>
 <h3 id="retrieval-performance-the-power-of-organization"><a class="header" href="#retrieval-performance-the-power-of-organization">Retrieval Performance: The Power of Organization</a></h3>
-<p>| Query Type | Traditional (Full DB) | CASG (Smart Chunks) | Improvement | Typical Use Case |
-| <strong>Single species</strong> | 100GB download | 50-200MB | <strong>500-2000×</strong> | “I only need E. coli proteins” |
-| <strong>Genus level</strong> | 100GB download | 200-500MB | <strong>200-500×</strong> | “Studying all Lactobacillus” |
-| <strong>Family level</strong> | 100GB download | 0.5-2GB | <strong>50-200×</strong> | “Analyzing Enterobacteriaceae” |
-| <strong>Viral sequences</strong> | 100GB scan | 100-500MB direct | <strong>200-1000×</strong> | “Just viral genomes please” |
-| <strong>Model organisms</strong> | 100GB download | 2-5GB total | <strong>20-50×</strong> | “Human, mouse, fly, worm, yeast” |
-| <strong>Rare species</strong> | 100GB download | 10-50MB | <strong>2000-10000×</strong> | “This one obscure bacterium” |</p>
+<div class="table-wrapper"><table><thead><tr><th>Query Type</th><th>Traditional (Full DB)</th><th>CASG (Smart Chunks)</th><th>Improvement</th><th>Typical Use Case</th></tr></thead><tbody>
+<tr><td><strong>Single species</strong></td><td>100GB download</td><td>50-200MB</td><td><strong>500-2000×</strong></td><td>“I only need E. coli proteins”</td></tr>
+<tr><td><strong>Genus level</strong></td><td>100GB download</td><td>200-500MB</td><td><strong>200-500×</strong></td><td>“Studying all Lactobacillus”</td></tr>
+<tr><td><strong>Family level</strong></td><td>100GB download</td><td>0.5-2GB</td><td><strong>50-200×</strong></td><td>“Analyzing Enterobacteriaceae”</td></tr>
+<tr><td><strong>Viral sequences</strong></td><td>100GB scan</td><td>100-500MB direct</td><td><strong>200-1000×</strong></td><td>“Just viral genomes please”</td></tr>
+<tr><td><strong>Model organisms</strong></td><td>100GB download</td><td>2-5GB total</td><td><strong>20-50×</strong></td><td>“Human, mouse, fly, worm, yeast”</td></tr>
+<tr><td><strong>Rare species</strong></td><td>100GB download</td><td>10-50MB</td><td><strong>2000-10000×</strong></td><td>“This one obscure bacterium”</td></tr>
+</tbody></table>
+</div>
 <h2 id="real-world-example-uniprot-swissprot-in-practice"><a class="header" href="#real-world-example-uniprot-swissprot-in-practice">Real-World Example: UniProt SwissProt in Practice</a></h2>
 <h3 id="initial-analysis-phase"><a class="header" href="#initial-analysis-phase">Initial Analysis Phase</a></h3>
 <p>When CASG processes UniProt SwissProt, it begins with comprehensive analysis:</p>
@@ -768,22 +774,6 @@ optimal_chunk_size = model.predict(features)
 
         </div>
 
-        <!-- Livereload script (if served using the cli tool) -->
-        <script>
-            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
-            const socket = new WebSocket(wsAddress);
-            socket.onmessage = function (event) {
-                if (event.data === "reload") {
-                    socket.close();
-                    location.reload();
-                }
-            };
-
-            window.onbeforeunload = function() {
-                socket.close();
-            }
-        </script>
 
 
 

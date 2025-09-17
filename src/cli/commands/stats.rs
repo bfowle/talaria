@@ -1,5 +1,6 @@
 use crate::bio::stats::SequenceStats;
 use crate::cli::visualize::{ascii_histogram, progress_bar};
+use crate::cli::output::*;
 use clap::Args;
 use colored::*;
 use std::path::PathBuf;
@@ -182,12 +183,12 @@ fn print_visual_stats(stats: &SequenceStats, detailed: bool) -> anyhow::Result<(
     println!();
     
     // Length distribution histogram
-    println!("{} {}", "▶ LENGTH DISTRIBUTION".yellow().bold(), "");
+    section_header("LENGTH DISTRIBUTION");
     let histogram = ascii_histogram(&stats.length_distribution, 40, true);
     println!("{}", histogram);
-    
+
     // Composition with progress bars
-    println!("{} {}", "◆ COMPOSITION ANALYSIS".yellow().bold(), "");
+    section_header("COMPOSITION ANALYSIS");
     
     use crate::bio::sequence::SequenceType;
     if stats.primary_type == SequenceType::Nucleotide {
@@ -196,12 +197,12 @@ fn print_visual_stats(stats: &SequenceStats, detailed: bool) -> anyhow::Result<(
         println!();
         
         if detailed && !stats.nucleotide_frequencies.is_empty() {
-            println!("  {}:", "Nucleotide Frequencies".cyan());
+            subsection_header("Nucleotide Frequencies");
             let mut nucs: Vec<_> = stats.nucleotide_frequencies.iter()
                 .filter(|(k, _)| **k != b'N' && **k != b'-')
                 .collect();
             nucs.sort_by_key(|(k, _)| **k);
-            
+
             for (nuc, freq) in nucs {
                 let bar = progress_bar(*freq, 100.0, 30, &format!("    {}", *nuc as char), true);
                 println!("{}", bar);
@@ -209,16 +210,16 @@ fn print_visual_stats(stats: &SequenceStats, detailed: bool) -> anyhow::Result<(
             println!();
         }
     } else {
-        println!("  {} Protein sequences", "Type:".green());
-        println!("  {} {} unique amino acids", "Composition:".green(), stats.amino_acid_frequencies.len());
-        
+        info(&format!("Type: Protein sequences"));
+        info(&format!("Composition: {} unique amino acids", stats.amino_acid_frequencies.len()));
+
         if detailed && !stats.amino_acid_frequencies.is_empty() {
-            println!("\n  {}:", "Top Amino Acids".cyan());
+            subsection_header("Top Amino Acids");
             let mut aas: Vec<_> = stats.amino_acid_frequencies.iter()
                 .filter(|(k, _)| **k != b'X' && **k != b'*' && **k != b'-')
                 .collect();
             aas.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap());
-            
+
             for (aa, freq) in aas.iter().take(10) {
                 let bar = progress_bar(**freq, 100.0, 30, &format!("    {}", **aa as char), true);
                 println!("{}", bar);
@@ -229,13 +230,13 @@ fn print_visual_stats(stats: &SequenceStats, detailed: bool) -> anyhow::Result<(
     
     // GC distribution (only for nucleotides)
     if stats.primary_type == SequenceType::Nucleotide && !stats.gc_distribution.is_empty() {
-        println!("{} {}", "▣ GC CONTENT DISTRIBUTION".yellow().bold(), "");
+        section_header("GC CONTENT DISTRIBUTION");
         let gc_hist = ascii_histogram(&stats.gc_distribution, 40, true);
         println!("{}", gc_hist);
     }
-    
+
     // Complexity metrics with visual indicators
-    println!("{} {}", "■ COMPLEXITY METRICS".yellow().bold(), "");
+    section_header("COMPLEXITY METRICS");
     
     let entropy_indicator = match stats.shannon_entropy {
         e if e < 1.0 => "Low complexity [!]".red(),

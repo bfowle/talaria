@@ -43,10 +43,6 @@ pub struct TaxaCoverageArgs {
 }
 
 pub fn run(args: TaxaCoverageArgs) -> Result<()> {
-    use crate::utils::database_ref::parse_database_reference;
-    use crate::cli::commands::database::export::run as export_database;
-    use crate::cli::commands::database::export::ExportArgs;
-    use std::path::Path;
 
     // Load or download taxonomy database
     let taxonomy_db = load_taxonomy(&args.taxonomy)?;

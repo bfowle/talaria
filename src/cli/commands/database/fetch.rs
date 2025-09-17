@@ -1,5 +1,9 @@
 use clap::Args;
 use std::path::PathBuf;
+use crate::cli::output::*;
+
+/// Magic bytes for Talaria manifest format
+const TALARIA_MAGIC: &[u8] = b"TAL\x01";
 
 #[derive(Args)]
 pub struct FetchArgs {
@@ -127,25 +131,31 @@ pub fn run(args: FetchArgs) -> anyhow::Result<()> {
     // Pause task list updates during UniProt fetching to avoid display conflicts
     task_list.pause_updates();
 
-    println!("\n▶ Fetching sequences for {} TaxIDs", taxids.len());
+    action(&format!("Fetching sequences for {} TaxIDs", taxids.len()));
 
     let client = UniProtClient::new(&args.uniprot_api)?;
     let mut total_sequences = 0;
-    let sequences = client.fetch_by_taxids_with_progress(&taxids, |index, taxid, result| {
+
+    // Create progress bar for TaxID processing
+    let progress = create_progress_bar(taxids.len() as u64, "Processing TaxIDs");
+
+    let sequences = client.fetch_by_taxids_with_progress(&taxids, |_index, taxid, result| {
         if let Some(count) = result {
             if count > 0 {
-                println!("[{}/{}] TaxID {}: Found {} sequences", index, taxids.len(), taxid, count);
+                progress.set_message(format!("TaxID {}: Found {} sequences", taxid, count));
                 total_sequences += count;
             } else {
-                println!("[{}/{}] TaxID {}: No sequences found", index, taxids.len(), taxid);
+                progress.set_message(format!("TaxID {}: No sequences found", taxid));
             }
+            progress.inc(1);
         } else {
-            println!("[{}/{}] Processing TaxID {}...", index, taxids.len(), taxid);
+            progress.set_message(format!("Processing TaxID {}...", taxid));
         }
     })?;
 
-    println!("\n✓ Total sequences fetched: {}", total_sequences);
-    println!();  // Add blank line for spacing
+    progress.finish_and_clear();
+
+    success(&format!("Total sequences fetched: {}", format_number(total_sequences)));
 
     // Resume task list updates
     task_list.resume_updates();
@@ -282,24 +292,43 @@ pub fn run(args: FetchArgs) -> anyhow::Result<()> {
     // Save manifest to the centralized manifests directory
     let manifests_dir = base_path.join("manifests");
     std::fs::create_dir_all(&manifests_dir)?;
-    let manifest_list_path = manifests_dir.join(format!("{}-{}.json",
-                                                          args.source.replace('/', "-"),
-                                                          db_name));
-    let manifest_content = serde_json::to_string_pretty(&temporal_manifest)?;
-    std::fs::write(&manifest_list_path, manifest_content)?;
+
+    // Save Talaria format version (.tal) with magic header
+    let manifest_tal_path = manifests_dir.join(format!("{}-{}.tal",
+                                                        args.source.replace('/', "-"),
+                                                        db_name));
+    let mut tal_content = Vec::with_capacity(TALARIA_MAGIC.len() + 1024 * 512);
+    tal_content.extend_from_slice(TALARIA_MAGIC);
+    tal_content.extend_from_slice(&rmp_serde::to_vec(&temporal_manifest)?);
+    std::fs::write(&manifest_tal_path, tal_content)?;
+
+    // Also save JSON for debugging/compatibility
+    let manifest_json_path = manifests_dir.join(format!("{}-{}.json",
+                                                         args.source.replace('/', "-"),
+                                                         db_name));
+    let json_content = serde_json::to_string_pretty(&temporal_manifest)?;
+    std::fs::write(&manifest_json_path, json_content)?;
 
     task_list.update_task(manifest_task, TaskStatus::Complete);
 
-    println!("\n\u{2713} Successfully created database: {}/{}", args.source, db_name);
-    println!("   Description: {}", description);
-    println!("   Version: {}", version);
-    println!("   TaxIDs: {} (fetched {} sequences)", taxids.len(), chunk_infos.iter().map(|c| c.sequence_count).sum::<usize>());
-    println!("   Chunks: {}", chunk_infos.len());
-    println!("   Location: {:?}", db_path);
-    println!();
-    println!("\u{2192} View with: talaria database list");
-    println!("\u{2192} Info: talaria database info {}/{}", args.source, db_name);
-    println!("\u{2192} Reduce: talaria reduce {}/{}", args.source, db_name);
+    success(&format!("Successfully created database: {}/{}", args.source, db_name));
+
+    // Build tree of database details
+    let total_sequences = chunk_infos.iter().map(|c| c.sequence_count).sum::<usize>();
+    let details = vec![
+        ("Description", description.clone()),
+        ("Version", version.clone()),
+        ("TaxIDs", format!("{} (fetched {} sequences)", format_number(taxids.len()), format_number(total_sequences))),
+        ("Chunks", format_number(chunk_infos.len())),
+        ("Location", db_path.display().to_string()),
+    ];
+    tree_section("Database Details", details, false);
+
+    // Commands section
+    subsection_header("Next Steps");
+    info(&format!("View with: talaria database list"));
+    info(&format!("Info: talaria database info {}/{}", args.source, db_name));
+    info(&format!("Reduce: talaria reduce {}/{}", args.source, db_name));
 
     Ok(())
 }

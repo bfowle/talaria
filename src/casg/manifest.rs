@@ -10,11 +10,41 @@ use serde_json;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Magic bytes for Talaria manifest format: "TAL" + version byte
+pub const TALARIA_MAGIC: &[u8] = b"TAL\x01";
+
+/// Manifest format to use for serialization
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ManifestFormat {
+    Json,
+    Talaria,  // Our proprietary MessagePack-based format
+}
+
+impl ManifestFormat {
+    /// Get file extension for this format
+    pub fn extension(&self) -> &str {
+        match self {
+            Self::Json => "json",
+            Self::Talaria => "tal",
+        }
+    }
+
+    /// Detect format from file extension
+    pub fn from_path(path: &Path) -> Self {
+        match path.extension().and_then(|e| e.to_str()) {
+            Some("tal") => Self::Talaria,
+            Some("json") => Self::Json,
+            _ => Self::Talaria,  // Default to Talaria format
+        }
+    }
+}
+
 pub struct Manifest {
     data: Option<TemporalManifest>,
     path: PathBuf,
     remote_url: Option<String>,
     cached_etag: Option<String>,
+    format: ManifestFormat,
 }
 
 impl Manifest {
@@ -24,44 +54,93 @@ impl Manifest {
             path: PathBuf::new(),
             remote_url: None,
             cached_etag: None,
+            format: ManifestFormat::Talaria,
         }
     }
 
     pub fn new_with_path(base_path: &Path) -> Self {
         Self {
             data: None,
-            path: base_path.join("manifest.json"),
+            path: base_path.join("manifest.tal"),
             remote_url: None,
             cached_etag: None,
+            format: ManifestFormat::Talaria,
         }
     }
 
     /// Load a specific manifest file
     pub fn load_file(manifest_path: &Path) -> Result<Self> {
-        let content = fs::read_to_string(manifest_path)
-            .context("Failed to read manifest")?;
-        let data: TemporalManifest = serde_json::from_str(&content)
-            .context("Failed to parse manifest")?;
+        let format = ManifestFormat::from_path(manifest_path);
+        let data = Self::read_manifest_file(manifest_path, format)?;
 
         Ok(Self {
             data: Some(data),
             path: manifest_path.to_path_buf(),
             remote_url: None,
             cached_etag: None,
+            format,
         })
     }
 
+    /// Read manifest file in any supported format
+    fn read_manifest_file(path: &Path, format: ManifestFormat) -> Result<TemporalManifest> {
+        match format {
+            ManifestFormat::Json => {
+                let content = fs::read_to_string(path)
+                    .context("Failed to read JSON manifest")?;
+                serde_json::from_str(&content)
+                    .context("Failed to parse JSON manifest")
+            }
+            ManifestFormat::Talaria => {
+                let mut content = fs::read(path)
+                    .context("Failed to read Talaria manifest")?;
+
+                // Check for and skip magic header if present
+                if content.starts_with(TALARIA_MAGIC) {
+                    content = content[TALARIA_MAGIC.len()..].to_vec();
+                }
+
+                rmp_serde::from_slice(&content)
+                    .context("Failed to parse Talaria manifest")
+            }
+        }
+    }
+
+    /// Write manifest file in specified format
+    fn write_manifest_file(path: &Path, manifest: &TemporalManifest, format: ManifestFormat) -> Result<()> {
+        match format {
+            ManifestFormat::Json => {
+                let content = serde_json::to_string_pretty(manifest)?;
+                fs::write(path, content)
+                    .context("Failed to write JSON manifest")
+            }
+            ManifestFormat::Talaria => {
+                let mut data = Vec::with_capacity(TALARIA_MAGIC.len() + 1024 * 1024);
+                data.extend_from_slice(TALARIA_MAGIC);  // Add magic header
+
+                let content = rmp_serde::to_vec(manifest)?;
+                data.extend_from_slice(&content);
+
+                fs::write(path, data)
+                    .context("Failed to write Talaria manifest")
+            }
+        }
+    }
+
     pub fn load(base_path: &Path) -> Result<Self> {
-        let manifest_path = base_path.join("manifest.json");
+        // Try Talaria format first, then JSON for debugging
+        let tal_path = base_path.join("manifest.tal");
+        let json_path = base_path.join("manifest.json");
         let etag_path = base_path.join(".etag");
 
-        let data = if manifest_path.exists() {
-            let content = fs::read_to_string(&manifest_path)
-                .context("Failed to read manifest")?;
-            Some(serde_json::from_str(&content)
-                .context("Failed to parse manifest")?)
+        let (data, path, format) = if tal_path.exists() {
+            let data = Self::read_manifest_file(&tal_path, ManifestFormat::Talaria)?;
+            (Some(data), tal_path, ManifestFormat::Talaria)
+        } else if json_path.exists() {
+            let data = Self::read_manifest_file(&json_path, ManifestFormat::Json)?;
+            (Some(data), json_path, ManifestFormat::Json)
         } else {
-            None
+            (None, tal_path, ManifestFormat::Talaria)
         };
 
         let cached_etag = if etag_path.exists() {
@@ -86,21 +165,26 @@ impl Manifest {
 
         Ok(Self {
             data,
-            path: manifest_path,
+            path,
             remote_url,
             cached_etag,
+            format,
         })
     }
 
     pub fn save(&self) -> Result<()> {
+        self.save_with_format(self.format)
+    }
+
+    pub fn save_with_format(&self, format: ManifestFormat) -> Result<()> {
         if let Some(ref manifest) = self.data {
-            let content = serde_json::to_string_pretty(manifest)?;
-            fs::write(&self.path, content)
-                .context("Failed to write manifest")?;
+            // Update path with correct extension
+            let path = self.path.with_extension(format.extension());
+            Self::write_manifest_file(&path, manifest, format)?;
 
             // Save ETag if present
             if let Some(ref etag) = self.cached_etag {
-                let etag_path = self.path.with_extension("etag");
+                let etag_path = path.with_extension("etag");
                 fs::write(etag_path, etag)
                     .context("Failed to write ETag")?;
             }
@@ -171,6 +255,7 @@ impl Manifest {
             path: self.path.clone(),
             remote_url: self.remote_url.clone(),
             cached_etag: etag,
+            format: self.format,
         })
     }
 

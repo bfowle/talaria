@@ -351,7 +351,6 @@ fn export_streamed(
     };
 
     let mut writer = BufWriter::new(writer);
-    let mut total_sequences = 0;
 
     // Get chunk hashes
     let chunk_hashes: Vec<_> = manifest.chunk_index
@@ -360,14 +359,14 @@ fn export_streamed(
         .collect();
 
     // Stream assembly directly to writer
-    match format {
+    let total_sequences = match format {
         ExportFormat::Fasta => {
-            total_sequences = assembler.stream_assembly(&chunk_hashes, &mut writer)?;
+            assembler.stream_assembly(&chunk_hashes, &mut writer)?
         }
         _ => {
             anyhow::bail!("Streaming export only supports FASTA format currently");
         }
-    }
+    };
 
     writer.flush()?;
     Ok(total_sequences)

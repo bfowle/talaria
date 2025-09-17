@@ -7,7 +7,7 @@ use std::fmt;
 
 /// SHA256 hash type
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct SHA256Hash(pub [u8; 32]);
+pub struct SHA256Hash(#[serde(with = "serde_bytes")] pub [u8; 32]);
 
 impl SHA256Hash {
     pub fn compute(data: &[u8]) -> Self {
@@ -79,6 +79,7 @@ pub struct TaxonomyAwareChunk {
     pub sequence_version: MerkleHash,
     pub taxon_ids: Vec<TaxonId>,
     pub sequences: Vec<SequenceRef>,
+    #[serde(with = "serde_bytes")]
     pub sequence_data: Vec<u8>,  // The actual FASTA-format sequence data
     pub created_at: DateTime<Utc>,
     pub valid_from: DateTime<Utc>,

@@ -177,6 +177,7 @@ graph TD
 Different taxonomic levels require different strategies based on sequence diversity and access patterns:
 
 | Taxonomic Level | Strategy | Typical Chunk Size | Example | Rationale |
+|-----------------|----------|-------------------|---------|------------|
 | **Species (important)** | Dedicated chunks | 50-100MB | E. coli, Human | Frequently accessed, deserve quick retrieval |
 | **Species (rare)** | Group with genus | 10-50MB | Obscure bacteria | Infrequent access, can share chunks |
 | **Genus** | Group related species | 50-200MB | Lactobacillus | Balance between specificity and efficiency |
@@ -337,6 +338,7 @@ fn find_transferable_sequences(
 Different biological sequences have different statistical properties requiring tailored compression strategies:
 
 | Chunk Type | Compression Method | Typical Ratio | Use Case | Why It Works |
+|------------|-------------------|---------------|----------|---------------|
 | **Protein sequences** | Zstandard level 3 | 3.5:1 | General storage | 20 amino acids have moderate entropy |
 | **DNA sequences** | 2-bit encoding + Zstd | 8:1 | Large genomes | Only 4 bases, highly compressible |
 | **Aligned sequences** | Run-length + Zstd | 10:1 | MSA data | Gaps create long runs of same character |
@@ -381,6 +383,7 @@ graph LR
 ### Retrieval Performance: The Power of Organization
 
 | Query Type | Traditional (Full DB) | CASG (Smart Chunks) | Improvement | Typical Use Case |
+|------------|---------------------|-------------------|-------------|------------------|
 | **Single species** | 100GB download | 50-200MB | **500-2000×** | "I only need E. coli proteins" |
 | **Genus level** | 100GB download | 200-500MB | **200-500×** | "Studying all Lactobacillus" |
 | **Family level** | 100GB download | 0.5-2GB | **50-200×** | "Analyzing Enterobacteriaceae" |

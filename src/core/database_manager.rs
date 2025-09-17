@@ -7,6 +7,9 @@ use crate::casg::{CASGRepository, TaxonomicChunker, ChunkingStrategy, SHA256Hash
 use crate::bio::sequence::Sequence;
 use crate::core::paths;
 use crate::download::{DatabaseSource, NCBIDatabase, UniProtDatabase};
+
+/// Magic bytes for Talaria manifest format
+const TALARIA_MAGIC: &[u8] = b"TAL\x01";
 use crate::utils::progress::create_progress_bar;
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -17,6 +20,7 @@ use std::sync::{Arc, Mutex};
 pub struct DatabaseManager {
     repository: CASGRepository,
     base_path: PathBuf,
+    use_json_manifest: bool,
 }
 
 impl DatabaseManager {
@@ -43,6 +47,34 @@ impl DatabaseManager {
         Ok(Self {
             repository,
             base_path,
+            use_json_manifest: false,
+        })
+    }
+
+    /// Create a new CASG database manager with options
+    pub fn with_options(base_dir: Option<String>, use_json_manifest: bool) -> Result<Self> {
+        let base_path = if let Some(dir) = base_dir {
+            PathBuf::from(dir)
+        } else {
+            // Use centralized path configuration
+            paths::talaria_databases_dir()
+        };
+
+        // Ensure directory exists
+        std::fs::create_dir_all(&base_path)?;
+
+        // Initialize or open CASG repository
+        // Always use open if chunks directory exists (indicating existing data)
+        let repository = if base_path.join("chunks").exists() {
+            CASGRepository::open(&base_path)?
+        } else {
+            CASGRepository::init(&base_path)?
+        };
+
+        Ok(Self {
+            repository,
+            base_path,
+            use_json_manifest,
         })
     }
 
@@ -257,12 +289,8 @@ impl DatabaseManager {
         use chrono::Utc;
         use serde_json::json;
 
-        let manifest_path = self.get_manifest_path(source);
-
-        // Ensure manifests directory exists
-        if let Some(parent) = manifest_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
+        // Use versioned manifest path
+        let (manifest_path, version) = self.create_versioned_manifest_path(source, true)?; // Always JSON for taxonomy
 
         // Get file metadata
         let metadata = std::fs::metadata(file_path)?;
@@ -274,15 +302,18 @@ impl DatabaseManager {
             "source": source.to_string(),
             "file_path": file_path.to_string_lossy(),
             "file_size": file_size,
+            "version": version,
             "downloaded_at": Utc::now().to_rfc3339(),
-            "version": Utc::now().format("%Y-%m-%d").to_string(),
         });
 
-        // Write manifest
-        let manifest_content = serde_json::to_string_pretty(&manifest)?;
-        std::fs::write(&manifest_path, manifest_content)?;
+        // Write manifest (taxonomy always uses JSON format)
+        std::fs::write(&manifest_path, serde_json::to_string_pretty(&manifest)?)?;
+
+        // Create symlinks
+        self.update_version_symlinks(source, &version)?;
 
         println!("  Manifest created: {}", manifest_path.display());
+        println!("  Version: {}", version);
         Ok(())
     }
 
@@ -493,17 +524,23 @@ impl DatabaseManager {
             _ => "custom".to_string(),
         });
 
-        // Save manifest to database-specific location
-        let manifest_path = self.get_manifest_path(source);
+        // Save manifest to versioned database-specific location
+        let (manifest_path, version) = self.create_versioned_manifest_path(source, self.use_json_manifest)?;
 
-        // Ensure manifests directory exists
-        if let Some(parent) = manifest_path.parent() {
-            std::fs::create_dir_all(parent)?;
+        if self.use_json_manifest {
+            // Write JSON format if requested
+            let json_content = serde_json::to_string_pretty(&manifest_data)?;
+            std::fs::write(&manifest_path, json_content)?;
+        } else {
+            // Write Talaria format (.tal) with magic header by default
+            let mut tal_content = Vec::with_capacity(TALARIA_MAGIC.len() + 1024 * 512);
+            tal_content.extend_from_slice(TALARIA_MAGIC);
+            tal_content.extend_from_slice(&rmp_serde::to_vec(&manifest_data)?);
+            std::fs::write(&manifest_path, tal_content)?;
         }
 
-        // Write manifest to the database-specific path
-        let manifest_content = serde_json::to_string_pretty(&manifest_data)?;
-        std::fs::write(&manifest_path, manifest_content)?;
+        // Create symlinks for easy access
+        self.update_version_symlinks(source, &version)?;
 
         // Track version in temporal index
         let temporal_path = self.base_path.clone();
@@ -527,6 +564,28 @@ impl DatabaseManager {
         self.repository.manifest.set_data(manifest_data);
 
         println!("Manifest saved successfully to {}", manifest_path.display());
+        println!("Version: {}", version);
+
+        Ok(())
+    }
+
+    /// Update symlinks for version management
+    fn update_version_symlinks(&self, source: &DatabaseSource, version: &str) -> Result<()> {
+        let (source_name, dataset) = self.get_source_dataset_names(source);
+        let versions_dir = self.base_path
+            .join("versions")
+            .join(source_name)
+            .join(dataset);
+
+        // Create/update 'current' symlink
+        let current_link = versions_dir.join("current");
+        if current_link.exists() {
+            std::fs::remove_file(&current_link)?;
+        }
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(version, &current_link)?;
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_dir(versions_dir.join(version), &current_link)?;
 
         Ok(())
     }
@@ -552,28 +611,82 @@ impl DatabaseManager {
         anyhow::bail!("No manifest server configured (set TALARIA_MANIFEST_SERVER for remote updates)")
     }
 
-    /// Get local manifest path for a database
+    /// Get the current manifest path for reading an existing database
+    /// This looks for the 'current' symlink in the versioned directory structure
     fn get_manifest_path(&self, source: &DatabaseSource) -> PathBuf {
+        let (source_name, dataset) = self.get_source_dataset_names(source);
+
+        let versions_dir = self.base_path
+            .join("versions")
+            .join(source_name)
+            .join(dataset);
+
+        let current_link = versions_dir.join("current");
+        if current_link.exists() {
+            if let Ok(target) = std::fs::read_link(&current_link) {
+                let manifest_path = if target.is_absolute() {
+                    target.join("manifest.tal")
+                } else {
+                    versions_dir.join(target).join("manifest.tal")
+                };
+                if manifest_path.exists() {
+                    return manifest_path;
+                }
+                // Try JSON if .tal doesn't exist
+                let json_path = manifest_path.with_extension("json");
+                if json_path.exists() {
+                    return json_path;
+                }
+            }
+        }
+
+        // Return expected path even if it doesn't exist yet
+        versions_dir.join("current").join("manifest.tal")
+    }
+
+    /// Create a new versioned manifest path for saving a database
+    /// Returns (manifest_path, version_string)
+    fn create_versioned_manifest_path(&self, source: &DatabaseSource, use_json: bool) -> Result<(PathBuf, String)> {
+        let (source_name, dataset) = self.get_source_dataset_names(source);
+
+        // Generate timestamp version
+        let version = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
+
+        // Create versioned path: versions/uniprot/swissprot/20250915_053033/
+        let version_dir = self.base_path
+            .join("versions")
+            .join(source_name)
+            .join(dataset)
+            .join(&version);
+
+        // Create directory if it doesn't exist
+        std::fs::create_dir_all(&version_dir)?;
+
+        let extension = if use_json { "json" } else { "tal" };
+        let manifest_path = version_dir.join(format!("manifest.{}", extension));
+        Ok((manifest_path, version))
+    }
+
+    /// Get source and dataset names for directory structure
+    fn get_source_dataset_names(&self, source: &DatabaseSource) -> (String, String) {
         use crate::download::{NCBIDatabase, UniProtDatabase};
 
-        let filename = match source {
-            DatabaseSource::UniProt(UniProtDatabase::SwissProt) => "uniprot-swissprot.json",
-            DatabaseSource::UniProt(UniProtDatabase::TrEMBL) => "uniprot-trembl.json",
-            DatabaseSource::UniProt(UniProtDatabase::UniRef50) => "uniprot-uniref50.json",
-            DatabaseSource::UniProt(UniProtDatabase::UniRef90) => "uniprot-uniref90.json",
-            DatabaseSource::UniProt(UniProtDatabase::UniRef100) => "uniprot-uniref100.json",
-            DatabaseSource::UniProt(UniProtDatabase::IdMapping) => "uniprot-idmapping.json",
-            DatabaseSource::NCBI(NCBIDatabase::NR) => "ncbi-nr.json",
-            DatabaseSource::NCBI(NCBIDatabase::NT) => "ncbi-nt.json",
-            DatabaseSource::NCBI(NCBIDatabase::RefSeqProtein) => "ncbi-refseq-protein.json",
-            DatabaseSource::NCBI(NCBIDatabase::RefSeqGenomic) => "ncbi-refseq-genomic.json",
-            DatabaseSource::NCBI(NCBIDatabase::Taxonomy) => "ncbi-taxonomy.json",
-            DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId) => "ncbi-prot-accession2taxid.json",
-            DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId) => "ncbi-nucl-accession2taxid.json",
-            DatabaseSource::Custom(_) => "custom.json",
-        };
-
-        self.base_path.join("manifests").join(filename)
+        match source {
+            DatabaseSource::UniProt(UniProtDatabase::SwissProt) => ("uniprot".to_string(), "swissprot".to_string()),
+            DatabaseSource::UniProt(UniProtDatabase::TrEMBL) => ("uniprot".to_string(), "trembl".to_string()),
+            DatabaseSource::UniProt(UniProtDatabase::UniRef50) => ("uniprot".to_string(), "uniref50".to_string()),
+            DatabaseSource::UniProt(UniProtDatabase::UniRef90) => ("uniprot".to_string(), "uniref90".to_string()),
+            DatabaseSource::UniProt(UniProtDatabase::UniRef100) => ("uniprot".to_string(), "uniref100".to_string()),
+            DatabaseSource::UniProt(UniProtDatabase::IdMapping) => ("uniprot".to_string(), "idmapping".to_string()),
+            DatabaseSource::NCBI(NCBIDatabase::NR) => ("ncbi".to_string(), "nr".to_string()),
+            DatabaseSource::NCBI(NCBIDatabase::NT) => ("ncbi".to_string(), "nt".to_string()),
+            DatabaseSource::NCBI(NCBIDatabase::RefSeqProtein) => ("ncbi".to_string(), "refseq-protein".to_string()),
+            DatabaseSource::NCBI(NCBIDatabase::RefSeqGenomic) => ("ncbi".to_string(), "refseq-genomic".to_string()),
+            DatabaseSource::NCBI(NCBIDatabase::Taxonomy) => ("ncbi".to_string(), "taxonomy".to_string()),
+            DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId) => ("ncbi".to_string(), "prot-accession2taxid".to_string()),
+            DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId) => ("ncbi".to_string(), "nucl-accession2taxid".to_string()),
+            DatabaseSource::Custom(name) => ("custom".to_string(), name.clone()),
+        }
     }
 
     /// Download full database (for initial setup)

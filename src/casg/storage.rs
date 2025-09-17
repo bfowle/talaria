@@ -14,6 +14,9 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+/// Magic bytes for Talaria manifest format
+const TALARIA_MAGIC: &[u8] = b"TAL\x01";
+
 pub struct CASGStorage {
     pub(crate) base_path: PathBuf,
     chunk_index: Arc<DashMap<SHA256Hash, ChunkLocation>>,
@@ -205,19 +208,22 @@ impl CASGStorage {
             },
         );
 
-        // Update persistent index (thread-safe)
-        {
-            let _lock = self.index_lock.lock().unwrap();
-            let index_path = self.base_path.join("chunk_index.json");
-            let mut index: HashMap<String, String> = if index_path.exists() {
-                serde_json::from_str(&fs::read_to_string(&index_path)?)?
-            } else {
-                HashMap::new()
-            };
-
-            index.insert(chunk_hash.to_hex(), format!("chunks/{}", chunk_hash.to_hex()));
-            fs::write(&index_path, serde_json::to_string_pretty(&index)?)?;
-        }
+        // NOTE: chunk_index.json removed - it was redundant, mapping SHA to "chunks/SHA"
+        // The in-memory chunk_index (DashMap) already tracks what we need with ChunkLocation
+        // and rebuild_index() reconstructs it from the filesystem on startup.
+        //
+        // Future considerations for a persistent index file:
+        // 1. Store full ChunkLocation metadata (path, compressed flag, size) to avoid filesystem scanning
+        // 2. Track chunk access patterns for cache optimization
+        // 3. Include chunk type metadata (reference vs delta chunks)
+        // 4. Store taxonomy information for quick taxon-based queries
+        // 5. Use binary format (MessagePack/bincode) for better performance with large chunk counts
+        //
+        // If implementing, consider:
+        // - Incremental updates vs full rewrites
+        // - Concurrent access handling
+        // - Recovery from corrupted index
+        // - Migration from filesystem-only to indexed approach
 
         Ok(chunk_hash)
     }
@@ -636,15 +642,28 @@ impl CASGStorage {
             all_chunks.insert(entry.key().clone());
         }
 
-        // Load manifest to find root references
-        let manifest_path = self.base_path.join("manifest.json");
-        if manifest_path.exists() {
-            let manifest_data = fs::read_to_string(&manifest_path)?;
-            if let Ok(manifest) = serde_json::from_str::<TemporalManifest>(&manifest_data) {
-                // Add all chunks referenced in manifest
-                for chunk_meta in &manifest.chunk_index {
-                    referenced.insert(chunk_meta.hash.clone());
-                }
+        // Load manifest (try .tal first, then .json for debugging)
+        let manifest_path_tal = self.base_path.join("manifest.tal");
+        let manifest_path_json = self.base_path.join("manifest.json");
+
+        let manifest = if manifest_path_tal.exists() {
+            let mut data = fs::read(&manifest_path_tal)?;
+            // Skip magic header
+            if data.starts_with(TALARIA_MAGIC) {
+                data = data[TALARIA_MAGIC.len()..].to_vec();
+            }
+            rmp_serde::from_slice::<TemporalManifest>(&data).ok()
+        } else if manifest_path_json.exists() {
+            let data = fs::read_to_string(&manifest_path_json)?;
+            serde_json::from_str::<TemporalManifest>(&data).ok()
+        } else {
+            None
+        };
+
+        if let Some(manifest) = manifest {
+            // Add all chunks referenced in manifest
+            for chunk_meta in &manifest.chunk_index {
+                referenced.insert(chunk_meta.hash.clone());
             }
         }
 
@@ -1111,13 +1130,24 @@ impl crate::storage::traits::TaxonomyStorage for CASGStorage {
 
     fn find_chunks_by_taxon(&self, taxon_id: TaxonId) -> Result<Vec<SHA256Hash>> {
         // Load manifest to find chunks containing specific taxon
-        let manifest_path = self.base_path.join("manifest.json");
-        if !manifest_path.exists() {
-            return Ok(Vec::new());
-        }
+        let manifest_path_tal = self.base_path.join("manifest.tal");
+        let manifest_path_json = self.base_path.join("manifest.json");
 
-        let manifest_data = fs::read_to_string(&manifest_path)?;
-        if let Ok(manifest) = serde_json::from_str::<TemporalManifest>(&manifest_data) {
+        let manifest = if manifest_path_tal.exists() {
+            let mut data = fs::read(&manifest_path_tal)?;
+            // Skip magic header
+            if data.starts_with(TALARIA_MAGIC) {
+                data = data[TALARIA_MAGIC.len()..].to_vec();
+            }
+            rmp_serde::from_slice::<TemporalManifest>(&data).ok()
+        } else if manifest_path_json.exists() {
+            let data = fs::read_to_string(&manifest_path_json)?;
+            serde_json::from_str::<TemporalManifest>(&data).ok()
+        } else {
+            return Ok(Vec::new());
+        };
+
+        if let Some(manifest) = manifest {
             let chunks: Vec<SHA256Hash> = manifest.chunk_index
                 .iter()
                 .filter(|meta| meta.taxon_ids.contains(&taxon_id))
@@ -1134,15 +1164,28 @@ impl crate::storage::traits::TaxonomyStorage for CASGStorage {
         let mut chunks_per_taxon = std::collections::HashMap::new();
 
         // Load manifest to gather taxonomy statistics
-        let manifest_path = self.base_path.join("manifest.json");
-        if manifest_path.exists() {
-            let manifest_data = fs::read_to_string(&manifest_path)?;
-            if let Ok(manifest) = serde_json::from_str::<TemporalManifest>(&manifest_data) {
-                for chunk_meta in &manifest.chunk_index {
-                    for taxon_id in &chunk_meta.taxon_ids {
-                        *chunks_per_taxon.entry(*taxon_id).or_insert(0) += 1;
-                        *sequences_per_taxon.entry(*taxon_id).or_insert(0) += chunk_meta.sequence_count;
-                    }
+        let manifest_path_tal = self.base_path.join("manifest.tal");
+        let manifest_path_json = self.base_path.join("manifest.json");
+
+        let manifest = if manifest_path_tal.exists() {
+            let mut data = fs::read(&manifest_path_tal)?;
+            // Skip magic header
+            if data.starts_with(TALARIA_MAGIC) {
+                data = data[TALARIA_MAGIC.len()..].to_vec();
+            }
+            rmp_serde::from_slice::<TemporalManifest>(&data).ok()
+        } else if manifest_path_json.exists() {
+            let data = fs::read_to_string(&manifest_path_json)?;
+            serde_json::from_str::<TemporalManifest>(&data).ok()
+        } else {
+            None
+        };
+
+        if let Some(manifest) = manifest {
+            for chunk_meta in &manifest.chunk_index {
+                for taxon_id in &chunk_meta.taxon_ids {
+                    *chunks_per_taxon.entry(*taxon_id).or_insert(0) += 1;
+                    *sequences_per_taxon.entry(*taxon_id).or_insert(0) += chunk_meta.sequence_count;
                 }
             }
         }
