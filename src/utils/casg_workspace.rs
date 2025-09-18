@@ -125,6 +125,10 @@ impl CasgWorkspaceManager {
     /// Log operation to CASG logs
     pub fn log_operation(&self, operation: &str, details: &str) -> Result<()> {
         let log_dir = self.casg_root.join("logs");
+
+        // Ensure the logs directory exists
+        fs::create_dir_all(&log_dir)?;
+
         let log_file = log_dir.join("operations.log");
 
         let mut file = fs::OpenOptions::new()

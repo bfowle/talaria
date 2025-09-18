@@ -1,5 +1,7 @@
+/// Taxonomy resolution traits and types for biological sequences
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaxonomyInfo {
@@ -147,4 +149,279 @@ pub mod ncbi {
     pub fn parse_ncbi_taxonomy<P: AsRef<Path>>(names_path: P, nodes_path: P) -> Result<TaxonomyDB, std::io::Error> {
         build_taxonomy_db(names_path, nodes_path)
     }
+}
+
+/// Represents different sources of taxonomy information
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum TaxonomySource {
+    /// Provided by API (e.g., UniProt API when querying by taxid)
+    Api,
+    /// Specified by user via --taxids parameter
+    User,
+    /// Looked up from accession2taxid mappings
+    Mapping,
+    /// Parsed from sequence header/description
+    Header,
+    /// Inferred from chunk context in CASG
+    ChunkContext,
+}
+
+/// Confidence level in taxonomy assignment
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum TaxonomyConfidence {
+    /// No taxonomy information available
+    None,
+    /// Low confidence (parsed from text, might be wrong)
+    Low,
+    /// Medium confidence (from mappings, might be outdated)
+    Medium,
+    /// High confidence (from authoritative API)
+    High,
+    /// Verified (multiple sources agree)
+    Verified,
+}
+
+/// Stores taxonomy IDs from different sources
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TaxonomySources {
+    /// Taxonomy ID provided by API
+    pub api_provided: Option<u32>,
+    /// Taxonomy ID specified by user
+    pub user_specified: Option<u32>,
+    /// Taxonomy ID from accession2taxid mapping
+    pub mapping_lookup: Option<u32>,
+    /// Taxonomy ID parsed from header
+    pub header_parsed: Option<u32>,
+    /// Taxonomy ID from chunk context
+    pub chunk_context: Option<u32>,
+}
+
+impl TaxonomySources {
+    /// Create new empty taxonomy sources
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Get all available sources as a vector
+    pub fn all_sources(&self) -> Vec<(TaxonomySource, u32)> {
+        let mut sources = Vec::new();
+
+        if let Some(id) = self.api_provided {
+            sources.push((TaxonomySource::Api, id));
+        }
+        if let Some(id) = self.user_specified {
+            sources.push((TaxonomySource::User, id));
+        }
+        if let Some(id) = self.mapping_lookup {
+            sources.push((TaxonomySource::Mapping, id));
+        }
+        if let Some(id) = self.header_parsed {
+            sources.push((TaxonomySource::Header, id));
+        }
+        if let Some(id) = self.chunk_context {
+            sources.push((TaxonomySource::ChunkContext, id));
+        }
+
+        sources
+    }
+
+    /// Get unique taxonomy IDs from all sources
+    pub fn unique_ids(&self) -> HashSet<u32> {
+        self.all_sources().into_iter().map(|(_, id)| id).collect()
+    }
+
+    /// Check if sources have conflicts
+    pub fn has_conflicts(&self) -> bool {
+        self.unique_ids().len() > 1
+    }
+
+    /// Get the highest priority taxonomy ID
+    pub fn resolve_with_priority(&self) -> Option<u32> {
+        // Priority order: API > User > Mapping > Header > ChunkContext
+        self.api_provided
+            .or(self.user_specified)
+            .or(self.mapping_lookup)
+            .or(self.header_parsed)
+            .or(self.chunk_context)
+    }
+}
+
+/// Result of taxonomy resolution
+#[derive(Debug, Clone)]
+pub enum TaxonomyResolution {
+    /// No taxonomy information available
+    None,
+    /// All sources agree on the same taxonomy
+    Unanimous {
+        taxon_id: u32,
+        sources: Vec<(TaxonomySource, u32)>,
+    },
+    /// Sources conflict, but resolved to a value
+    Conflicted {
+        candidates: Vec<(TaxonomySource, u32)>,
+        resolved_to: u32,
+    },
+}
+
+impl TaxonomyResolution {
+    /// Get the primary taxon ID from the resolution
+    pub fn get_primary_taxon(&self) -> u32 {
+        match self {
+            TaxonomyResolution::None => 0,
+            TaxonomyResolution::Unanimous { taxon_id, .. } => *taxon_id,
+            TaxonomyResolution::Conflicted { resolved_to, .. } => *resolved_to,
+        }
+    }
+
+    /// Check if this resolution has conflicts
+    pub fn has_conflicts(&self) -> bool {
+        matches!(self, TaxonomyResolution::Conflicted { .. })
+    }
+
+    /// Get confidence level based on resolution
+    pub fn confidence(&self) -> TaxonomyConfidence {
+        match self {
+            TaxonomyResolution::None => TaxonomyConfidence::None,
+            TaxonomyResolution::Unanimous { sources, .. } => {
+                // If API or User provided and others agree, very high confidence
+                if sources.iter().any(|(s, _)| matches!(s, TaxonomySource::Api | TaxonomySource::User))
+                   && sources.len() > 1 {
+                    TaxonomyConfidence::Verified
+                } else if sources.iter().any(|(s, _)| matches!(s, TaxonomySource::Api)) {
+                    TaxonomyConfidence::High
+                } else if sources.iter().any(|(s, _)| matches!(s, TaxonomySource::Mapping)) {
+                    TaxonomyConfidence::Medium
+                } else {
+                    TaxonomyConfidence::Low
+                }
+            }
+            TaxonomyResolution::Conflicted { .. } => TaxonomyConfidence::Low,
+        }
+    }
+}
+
+/// Represents a taxonomy discrepancy
+#[derive(Debug, Clone)]
+pub struct TaxonomyDiscrepancy {
+    /// ID of the sequence with discrepancy
+    pub sequence_id: String,
+    /// Conflicting taxonomy assignments
+    pub conflicts: Vec<(TaxonomySource, u32)>,
+    /// How the conflict was resolved
+    pub resolution_strategy: &'static str,
+}
+
+/// Trait for resolving taxonomy from multiple sources
+pub trait TaxonomyResolver {
+    /// Get taxonomy ID with source tracking
+    fn resolve_taxonomy(&self) -> TaxonomyResolution;
+
+    /// Get all available taxonomy sources
+    fn taxonomy_sources(&self) -> &TaxonomySources;
+
+    /// Get mutable access to taxonomy sources
+    fn taxonomy_sources_mut(&mut self) -> &mut TaxonomySources;
+
+    /// Report discrepancies if multiple sources conflict
+    fn detect_discrepancies(&self) -> Vec<TaxonomyDiscrepancy>;
+}
+
+/// Trait for enriching sequences with taxonomy information
+pub trait TaxonomyEnrichable: TaxonomyResolver {
+    /// Enrich with taxonomy from accession2taxid mappings
+    fn enrich_from_mappings(&mut self, mappings: &HashMap<String, u32>);
+
+    /// Enrich with user-specified taxonomy
+    fn enrich_from_user(&mut self, taxid: u32);
+
+    /// Enrich from header parsing
+    fn enrich_from_header(&mut self);
+
+    /// Enrich from chunk context
+    fn enrich_from_chunk(&mut self, taxid: u32);
+
+    /// Extract accession for mapping lookup
+    fn extract_accession(&self) -> String;
+
+    /// Get description for header parsing
+    fn get_description(&self) -> Option<&str>;
+}
+
+/// Trait for providers that can fetch sequences with taxonomy
+pub trait SequenceProvider {
+    /// Download sequences with full taxonomy preservation
+    fn fetch_sequences(&self) -> Result<Vec<crate::bio::sequence::Sequence>>;
+
+    /// Get provider's confidence in taxonomy data
+    fn taxonomy_confidence(&self) -> TaxonomyConfidence;
+
+    /// Get the source type for this provider
+    fn source_type(&self) -> TaxonomySource;
+}
+
+/// Parse taxonomy ID from a sequence description
+pub fn parse_taxonomy_from_description(description: &Option<String>) -> Option<u32> {
+    let desc = description.as_ref()?;
+
+    // Look for UniProt OX= pattern
+    if let Some(ox_pos) = desc.find("OX=") {
+        let start = ox_pos + 3;
+        let end = desc[start..]
+            .find(|c: char| !c.is_numeric())
+            .map(|i| start + i)
+            .unwrap_or(desc.len());
+
+        if let Ok(taxon_id) = desc[start..end].parse::<u32>() {
+            return Some(taxon_id);
+        }
+    }
+
+    // Look for TaxID= pattern
+    if let Some(tax_pos) = desc.find("TaxID=") {
+        let start = tax_pos + 6;
+        let end = desc[start..]
+            .find(|c: char| !c.is_numeric())
+            .map(|i| start + i)
+            .unwrap_or(desc.len());
+
+        if let Ok(taxon_id) = desc[start..end].parse::<u32>() {
+            return Some(taxon_id);
+        }
+    }
+
+    // Look for [organism] pattern at the end
+    if let Some(bracket_start) = desc.rfind('[') {
+        if let Some(bracket_end) = desc[bracket_start..].find(']') {
+            let _organism = &desc[bracket_start + 1..bracket_start + bracket_end];
+            // Would need organism to taxid mapping here
+            // For now, return None
+        }
+    }
+
+    None
+}
+
+/// Extract accession from sequence ID
+pub fn extract_accession_from_id(id: &str) -> String {
+    // Handle common formats:
+    // >sp|P12345|NAME_ORGANISM
+    // >gi|123456|ref|NP_123456.1|
+    // >NP_123456.1
+
+    if id.contains('|') {
+        let parts: Vec<&str> = id.split('|').collect();
+        if parts.len() >= 2 {
+            // UniProt format
+            if parts[0] == "sp" || parts[0] == "tr" {
+                return parts[1].to_string();
+            }
+            // NCBI format
+            if parts.len() >= 4 && parts[2] == "ref" {
+                return parts[3].split('.').next().unwrap_or(parts[3]).to_string();
+            }
+        }
+    }
+
+    // Simple accession - remove version
+    id.split('.').next().unwrap_or(id).to_string()
 }

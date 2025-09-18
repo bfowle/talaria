@@ -1,6 +1,5 @@
 pub mod download;
 pub mod download_impl;
-pub mod download_simple;
 pub mod list;
 pub mod list_sequences;
 pub mod info;

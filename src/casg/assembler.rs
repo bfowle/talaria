@@ -166,6 +166,7 @@ impl<'a> FastaAssembler<'a> {
                         description: if current_desc.is_empty() { None } else { Some(current_desc.clone()) },
                         sequence: current_seq.clone(),
                         taxon_id: self.extract_taxon_from_description(&current_desc),
+                        taxonomy_sources: Default::default(),
                     });
                 }
 
@@ -190,6 +191,7 @@ impl<'a> FastaAssembler<'a> {
                 description: if current_desc.is_empty() { None } else { Some(current_desc) },
                 sequence: current_seq,
                 taxon_id: None,
+                taxonomy_sources: Default::default(),
             });
         }
 

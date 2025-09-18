@@ -268,6 +268,7 @@ fn perform_update(database: &str) -> Result<()> {
         database: Some(database.to_string()),
         output: std::path::PathBuf::from("."),
         taxonomy: false,
+        complete: false,
         resume: true,
         interactive: false,
         skip_verify: false,

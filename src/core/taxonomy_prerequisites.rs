@@ -249,6 +249,7 @@ pub async fn download_taxonomy_database(database: &str) -> Result<()> {
         database: Some(format!("ncbi/{}", database)),
         output: paths::talaria_databases_dir(),
         taxonomy: false,
+        complete: false,
         resume: true,
         interactive: false,
         skip_verify: false,

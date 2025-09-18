@@ -921,7 +921,7 @@ impl CASGStorage {
         Ok(delta_hashes)
     }
 
-    /// Store a reduction manifest
+    /// Store a reduction manifest (deprecated - use store_database_reduction_manifest)
     pub fn store_reduction_manifest(&self, manifest: &crate::casg::reduction::ReductionManifest) -> Result<SHA256Hash> {
         let manifest_data = serde_json::to_vec(manifest)?;
         let hash = self.store_chunk(&manifest_data, true)?;
@@ -936,7 +936,52 @@ impl CASGStorage {
         Ok(hash)
     }
 
-    /// Get a reduction manifest by profile name
+    /// Store a reduction manifest for a specific database version
+    pub fn store_database_reduction_manifest(
+        &self,
+        manifest: &crate::casg::reduction::ReductionManifest,
+        source: &str,
+        dataset: &str,
+        version: &str,
+    ) -> Result<SHA256Hash> {
+        // Serialize to MessagePack for efficient binary storage
+        let msgpack_data = rmp_serde::to_vec(manifest)?;
+
+        // Create .tal format with magic header
+        let mut tal_content = Vec::new();
+        tal_content.extend_from_slice(TALARIA_MAGIC); // Magic + version
+        tal_content.extend_from_slice(&msgpack_data);
+
+        // Store the manifest as a chunk for deduplication
+        let hash = self.store_chunk(&tal_content, true)?;
+
+        // Store profile in version-specific directory
+        let profiles_dir = self.base_path
+            .join("versions")
+            .join(source)
+            .join(dataset)
+            .join(version)
+            .join("profiles");
+        fs::create_dir_all(&profiles_dir)?;
+
+        // Check for JSON_FORMAT environment variable (for debugging)
+        let use_json = std::env::var("TALARIA_JSON_FORMAT").is_ok();
+
+        if use_json {
+            // Store as JSON for debugging
+            let json_data = serde_json::to_vec(manifest)?;
+            let profile_path = profiles_dir.join(format!("{}.json", &manifest.profile));
+            fs::write(profile_path, &json_data)?;
+        } else {
+            // Store as .tal binary format (default)
+            let profile_path = profiles_dir.join(format!("{}.tal", &manifest.profile));
+            fs::write(profile_path, &tal_content)?;
+        }
+
+        Ok(hash)
+    }
+
+    /// Get a reduction manifest by profile name (deprecated - use get_database_reduction_by_profile)
     pub fn get_reduction_by_profile(&self, profile: &str) -> Result<Option<crate::casg::reduction::ReductionManifest>> {
         let profile_path = self.base_path.join("profiles").join(profile);
 
@@ -952,7 +997,71 @@ impl CASGStorage {
         Ok(Some(manifest))
     }
 
-    /// List all reduction profiles
+    /// Get a reduction manifest for a specific database version
+    pub fn get_database_reduction_by_profile(
+        &self,
+        profile: &str,
+        source: &str,
+        dataset: &str,
+        version: Option<&str>,
+    ) -> Result<Option<crate::casg::reduction::ReductionManifest>> {
+        // Helper function to load manifest from a directory
+        let load_from_dir = |dir: PathBuf| -> Result<Option<crate::casg::reduction::ReductionManifest>> {
+            // Try .tal first (preferred binary format)
+            let tal_path = dir.join(format!("{}.tal", profile));
+            if tal_path.exists() {
+                let mut data = fs::read(&tal_path)?;
+
+                // Check and skip magic header
+                if data.starts_with(TALARIA_MAGIC) {
+                    data = data[TALARIA_MAGIC.len()..].to_vec();
+                }
+
+                let manifest: crate::casg::reduction::ReductionManifest = rmp_serde::from_slice(&data)?;
+                return Ok(Some(manifest));
+            }
+
+            // Fall back to .json for backwards compatibility or debugging
+            let json_path = dir.join(format!("{}.json", profile));
+            if json_path.exists() {
+                let manifest_data = fs::read(&json_path)?;
+                let manifest: crate::casg::reduction::ReductionManifest = serde_json::from_slice(&manifest_data)?;
+                return Ok(Some(manifest));
+            }
+
+            Ok(None)
+        };
+
+        // If version specified, look in that specific version
+        if let Some(ver) = version {
+            let profiles_dir = self.base_path
+                .join("versions")
+                .join(source)
+                .join(dataset)
+                .join(ver)
+                .join("profiles");
+
+            if let Some(manifest) = load_from_dir(profiles_dir)? {
+                return Ok(Some(manifest));
+            }
+        } else {
+            // Look in 'current' symlink first, then latest version
+            let current_profiles = self.base_path
+                .join("versions")
+                .join(source)
+                .join(dataset)
+                .join("current")
+                .join("profiles");
+
+            if let Some(manifest) = load_from_dir(current_profiles)? {
+                return Ok(Some(manifest));
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// List all reduction profiles (deprecated - use list_database_reduction_profiles)
     pub fn list_reduction_profiles(&self) -> Result<Vec<String>> {
         let profiles_dir = self.base_path.join("profiles");
         if !profiles_dir.exists() {
@@ -964,6 +1073,73 @@ impl CASGStorage {
             let entry = entry?;
             if let Some(name) = entry.file_name().to_str() {
                 profiles.push(name.to_string());
+            }
+        }
+
+        Ok(profiles)
+    }
+
+    /// List reduction profiles for a specific database
+    pub fn list_database_reduction_profiles(
+        &self,
+        source: &str,
+        dataset: &str,
+        version: Option<&str>,
+    ) -> Result<Vec<String>> {
+        let mut profiles = Vec::new();
+
+        // Determine which version(s) to check
+        let versions_to_check = if let Some(ver) = version {
+            vec![ver.to_string()]
+        } else {
+            // Check all versions
+            let dataset_path = self.base_path
+                .join("versions")
+                .join(source)
+                .join(dataset);
+
+            if !dataset_path.exists() {
+                return Ok(Vec::new());
+            }
+
+            let mut versions = Vec::new();
+            for entry in fs::read_dir(&dataset_path)? {
+                let entry = entry?;
+                if let Some(name) = entry.file_name().to_str() {
+                    if name != "current" && entry.path().is_dir() {
+                        versions.push(name.to_string());
+                    }
+                }
+            }
+            versions
+        };
+
+        // Check each version for profiles
+        for ver in versions_to_check {
+            let profiles_dir = self.base_path
+                .join("versions")
+                .join(source)
+                .join(dataset)
+                .join(&ver)
+                .join("profiles");
+
+            if profiles_dir.exists() {
+                for entry in fs::read_dir(&profiles_dir)? {
+                    let entry = entry?;
+                    if let Some(name) = entry.file_name().to_str() {
+                        // Remove extension (.tal or .json) if present
+                        let profile_name = if name.ends_with(".tal") {
+                            &name[..name.len() - 4]
+                        } else if name.ends_with(".json") {
+                            &name[..name.len() - 5]
+                        } else {
+                            name
+                        };
+                        if !profiles.contains(&profile_name.to_string()) {
+                            profiles.push(profile_name.to_string());
+                        }
+                    }
+                }
             }
         }
 

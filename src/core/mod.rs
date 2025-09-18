@@ -7,6 +7,7 @@ pub mod reducer;
 pub mod reference_selector;
 pub mod reference_selector_optimized;
 pub mod selection;
+pub mod taxonomy_manager;
 pub mod taxonomy_prerequisites;
 pub mod validator;
 pub mod resolver;

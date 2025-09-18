@@ -2,6 +2,7 @@
 
 use crate::casg::types::*;
 use crate::bio::sequence::Sequence;
+use crate::bio::taxonomy::{TaxonomyResolver, TaxonomyEnrichable, TaxonomyDiscrepancy};
 use crate::utils::progress::{create_progress_bar, create_spinner};
 use super::traits::{Chunker, ChunkingStats};
 use anyhow::Result;
@@ -23,6 +24,110 @@ impl TaxonomicChunker {
     /// Load taxonomy mapping from accession2taxid file
     pub fn load_taxonomy_mapping(&mut self, mapping: HashMap<String, TaxonId>) {
         self.taxonomy_map = mapping;
+    }
+
+    /// Chunk sequences with validation using trait-based taxonomy resolution
+    pub fn chunk_with_validation(&mut self, mut sequences: Vec<Sequence>) -> Result<Vec<TaxonomyAwareChunk>> {
+        // Enrich all sequences with taxonomy from mappings
+        let mappings: HashMap<String, u32> = self.taxonomy_map
+            .iter()
+            .map(|(k, v)| (k.clone(), v.0))
+            .collect();
+
+        let enrichment_progress = create_progress_bar(sequences.len() as u64, "Enriching sequences with taxonomy");
+        for seq in &mut sequences {
+            // Enrich from various sources
+            seq.enrich_from_mappings(&mappings);
+            seq.enrich_from_header();
+            enrichment_progress.inc(1);
+        }
+        enrichment_progress.finish_and_clear();
+
+        // Detect and report discrepancies
+        let mut all_discrepancies = Vec::new();
+        for seq in &sequences {
+            let discrepancies = seq.detect_discrepancies();
+            all_discrepancies.extend(discrepancies);
+        }
+
+        if !all_discrepancies.is_empty() {
+            self.report_discrepancies(&all_discrepancies);
+        }
+
+        // Group sequences by resolved taxonomy
+        let grouping_progress = create_progress_bar(sequences.len() as u64, "Grouping sequences by resolved taxonomy");
+        let mut taxon_groups: HashMap<TaxonId, Vec<Sequence>> = HashMap::new();
+
+        for seq in sequences {
+            let resolution = seq.resolve_taxonomy();
+            let taxon_id = TaxonId(resolution.get_primary_taxon());
+
+            // Log if there was a conflict
+            if resolution.has_conflicts() {
+                tracing::debug!(
+                    "Taxonomy conflict for {}: resolved to {}",
+                    seq.id,
+                    taxon_id.0
+                );
+            }
+
+            taxon_groups.entry(taxon_id).or_default().push(seq);
+            grouping_progress.inc(1);
+        }
+        grouping_progress.finish_and_clear();
+        println!("Grouped into {} taxa", taxon_groups.len());
+
+        // Apply chunking strategy to each group
+        let chunking_progress = create_progress_bar(taxon_groups.len() as u64, "Creating chunks from taxa groups");
+        let mut chunks = Vec::new();
+
+        for (taxon_id, sequences) in taxon_groups {
+            let group_chunks = self.chunk_taxon_group(taxon_id, sequences)?;
+            chunks.extend(group_chunks);
+            chunking_progress.inc(1);
+        }
+        chunking_progress.finish_and_clear();
+        println!("Created {} chunks", chunks.len());
+
+        // Apply special handling for important taxa
+        let special_progress = create_spinner("Applying special taxa rules");
+        chunks = self.apply_special_taxa_rules(chunks)?;
+        special_progress.finish_and_clear();
+        println!("Special taxa rules applied");
+
+        Ok(chunks)
+    }
+
+    /// Report taxonomy discrepancies
+    fn report_discrepancies(&self, discrepancies: &[TaxonomyDiscrepancy]) {
+        use crate::cli::output::*;
+
+        if discrepancies.is_empty() {
+            return;
+        }
+
+        warning(&format!("Found {} taxonomy discrepancies", discrepancies.len()));
+
+        // Group by conflict pattern
+        let mut by_pattern: HashMap<String, Vec<&TaxonomyDiscrepancy>> = HashMap::new();
+        for disc in discrepancies {
+            let pattern = format!("{:?}", disc.conflicts.iter().map(|(s, _)| s).collect::<Vec<_>>());
+            by_pattern.entry(pattern).or_default().push(disc);
+        }
+
+        for (pattern, discs) in by_pattern.iter().take(5) {
+            println!("  Conflict pattern {}: {} sequences", pattern, discs.len());
+            for disc in discs.iter().take(3) {
+                println!("    - {} (resolved by {})", disc.sequence_id, disc.resolution_strategy);
+            }
+            if discs.len() > 3 {
+                println!("    ... and {} more", discs.len() - 3);
+            }
+        }
+
+        if by_pattern.len() > 5 {
+            println!("  ... and {} more conflict patterns", by_pattern.len() - 5);
+        }
     }
 
     /// Chunk sequences by taxonomic groups

@@ -120,7 +120,43 @@ impl std::fmt::Display for DatabaseSource {
 impl DatabaseSource {
     /// Parse a database name string into a DatabaseSource
     pub fn from_string(name: &str) -> anyhow::Result<Self> {
-        // Try common UniProt databases
+        // Handle source/dataset format (e.g., "ncbi/taxonomy", "uniprot/swissprot")
+        if name.contains('/') {
+            let parts: Vec<&str> = name.split('/').collect();
+            if parts.len() == 2 {
+                let source = parts[0];
+                let dataset = parts[1];
+
+                // Handle UniProt databases
+                if source.eq_ignore_ascii_case("uniprot") {
+                    return match dataset.to_lowercase().as_str() {
+                        "swissprot" | "sprot" => Ok(DatabaseSource::UniProt(UniProtDatabase::SwissProt)),
+                        "trembl" => Ok(DatabaseSource::UniProt(UniProtDatabase::TrEMBL)),
+                        "uniref50" => Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef50)),
+                        "uniref90" => Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef90)),
+                        "uniref100" => Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef100)),
+                        "idmapping" => Ok(DatabaseSource::UniProt(UniProtDatabase::IdMapping)),
+                        _ => Ok(DatabaseSource::Custom(name.to_string()))
+                    };
+                }
+
+                // Handle NCBI databases
+                if source.eq_ignore_ascii_case("ncbi") {
+                    return match dataset.to_lowercase().as_str() {
+                        "nr" => Ok(DatabaseSource::NCBI(NCBIDatabase::NR)),
+                        "nt" => Ok(DatabaseSource::NCBI(NCBIDatabase::NT)),
+                        "refseq-protein" | "refseq_protein" | "refseq" => Ok(DatabaseSource::NCBI(NCBIDatabase::RefSeqProtein)),
+                        "refseq-genomic" | "refseq_genomic" => Ok(DatabaseSource::NCBI(NCBIDatabase::RefSeqGenomic)),
+                        "taxonomy" => Ok(DatabaseSource::NCBI(NCBIDatabase::Taxonomy)),
+                        "prot-accession2taxid" | "prot_accession2taxid" => Ok(DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId)),
+                        "nucl-accession2taxid" | "nucl_accession2taxid" => Ok(DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId)),
+                        _ => Ok(DatabaseSource::Custom(name.to_string()))
+                    };
+                }
+            }
+        }
+
+        // Try legacy format (just the dataset name without source prefix)
         if name.eq_ignore_ascii_case("swissprot") || name.eq_ignore_ascii_case("sprot") {
             return Ok(DatabaseSource::UniProt(UniProtDatabase::SwissProt));
         }

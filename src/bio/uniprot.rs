@@ -1,5 +1,6 @@
 /// UniProt API client for fetching sequences by TaxID and proteome
 use crate::bio::sequence::Sequence;
+use crate::bio::taxonomy::{SequenceProvider, TaxonomyConfidence, TaxonomySource, TaxonomyEnrichable};
 use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::io::Read;
@@ -61,10 +62,15 @@ impl UniProtClient {
 
         pb.finish_and_clear();
 
-        // Parse FASTA and set taxon_id for all sequences
+        // Parse FASTA and set taxonomy from both API and legacy field
         let mut sequences = self.parse_fasta(&body)?;
         for seq in &mut sequences {
+            // Set legacy field for backward compatibility
             seq.taxon_id = Some(taxid);
+            // Set new taxonomy sources - API is authoritative
+            seq.taxonomy_sources.api_provided = Some(taxid);
+            // Also try to parse from header
+            seq.enrich_from_header();
         }
         Ok(sequences)
     }
@@ -194,6 +200,7 @@ impl UniProtClient {
                         description: current_desc.clone(),
                         sequence: current_data.clone(),
                         taxon_id: None,
+                        taxonomy_sources: Default::default(),
                     });
                 }
 
@@ -215,6 +222,7 @@ impl UniProtClient {
                 description: current_desc,
                 sequence: current_data,
                 taxon_id: None,
+                taxonomy_sources: Default::default(),
             });
         }
 
@@ -301,5 +309,65 @@ mod tests {
         assert_eq!(sequences[0].id, "sp|P12345|PROT_HUMAN");
         assert_eq!(sequences[0].description.as_ref().unwrap(), "Protein description");
         assert_eq!(sequences[1].id, "sp|Q67890|PROT_MOUSE");
+    }
+}
+
+/// Custom database provider that fetches by TaxID
+pub struct CustomDatabaseProvider {
+    taxids: Vec<u32>,
+    client: UniProtClient,
+    db_name: String,
+}
+
+impl CustomDatabaseProvider {
+    /// Create new custom database provider
+    pub fn new(db_name: String, taxids: Vec<u32>) -> Result<Self> {
+        let client = UniProtClient::new("https://rest.uniprot.org")?;
+        Ok(Self {
+            taxids,
+            client,
+            db_name,
+        })
+    }
+}
+
+impl SequenceProvider for CustomDatabaseProvider {
+    fn fetch_sequences(&self) -> Result<Vec<Sequence>> {
+        let mut all_sequences = Vec::new();
+        println!("● Fetching sequences for custom database: {}", self.db_name);
+
+        for &taxid in &self.taxids {
+            println!("▼ Fetching sequences for TaxID {}...", taxid);
+            match self.client.fetch_by_taxid(taxid) {
+                Ok(mut sequences) => {
+                    // Mark both API and user sources
+                    for seq in &mut sequences {
+                        seq.taxonomy_sources.api_provided = Some(taxid);
+                        seq.taxonomy_sources.user_specified = Some(taxid);
+                    }
+                    println!("  ✓ Retrieved {} sequences", sequences.len());
+                    all_sequences.extend(sequences);
+                }
+                Err(e) => {
+                    eprintln!("  ✗ Failed to fetch TaxID {}: {}", taxid, e);
+                    // Continue with other taxids
+                }
+            }
+        }
+
+        if all_sequences.is_empty() {
+            anyhow::bail!("No sequences retrieved for any of the specified TaxIDs");
+        }
+
+        Ok(all_sequences)
+    }
+
+    fn taxonomy_confidence(&self) -> TaxonomyConfidence {
+        // Both API and user specified = very high confidence
+        TaxonomyConfidence::Verified
+    }
+
+    fn source_type(&self) -> TaxonomySource {
+        TaxonomySource::Api
     }
 }

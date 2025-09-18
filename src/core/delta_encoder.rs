@@ -197,6 +197,7 @@ impl DeltaReconstructor {
             description: reference.description.clone(),
             sequence: reconstructed,
             taxon_id: delta_record.taxon_id,
+            taxonomy_sources: Default::default(),
         }
     }
     

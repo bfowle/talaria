@@ -1,11 +1,15 @@
 use serde::{Deserialize, Serialize};
+use crate::bio::taxonomy::{TaxonomySources, TaxonomyResolver, TaxonomyEnrichable, TaxonomyResolution, TaxonomyDiscrepancy, TaxonomySource};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Sequence {
     pub id: String,
     pub description: Option<String>,
     pub sequence: Vec<u8>,
-    pub taxon_id: Option<u32>,
+    pub taxon_id: Option<u32>,  // Legacy field, kept for backward compatibility
+    #[serde(default)]
+    pub taxonomy_sources: TaxonomySources,  // New: track all taxonomy sources
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -21,6 +25,7 @@ impl Sequence {
             description: None,
             sequence,
             taxon_id: None,
+            taxonomy_sources: TaxonomySources::new(),
         }
     }
     
@@ -174,4 +179,96 @@ pub fn sanitize_sequences(sequences: Vec<Sequence>) -> (Vec<Sequence>, usize) {
     }
 
     (sanitized, removed_count)
+}
+
+// Implement TaxonomyResolver trait for Sequence
+impl TaxonomyResolver for Sequence {
+    fn resolve_taxonomy(&self) -> TaxonomyResolution {
+        let sources = self.taxonomy_sources();
+        let all_sources = sources.all_sources();
+
+        if all_sources.is_empty() {
+            // Check legacy taxon_id field
+            if let Some(id) = self.taxon_id {
+                return TaxonomyResolution::Unanimous {
+                    taxon_id: id,
+                    sources: vec![(TaxonomySource::Header, id)],
+                };
+            }
+            return TaxonomyResolution::None;
+        }
+
+        let unique = sources.unique_ids();
+
+        match unique.len() {
+            0 => TaxonomyResolution::None,
+            1 => TaxonomyResolution::Unanimous {
+                taxon_id: *unique.iter().next().unwrap(),
+                sources: all_sources,
+            },
+            _ => {
+                let resolved = sources.resolve_with_priority()
+                    .or(self.taxon_id)
+                    .unwrap_or(0);
+
+                TaxonomyResolution::Conflicted {
+                    candidates: all_sources,
+                    resolved_to: resolved,
+                }
+            }
+        }
+    }
+
+    fn taxonomy_sources(&self) -> &TaxonomySources {
+        &self.taxonomy_sources
+    }
+
+    fn taxonomy_sources_mut(&mut self) -> &mut TaxonomySources {
+        &mut self.taxonomy_sources
+    }
+
+    fn detect_discrepancies(&self) -> Vec<TaxonomyDiscrepancy> {
+        match self.resolve_taxonomy() {
+            TaxonomyResolution::Conflicted { candidates, .. } => {
+                vec![TaxonomyDiscrepancy {
+                    sequence_id: self.id.clone(),
+                    conflicts: candidates,
+                    resolution_strategy: "priority-based",
+                }]
+            }
+            _ => vec![],
+        }
+    }
+}
+
+// Implement TaxonomyEnrichable trait for Sequence
+impl TaxonomyEnrichable for Sequence {
+    fn enrich_from_mappings(&mut self, mappings: &HashMap<String, u32>) {
+        let accession = self.extract_accession();
+        if let Some(&taxid) = mappings.get(&accession) {
+            self.taxonomy_sources.mapping_lookup = Some(taxid);
+        }
+    }
+
+    fn enrich_from_user(&mut self, taxid: u32) {
+        self.taxonomy_sources.user_specified = Some(taxid);
+    }
+
+    fn enrich_from_header(&mut self) {
+        if let Some(taxid) = crate::bio::taxonomy::parse_taxonomy_from_description(&self.description) {
+            self.taxonomy_sources.header_parsed = Some(taxid);
+        }
+    }
+
+    fn enrich_from_chunk(&mut self, taxid: u32) {
+        self.taxonomy_sources.chunk_context = Some(taxid);
+    }
+
+    fn extract_accession(&self) -> String {
+        crate::bio::taxonomy::extract_accession_from_id(&self.id)
+    }
+
+    fn get_description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
 }

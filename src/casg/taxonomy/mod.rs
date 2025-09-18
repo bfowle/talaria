@@ -51,33 +51,19 @@ impl TaxonomyManager {
         // Use unified taxonomy directory
         let taxonomy_dir = paths::talaria_taxonomy_current_dir();
 
-        // Create directory if it doesn't exist (in case current symlink is broken)
-        if !taxonomy_dir.exists() {
-            // Try to use the actual version directory
-            let versions_dir = paths::talaria_taxonomy_versions_dir();
-            fs::create_dir_all(&versions_dir)?;
+        // Don't create any directories here - let the actual taxonomy download handle it
+        // This prevents creating empty version directories before the real data arrives
 
-            // If no versions exist, create a default one
-            let default_version = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
-            let version_dir = versions_dir.join(&default_version);
-            fs::create_dir_all(&version_dir)?;
-
-            // Create current symlink
-            let current_link = versions_dir.join("current");
-            #[cfg(unix)]
-            {
-                let _ = std::os::unix::fs::symlink(&default_version, &current_link);
-            }
-            #[cfg(windows)]
-            {
-                let _ = fs::write(&current_link, default_version.as_bytes());
-            }
+        // Use the taxonomy_dir if it exists, otherwise use a placeholder path
+        let base_path = if taxonomy_dir.exists() {
+            taxonomy_dir
         } else {
-            fs::create_dir_all(&taxonomy_dir)?;
-        }
+            // Return a path that will be updated when taxonomy is actually downloaded
+            paths::talaria_taxonomy_versions_dir()
+        };
 
         Ok(Self {
-            base_path: taxonomy_dir,
+            base_path,
             taxonomy_tree: None,
             taxon_to_chunks: HashMap::new(),
             accession_to_taxon: HashMap::new(),
@@ -86,18 +72,26 @@ impl TaxonomyManager {
     }
 
     pub fn load(base_path: &Path) -> Result<Self> {
+        // Create a new manager which will set the correct base_path
         let mut manager = Self::new(base_path)?;
 
-        // Load taxonomy tree if it exists
-        let tree_path = manager.base_path.join("taxonomy_tree.json");
-        if tree_path.exists() {
-            manager.load_taxonomy_tree(&tree_path)?;
-        }
+        // Check if taxonomy directory exists and has the tree file
+        let taxonomy_dir = paths::talaria_taxonomy_current_dir();
+        if taxonomy_dir.exists() {
+            // Update base_path to the actual taxonomy directory
+            manager.base_path = taxonomy_dir.clone();
 
-        // Load mappings
-        let mappings_path = manager.base_path.join("mappings.json");
-        if mappings_path.exists() {
-            manager.load_mappings(&mappings_path)?;
+            // Load taxonomy tree if it exists
+            let tree_path = taxonomy_dir.join("taxonomy_tree.json");
+            if tree_path.exists() {
+                manager.load_taxonomy_tree(&tree_path)?;
+            }
+
+            // Load mappings
+            let mappings_path = taxonomy_dir.join("mappings.json");
+            if mappings_path.exists() {
+                manager.load_mappings(&mappings_path)?;
+            }
         }
 
         // Load version history from TaxonomyEvolution
@@ -431,7 +425,15 @@ impl TaxonomyManager {
 
     fn save_taxonomy_tree(&self) -> Result<()> {
         if let Some(tree) = &self.taxonomy_tree {
-            let tree_path = self.base_path.join("taxonomy_tree.json");
+            // Save to the taxonomy current directory
+            let taxonomy_dir = paths::talaria_taxonomy_current_dir();
+
+            // Ensure the directory exists
+            if !taxonomy_dir.exists() {
+                std::fs::create_dir_all(&taxonomy_dir)?;
+            }
+
+            let tree_path = taxonomy_dir.join("taxonomy_tree.json");
             let content = serde_json::to_string_pretty(tree)?;
             fs::write(tree_path, content)?;
         }
@@ -516,6 +518,13 @@ impl TaxonomyManager {
     /// Load version history from TaxonomyEvolution storage
     fn load_version_history(&mut self) -> Result<()> {
         use evolution::TaxonomyEvolution;
+
+        // Check if evolution directory exists before trying to load
+        let evolution_dir = self.base_path.join("evolution");
+        if !evolution_dir.exists() {
+            // No evolution directory, nothing to load
+            return Ok(());
+        }
 
         let mut evolution = TaxonomyEvolution::new(&self.base_path)?;
         if let Ok(()) = evolution.load() {

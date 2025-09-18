@@ -140,6 +140,7 @@ impl DeltaReconstructor {
                     description: ref_seq.description.clone(),
                     sequence,
                     taxon_id: ref_seq.taxon_id,
+                    taxonomy_sources: Default::default(),
                 }))
             }
 
@@ -150,6 +151,7 @@ impl DeltaReconstructor {
                     description: None,
                     sequence: data.clone(),
                     taxon_id: None,
+                    taxonomy_sources: Default::default(),
                 }))
             }
 
@@ -172,6 +174,7 @@ impl DeltaReconstructor {
                     description: ref_seq.description.clone(),
                     sequence,
                     taxon_id: ref_seq.taxon_id,
+                    taxonomy_sources: Default::default(),
                 }))
             }
 

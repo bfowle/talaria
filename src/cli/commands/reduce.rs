@@ -258,12 +258,13 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         ("custom".to_string(), args.database.clone())
     };
 
-    // Check if database exists
+    // Check if database exists and get its version
     let databases = db_manager.list_databases()?;
     let db_full_name = format!("{}/{}", source, dataset);
-    if !databases.iter().any(|db| db.name == db_full_name) {
-        anyhow::bail!("Database '{}' not found. Use 'talaria database list' to see available databases.", db_full_name);
-    }
+    let db_info = databases.iter()
+        .find(|db| db.name == db_full_name)
+        .ok_or_else(|| anyhow::anyhow!("Database '{}' not found. Use 'talaria database list' to see available databases.", db_full_name))?;
+    let db_version = db_info.version.clone();
     // Assemble FASTA from CASG chunks
     let temp_file = workspace.lock().unwrap().get_file_path("input_fasta", "fasta");
 
@@ -673,6 +674,9 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
             original_count,
             input_size,
             Some(&db_full_name),  // Use original database name, not a new one
+            &source,
+            &dataset,
+            &db_version,
         )?
     } else {
         // Traditional file output
@@ -805,6 +809,9 @@ fn store_reduction_in_casg(
     original_count: usize,
     input_size: u64,
     database_name: Option<&str>,
+    source: &str,
+    dataset: &str,
+    version: &str,
 ) -> anyhow::Result<u64> {
     use crate::casg::{CASGRepository, delta_generator::DeltaGenerator, delta::DeltaGeneratorConfig, reduction::{ReductionManifest, ReductionParameters, ReferenceChunk, DeltaChunkRef}};
     use crate::casg::chunker::TaxonomicChunker;
@@ -985,6 +992,7 @@ fn store_reduction_in_casg(
                 description: None,
                 sequence: Vec::new(), // Will be filled by delta generator
                 taxon_id: d.taxon_id,
+                taxonomy_sources: Default::default(),
             }).collect();
 
         let all_ref_sequences: Vec<crate::bio::sequence::Sequence> =
@@ -1029,9 +1037,13 @@ fn store_reduction_in_casg(
     let elapsed = start.elapsed().as_secs();
     manifest.calculate_statistics(original_count, input_size, elapsed);
 
-    // Store the reduction manifest as a profile
-    // This will automatically create the profile reference in /profiles/ directory
-    let manifest_hash = casg.storage.store_reduction_manifest(&manifest)?;
+    // Store the reduction manifest as a profile in the database version directory
+    let manifest_hash = casg.storage.store_database_reduction_manifest(
+        &manifest,
+        source,
+        dataset,
+        version,
+    )?;
 
     // Note: We do NOT create a new database manifest here
     // The reduction is stored as a profile associated with the original database

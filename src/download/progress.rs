@@ -20,7 +20,10 @@ impl DownloadProgress {
                 .unwrap()
                 .progress_chars("#>-"),
         );
-        
+
+        // Enable steady tick for smooth spinner animation
+        bar.enable_steady_tick(Duration::from_millis(100));
+
         DownloadProgress {
             bar,
             total: 0,

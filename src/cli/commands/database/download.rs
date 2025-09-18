@@ -14,6 +14,10 @@ pub struct DownloadArgs {
     #[arg(short = 't', long)]
     pub taxonomy: bool,
 
+    /// Download complete taxonomy dataset (all components)
+    #[arg(long, help = "Download all taxonomy components (taxdump + all mappings)")]
+    pub complete: bool,
+
     /// Resume incomplete download
     #[arg(short = 'r', long)]
     pub resume: bool,
@@ -83,6 +87,11 @@ pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    // Handle --complete flag for taxonomy
+    if args.complete {
+        return run_complete_taxonomy_download(args);
+    }
+
     if args.interactive || args.database.is_none() {
         run_interactive_download(args)
     } else {
@@ -131,8 +140,107 @@ pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
         ]);
         println!();
 
-        // Use CASG for all downloads
-        super::download_simple::run_direct_download(args)
+        // Handle custom databases (with taxids) vs regular databases
+        if source == "custom" {
+            run_custom_download(args, dataset)
+        } else {
+            // Use CASG for regular database downloads
+            use crate::download::DatabaseSource;
+            use super::download_impl::run_database_download;
+
+            let database_source = DatabaseSource::from_string(&format!("{}/{}", source, dataset))?;
+            run_database_download(args, database_source)
+        }
+    }
+}
+
+fn run_complete_taxonomy_download(args: DownloadArgs) -> anyhow::Result<()> {
+    use crate::download::DatabaseSource;
+    use super::download_impl::run_database_download;
+    use colored::Colorize;
+
+    println!();
+    println!("{}  Complete Taxonomy Download", "▶".cyan().bold());
+    println!("{}  This will download all taxonomy components:", "ℹ".blue());
+    println!("    • NCBI Taxonomy (taxdump)");
+    println!("    • Protein Accession to TaxID mapping");
+    println!("    • Nucleotide Accession to TaxID mapping");
+    println!("    • UniProt ID mapping");
+    println!();
+
+    let components = vec![
+        ("ncbi/taxonomy", "NCBI Taxonomy"),
+        ("ncbi/prot-accession2taxid", "Protein Accession2TaxID"),
+        ("ncbi/nucl-accession2taxid", "Nucleotide Accession2TaxID"),
+        ("uniprot/idmapping", "UniProt ID Mapping"),
+    ];
+
+    let mut success_count = 0;
+    let mut failed = Vec::new();
+
+    for (source_str, name) in components {
+        println!("{}  Downloading {}...", "►".cyan().bold(), name);
+
+        match DatabaseSource::from_string(source_str) {
+            Ok(database_source) => {
+                // Clone args for each component
+                let component_args = DownloadArgs {
+                    database: Some(source_str.to_string()),
+                    output: args.output.clone(),
+                    taxonomy: args.taxonomy,
+                    complete: false,  // Don't recurse
+                    resume: args.resume,
+                    interactive: false,  // Force non-interactive for batch
+                    skip_verify: args.skip_verify,
+                    list_datasets: false,
+                    json: args.json,
+                    manifest_server: args.manifest_server.clone(),
+                    talaria_home: args.talaria_home.clone(),
+                    preserve_lambda_on_failure: args.preserve_lambda_on_failure,
+                    dry_run: args.dry_run,
+                    force: args.force,
+                    taxids: None,
+                    taxid_list: None,
+                    reference_proteomes: false,
+                    max_sequences: None,
+                    description: None,
+                };
+
+                match run_database_download(component_args, database_source) {
+                    Ok(_) => {
+                        println!("{}  {} downloaded successfully", "✓".green().bold(), name);
+                        success_count += 1;
+                    }
+                    Err(e) => {
+                        println!("{}  Failed to download {}: {}", "✗".red().bold(), name, e);
+                        failed.push((name, e));
+                    }
+                }
+            }
+            Err(e) => {
+                println!("{}  Failed to parse {}: {}", "✗".red().bold(), source_str, e);
+                failed.push((name, e));
+            }
+        }
+        println!();
+    }
+
+    // Summary
+    println!("{}", "═".repeat(60).dimmed());
+    println!("{}  Complete Taxonomy Download Summary", "◆".cyan().bold());
+    println!("    • {} components downloaded successfully", success_count.to_string().green());
+    if !failed.is_empty() {
+        println!("    • {} components failed:", failed.len().to_string().red());
+        for (name, err) in &failed {
+            println!("      - {}: {}", name, err);
+        }
+    }
+    println!();
+
+    if failed.is_empty() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("Some components failed to download"))
     }
 }
 
@@ -268,6 +376,62 @@ fn list_available_datasets() {
     println!("Example: talaria database download --database uniprot --dataset swissprot");
 }
 
+fn run_custom_download(args: DownloadArgs, db_name: String) -> anyhow::Result<()> {
+    use crate::bio::uniprot::CustomDatabaseProvider;
+    use crate::bio::taxonomy::SequenceProvider;
+    use crate::core::database_manager::DatabaseManager;
+    use crate::download::DatabaseSource;
+    use crate::cli::output::{success, info, section_header};
+
+    // Parse TaxIDs
+    let taxids = if let Some(taxid_list_path) = &args.taxid_list {
+        // Read from file
+        let content = std::fs::read_to_string(taxid_list_path)?;
+        content.lines()
+            .filter_map(|line| {
+                let trimmed = line.trim();
+                if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                    trimmed.parse::<u32>().ok()
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+    } else if let Some(taxids_str) = &args.taxids {
+        // Parse comma-separated list
+        taxids_str.split(',')
+            .filter_map(|s| s.trim().parse::<u32>().ok())
+            .collect()
+    } else {
+        anyhow::bail!("Custom databases require --taxids or --taxid-list");
+    };
+
+    if taxids.is_empty() {
+        anyhow::bail!("No valid TaxIDs found");
+    }
+
+    println!();
+    section_header(&format!("Creating Custom Database: {}", db_name));
+    info(&format!("Fetching sequences for {} TaxIDs", taxids.len()));
+
+    // Initialize database manager
+    let mut manager = DatabaseManager::new(None)?;
+    let database_source = DatabaseSource::Custom(db_name.clone());
+
+    // Create provider and fetch sequences
+    let provider = CustomDatabaseProvider::new(db_name.clone(), taxids)?;
+    let sequences = provider.fetch_sequences()?;
+
+    info(&format!("Total sequences fetched: {}", sequences.len()));
+
+    // Use the unified pipeline - chunk sequences directly
+    info("Processing into CASG chunks...");
+    manager.chunk_sequences_direct(sequences, &database_source)?;
+
+    success(&format!("Successfully created custom database: custom/{}", db_name));
+    Ok(())
+}
+
 fn run_interactive_download(args: DownloadArgs) -> anyhow::Result<()> {
     use dialoguer::{Select, theme::ColorfulTheme};
     use crate::cli::interactive::print_header;
@@ -338,6 +502,7 @@ fn download_uniprot_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
         database: Some(database_ref.clone()),
         output: output_dir.clone(),
         taxonomy: download_taxonomy,
+        complete: false,
         resume: false,
         interactive: false,
         skip_verify: false,
@@ -373,8 +538,12 @@ fn download_uniprot_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
     ]);
     println!();
 
-    // Call the actual download function
-    super::download_simple::run_direct_download(args)?;
+    // Use the unified CASG download
+    use crate::download::DatabaseSource;
+    use super::download_impl::run_database_download;
+
+    let database_source = DatabaseSource::from_string(&format!("uniprot/{}", dataset_id))?;
+    run_database_download(args, database_source)?;
 
     show_success(&format!("{} download complete!", name));
 
@@ -418,6 +587,7 @@ fn download_ncbi_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
         database: Some(database_ref.clone()),
         output: output_dir.clone(),
         taxonomy: false,
+        complete: false,
         resume: false,
         interactive: false,
         skip_verify: false,
@@ -453,13 +623,14 @@ fn download_ncbi_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
     ]);
     println!();
 
-    // Call the actual download function
-    super::download_simple::run_direct_download(args)?;
+    // Use the unified CASG download
+    use crate::download::DatabaseSource;
+    use super::download_impl::run_database_download;
+
+    let database_source = DatabaseSource::from_string(&format!("ncbi/{}", dataset_id))?;
+    run_database_download(args, database_source)?;
 
     show_success(&format!("{} download complete!", name));
 
     Ok(())
 }
-
-// Legacy download implementation moved to download_casg::run_legacy_download
-// This function is no longer needed as we route through download_simple module
