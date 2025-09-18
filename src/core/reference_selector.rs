@@ -23,7 +23,7 @@ pub enum SelectionAlgorithm {
 }
 
 #[derive(Debug, Clone)]
-pub struct ReferenceSelector {
+pub struct ReferenceSelectorImpl {
     pub min_length: usize,
     pub similarity_threshold: f64,
     pub taxonomy_aware: bool,
@@ -47,7 +47,7 @@ pub struct SelectionResult {
     pub discarded: HashSet<String>,
 }
 
-impl ReferenceSelector {
+impl ReferenceSelectorImpl {
     pub fn new() -> Self {
         Self {
             min_length: 50,
@@ -162,7 +162,8 @@ impl ReferenceSelector {
             pb.inc(1);
         }
 
-        pb.finish_with_message(format!("Selected {} references", references.len()));
+        pb.finish_and_clear();
+        println!("Selected {} references", references.len());
 
         // Phase 2: Assign non-reference sequences to their best matching reference
         // Calculate how many sequences need assignment
@@ -218,11 +219,12 @@ impl ReferenceSelector {
             discarded.insert(child_id);
         }
         
-        pb2.finish_with_message(format!(
+        pb2.finish_and_clear();
+        println!(
             "Assigned {} sequences to {} references",
             sequences_to_assign,
             references.len()
-        ));
+        );
         
         SelectionResult {
             references,
@@ -357,7 +359,8 @@ impl ReferenceSelector {
             }
         }
         
-        pb.finish_with_message(format!("Selected {} reference sequences", references.len()));
+        pb.finish_and_clear();
+        println!("Selected {} reference sequences", references.len());
         
         SelectionResult {
             references,
@@ -482,11 +485,12 @@ impl ReferenceSelector {
 
                     // Stop if improvement over last 10 references is less than 0.1%
                     if recent_improvement < 0.001 {
-                        pb.finish_with_message(format!(
+                        pb.finish_and_clear();
+                        println!(
                             "Auto-detected {} references (coverage: {:.1}%, plateau reached)",
                             references.len(),
                             coverage_ratio * 100.0
-                        ));
+                        );
                         break;
                     }
                 }
@@ -494,21 +498,23 @@ impl ReferenceSelector {
             
             // Stop if we've covered 95% of sequences (but ensure minimum coverage first)
             if coverage_ratio > 0.95 && references.len() >= MIN_REFERENCES {
-                pb.finish_with_message(format!(
+                pb.finish_and_clear();
+                println!(
                     "Auto-detected {} references (coverage: {:.1}%)",
                     references.len(),
                     coverage_ratio * 100.0
-                ));
+                );
                 break;
             }
 
             // Limit to reasonable number of references (e.g., 10% of sequences)
             if references.len() >= sequences.len() / 10 && references.len() >= MIN_REFERENCES {
-                pb.finish_with_message(format!(
+                pb.finish_and_clear();
+                println!(
                     "Auto-detected {} references (coverage: {:.1}%, max references reached)",
                     references.len(),
                     coverage_ratio * 100.0
-                ));
+                );
                 break;
             }
             
@@ -530,13 +536,15 @@ impl ReferenceSelector {
 
         // If we found very few sequences, fall back to simple selection
         if final_coverage < 0.01 && sequences.len() > 1000 {
-            pb.finish_with_message("Auto-detection found too few matches, falling back to length-based selection");
+            pb.finish_and_clear();
+            println!("Auto-detection found too few matches, falling back to length-based selection");
             // Use simple selection with 10% ratio as fallback
             return self.simple_select_references(sequences, 0.1);
         }
 
-        pb.finish_with_message(format!("Auto-detected {} references (final coverage: {:.1}%)",
-                                      references.len(), final_coverage * 100.0));
+        pb.finish_and_clear();
+        println!("Auto-detected {} references (final coverage: {:.1}%)",
+                     references.len(), final_coverage * 100.0);
 
         SelectionResult {
             references,
@@ -583,7 +591,8 @@ impl ReferenceSelector {
                 
                 // Perform alignment
                 let alignment = Alignment::global(query, other);
-                let similarity = self.calculate_similarity(&alignment);
+                // Use identity directly from bio::alignment::AlignmentResult
+                let similarity = alignment.identity;
                 
                 if similarity >= self.similarity_threshold {
                     query_children.push(other.id.clone());
@@ -603,7 +612,8 @@ impl ReferenceSelector {
             }
         }
         
-        pb.finish_with_message(format!("Selected {} references with alignment", references.len()));
+        pb.finish_and_clear();
+        println!("Selected {} references with alignment", references.len());
         
         SelectionResult {
             references,
@@ -612,17 +622,11 @@ impl ReferenceSelector {
         }
     }
     
-    fn calculate_similarity(&self, alignment: &crate::bio::alignment::AlignmentResult) -> f64 {
-        let matches = alignment.alignment_string.iter()
-            .filter(|&&c| c == b'|')
-            .count();
-        let total = alignment.alignment_string.len();
-
-        if total == 0 {
-            0.0
-        } else {
-            matches as f64 / total as f64
-        }
+    #[allow(dead_code)]
+    fn calculate_similarity(&self, alignment: &crate::tools::AlignmentResult) -> f64 {
+        // Use identity field directly from tools::AlignmentResult
+        // Identity is already a percentage (0.0 to 100.0)
+        alignment.identity as f64 / 100.0
     }
 
     /// Calculate a weight based on taxonomic distance between two sequences
@@ -772,7 +776,7 @@ impl ReferenceSelector {
         // If we have a manifest-based accession2taxid file, use it
         if let Some(ref acc2taxid_path) = self.manifest_acc2taxid {
             // Also need the taxdump directory
-            let taxonomy_dir = crate::core::paths::talaria_taxonomy_dir();
+            let taxonomy_dir = crate::core::paths::talaria_taxonomy_current_dir();
             let taxdump_dir = taxonomy_dir.join("taxdump");
 
             if taxdump_dir.exists() {
@@ -888,21 +892,21 @@ impl ReferenceSelector {
     /// Single-pass O(n) greedy selection matching original ref-db-gen.cpp
     fn select_with_single_pass(
         &self,
-        alignments: Vec<crate::tools::traits::AlignmentResult>,
+        alignments: Vec<crate::tools::AlignmentResult>,
         sequences: Vec<Sequence>,
     ) -> anyhow::Result<SelectionResult> {
         // Group alignments by query sequence (matching original approach)
         let mut query_alignments: HashMap<String, Vec<(String, f64, usize)>> = HashMap::new();
 
         for alignment in alignments {
-            // Group by query, store (subject, identity, subject_length)
+            // Group by query, store (reference, identity, ref_length)
             query_alignments
                 .entry(alignment.query_id.clone())
                 .or_insert_with(Vec::new)
                 .push((
-                    alignment.subject_id.clone(),
-                    alignment.identity,
-                    alignment.subject_end
+                    alignment.reference_id.clone(),
+                    alignment.identity as f64,
+                    alignment.ref_end
                 ));
         }
 
@@ -1026,8 +1030,9 @@ impl ReferenceSelector {
         }
 
         let final_coverage = discarded.len() as f64 / sequences.len() as f64;
-        pb2.finish_with_message(format!("Selected {} references, {:.1}% coverage",
-                                       references.len(), final_coverage * 100.0));
+        pb2.finish_and_clear();
+        println!("Selected {} references, {:.1}% coverage",
+                 references.len(), final_coverage * 100.0);
         
         Ok(SelectionResult {
             references,
@@ -1039,7 +1044,7 @@ impl ReferenceSelector {
     /// Similarity matrix O(n²) algorithm - evaluates all candidates against all uncovered sequences
     fn select_with_similarity_matrix(
         &self,
-        alignments: Vec<crate::tools::traits::AlignmentResult>,
+        alignments: Vec<crate::tools::AlignmentResult>,
         sequences: Vec<Sequence>,
     ) -> anyhow::Result<SelectionResult> {
         use crate::cli::output::{section_header, info, warning};
@@ -1049,11 +1054,11 @@ impl ReferenceSelector {
         // Build similarity matrix from alignments
         let mut similarity_matrix: HashMap<(String, String), f64> = HashMap::new();
         for alignment in alignments {
-            let key = (alignment.query_id.clone(), alignment.subject_id.clone());
-            similarity_matrix.insert(key.clone(), alignment.identity);
+            let key = (alignment.query_id.clone(), alignment.reference_id.clone());
+            similarity_matrix.insert(key.clone(), alignment.identity as f64);
             // Also insert reverse for bidirectional lookups
-            let reverse_key = (alignment.subject_id.clone(), alignment.query_id.clone());
-            similarity_matrix.insert(reverse_key, alignment.identity);
+            let reverse_key = (alignment.reference_id.clone(), alignment.query_id.clone());
+            similarity_matrix.insert(reverse_key, alignment.identity as f64);
         }
 
         info(&format!("Built similarity matrix with {} entries", format_number(similarity_matrix.len())));
@@ -1177,7 +1182,8 @@ impl ReferenceSelector {
             }
         }
 
-        pb2.finish_with_message(format!("Selected {} references using similarity matrix", references.len()));
+        pb2.finish_and_clear();
+        println!("Selected {} references using similarity matrix", references.len());
 
         Ok(SelectionResult {
             references,
@@ -1187,7 +1193,7 @@ impl ReferenceSelector {
     }
 }
 
-impl Default for ReferenceSelector {
+impl Default for ReferenceSelectorImpl {
     fn default() -> Self {
         Self::new()
     }
@@ -1199,25 +1205,25 @@ mod tests {
 
     #[test]
     fn test_selection_algorithm_default() {
-        let selector = ReferenceSelector::new();
+        let selector = ReferenceSelectorImpl::new();
         // Default should be SinglePass
         assert_eq!(selector.selection_algorithm, SelectionAlgorithm::SinglePass);
     }
 
     #[test]
     fn test_selection_algorithm_builder() {
-        let selector = ReferenceSelector::new()
+        let selector = ReferenceSelectorImpl::new()
             .with_selection_algorithm(SelectionAlgorithm::SimilarityMatrix);
         assert_eq!(selector.selection_algorithm, SelectionAlgorithm::SimilarityMatrix);
 
-        let selector2 = ReferenceSelector::new()
+        let selector2 = ReferenceSelectorImpl::new()
             .with_selection_algorithm(SelectionAlgorithm::Hybrid);
         assert_eq!(selector2.selection_algorithm, SelectionAlgorithm::Hybrid);
     }
 
     #[test]
     fn test_reference_selector_default_batch_settings() {
-        let selector = ReferenceSelector::new();
+        let selector = ReferenceSelectorImpl::new();
         // We can't directly access private fields, but we can test the behavior
         // by verifying that the defaults work as expected
         assert!(selector.min_length == 50); // This is accessible through default
@@ -1225,7 +1231,7 @@ mod tests {
 
     #[test]
     fn test_reference_selector_with_batch_settings() {
-        let selector = ReferenceSelector::new()
+        let selector = ReferenceSelectorImpl::new()
             .with_batch_settings(true, 10000);
 
         // The batch settings are stored but not directly accessible
@@ -1235,7 +1241,7 @@ mod tests {
 
     #[test]
     fn test_reference_selector_builder_pattern() {
-        let selector = ReferenceSelector::new()
+        let selector = ReferenceSelectorImpl::new()
             .with_min_length(100)
             .with_similarity_threshold(0.8)
             .with_taxonomy_aware(true)
@@ -1254,7 +1260,7 @@ mod tests {
 
     #[test]
     fn test_simple_selection_result() {
-        let selector = ReferenceSelector::new();
+        let selector = ReferenceSelectorImpl::new();
 
         let sequences = vec![
             Sequence::new("seq1".to_string(), vec![65; 100]), // 100 bp
@@ -1385,12 +1391,12 @@ mod tests {
         ];
 
         // Test single-pass algorithm
-        let selector_sp = ReferenceSelector::new()
+        let selector_sp = ReferenceSelectorImpl::new()
             .with_selection_algorithm(SelectionAlgorithm::SinglePass);
         let result_sp = selector_sp.simple_select_references(sequences.clone(), 0.4);
 
         // Test similarity matrix would need alignments, so we'll use simple selection
-        let selector_sm = ReferenceSelector::new()
+        let selector_sm = ReferenceSelectorImpl::new()
             .with_selection_algorithm(SelectionAlgorithm::SimilarityMatrix);
         let result_sm = selector_sm.simple_select_references(sequences.clone(), 0.4);
 
@@ -1426,7 +1432,7 @@ mod tests {
             Sequence::new("seq5".to_string(), vec![65; 20]), // Too short
         ];
 
-        let selector = ReferenceSelector::new();
+        let selector = ReferenceSelectorImpl::new();
         let result = selector.simple_select_references(sequences.clone(), 0.5);
 
         // Property 1: All sequences are accounted for

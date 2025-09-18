@@ -169,31 +169,63 @@ fn check_database_update(
     database: &str,
     force: bool
 ) -> Result<UpdateStatus> {
-    // Get current database info
-    let databases = manager.list_databases()?;
-    let current_db = databases.iter()
-        .find(|d| d.name == database || d.name.ends_with(database));
+    use crate::utils::database_ref::parse_database_ref;
+    use crate::download::{DatabaseSource, UniProtDatabase, NCBIDatabase};
 
-    if let Some(db) = current_db {
-        // Check for updates (this would need to be implemented in DatabaseManager)
-        // For now, we'll simulate by checking if the database is older than 30 days
-        let age_days = (chrono::Utc::now() - db.created_at).num_days();
+    // Parse database reference to get source
+    let (source_str, dataset) = parse_database_ref(database)?;
 
-        if force || age_days > 30 {
-            // Simulate finding a newer version
-            let latest = chrono::Utc::now().format("%Y%m%d").to_string();
+    // Map to DatabaseSource enum
+    let source = match source_str.as_str() {
+        "uniprot" => match dataset.as_str() {
+            "swissprot" => DatabaseSource::UniProt(UniProtDatabase::SwissProt),
+            "trembl" => DatabaseSource::UniProt(UniProtDatabase::TrEMBL),
+            _ => return Ok(UpdateStatus::NotFound),
+        },
+        "ncbi" => match dataset.as_str() {
+            "nr" => DatabaseSource::NCBI(NCBIDatabase::NR),
+            "nt" => DatabaseSource::NCBI(NCBIDatabase::NT),
+            "taxonomy" => DatabaseSource::NCBI(NCBIDatabase::Taxonomy),
+            _ => return Ok(UpdateStatus::NotFound),
+        },
+        _ => return Ok(UpdateStatus::NotFound),
+    };
+
+    // Use async runtime to check for updates
+    let runtime = tokio::runtime::Runtime::new()?;
+    let result = runtime.block_on(async {
+        if force {
+            // Force indicates update available
             Ok(UpdateStatus::UpdateAvailable {
-                current: db.version.clone(),
-                latest,
+                current: "current".to_string(),
+                latest: "latest".to_string(),
             })
         } else {
-            Ok(UpdateStatus::UpToDate {
-                version: db.version.clone(),
-            })
+            // Check for actual updates
+            let progress = |_msg: &str| {};
+            match manager.check_for_updates(&source, progress).await {
+                Ok(crate::core::database_manager::DownloadResult::UpToDate) => {
+                    Ok(UpdateStatus::UpToDate {
+                        version: manager.get_current_version_info(&source)
+                            .map(|v| v.timestamp)
+                            .unwrap_or_else(|_| "unknown".to_string()),
+                    })
+                }
+                Ok(crate::core::database_manager::DownloadResult::Updated { .. }) => {
+                    Ok(UpdateStatus::UpdateAvailable {
+                        current: "current".to_string(),
+                        latest: "new version available".to_string(),
+                    })
+                }
+                Ok(crate::core::database_manager::DownloadResult::InitialDownload) => {
+                    Ok(UpdateStatus::NotFound)
+                }
+                Err(_) => Ok(UpdateStatus::NotFound),
+            }
         }
-    } else {
-        Ok(UpdateStatus::NotFound)
-    }
+    });
+
+    result
 }
 
 fn check_taxonomy_update(
@@ -224,18 +256,35 @@ fn check_taxonomy_update(
 }
 
 fn perform_update(database: &str) -> Result<()> {
-    if database == "ncbi/taxonomy" || database.contains("taxonomy") {
-        // Update taxonomy - for now we just indicate it needs async runtime
-        // In production, this would be handled properly with async
-        return Err(anyhow::anyhow!(
-            "Taxonomy update requires async runtime. Please use 'talaria database update-taxonomy' for now."
-        ));
-    } else {
-        // For regular databases, we would need to implement re-download logic
-        // For now, return an error indicating this needs implementation
-        return Err(anyhow::anyhow!(
-            "Database update for '{}' not yet implemented. Please use 'talaria database download {}' to re-download.",
-            database, database
-        ));
-    }
+    // Use the download command with appropriate flags
+    use crate::cli::commands::database::download::DownloadArgs;
+    use crate::utils::database_ref::parse_database_ref;
+
+    // Parse database reference
+    let (_source, _dataset) = parse_database_ref(database)?;
+
+    // Create download args for update (not dry-run, not force)
+    let download_args = DownloadArgs {
+        database: Some(database.to_string()),
+        output: std::path::PathBuf::from("."),
+        taxonomy: false,
+        resume: true,
+        interactive: false,
+        skip_verify: false,
+        list_datasets: false,
+        json: false,
+        manifest_server: None,
+        talaria_home: None,
+        preserve_lambda_on_failure: false,
+        dry_run: false,
+        force: false,
+        taxids: None,
+        taxid_list: None,
+        reference_proteomes: false,
+        max_sequences: None,
+        description: None,
+    };
+
+    // Run download which will handle update if needed
+    crate::cli::commands::database::download::run(download_args)
 }

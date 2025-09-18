@@ -4,14 +4,15 @@ use anyhow::Result;
 pub mod text;
 pub mod html;
 pub mod json;
-pub mod traits;
 pub mod reduction_html;
+pub mod traits;
+pub mod impls;
 
 pub use traits::{
-    Reporter, InteractiveReporter, StreamingReporter, TemplateReporter,
-    ReportData, ReportSection, SectionContent, TableData, ChartData,
-    Dataset, ChartType, CodeBlock, ReportStatistics, StatValue,
-    ReportFormat as TraitReportFormat, InteractiveOptions, TemplateError, TemplateHelper,
+    Reporter, InteractiveReporter, StreamingReporter, TemplateReporter
+};
+pub use impls::{
+    JsonReporter, MarkdownReporter, HtmlReporter, create_reporter_from_path
 };
 
 #[derive(Debug, Clone)]

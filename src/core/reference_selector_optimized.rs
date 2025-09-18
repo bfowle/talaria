@@ -2,7 +2,7 @@
 /// This module provides efficient reference selection using shared indices
 
 use crate::bio::sequence::Sequence;
-use crate::tools::traits::Aligner;
+use crate::tools::Aligner;
 use crate::utils::temp_workspace::TempWorkspace;
 use dashmap::DashMap;
 use indicatif::{ProgressBar, ProgressStyle, MultiProgress};
@@ -145,9 +145,9 @@ impl OptimizedReferenceSelector {
         // Write all sequences to single file
         crate::bio::fasta::write_fasta(&all_sequences_path, &sequences)?;
 
-        // Build index ONCE
-        let index_path = all_sequences_path.with_extension("lambda");
-        aligner.build_index(&all_sequences_path, &index_path)?;
+        // Note: Index building would be done internally by the aligner
+        // when search() is called, if needed
+        // let index_path = all_sequences_path.with_extension("lambda");
 
         println!("  ✓ Index built in {:.2}s", index_start.elapsed().as_secs_f64());
 

@@ -45,37 +45,31 @@ pub trait BatchProcessor: SequenceProcessor {
         progress_fn: F,
     ) -> Result<ProcessingResult>
     where
-        F: Fn(usize, usize) + Send + Sync;
+        F: FnMut(usize, usize) + Send + Sync;
 }
 
 /// Filtering processors
 pub trait FilterProcessor: SequenceProcessor {
     /// Filter sequences based on criteria
-    fn filter(&self, sequences: Vec<Sequence>) -> Result<FilterResult>;
-
-    /// Get filter criteria
-    fn criteria(&self) -> &FilterCriteria;
+    fn filter(&self, sequences: &mut Vec<Sequence>, criteria: FilterCriteria) -> Result<usize>;
 
     /// Set filter criteria
     fn set_criteria(&mut self, criteria: FilterCriteria);
 
-    /// Check if sequence passes filter
-    fn passes_filter(&self, sequence: &Sequence) -> bool;
+    /// Get filter criteria
+    fn get_criteria(&self) -> FilterCriteria;
 }
 
 /// Transformation processors
 pub trait TransformProcessor: SequenceProcessor {
     /// Transform sequences
-    fn transform(&self, sequence: &mut Sequence) -> Result<TransformResult>;
+    fn transform(&self, sequence: &mut Sequence, operation: TransformOperation) -> Result<()>;
 
-    /// Get transformation type
-    fn transformation_type(&self) -> TransformationType;
+    /// Set transformation operation
+    fn set_operation(&mut self, operation: TransformOperation);
 
-    /// Check if transformation is reversible
-    fn is_reversible(&self) -> bool;
-
-    /// Reverse transformation if possible
-    fn reverse(&self, sequence: &mut Sequence) -> Result<TransformResult>;
+    /// Get transformation operation
+    fn get_operation(&self) -> TransformOperation;
 }
 
 /// Enrichment processors
@@ -96,22 +90,28 @@ pub trait EnrichmentProcessor: SequenceProcessor {
 /// Pipeline for chaining processors
 pub trait ProcessingPipeline: Send + Sync {
     /// Add processor to pipeline
-    fn add_processor(&mut self, processor: Box<dyn SequenceProcessor>) -> Result<()>;
+    fn add_processor(&mut self, processor: Box<dyn SequenceProcessor>);
 
     /// Remove processor by name
-    fn remove_processor(&mut self, name: &str) -> Result<()>;
+    fn remove_processor(&mut self, name: &str) -> bool;
 
-    /// Execute pipeline
-    fn execute(&self, sequences: &mut [Sequence]) -> Result<PipelineResult>;
+    /// Process sequences through the pipeline
+    fn process(&self, sequences: &mut [Sequence]) -> Result<ProcessingResult>;
 
-    /// Get pipeline stages
-    fn stages(&self) -> Vec<String>;
+    /// Process sequences in batches
+    fn process_batch(&self, sequences: &mut [Sequence], batch_size: usize) -> Result<ProcessingResult>;
 
-    /// Validate pipeline configuration
-    fn validate(&self) -> Result<Vec<PipelineWarning>>;
+    /// Get all processors
+    fn get_processors(&self) -> &[Box<dyn SequenceProcessor>];
 
-    /// Get estimated total time
-    fn estimate_total_time(&self, num_sequences: usize) -> std::time::Duration;
+    /// Clear all processors
+    fn clear_processors(&mut self);
+
+    /// Set parallel processing
+    fn set_parallel(&mut self, parallel: bool);
+
+    /// Check if parallel processing is enabled
+    fn is_parallel(&self) -> bool;
 }
 
 // Supporting types
@@ -125,21 +125,21 @@ pub enum SequenceType {
 
 #[derive(Debug, Clone)]
 pub struct ProcessorConfig {
+    pub name: String,
+    pub enabled: bool,
     pub parallel: bool,
-    pub num_threads: usize,
-    pub memory_limit_mb: Option<usize>,
-    pub timeout_seconds: Option<u64>,
-    pub custom_params: HashMap<String, String>,
+    pub batch_size: Option<usize>,
+    pub parameters: HashMap<String, String>,
 }
 
 impl Default for ProcessorConfig {
     fn default() -> Self {
         Self {
+            name: String::new(),
+            enabled: true,
             parallel: true,
-            num_threads: 1,
-            memory_limit_mb: None,
-            timeout_seconds: None,
-            custom_params: HashMap::new(),
+            batch_size: None,
+            parameters: HashMap::new(),
         }
     }
 }
@@ -147,10 +147,10 @@ impl Default for ProcessorConfig {
 #[derive(Debug, Clone)]
 pub struct ProcessingResult {
     pub processed: usize,
-    pub failed: usize,
-    pub skipped: usize,
-    pub processing_time_ms: u64,
-    pub errors: Vec<ProcessingError>,
+    pub filtered: usize,
+    pub modified: usize,
+    pub errors: Vec<String>,
+    pub processing_time: std::time::Duration,
 }
 
 #[derive(Debug, Clone)]
@@ -160,14 +160,22 @@ pub struct ProcessingError {
     pub recoverable: bool,
 }
 
-#[derive(Debug, Clone)]
-pub struct FilterCriteria {
-    pub min_length: Option<usize>,
-    pub max_length: Option<usize>,
-    pub min_quality: Option<f64>,
-    pub allowed_characters: Option<Vec<u8>>,
-    pub regex_pattern: Option<String>,
-    pub taxonomy_filter: Option<TaxonomyFilter>,
+pub enum FilterCriteria {
+    MinLength(usize),
+    MaxLength(usize),
+    Pattern(String),
+    Custom(Box<dyn Fn(&Sequence) -> bool + Send + Sync>),
+}
+
+impl std::fmt::Debug for FilterCriteria {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FilterCriteria::MinLength(n) => write!(f, "MinLength({})", n),
+            FilterCriteria::MaxLength(n) => write!(f, "MaxLength({})", n),
+            FilterCriteria::Pattern(p) => write!(f, "Pattern({})", p),
+            FilterCriteria::Custom(_) => write!(f, "Custom(<function>)"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -191,6 +199,40 @@ pub struct FilterStats {
     pub filtered: usize,
     pub filter_reasons: HashMap<String, usize>,
 }
+
+pub enum TransformOperation {
+    Uppercase,
+    Lowercase,
+    Reverse,
+    Complement,
+    Custom(Box<dyn Fn(&mut Sequence) + Send + Sync>),
+}
+
+impl std::fmt::Debug for TransformOperation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TransformOperation::Uppercase => write!(f, "Uppercase"),
+            TransformOperation::Lowercase => write!(f, "Lowercase"),
+            TransformOperation::Reverse => write!(f, "Reverse"),
+            TransformOperation::Complement => write!(f, "Complement"),
+            TransformOperation::Custom(_) => write!(f, "Custom(<function>)"),
+        }
+    }
+}
+
+impl PartialEq for TransformOperation {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (TransformOperation::Uppercase, TransformOperation::Uppercase) => true,
+            (TransformOperation::Lowercase, TransformOperation::Lowercase) => true,
+            (TransformOperation::Reverse, TransformOperation::Reverse) => true,
+            (TransformOperation::Complement, TransformOperation::Complement) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for TransformOperation {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransformationType {
@@ -230,6 +272,24 @@ pub enum DataSourceType {
     Database,
     WebService,
     Cache,
+}
+
+pub enum EnrichmentSource {
+    TaxonomyDb(std::path::PathBuf),
+    AnnotationFile(std::path::PathBuf),
+    WebService(String),
+    Custom(Box<dyn Fn(&Sequence) -> HashMap<String, String> + Send + Sync>),
+}
+
+impl std::fmt::Debug for EnrichmentSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EnrichmentSource::TaxonomyDb(path) => write!(f, "TaxonomyDb({:?})", path),
+            EnrichmentSource::AnnotationFile(path) => write!(f, "AnnotationFile({:?})", path),
+            EnrichmentSource::WebService(url) => write!(f, "WebService({})", url),
+            EnrichmentSource::Custom(_) => write!(f, "Custom(<function>)"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

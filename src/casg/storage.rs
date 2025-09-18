@@ -1,16 +1,13 @@
 /// Content-addressed storage implementation for CASG
 
 use crate::casg::types::*;
+use crate::casg::compression::{ChunkCompressor, CompressionConfig};
 use crate::casg::processing_state::{ProcessingState, ProcessingStateManager, OperationType, SourceInfo};
 use anyhow::{Context, Result};
 use dashmap::DashMap;
-use flate2::read::GzDecoder;
-use flate2::write::GzEncoder;
-use flate2::Compression;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -20,9 +17,10 @@ const TALARIA_MAGIC: &[u8] = b"TAL\x01";
 pub struct CASGStorage {
     pub(crate) base_path: PathBuf,
     chunk_index: Arc<DashMap<SHA256Hash, ChunkLocation>>,
-    index_lock: Arc<Mutex<()>>,
+    _index_lock: Arc<Mutex<()>>,
     state_manager: Arc<Mutex<ProcessingStateManager>>,
     current_operation_id: Arc<Mutex<Option<String>>>,
+    compressor: Arc<Mutex<ChunkCompressor>>,
 }
 
 #[derive(Debug, Clone)]
@@ -30,6 +28,7 @@ struct ChunkLocation {
     path: PathBuf,
     compressed: bool,
     size: usize,
+    format: ChunkFormat,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,13 +64,16 @@ impl CASGStorage {
             .context("Failed to create chunks directory")?;
 
         let state_manager = ProcessingStateManager::new(base_path)?;
+        let compression_config = CompressionConfig::default();
+        let compressor = ChunkCompressor::new(compression_config);
 
         Ok(Self {
             base_path: base_path.to_path_buf(),
             chunk_index: Arc::new(DashMap::new()),
-            index_lock: Arc::new(Mutex::new(())),
+            _index_lock: Arc::new(Mutex::new(())),
             state_manager: Arc::new(Mutex::new(state_manager)),
             current_operation_id: Arc::new(Mutex::new(None)),
+            compressor: Arc::new(Mutex::new(compressor)),
         })
     }
 
@@ -93,14 +95,26 @@ impl CASGStorage {
                 if let Some(hash_str) = path.file_stem().and_then(|s| s.to_str()) {
                     if let Ok(hash) = SHA256Hash::from_hex(hash_str) {
                         let metadata = fs::metadata(&path)?;
-                        let compressed = path.extension()
-                            .map(|e| e == "gz")
-                            .unwrap_or(false);
+
+                        // Detect format from extension or file contents
+                        let format = if path.extension().map(|e| e == "gz").unwrap_or(false) {
+                            ChunkFormat::JsonGzip
+                        } else if path.extension().map(|e| e == "zst").unwrap_or(false) {
+                            // Try to detect if it's dictionary-compressed
+                            // For now, assume regular Binary format
+                            ChunkFormat::Binary
+                        } else {
+                            // Legacy uncompressed (shouldn't exist, but handle it)
+                            ChunkFormat::JsonGzip
+                        };
+
+                        let compressed = !matches!(format, ChunkFormat::JsonGzip);
 
                         self.chunk_index.insert(hash.clone(), ChunkLocation {
                             path: path.clone(),
                             compressed,
                             size: metadata.len() as usize,
+                            format,
                         });
                     }
                 }
@@ -119,26 +133,34 @@ impl CASGStorage {
             return Ok(hash);
         }
 
-        let chunk_path = self.get_chunk_path(&hash, compress);
-
-        if compress {
-            let file = fs::File::create(&chunk_path)
-                .context("Failed to create chunk file")?;
-            let mut encoder = GzEncoder::new(file, Compression::default());
-            encoder.write_all(data)
-                .context("Failed to write compressed chunk")?;
-            encoder.finish()
-                .context("Failed to finish compression")?;
+        // Use new compression if requested
+        let (format, compressed_data, extension) = if compress {
+            let format = ChunkFormat::default(); // Binary format
+            let mut compressor = self.compressor.lock().unwrap();
+            let compressed = compressor.compress(data, format, None)?;
+            let ext = match format {
+                ChunkFormat::JsonGzip => ".gz",
+                ChunkFormat::Binary => ".zst",
+                ChunkFormat::BinaryDict { .. } => ".dict.zst",
+            };
+            (format, compressed, ext)
         } else {
-            fs::write(&chunk_path, data)
-                .context("Failed to write chunk")?;
-        }
+            // Store uncompressed (shouldn't happen normally)
+            (ChunkFormat::JsonGzip, data.to_vec(), "")
+        };
 
-        let metadata = fs::metadata(&chunk_path)?;
+        let chunk_path = self.base_path
+            .join("chunks")
+            .join(format!("{}{}", hash.to_hex(), extension));
+
+        fs::write(&chunk_path, &compressed_data)
+            .context("Failed to write chunk")?;
+
         self.chunk_index.insert(hash.clone(), ChunkLocation {
             path: chunk_path,
             compressed: compress,
-            size: metadata.len() as usize,
+            size: compressed_data.len(),
+            format,
         });
 
         Ok(hash)
@@ -150,23 +172,26 @@ impl CASGStorage {
             .ok_or_else(|| anyhow::anyhow!("Chunk not found: {}", hash))?;
         let location = location_ref.value();
 
-        if location.compressed {
-            let file = fs::File::open(&location.path)
-                .context("Failed to open chunk file")?;
-            let mut decoder = GzDecoder::new(file);
-            let mut data = Vec::new();
-            decoder.read_to_end(&mut data)
-                .context("Failed to decompress chunk")?;
-            Ok(data)
-        } else {
-            fs::read(&location.path)
-                .context("Failed to read chunk")
-        }
+        let compressed_data = fs::read(&location.path)
+            .context("Failed to read chunk file")?;
+
+        // Decompress based on format
+        let compressor = self.compressor.lock().unwrap();
+        compressor.decompress(&compressed_data, Some(location.format))
     }
 
     /// Check if a chunk exists
     pub fn has_chunk(&self, hash: &SHA256Hash) -> bool {
         self.chunk_index.contains_key(hash)
+    }
+
+    /// Load sequences from a chunk
+    pub fn load_sequences_from_chunk(&self, hash: &SHA256Hash) -> Result<Vec<crate::bio::sequence::Sequence>> {
+        // Get the chunk data
+        let chunk_data = self.get_chunk(hash)?;
+
+        // Parse as FASTA sequences
+        Ok(crate::bio::fasta::parse_fasta_from_bytes(&chunk_data)?)
     }
 
     /// Get path for a chunk
@@ -182,21 +207,48 @@ impl CASGStorage {
 
     /// Store a taxonomy-aware chunk
     pub fn store_taxonomy_chunk(&self, chunk: &TaxonomyAwareChunk) -> Result<SHA256Hash> {
-        // Serialize the entire chunk including sequences
-        let chunk_data = serde_json::to_vec(chunk)?;
         let chunk_hash = chunk.content_hash.clone();
 
-        // Create the chunk file path
-        let chunk_path = self.get_chunk_path(&chunk_hash, true);
+        // Use new compression format
+        let format = ChunkFormat::default(); // Uses Binary format
 
-        // Write compressed chunk data directly
-        let file = fs::File::create(&chunk_path)
-            .context("Failed to create chunk file")?;
-        let mut encoder = GzEncoder::new(file, Compression::default());
-        encoder.write_all(&chunk_data)
+        // For Binary format (default), use direct zstd compression without mutex
+        // This allows true parallel compression without contention
+        let compressed_data = match format {
+            ChunkFormat::Binary => {
+                // Direct zstd compression - no mutex needed!
+                let serialized = serde_json::to_vec(chunk)?;
+                zstd::encode_all(&serialized[..], 19)
+                    .context("Failed to compress chunk with zstd")?
+            }
+            _ => {
+                // For other formats (JsonGzip or BinaryDict), use the compressor
+                // These are rarely used, so mutex is acceptable
+                let taxon_id = chunk.taxon_ids.first().copied();
+                let mut compressor = self.compressor.lock().unwrap();
+                compressor.compress(
+                    &serde_json::to_vec(chunk)?,
+                    format,
+                    taxon_id.map(|t| t.0),
+                )?
+            }
+        };
+
+        // Determine file extension based on format
+        let extension = match format {
+            ChunkFormat::JsonGzip => ".gz",
+            ChunkFormat::Binary => ".zst",
+            ChunkFormat::BinaryDict { .. } => ".dict.zst",
+        };
+
+        // Create the chunk file path with appropriate extension
+        let chunk_path = self.base_path
+            .join("chunks")
+            .join(format!("{}{}", chunk_hash.to_hex(), extension));
+
+        // Write compressed data
+        fs::write(&chunk_path, &compressed_data)
             .context("Failed to write compressed chunk")?;
-        encoder.finish()
-            .context("Failed to finish compression")?;
 
         // Update chunk index
         self.chunk_index.insert(
@@ -204,7 +256,8 @@ impl CASGStorage {
             ChunkLocation {
                 path: chunk_path,
                 compressed: true,
-                size: chunk_data.len(),
+                size: compressed_data.len(),
+                format,
             },
         );
 
@@ -388,15 +441,24 @@ impl CASGStorage {
     pub fn get_sequence_root(&self) -> Result<crate::casg::MerkleHash> {
         use crate::casg::merkle::MerkleDAG;
 
-        // Collect all chunk hashes in sorted order for deterministic root
-        let mut chunk_hashes: Vec<Vec<u8>> = self.chunk_index
+        // Collect all chunk metadata in sorted order for deterministic root
+        let mut chunk_metadata: Vec<ChunkMetadata> = self.chunk_index
             .iter()
-            .map(|entry| entry.key().as_bytes().to_vec())
+            .map(|entry| {
+                let location = entry.value();
+                ChunkMetadata {
+                    hash: entry.key().clone(),
+                    taxon_ids: Vec::new(), // Would need to be loaded from chunk
+                    sequence_count: 0, // Would need to be loaded from chunk
+                    size: location.size,
+                    compressed_size: if location.compressed { Some(location.size) } else { None },
+                }
+            })
             .collect();
-        chunk_hashes.sort();
+        chunk_metadata.sort_by(|a, b| a.hash.0.cmp(&b.hash.0));
 
-        // Build Merkle tree from chunk hashes
-        let dag = MerkleDAG::build_from_chunks(chunk_hashes)?;
+        // Build Merkle tree from chunk metadata
+        let dag = MerkleDAG::build_from_items(chunk_metadata)?;
 
         dag.root_hash()
             .ok_or_else(|| anyhow::anyhow!("No chunks in storage"))
@@ -448,6 +510,7 @@ impl CASGStorage {
                 path: entry.value().path.clone(),
                 size: entry.value().size,
                 compressed: entry.value().compressed,
+                format: entry.value().format,
             })
             .collect()
     }
@@ -465,6 +528,7 @@ impl CASGStorage {
                 path: entry.value().path.clone(),
                 size: entry.value().size,
                 compressed: entry.value().compressed,
+                format: entry.value().format,
             })
             .collect()
     }
@@ -734,6 +798,7 @@ impl CASGStorage {
             path: entry.value().path.clone(),
             size: entry.value().size,
             compressed: entry.value().compressed,
+            format: entry.value().format,
         })
     }
 
@@ -887,6 +952,24 @@ impl CASGStorage {
         Ok(Some(manifest))
     }
 
+    /// List all reduction profiles
+    pub fn list_reduction_profiles(&self) -> Result<Vec<String>> {
+        let profiles_dir = self.base_path.join("profiles");
+        if !profiles_dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut profiles = Vec::new();
+        for entry in fs::read_dir(&profiles_dir)? {
+            let entry = entry?;
+            if let Some(name) = entry.file_name().to_str() {
+                profiles.push(name.to_string());
+            }
+        }
+
+        Ok(profiles)
+    }
+
     // Processing state management methods
 
     /// Start a new processing operation
@@ -1005,272 +1088,273 @@ impl CASGStorage {
     }
 }
 
-// Implement storage traits for CASGStorage
-impl crate::storage::traits::ChunkStorage for CASGStorage {
-    fn store_chunk(&self, data: &[u8], compress: bool) -> Result<SHA256Hash> {
-        self.store_chunk(data, compress)
-    }
-
-    fn get_chunk(&self, hash: &SHA256Hash) -> Result<Vec<u8>> {
-        self.get_chunk(hash)
-    }
-
-    fn has_chunk(&self, hash: &SHA256Hash) -> bool {
-        self.has_chunk(hash)
-    }
-
-    fn enumerate_chunks(&self) -> Vec<ChunkInfo> {
-        self.enumerate_chunks()
-    }
-
-    fn verify_all(&self) -> Result<Vec<crate::storage::traits::VerificationError>> {
-        self.verify_all().map(|errors| {
-            errors.into_iter().map(|e| crate::storage::traits::VerificationError {
-                chunk_hash: e.chunk_hash,
-                error_type: match e.error_type {
-                    VerificationErrorType::HashMismatch { expected, actual } => {
-                        crate::storage::traits::VerificationErrorType::HashMismatch { expected, actual }
-                    }
-                    VerificationErrorType::ReadError(msg) => {
-                        crate::storage::traits::VerificationErrorType::ReadError(msg)
-                    }
-                }
-            }).collect()
-        })
-    }
-
-    fn get_stats(&self) -> crate::storage::traits::StorageStats {
-        let stats = self.get_stats();
-        crate::storage::traits::StorageStats {
-            total_chunks: stats.total_chunks,
-            total_size: stats.total_size,
-            compressed_chunks: stats.compressed_chunks,
-            deduplication_ratio: stats.deduplication_ratio,
-        }
-    }
-
-    fn gc(&mut self, referenced: &[SHA256Hash]) -> Result<crate::storage::traits::GCResult> {
-        self.gc(referenced).map(|result| crate::storage::traits::GCResult {
-            removed_count: result.removed_count,
-            freed_space: result.freed_space,
-        })
-    }
-}
-
-impl crate::storage::traits::DeltaStorage for CASGStorage {
-    fn store_delta_chunk(&self, chunk: &DeltaChunk) -> Result<SHA256Hash> {
-        self.store_delta_chunk(chunk)
-    }
-
-    fn get_delta_chunk(&self, hash: &SHA256Hash) -> Result<DeltaChunk> {
-        self.get_delta_chunk(hash)
-    }
-
-    fn find_delta_for_child(&self, child_id: &str) -> Result<Option<SHA256Hash>> {
-        self.find_delta_for_child(child_id)
-    }
-
-    fn get_deltas_for_reference(&self, reference_hash: &SHA256Hash) -> Result<Vec<SHA256Hash>> {
-        self.get_deltas_for_reference(reference_hash)
-    }
-
-    fn find_delta_chunks_for_reference(&self, reference_hash: &SHA256Hash) -> Result<Vec<SHA256Hash>> {
-        self.find_delta_chunks_for_reference(reference_hash)
-    }
-
-    fn get_chunk_type(&self, hash: &SHA256Hash) -> Result<ChunkType> {
-        self.get_chunk_type(hash)
-    }
-}
-
-impl crate::storage::traits::ReductionStorage for CASGStorage {
-    fn store_reduction_manifest(&self, manifest: &crate::casg::reduction::ReductionManifest) -> Result<SHA256Hash> {
-        self.store_reduction_manifest(manifest)
-    }
-
-    fn get_reduction_by_profile(&self, profile: &str) -> Result<Option<crate::casg::reduction::ReductionManifest>> {
-        self.get_reduction_by_profile(profile)
-    }
-
-    fn list_reduction_profiles(&self) -> Result<Vec<String>> {
-        let profiles_dir = self.base_path.join("profiles");
-        if !profiles_dir.exists() {
-            return Ok(Vec::new());
-        }
-
-        let mut profiles = Vec::new();
-        for entry in fs::read_dir(&profiles_dir)? {
-            let entry = entry?;
-            if let Some(name) = entry.file_name().to_str() {
-                profiles.push(name.to_string());
-            }
-        }
-        Ok(profiles)
-    }
-
-    fn delete_reduction_profile(&self, profile: &str) -> Result<()> {
-        let profile_path = self.base_path.join("profiles").join(profile);
-        if profile_path.exists() {
-            fs::remove_file(profile_path)?;
-        }
-        Ok(())
-    }
-}
-
-impl crate::storage::traits::TaxonomyStorage for CASGStorage {
-    fn store_taxonomy_chunk(&self, chunk: &TaxonomyAwareChunk) -> Result<SHA256Hash> {
-        self.store_taxonomy_chunk(chunk)
-    }
-
-    fn get_taxonomy_chunk(&self, hash: &SHA256Hash) -> Result<TaxonomyAwareChunk> {
-        let data = self.get_chunk(hash)?;
-        let chunk: TaxonomyAwareChunk = serde_json::from_slice(&data)?;
-        Ok(chunk)
-    }
-
-    fn find_chunks_by_taxon(&self, taxon_id: TaxonId) -> Result<Vec<SHA256Hash>> {
-        // Load manifest to find chunks containing specific taxon
-        let manifest_path_tal = self.base_path.join("manifest.tal");
-        let manifest_path_json = self.base_path.join("manifest.json");
-
-        let manifest = if manifest_path_tal.exists() {
-            let mut data = fs::read(&manifest_path_tal)?;
-            // Skip magic header
-            if data.starts_with(TALARIA_MAGIC) {
-                data = data[TALARIA_MAGIC.len()..].to_vec();
-            }
-            rmp_serde::from_slice::<TemporalManifest>(&data).ok()
-        } else if manifest_path_json.exists() {
-            let data = fs::read_to_string(&manifest_path_json)?;
-            serde_json::from_str::<TemporalManifest>(&data).ok()
-        } else {
-            return Ok(Vec::new());
-        };
-
-        if let Some(manifest) = manifest {
-            let chunks: Vec<SHA256Hash> = manifest.chunk_index
-                .iter()
-                .filter(|meta| meta.taxon_ids.contains(&taxon_id))
-                .map(|meta| meta.hash.clone())
-                .collect();
-            Ok(chunks)
-        } else {
-            Ok(Vec::new())
-        }
-    }
-
-    fn get_taxonomy_stats(&self) -> Result<crate::storage::traits::TaxonomyStats> {
-        let mut sequences_per_taxon = std::collections::HashMap::new();
-        let mut chunks_per_taxon = std::collections::HashMap::new();
-
-        // Load manifest to gather taxonomy statistics
-        let manifest_path_tal = self.base_path.join("manifest.tal");
-        let manifest_path_json = self.base_path.join("manifest.json");
-
-        let manifest = if manifest_path_tal.exists() {
-            let mut data = fs::read(&manifest_path_tal)?;
-            // Skip magic header
-            if data.starts_with(TALARIA_MAGIC) {
-                data = data[TALARIA_MAGIC.len()..].to_vec();
-            }
-            rmp_serde::from_slice::<TemporalManifest>(&data).ok()
-        } else if manifest_path_json.exists() {
-            let data = fs::read_to_string(&manifest_path_json)?;
-            serde_json::from_str::<TemporalManifest>(&data).ok()
-        } else {
-            None
-        };
-
-        if let Some(manifest) = manifest {
-            for chunk_meta in &manifest.chunk_index {
-                for taxon_id in &chunk_meta.taxon_ids {
-                    *chunks_per_taxon.entry(*taxon_id).or_insert(0) += 1;
-                    *sequences_per_taxon.entry(*taxon_id).or_insert(0) += chunk_meta.sequence_count;
-                }
-            }
-        }
-
-        Ok(crate::storage::traits::TaxonomyStats {
-            total_taxa: chunks_per_taxon.len(),
-            sequences_per_taxon,
-            chunks_per_taxon,
-        })
-    }
-}
-
-impl crate::storage::traits::RemoteStorage for CASGStorage {
-    fn fetch_chunks(&mut self, hashes: &[SHA256Hash]) -> Result<Vec<TaxonomyAwareChunk>> {
-        futures::executor::block_on(self.fetch_chunks(hashes))
-    }
-
-    fn push_chunks(&self, _hashes: &[SHA256Hash]) -> Result<()> {
-        // TODO: Implement push to remote repository
-        Ok(())
-    }
-
-    fn sync(&mut self) -> Result<crate::storage::traits::SyncResult> {
-        // TODO: Implement full sync with remote
-        Ok(crate::storage::traits::SyncResult {
-            uploaded: Vec::new(),
-            downloaded: Vec::new(),
-            conflicts: Vec::new(),
-            bytes_transferred: 0,
-        })
-    }
-
-    fn get_remote_status(&self) -> Result<crate::storage::traits::RemoteStatus> {
-        // TODO: Check actual remote status
-        Ok(crate::storage::traits::RemoteStatus {
-            connected: false,
-            remote_chunks: 0,
-            local_chunks: self.chunk_index.len(),
-            pending_sync: 0,
-        })
-    }
-}
-
-impl crate::storage::traits::StatefulStorage for CASGStorage {
-    fn start_processing(
-        &self,
-        operation: OperationType,
-        manifest_hash: SHA256Hash,
-        manifest_version: String,
-        total_chunks: usize,
-        source_info: SourceInfo,
-    ) -> Result<String> {
-        self.start_processing(operation, manifest_hash, manifest_version, total_chunks, source_info)
-    }
-
-    fn check_resumable(
-        &self,
-        database: &str,
-        operation: &OperationType,
-        manifest_hash: &SHA256Hash,
-        manifest_version: &str,
-    ) -> Result<Option<ProcessingState>> {
-        self.check_resumable(database, operation, manifest_hash, manifest_version)
-    }
-
-    fn update_processing_state(&self, completed_chunks: &[SHA256Hash]) -> Result<()> {
-        self.update_processing_state(completed_chunks)
-    }
-
-    fn complete_processing(&self) -> Result<()> {
-        self.complete_processing()
-    }
-
-    fn get_current_state(&self) -> Result<Option<ProcessingState>> {
-        self.get_current_state()
-    }
-
-    fn list_resumable_operations(&self) -> Result<Vec<(String, ProcessingState)>> {
-        self.list_resumable_operations()
-    }
-
-    fn cleanup_expired_states(&self) -> Result<usize> {
-        self.cleanup_expired_states()
-    }
-}
+// TODO: Implement storage traits for CASGStorage once traits are defined
+// /*
+// impl crate::storage::traits::ChunkStorage for CASGStorage {
+//     fn store_chunk(&self, data: &[u8], compress: bool) -> Result<SHA256Hash> {
+//         self.store_chunk(data, compress)
+//     }
+// 
+//     fn get_chunk(&self, hash: &SHA256Hash) -> Result<Vec<u8>> {
+//         self.get_chunk(hash)
+//     }
+// 
+//     fn has_chunk(&self, hash: &SHA256Hash) -> bool {
+//         self.has_chunk(hash)
+//     }
+// 
+//     fn enumerate_chunks(&self) -> Vec<ChunkInfo> {
+//         self.enumerate_chunks()
+//     }
+// 
+//     fn verify_all(&self) -> Result<Vec<crate::storage::traits::VerificationError>> {
+//         self.verify_all().map(|errors| {
+//             errors.into_iter().map(|e| crate::storage::traits::VerificationError {
+//                 chunk_hash: e.chunk_hash,
+//                 error_type: match e.error_type {
+//                     VerificationErrorType::HashMismatch { expected, actual } => {
+//                         crate::storage::traits::VerificationErrorType::HashMismatch { expected, actual }
+//                     }
+//                     VerificationErrorType::ReadError(msg) => {
+//                         crate::storage::traits::VerificationErrorType::ReadError(msg)
+//                     }
+//                 }
+//             }).collect()
+//         })
+//     }
+// 
+//     fn get_stats(&self) -> crate::storage::traits::StorageStats {
+//         let stats = self.get_stats();
+//         crate::storage::traits::StorageStats {
+//             total_chunks: stats.total_chunks,
+//             total_size: stats.total_size,
+//             compressed_chunks: stats.compressed_chunks,
+//             deduplication_ratio: stats.deduplication_ratio,
+//         }
+//     }
+// 
+//     fn gc(&mut self, referenced: &[SHA256Hash]) -> Result<crate::storage::traits::GCResult> {
+//         self.gc(referenced).map(|result| crate::storage::traits::GCResult {
+//             removed_count: result.removed_count,
+//             freed_space: result.freed_space,
+//         })
+//     }
+// }
+// 
+// impl crate::storage::traits::DeltaStorage for CASGStorage {
+//     fn store_delta_chunk(&self, chunk: &DeltaChunk) -> Result<SHA256Hash> {
+//         self.store_delta_chunk(chunk)
+//     }
+// 
+//     fn get_delta_chunk(&self, hash: &SHA256Hash) -> Result<DeltaChunk> {
+//         self.get_delta_chunk(hash)
+//     }
+// 
+//     fn find_delta_for_child(&self, child_id: &str) -> Result<Option<SHA256Hash>> {
+//         self.find_delta_for_child(child_id)
+//     }
+// 
+//     fn get_deltas_for_reference(&self, reference_hash: &SHA256Hash) -> Result<Vec<SHA256Hash>> {
+//         self.get_deltas_for_reference(reference_hash)
+//     }
+// 
+//     fn find_delta_chunks_for_reference(&self, reference_hash: &SHA256Hash) -> Result<Vec<SHA256Hash>> {
+//         self.find_delta_chunks_for_reference(reference_hash)
+//     }
+// 
+//     fn get_chunk_type(&self, hash: &SHA256Hash) -> Result<ChunkType> {
+//         self.get_chunk_type(hash)
+//     }
+// }
+// 
+// impl crate::storage::traits::ReductionStorage for CASGStorage {
+//     fn store_reduction_manifest(&self, manifest: &crate::casg::reduction::ReductionManifest) -> Result<SHA256Hash> {
+//         self.store_reduction_manifest(manifest)
+//     }
+// 
+//     fn get_reduction_by_profile(&self, profile: &str) -> Result<Option<crate::casg::reduction::ReductionManifest>> {
+//         self.get_reduction_by_profile(profile)
+//     }
+// 
+//     fn list_reduction_profiles(&self) -> Result<Vec<String>> {
+//         let profiles_dir = self.base_path.join("profiles");
+//         if !profiles_dir.exists() {
+//             return Ok(Vec::new());
+//         }
+// 
+//         let mut profiles = Vec::new();
+//         for entry in fs::read_dir(&profiles_dir)? {
+//             let entry = entry?;
+//             if let Some(name) = entry.file_name().to_str() {
+//                 profiles.push(name.to_string());
+//             }
+//         }
+//         Ok(profiles)
+//     }
+// 
+//     fn delete_reduction_profile(&self, profile: &str) -> Result<()> {
+//         let profile_path = self.base_path.join("profiles").join(profile);
+//         if profile_path.exists() {
+//             fs::remove_file(profile_path)?;
+//         }
+//         Ok(())
+//     }
+// }
+// 
+// impl crate::storage::traits::TaxonomyStorage for CASGStorage {
+//     fn store_taxonomy_chunk(&self, chunk: &TaxonomyAwareChunk) -> Result<SHA256Hash> {
+//         self.store_taxonomy_chunk(chunk)
+//     }
+// 
+//     fn get_taxonomy_chunk(&self, hash: &SHA256Hash) -> Result<TaxonomyAwareChunk> {
+//         let data = self.get_chunk(hash)?;
+//         let chunk: TaxonomyAwareChunk = serde_json::from_slice(&data)?;
+//         Ok(chunk)
+//     }
+// 
+//     fn find_chunks_by_taxon(&self, taxon_id: TaxonId) -> Result<Vec<SHA256Hash>> {
+//         // Load manifest to find chunks containing specific taxon
+//         let manifest_path_tal = self.base_path.join("manifest.tal");
+//         let manifest_path_json = self.base_path.join("manifest.json");
+// 
+//         let manifest = if manifest_path_tal.exists() {
+//             let mut data = fs::read(&manifest_path_tal)?;
+//             // Skip magic header
+//             if data.starts_with(TALARIA_MAGIC) {
+//                 data = data[TALARIA_MAGIC.len()..].to_vec();
+//             }
+//             rmp_serde::from_slice::<TemporalManifest>(&data).ok()
+//         } else if manifest_path_json.exists() {
+//             let data = fs::read_to_string(&manifest_path_json)?;
+//             serde_json::from_str::<TemporalManifest>(&data).ok()
+//         } else {
+//             return Ok(Vec::new());
+//         };
+// 
+//         if let Some(manifest) = manifest {
+//             let chunks: Vec<SHA256Hash> = manifest.chunk_index
+//                 .iter()
+//                 .filter(|meta| meta.taxon_ids.contains(&taxon_id))
+//                 .map(|meta| meta.hash.clone())
+//                 .collect();
+//             Ok(chunks)
+//         } else {
+//             Ok(Vec::new())
+//         }
+//     }
+// 
+//     fn get_taxonomy_stats(&self) -> Result<crate::storage::traits::TaxonomyStats> {
+//         let mut sequences_per_taxon = std::collections::HashMap::new();
+//         let mut chunks_per_taxon = std::collections::HashMap::new();
+// 
+//         // Load manifest to gather taxonomy statistics
+//         let manifest_path_tal = self.base_path.join("manifest.tal");
+//         let manifest_path_json = self.base_path.join("manifest.json");
+// 
+//         let manifest = if manifest_path_tal.exists() {
+//             let mut data = fs::read(&manifest_path_tal)?;
+//             // Skip magic header
+//             if data.starts_with(TALARIA_MAGIC) {
+//                 data = data[TALARIA_MAGIC.len()..].to_vec();
+//             }
+//             rmp_serde::from_slice::<TemporalManifest>(&data).ok()
+//         } else if manifest_path_json.exists() {
+//             let data = fs::read_to_string(&manifest_path_json)?;
+//             serde_json::from_str::<TemporalManifest>(&data).ok()
+//         } else {
+//             None
+//         };
+// 
+//         if let Some(manifest) = manifest {
+//             for chunk_meta in &manifest.chunk_index {
+//                 for taxon_id in &chunk_meta.taxon_ids {
+//                     *chunks_per_taxon.entry(*taxon_id).or_insert(0) += 1;
+//                     *sequences_per_taxon.entry(*taxon_id).or_insert(0) += chunk_meta.sequence_count;
+//                 }
+//             }
+//         }
+// 
+//         Ok(crate::storage::traits::TaxonomyStats {
+//             total_taxa: chunks_per_taxon.len(),
+//             sequences_per_taxon,
+//             chunks_per_taxon,
+//         })
+//     }
+// }
+// 
+// impl crate::storage::traits::RemoteStorage for CASGStorage {
+//     fn fetch_chunks(&mut self, hashes: &[SHA256Hash]) -> Result<Vec<TaxonomyAwareChunk>> {
+//         futures::executor::block_on(self.fetch_chunks(hashes))
+//     }
+// 
+//     fn push_chunks(&self, _hashes: &[SHA256Hash]) -> Result<()> {
+//         // TODO: Implement push to remote repository
+//         Ok(())
+//     }
+// 
+//     fn sync(&mut self) -> Result<crate::storage::traits::SyncResult> {
+//         // TODO: Implement full sync with remote
+//         Ok(crate::storage::traits::SyncResult {
+//             uploaded: Vec::new(),
+//             downloaded: Vec::new(),
+//             conflicts: Vec::new(),
+//             bytes_transferred: 0,
+//         })
+//     }
+// 
+//     fn get_remote_status(&self) -> Result<crate::storage::traits::RemoteStatus> {
+//         // TODO: Check actual remote status
+//         Ok(crate::storage::traits::RemoteStatus {
+//             connected: false,
+//             remote_chunks: 0,
+//             local_chunks: self.chunk_index.len(),
+//             pending_sync: 0,
+//         })
+//     }
+// }
+// 
+// impl crate::storage::traits::StatefulStorage for CASGStorage {
+//     fn start_processing(
+//         &self,
+//         operation: OperationType,
+//         manifest_hash: SHA256Hash,
+//         manifest_version: String,
+//         total_chunks: usize,
+//         source_info: SourceInfo,
+//     ) -> Result<String> {
+//         self.start_processing(operation, manifest_hash, manifest_version, total_chunks, source_info)
+//     }
+// 
+//     fn check_resumable(
+//         &self,
+//         database: &str,
+//         operation: &OperationType,
+//         manifest_hash: &SHA256Hash,
+//         manifest_version: &str,
+//     ) -> Result<Option<ProcessingState>> {
+//         self.check_resumable(database, operation, manifest_hash, manifest_version)
+//     }
+// 
+//     fn update_processing_state(&self, completed_chunks: &[SHA256Hash]) -> Result<()> {
+//         self.update_processing_state(completed_chunks)
+//     }
+// 
+//     fn complete_processing(&self) -> Result<()> {
+//         self.complete_processing()
+//     }
+// 
+//     fn get_current_state(&self) -> Result<Option<ProcessingState>> {
+//         self.get_current_state()
+//     }
+// 
+//     fn list_resumable_operations(&self) -> Result<Vec<(String, ProcessingState)>> {
+//         self.list_resumable_operations()
+//     }
+// 
+//     fn cleanup_expired_states(&self) -> Result<usize> {
+//         self.cleanup_expired_states()
+//     }
+// }
 
 #[derive(Debug)]
 pub struct StorageStats {

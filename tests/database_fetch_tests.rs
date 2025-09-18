@@ -1,4 +1,3 @@
-use talaria::cli::commands::database::fetch::{FetchArgs, run};
 use talaria::core::database_manager::DatabaseManager;
 use talaria::core::paths;
 use std::path::PathBuf;
@@ -78,7 +77,7 @@ fn validate_fetch_input(taxids: Option<String>, taxid_list: Option<PathBuf>) -> 
 #[test]
 fn test_sequence_chunking() {
     use talaria::bio::sequence::Sequence;
-    use talaria::casg::chunker::TaxonomicChunker;
+    use talaria::casg::chunker::{TaxonomicChunker, Chunker};
     use talaria::casg::types::{ChunkingStrategy, TaxonId, SpecialTaxon, ChunkStrategy};
 
     // Create test sequences
@@ -118,15 +117,15 @@ fn test_sequence_chunking() {
         ],
     };
 
-    let chunker = TaxonomicChunker::new(strategy);
-    let chunks = chunker.chunk_sequences(sequences).unwrap();
+    let mut chunker = TaxonomicChunker::new(strategy);
+    let chunks = chunker.chunk_sequences(&sequences).unwrap();
 
     // Should create at least one chunk
     assert!(!chunks.is_empty());
 
     // Check that chunks have proper metadata
     for chunk in &chunks {
-        assert!(chunk.sequences.len() > 0);
+        assert!(chunk.sequence_count > 0);
         assert!(chunk.size > 0);
     }
 }
@@ -142,8 +141,10 @@ fn test_manifest_creation() {
         created_at: Utc::now(),
         sequence_version: "2024-01-01".to_string(),
         taxonomy_version: "2024-01-01".to_string(),
+        temporal_coordinate: None,
         taxonomy_root: SHA256Hash::zero(),
         sequence_root: SHA256Hash::zero(),
+        chunk_merkle_tree: None,
         taxonomy_manifest_hash: SHA256Hash::zero(),
         taxonomy_dump_version: "uniprot".to_string(),
         source_database: Some("custom/test".to_string()),

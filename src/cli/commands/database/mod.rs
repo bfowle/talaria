@@ -6,11 +6,11 @@ pub mod list_sequences;
 pub mod info;
 pub mod add;
 pub mod export;
-pub mod fetch;
 pub mod taxa_coverage;
 pub mod update_taxonomy;
 pub mod update;
 pub mod versions;
+pub mod check_discrepancies;
 
 use clap::{Args, Subcommand};
 
@@ -43,9 +43,6 @@ pub enum DatabaseCommands {
     /// Manage database versions
     Versions(versions::VersionsArgs),
 
-    /// Fetch sequences by TaxID from UniProt
-    Fetch(fetch::FetchArgs),
-
     /// Show repository statistics
     Stats,
 
@@ -57,6 +54,9 @@ pub enum DatabaseCommands {
 
     /// Update NCBI taxonomy data
     UpdateTaxonomy(update_taxonomy::UpdateTaxonomyArgs),
+
+    /// Check database for discrepancies and issues
+    Check(check_discrepancies::CheckDiscrepanciesArgs),
 
     /// Initialize database repository
     Init,
@@ -71,11 +71,11 @@ pub fn run(args: DatabaseArgs) -> anyhow::Result<()> {
         DatabaseCommands::Add(args) => add::run(args),
         DatabaseCommands::Export(args) => export::run(args),
         DatabaseCommands::Versions(args) => versions::run(args),
-        DatabaseCommands::Fetch(args) => fetch::run(args),
         DatabaseCommands::Stats => run_stats(),
         DatabaseCommands::ListSequences(args) => list_sequences::run(args),
         DatabaseCommands::TaxaCoverage(args) => taxa_coverage::run(args),
         DatabaseCommands::UpdateTaxonomy(args) => update_taxonomy::run(args),
+        DatabaseCommands::Check(args) => check_discrepancies::run(args),
         DatabaseCommands::Init => run_init(),
     }
 }

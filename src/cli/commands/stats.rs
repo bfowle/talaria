@@ -1,6 +1,5 @@
 use crate::bio::stats::SequenceStats;
 use crate::cli::visualize::{ascii_histogram, progress_bar};
-use crate::cli::output::*;
 use clap::Args;
 use colored::*;
 use std::path::PathBuf;
@@ -46,7 +45,8 @@ pub fn run(args: StatsArgs) -> anyhow::Result<()> {
     
     // Parse input FASTA
     let sequences = crate::bio::fasta::parse_fasta(&args.input)?;
-    loading_pb.finish_with_message(format!("Loaded {} sequences", sequences.len()));
+    loading_pb.finish_and_clear();
+    println!("Loaded {} sequences", sequences.len());
     
     // Launch interactive mode if requested
     if args.interactive {

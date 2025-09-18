@@ -5,7 +5,7 @@ use crate::cli::TargetAligner;
 use crate::core::{
     config::Config,
     delta_encoder::{DeltaEncoder, DeltaRecord},
-    reference_selector::{ReferenceSelector, SelectionAlgorithm},
+    reference_selector::{ReferenceSelectorImpl, SelectionAlgorithm},
 };
 use crate::utils::temp_workspace::TempWorkspace;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
@@ -150,7 +150,20 @@ impl Reducer {
                 // Save sanitized sequences to workspace
                 let sanitized_path = ws.get_file_path("sanitized_fasta", "fasta");
                 drop(ws); // Release lock before writing
+
+                // Add spinner for file write operation
+                let write_spinner = if !self.silent {
+                    use crate::utils::progress::create_spinner;
+                    Some(create_spinner("Writing sanitized sequences to workspace..."))
+                } else {
+                    None
+                };
+
                 crate::bio::fasta::write_fasta(&sanitized_path, &sanitized_sequences).ok();
+
+                if let Some(spinner) = write_spinner {
+                    spinner.finish_with_message("✓ Sanitized sequences saved");
+                }
             }
         }
 
@@ -222,7 +235,8 @@ impl Reducer {
             callback("Reference selection complete", 50.0);
         }
         if !self.silent {
-            selection_pb.finish_with_message("Reference selection complete");
+            selection_pb.finish_and_clear();
+            println!("Reference selection complete");
         }
         
         // Step 2: Encode deltas (if not skipped)
@@ -306,7 +320,8 @@ impl Reducer {
                 callback("Delta encoding complete", 100.0);
             }
             if !self.silent {
-                encoding_pb.finish_with_message("Delta encoding complete");
+                encoding_pb.finish_and_clear();
+                println!("Delta encoding complete");
             }
             
             deltas
@@ -317,8 +332,8 @@ impl Reducer {
         Ok((selection_result.references, deltas, original_count))
     }
     
-    fn configure_selector(&self, target_aligner: &TargetAligner) -> ReferenceSelector {
-        let mut selector = ReferenceSelector::new()
+    fn configure_selector(&self, target_aligner: &TargetAligner) -> ReferenceSelectorImpl {
+        let mut selector = ReferenceSelectorImpl::new()
             .with_min_length(self.config.reduction.min_sequence_length)
             .with_similarity_threshold(self.config.reduction.similarity_threshold)
             .with_taxonomy_aware(self.config.reduction.taxonomy_aware)

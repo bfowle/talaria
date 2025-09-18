@@ -1,7 +1,10 @@
+pub mod chunk;
 pub mod database;
 pub mod interactive;
 pub mod reconstruct;
 pub mod reduce;
 pub mod stats;
+pub mod temporal;
 pub mod tools;
 pub mod validate;
+pub mod verify;

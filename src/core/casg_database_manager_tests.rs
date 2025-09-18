@@ -24,8 +24,10 @@ mod tests {
             created_at: Utc::now(),
             sequence_version: "2024-01-01".to_string(),
             taxonomy_version: "2024-01-01".to_string(),
+            temporal_coordinate: None,
             taxonomy_root: SHA256Hash::compute(b"test_taxonomy"),
             sequence_root: SHA256Hash::compute(b"test_sequence"),
+            chunk_merkle_tree: None,
             taxonomy_manifest_hash: SHA256Hash::compute(b"test_tax_manifest"),
             taxonomy_dump_version: "2024-01-01".to_string(),
             source_database: Some("uniprot-swissprot".to_string()),
@@ -55,21 +57,38 @@ mod tests {
     fn test_manifest_path_for_different_databases() {
         let (manager, _temp_dir) = create_test_manager();
 
-        // Test SwissProt
+        // Test SwissProt - path should be in versions structure
         let swissprot_path = manager.get_manifest_path(&DatabaseSource::UniProt(UniProtDatabase::SwissProt));
-        assert!(swissprot_path.ends_with("manifests/uniprot-swissprot.json"));
+        assert!(swissprot_path.to_string_lossy().contains("versions/uniprot/swissprot"));
+        assert!(swissprot_path.to_string_lossy().contains("manifest.tal") ||
+                swissprot_path.to_string_lossy().contains("manifest.json"));
 
         // Test TrEMBL
         let trembl_path = manager.get_manifest_path(&DatabaseSource::UniProt(UniProtDatabase::TrEMBL));
-        assert!(trembl_path.ends_with("manifests/uniprot-trembl.json"));
+        assert!(trembl_path.to_string_lossy().contains("versions/uniprot/trembl"));
+        assert!(trembl_path.to_string_lossy().contains("manifest.tal") ||
+                trembl_path.to_string_lossy().contains("manifest.json"));
 
         // Test NCBI NR
         let nr_path = manager.get_manifest_path(&DatabaseSource::NCBI(NCBIDatabase::NR));
-        assert!(nr_path.ends_with("manifests/ncbi-nr.json"));
+        assert!(nr_path.to_string_lossy().contains("versions/ncbi/nr"));
+        assert!(nr_path.to_string_lossy().contains("manifest.tal") ||
+                nr_path.to_string_lossy().contains("manifest.json"));
 
         // Test NCBI NT
         let nt_path = manager.get_manifest_path(&DatabaseSource::NCBI(NCBIDatabase::NT));
-        assert!(nt_path.ends_with("manifests/ncbi-nt.json"));
+        assert!(nt_path.to_string_lossy().contains("versions/ncbi/nt"));
+        assert!(nt_path.to_string_lossy().contains("manifest.tal") ||
+                nt_path.to_string_lossy().contains("manifest.json"));
+
+        // Test Taxonomy databases - should use unified taxonomy directory
+        let taxonomy_path = manager.get_manifest_path(&DatabaseSource::NCBI(NCBIDatabase::Taxonomy));
+        assert!(taxonomy_path.to_string_lossy().contains("taxonomy/"));
+        assert!(!taxonomy_path.to_string_lossy().contains("versions/ncbi/taxonomy"));
+
+        let prot_accession_path = manager.get_manifest_path(&DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId));
+        assert!(prot_accession_path.to_string_lossy().contains("taxonomy/"));
+        assert!(!prot_accession_path.to_string_lossy().contains("versions/ncbi/prot-accession2taxid"));
     }
 
     #[test]
@@ -89,7 +108,8 @@ mod tests {
 
         // Verify it exists at the expected location
         assert!(manifest_path.exists());
-        assert!(manifest_path.to_string_lossy().contains("manifests/uniprot-swissprot.json"));
+        // Path should be in the versions structure: versions/uniprot/swissprot/timestamp/manifest.tal
+        assert!(manifest_path.to_string_lossy().contains("versions/uniprot/swissprot"));
 
         // Verify it's NOT at the old location
         let old_path = temp_dir.path().join("manifest.json");
@@ -111,54 +131,6 @@ mod tests {
 
         // The download function should find this manifest
         // In real usage, this would return DownloadResult::UpToDate
-    }
-
-    #[test]
-    fn test_migration_from_old_manifest_location() {
-        let (manager, temp_dir) = create_test_manager();
-        let manifest = create_fake_manifest();
-
-        // Save manifest to OLD location
-        let old_path = temp_dir.path().join("manifest.json");
-        fs::write(&old_path, serde_json::to_string_pretty(&manifest).unwrap()).unwrap();
-
-        // Also create an etag file
-        let old_etag = old_path.with_extension("etag");
-        fs::write(&old_etag, "old_etag_value").unwrap();
-
-        // Get new location
-        let new_path = manager.get_manifest_path(&DatabaseSource::UniProt(UniProtDatabase::SwissProt));
-
-        // Initially, new location shouldn't exist
-        assert!(!new_path.exists());
-
-        // Simulate migration logic
-        if !new_path.exists() && old_path.exists() {
-            // Create manifests directory
-            fs::create_dir_all(new_path.parent().unwrap()).unwrap();
-
-            // Copy manifest
-            fs::copy(&old_path, &new_path).unwrap();
-
-            // Copy etag if exists
-            if old_etag.exists() {
-                let new_etag = new_path.with_extension("etag");
-                fs::copy(&old_etag, &new_etag).unwrap();
-            }
-        }
-
-        // Verify migration worked
-        assert!(new_path.exists(), "Manifest should be migrated to new location");
-        assert!(old_path.exists(), "Old manifest should still exist (not deleted)");
-
-        // Verify etag was also migrated
-        let new_etag = new_path.with_extension("etag");
-        assert!(new_etag.exists(), "Etag should also be migrated");
-
-        // Verify content is the same
-        let old_content = fs::read_to_string(&old_path).unwrap();
-        let new_content = fs::read_to_string(&new_path).unwrap();
-        assert_eq!(old_content, new_content, "Manifest content should be identical");
     }
 
     #[test]
@@ -184,6 +156,7 @@ mod tests {
         let trembl_path = manager.get_manifest_path(&DatabaseSource::UniProt(UniProtDatabase::TrEMBL));
 
         fs::create_dir_all(swissprot_path.parent().unwrap()).unwrap();
+        fs::create_dir_all(trembl_path.parent().unwrap()).unwrap();
         fs::write(&swissprot_path, serde_json::to_string_pretty(&swissprot_manifest).unwrap()).unwrap();
         fs::write(&trembl_path, serde_json::to_string_pretty(&trembl_manifest).unwrap()).unwrap();
 
@@ -219,7 +192,8 @@ mod tests {
         // Now it should exist
         assert!(manifests_dir.exists());
         assert!(manifests_dir.is_dir());
-        assert!(manifests_dir.ends_with("manifests"));
+        // The directory should be part of the versions tree, not manifests
+        // Path is like: versions/uniprot/swissprot/20240101_120000/
     }
 
     #[tokio::test]

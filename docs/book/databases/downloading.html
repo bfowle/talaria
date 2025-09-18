@@ -234,10 +234,23 @@
 │   │   └── abc123...               # SHA256-named chunk files
 │   └── de/
 │       └── def456...
-└── taxonomy/                       # Taxonomy data
-    └── taxdump/                    # NCBI taxonomy files
-        ├── nodes.dmp
-        └── names.dmp
+├── taxonomy/                       # Unified taxonomy directory
+│   ├── 20250917_202728/            # Versioned taxonomy snapshot
+│   │   ├── tree/                   # Core taxonomy tree (NCBI taxdump)
+│   │   │   ├── nodes.dmp
+│   │   │   ├── names.dmp
+│   │   │   └── ...
+│   │   ├── mappings/               # Accession-to-taxid mappings
+│   │   │   ├── prot.accession2taxid.gz
+│   │   │   ├── nucl.accession2taxid.gz
+│   │   │   └── uniprot_idmapping.dat.gz
+│   │   └── manifest.json
+│   └── current -&gt; 20250917_202728  # Symlink to current version
+└── versions/                       # Versioned database data
+    ├── uniprot/
+    │   └── swissprot/
+    └── ncbi/
+        └── nr/
 </code></pre>
 <p><strong>Note on Naming Conventions:</strong></p>
 <ul>
@@ -374,29 +387,48 @@ talaria reduce -i swissprot.fasta -o swissprot_reduced.fasta -a lambda
 <li>Taxonomy: <code>https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz</code></li>
 <li>Accession2Taxid: <code>https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/accession2taxid/prot.accession2taxid.gz</code></li>
 </ul>
-<h2 id="taxonomy-setup"><a class="header" href="#taxonomy-setup">Taxonomy Setup</a></h2>
-<h3 id="for-lambda"><a class="header" href="#for-lambda">For LAMBDA</a></h3>
-<pre><code class="language-bash"># Download required files
-talaria download --database ncbi --dataset taxdump.tar.gz
-talaria download --database uniprot --dataset idmapping.dat.gz
+<h2 id="unified-taxonomy-system"><a class="header" href="#unified-taxonomy-system">Unified Taxonomy System</a></h2>
+<p>Talaria uses a unified taxonomy directory structure that consolidates all taxonomy-related data into a single versioned location:</p>
+<pre><code class="language-bash"># Download complete NCBI taxonomy (includes taxdump)
+talaria database download ncbi/taxonomy
 
-# Extract taxonomy files
-tar -xzf taxdump.tar.gz nodes.dmp names.dmp
+# The taxonomy is stored in:
+# ~/.talaria/databases/taxonomy/
+#   ├── 20250917_202728/            # Versioned snapshot
+#   │   ├── tree/                   # NCBI taxdump files
+#   │   │   ├── nodes.dmp
+#   │   │   ├── names.dmp
+#   │   │   └── ...
+#   │   └── mappings/               # Accession mappings
+#   │       ├── ncbi_prot.accession2taxid.gz
+#   │       └── uniprot_idmapping.dat.gz
+#   └── current -&gt; 20250917_202728  # Symlink to current version
+</code></pre>
+<h3 id="benefits-of-unified-taxonomy"><a class="header" href="#benefits-of-unified-taxonomy">Benefits of Unified Taxonomy</a></h3>
+<ul>
+<li><strong>Consistency</strong>: All databases use the same taxonomy version</li>
+<li><strong>Efficiency</strong>: No duplicate taxonomy files</li>
+<li><strong>Versioning</strong>: Track taxonomy updates independently</li>
+<li><strong>Tool Compatibility</strong>: Works with LAMBDA, DIAMOND, Kraken2, etc.</li>
+</ul>
+<h3 id="for-lambda"><a class="header" href="#for-lambda">For LAMBDA</a></h3>
+<p>LAMBDA automatically detects taxonomy in the unified location:</p>
+<pre><code class="language-bash"># LAMBDA will use:
+# ~/.talaria/databases/taxonomy/current/tree/       # taxdump
+# ~/.talaria/databases/taxonomy/current/mappings/   # accessions
 
 # Build LAMBDA index with taxonomy
 lambda2 mkindexp \
   -d reduced.fasta \
-  --acc-tax-map idmapping.dat.gz \
-  --tax-dump-dir ./
+  --acc-tax-map ~/.talaria/databases/taxonomy/current/mappings/prot.accession2taxid.gz \
+  --tax-dump-dir ~/.talaria/databases/taxonomy/current/tree/
 </code></pre>
-<h3 id="for-diamond"><a class="header" href="#for-diamond">For Diamond</a></h3>
-<pre><code class="language-bash"># Download NCBI taxonomy
-talaria download --database ncbi --dataset taxdump.tar.gz
-talaria download --database ncbi --dataset prot.accession2taxid.gz
-
-# Extract files
-tar -xzf taxdump.tar.gz
-gunzip prot.accession2taxid.gz
+<h3 id="for-diamond"><a class="header" href="#for-diamond">For DIAMOND</a></h3>
+<pre><code class="language-bash"># Point DIAMOND to unified taxonomy
+diamond makedb --in reduced.fasta --db reduced \
+  --taxonmap ~/.talaria/databases/taxonomy/current/mappings/prot.accession2taxid \
+  --taxonnodes ~/.talaria/databases/taxonomy/current/tree/nodes.dmp \
+  --taxonnames ~/.talaria/databases/taxonomy/current/tree/names.dmp
 
 # Build Diamond database with taxonomy
 diamond makedb --in sequences.fasta --db sequences \
@@ -561,6 +593,22 @@ talaria download --database ncbi --dataset nr \
 
         </div>
 
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
 
 
 

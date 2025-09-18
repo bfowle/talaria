@@ -4,7 +4,6 @@ use reqwest::Client;
 use std::fs::File;
 use std::io::{self, BufReader, Write};
 use std::path::Path;
-use tar::Archive;
 
 use super::progress::DownloadProgress;
 
@@ -78,56 +77,43 @@ impl NCBIDownloader {
     
     pub async fn download_taxonomy(
         &self,
-        output_dir: &Path,
+        output_path: &Path,
         progress: &mut DownloadProgress,
     ) -> Result<()> {
         let url = format!("{}/pub/taxonomy/taxdump.tar.gz", self.base_url);
-        
+
         progress.set_message("Downloading NCBI taxonomy database...");
-        
+
         let response = self.client
             .get(&url)
             .send()
             .await
             .context("Failed to start taxonomy download")?;
-        
+
         let total_size = response.content_length().unwrap_or(0);
         progress.set_total(total_size as usize);
-        
-        let temp_path = output_dir.join("taxdump.tar.gz.tmp");
-        let mut file = File::create(&temp_path)
-            .context("Failed to create temporary file")?;
-        
+
+        // Download to the specified output path (not extracting yet)
+        let mut file = File::create(output_path)
+            .context("Failed to create output file")?;
+
         let mut downloaded = 0u64;
         let mut stream = response.bytes_stream();
-        
+
         use futures_util::StreamExt;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.context("Failed to read chunk")?;
             file.write_all(&chunk).context("Failed to write chunk")?;
-            
+
             downloaded += chunk.len() as u64;
             progress.set_current(downloaded as usize);
         }
-        
-        progress.set_message("Extracting taxonomy files...");
-        
-        // Extract the tar.gz archive
-        let tar_gz = File::open(&temp_path)
-            .context("Failed to open archive")?;
-        let tar = GzDecoder::new(BufReader::new(tar_gz));
-        let mut archive = Archive::new(tar);
-        
-        archive.unpack(output_dir)
-            .context("Failed to extract taxonomy archive")?;
-        
-        // Clean up
-        std::fs::remove_file(&temp_path)
-            .context("Failed to remove temporary file")?;
-        
+
         progress.set_message("Taxonomy download complete!");
         progress.finish();
-        
+
+        // Don't extract here - let store_taxonomy_mapping_file handle extraction
+        // to the proper versioned directory
         Ok(())
     }
     

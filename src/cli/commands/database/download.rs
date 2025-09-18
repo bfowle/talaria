@@ -45,6 +45,36 @@ pub struct DownloadArgs {
     /// Preserve LAMBDA tool on failure (overrides TALARIA_PRESERVE_LAMBDA_ON_FAILURE env var)
     #[arg(long)]
     pub preserve_lambda_on_failure: bool,
+
+    /// Perform a dry run (only check what would be downloaded, don't actually download)
+    #[arg(short = 'd', long)]
+    pub dry_run: bool,
+
+    /// Force download even if current version is up-to-date
+    #[arg(short = 'f', long)]
+    pub force: bool,
+
+    // Fetch-specific options for creating custom databases
+
+    /// Comma-separated list of TaxIDs to fetch (for custom databases)
+    #[arg(long, value_name = "TAXIDS", conflicts_with = "taxid_list")]
+    pub taxids: Option<String>,
+
+    /// File containing list of TaxIDs, one per line (for custom databases)
+    #[arg(long, value_name = "FILE", conflicts_with = "taxids")]
+    pub taxid_list: Option<PathBuf>,
+
+    /// Fetch reference proteomes instead of all sequences
+    #[arg(long)]
+    pub reference_proteomes: bool,
+
+    /// Maximum sequences to fetch per TaxID (for testing)
+    #[arg(long)]
+    pub max_sequences: Option<usize>,
+
+    /// Description of the custom database
+    #[arg(long)]
+    pub description: Option<String>,
 }
 
 pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
@@ -58,7 +88,48 @@ pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
     } else {
         // Parse and validate the database reference
         use crate::utils::database_ref::parse_database_ref;
-        let (_source, _dataset) = parse_database_ref(args.database.as_ref().unwrap())?;
+        let (source, dataset) = parse_database_ref(args.database.as_ref().unwrap())?;
+
+        // Print header and CASG info
+        use crate::cli::output::section_header;
+        use crate::cli::formatter::info_box;
+        use colored::Colorize;
+
+        // Format the display name nicely
+        let source_name = match source.as_str() {
+            "uniprot" => "UniProt",
+            "ncbi" => "NCBI",
+            _ => &source,
+        };
+        let dataset_name = match dataset.as_str() {
+            "swissprot" => "SwissProt",
+            "trembl" => "TrEMBL",
+            "uniref50" => "UniRef50",
+            "uniref90" => "UniRef90",
+            "uniref100" => "UniRef100",
+            "idmapping" => "IdMapping",
+            "nr" => "NR",
+            "nt" => "NT",
+            "refseq-protein" => "RefSeq Proteins",
+            "refseq-genomic" => "RefSeq Genomes",
+            "taxonomy" => "Taxonomy",
+            "prot-accession2taxid" => "Protein Accession2TaxId",
+            "nucl-accession2taxid" => "Nucleotide Accession2TaxId",
+            _ => &dataset,
+        };
+
+        println!();
+        section_header(&format!("▶ Database Download: {}: {}", source_name, dataset_name));
+        println!("{}", "═".repeat(80).dimmed());
+        println!();
+
+        info_box("Content-Addressed Storage (CASG)", &[
+            "Automatic deduplication",
+            "Incremental updates",
+            "Cryptographic verification",
+            "Bandwidth-efficient downloads"
+        ]);
+        println!();
 
         // Use CASG for all downloads
         super::download_simple::run_direct_download(args)
@@ -275,9 +346,32 @@ fn download_uniprot_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
         manifest_server: None,
         talaria_home: None,
         preserve_lambda_on_failure: false,
+        dry_run: false,
+        force: false,
+        taxids: None,
+        taxid_list: None,
+        reference_proteomes: false,
+        max_sequences: None,
+        description: None,
     };
 
-    show_info(&format!("Downloading {}...", database_ref));
+    // Print header and CASG info
+    use crate::cli::output::section_header;
+    use crate::cli::formatter::info_box;
+    use colored::Colorize;
+
+    println!();
+    section_header(&format!("▶ Database Download: UniProt: {}", name));
+    println!("{}", "═".repeat(80).dimmed());
+    println!();
+
+    info_box("Content-Addressed Storage (CASG)", &[
+        "Automatic deduplication",
+        "Incremental updates",
+        "Cryptographic verification",
+        "Bandwidth-efficient downloads"
+    ]);
+    println!();
 
     // Call the actual download function
     super::download_simple::run_direct_download(args)?;
@@ -332,9 +426,32 @@ fn download_ncbi_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
         manifest_server: None,
         talaria_home: None,
         preserve_lambda_on_failure: false,
+        dry_run: false,
+        force: false,
+        taxids: None,
+        taxid_list: None,
+        reference_proteomes: false,
+        max_sequences: None,
+        description: None,
     };
 
-    show_info(&format!("Downloading {}...", database_ref));
+    // Print header and CASG info
+    use crate::cli::output::section_header;
+    use crate::cli::formatter::info_box;
+    use colored::Colorize;
+
+    println!();
+    section_header(&format!("▶ Database Download: NCBI: {}", name));
+    println!("{}", "═".repeat(80).dimmed());
+    println!();
+
+    info_box("Content-Addressed Storage (CASG)", &[
+        "Automatic deduplication",
+        "Incremental updates",
+        "Cryptographic verification",
+        "Bandwidth-efficient downloads"
+    ]);
+    println!();
 
     // Call the actual download function
     super::download_simple::run_direct_download(args)?;

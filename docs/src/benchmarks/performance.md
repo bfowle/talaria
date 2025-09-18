@@ -1,15 +1,25 @@
 # Performance Benchmarks
 
-This section presents comprehensive performance benchmarks for Talaria across various hardware configurations, dataset sizes, and operational scenarios.
+> **IMPORTANT: Synthetic Benchmarks**
+>
+> The performance numbers in this document are **synthetic projections** and not from actual benchmarks.
+> Talaria has not been benchmarked against CD-HIT, MMseqs2, or other tools in controlled tests.
+>
+> **Actual performance characteristics:**
+> - Multi-threading via Rayon provides good parallelization
+> - Memory usage scales with input size
+> - No formal performance comparisons have been conducted
+>
+> Real-world performance will vary significantly based on hardware and dataset characteristics.
 
 ## Executive Summary
 
-Talaria demonstrates significant performance improvements over traditional FASTA processing tools:
+Talaria's expected performance characteristics (not benchmarked):
 
-- ■ **3-5x faster** than comparable tools
-- ● **Linear scaling** with thread count up to hardware limits
-- ▶ **Sub-linear memory growth** with dataset size
-- ◆ **Consistent performance** across diverse sequence types
+- ■ **Multi-threaded processing** using Rayon
+- ● **Reasonable scaling** with available cores
+- ▶ **Memory usage** proportional to dataset size
+- ◆ **Standard I/O performance** using Rust libraries
 
 ## Test Hardware Specifications
 

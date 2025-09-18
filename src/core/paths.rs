@@ -7,8 +7,14 @@ static TALARIA_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 static TALARIA_DATABASES_DIR: OnceLock<PathBuf> = OnceLock::new();
 static TALARIA_TOOLS_DIR: OnceLock<PathBuf> = OnceLock::new();
 static TALARIA_CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
-static TALARIA_TAXONOMY_DIR: OnceLock<PathBuf> = OnceLock::new();
 static TALARIA_WORKSPACE_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Generate a UTC timestamp for version identifiers
+/// Returns format: YYYYMMDD_HHMMSS (in UTC timezone)
+/// This ensures consistent versioning across distributed teams
+pub fn generate_utc_timestamp() -> String {
+    chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string()
+}
 
 /// Get the Talaria home directory
 /// Checks TALARIA_HOME environment variable, falls back to ${HOME}/.talaria
@@ -73,16 +79,22 @@ pub fn talaria_cache_dir() -> PathBuf {
     }).clone()
 }
 
-/// Get the taxonomy directory
-/// Checks TALARIA_TAXONOMY_DIR environment variable, falls back to TALARIA_DATABASES_DIR/taxonomy
-pub fn talaria_taxonomy_dir() -> PathBuf {
-    TALARIA_TAXONOMY_DIR.get_or_init(|| {
-        if let Ok(path) = std::env::var("TALARIA_TAXONOMY_DIR") {
-            PathBuf::from(path)
-        } else {
-            talaria_databases_dir().join("taxonomy")
-        }
-    }).clone()
+/// Get the unified taxonomy directory
+/// Returns: TALARIA_DATABASES_DIR/taxonomy
+pub fn talaria_taxonomy_versions_dir() -> PathBuf {
+    talaria_databases_dir().join("taxonomy")
+}
+
+/// Get the current taxonomy version directory
+/// Returns: TALARIA_DATABASES_DIR/taxonomy/current (symlink)
+pub fn talaria_taxonomy_current_dir() -> PathBuf {
+    talaria_taxonomy_versions_dir().join("current")
+}
+
+/// Get a specific taxonomy version directory
+/// Returns: TALARIA_DATABASES_DIR/taxonomy/{version}
+pub fn talaria_taxonomy_version_dir(version: &str) -> PathBuf {
+    talaria_taxonomy_versions_dir().join(version)
 }
 
 /// Get the workspace directory for temporal workspaces

@@ -40,10 +40,23 @@ ${TALARIA_HOME}/databases/
 │   │   └── abc123...               # SHA256-named chunk files
 │   └── de/
 │       └── def456...
-└── taxonomy/                       # Taxonomy data
-    └── taxdump/                    # NCBI taxonomy files
-        ├── nodes.dmp
-        └── names.dmp
+├── taxonomy/                       # Unified taxonomy directory
+│   ├── 20250917_202728/            # Versioned taxonomy snapshot
+│   │   ├── tree/                   # Core taxonomy tree (NCBI taxdump)
+│   │   │   ├── nodes.dmp
+│   │   │   ├── names.dmp
+│   │   │   └── ...
+│   │   ├── mappings/               # Accession-to-taxid mappings
+│   │   │   ├── prot.accession2taxid.gz
+│   │   │   ├── nucl.accession2taxid.gz
+│   │   │   └── uniprot_idmapping.dat.gz
+│   │   └── manifest.json
+│   └── current -> 20250917_202728  # Symlink to current version
+└── versions/                       # Versioned database data
+    ├── uniprot/
+    │   └── swissprot/
+    └── ncbi/
+        └── nr/
 ```
 
 **Note on Naming Conventions:**
@@ -205,35 +218,58 @@ Database download settings are currently hardcoded. Custom configuration support
 - Taxonomy: `https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz`
 - Accession2Taxid: `https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/accession2taxid/prot.accession2taxid.gz`
 
-## Taxonomy Setup
+## Unified Taxonomy System
+
+Talaria uses a unified taxonomy directory structure that consolidates all taxonomy-related data into a single versioned location:
+
+```bash
+# Download complete NCBI taxonomy (includes taxdump)
+talaria database download ncbi/taxonomy
+
+# The taxonomy is stored in:
+# ~/.talaria/databases/taxonomy/
+#   ├── 20250917_202728/            # Versioned snapshot
+#   │   ├── tree/                   # NCBI taxdump files
+#   │   │   ├── nodes.dmp
+#   │   │   ├── names.dmp
+#   │   │   └── ...
+#   │   └── mappings/               # Accession mappings
+#   │       ├── ncbi_prot.accession2taxid.gz
+#   │       └── uniprot_idmapping.dat.gz
+#   └── current -> 20250917_202728  # Symlink to current version
+```
+
+### Benefits of Unified Taxonomy
+
+- **Consistency**: All databases use the same taxonomy version
+- **Efficiency**: No duplicate taxonomy files
+- **Versioning**: Track taxonomy updates independently
+- **Tool Compatibility**: Works with LAMBDA, DIAMOND, Kraken2, etc.
 
 ### For LAMBDA
 
-```bash
-# Download required files
-talaria download --database ncbi --dataset taxdump.tar.gz
-talaria download --database uniprot --dataset idmapping.dat.gz
+LAMBDA automatically detects taxonomy in the unified location:
 
-# Extract taxonomy files
-tar -xzf taxdump.tar.gz nodes.dmp names.dmp
+```bash
+# LAMBDA will use:
+# ~/.talaria/databases/taxonomy/current/tree/       # taxdump
+# ~/.talaria/databases/taxonomy/current/mappings/   # accessions
 
 # Build LAMBDA index with taxonomy
 lambda2 mkindexp \
   -d reduced.fasta \
-  --acc-tax-map idmapping.dat.gz \
-  --tax-dump-dir ./
+  --acc-tax-map ~/.talaria/databases/taxonomy/current/mappings/prot.accession2taxid.gz \
+  --tax-dump-dir ~/.talaria/databases/taxonomy/current/tree/
 ```
 
-### For Diamond
+### For DIAMOND
 
 ```bash
-# Download NCBI taxonomy
-talaria download --database ncbi --dataset taxdump.tar.gz
-talaria download --database ncbi --dataset prot.accession2taxid.gz
-
-# Extract files
-tar -xzf taxdump.tar.gz
-gunzip prot.accession2taxid.gz
+# Point DIAMOND to unified taxonomy
+diamond makedb --in reduced.fasta --db reduced \
+  --taxonmap ~/.talaria/databases/taxonomy/current/mappings/prot.accession2taxid \
+  --taxonnodes ~/.talaria/databases/taxonomy/current/tree/nodes.dmp \
+  --taxonnames ~/.talaria/databases/taxonomy/current/tree/names.dmp
 
 # Build Diamond database with taxonomy
 diamond makedb --in sequences.fasta --db sequences \

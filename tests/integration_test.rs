@@ -3,7 +3,7 @@ use std::path::Path;
 use talaria::bio::fasta::parse_fasta;
 use talaria::bio::sequence::{Sequence, SequenceType};
 use talaria::core::reducer::Reducer;
-use talaria::core::reference_selector::ReferenceSelector;
+use talaria::core::reference_selector::ReferenceSelectorImpl;
 
 #[test]
 fn test_fasta_parsing() {
@@ -31,7 +31,7 @@ fn test_reference_selection() {
         Sequence::new("seq3".to_string(), b"AAAAAAAAAAAAAAAA".to_vec()),
     ];
     
-    let selector = ReferenceSelector::new()
+    let selector = ReferenceSelectorImpl::new()
         .with_similarity_threshold(0.8)
         .with_min_length(5); // Lower minimum length for test sequences
     let result = selector.select_references(sequences.clone(), 0.5);

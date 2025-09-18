@@ -99,6 +99,10 @@ pub struct ReduceArgs {
     #[arg(long, default_value = "single-pass", value_name = "ALGORITHM")]
     pub selection_algorithm: String,
 
+    /// Optimize storage for memory efficiency (may impact performance)
+    #[arg(long)]
+    pub optimize_for_memory: bool,
+
     /// Maximum sequence length for alignment (longer sequences skip delta encoding)
     #[arg(long, default_value = "10000")]
     pub max_align_length: usize,
@@ -294,23 +298,47 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         use crate::core::paths;
         use std::fs;
 
-        // Find the manifest
-        let db_path = paths::talaria_databases_dir().join(&source).join(&dataset);
-        let mut manifest_path = db_path.join("manifest.json");
+        // Magic bytes for Talaria manifest format
+        const TALARIA_MAGIC: &[u8] = b"TAL\x01";
+
+        // Find the manifest in the versions/ structure
+        let versions_path = paths::talaria_databases_dir()
+            .join("versions")
+            .join(&source)
+            .join(&dataset)
+            .join("current");
+
+        // Try .tal file first (preferred binary format)
+        let mut manifest_path = versions_path.join("manifest.tal");
+        let mut is_tal_format = true;
 
         if !manifest_path.exists() {
-            // Try the manifests directory
-            manifest_path = paths::talaria_databases_dir()
-                .join("manifests")
-                .join(format!("{}-{}.json", source, dataset));
+            // Try .json as fallback
+            manifest_path = versions_path.join("manifest.json");
+            is_tal_format = false;
+
             if !manifest_path.exists() {
-                anyhow::bail!("Cannot find manifest for database: {}", db_full_name);
+                anyhow::bail!("Cannot find manifest for database: {}. Expected at: {}",
+                    db_full_name, versions_path.display());
             }
         }
 
-        // Load the manifest
-        let manifest_content = fs::read_to_string(&manifest_path)?;
-        let manifest: TemporalManifest = serde_json::from_str(&manifest_content)?;
+        // Load the manifest based on format
+        let manifest: TemporalManifest = if is_tal_format {
+            // Read binary .tal format
+            let mut content = fs::read(&manifest_path)?;
+
+            // Check and skip magic header
+            if content.starts_with(TALARIA_MAGIC) {
+                content = content[TALARIA_MAGIC.len()..].to_vec();
+            }
+
+            rmp_serde::from_slice(&content)?
+        } else {
+            // Read JSON format
+            let manifest_content = fs::read_to_string(&manifest_path)?;
+            serde_json::from_str(&manifest_content)?
+        };
 
         // Assemble from the chunks referenced in the manifest
         let assembler = FastaAssembler::new(db_manager.get_storage());
@@ -321,7 +349,8 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         crate::bio::fasta::write_fasta(&temp_file, &sequences)?;
     }
 
-    spinner.finish_with_message("Database assembled successfully");
+    spinner.finish_and_clear();
+    println!("Database assembled successfully");
 
     // Create accession2taxid mapping from manifest if using LAMBDA
     let manifest_acc2taxid = if args.target_aligner == TargetAligner::Lambda && database_source.is_some() {
@@ -330,11 +359,13 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
 
         match db_manager.create_accession2taxid_from_manifest(database_source.as_ref().unwrap()) {
             Ok(path) => {
-                spinner.finish_with_message("Taxonomy mapping created from manifest");
+                spinner.finish_and_clear();
+                println!("Taxonomy mapping created from manifest");
                 Some(path)
             }
             Err(e) => {
-                spinner.finish_with_message("Warning: Could not create taxonomy mapping from manifest");
+                spinner.finish_and_clear();
+                println!("Warning: Could not create taxonomy mapping from manifest");
                 warning(&e.to_string());
                 None
             }
@@ -451,7 +482,60 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     // Parse input FASTA
     task_list.update_task(load_task, TaskStatus::InProgress);
     task_list.set_task_message(load_task, "Reading FASTA file...");
-    let sequences = crate::bio::fasta::parse_fasta(&actual_input)?;
+    let mut sequences = crate::bio::fasta::parse_fasta(&actual_input)?;
+
+    // Apply processing pipeline if batch processing or filtering is enabled
+    if args.batch || args.low_complexity_filter {
+        use crate::processing::{create_reduction_pipeline, ProcessingPipeline, BatchProcessor};
+
+        task_list.set_task_message(load_task, "Applying sequence processing pipeline...");
+
+        // Create pipeline with filters
+        let pipeline = create_reduction_pipeline(
+            0.3,  // Low complexity threshold
+            args.min_length,
+            true, // Convert to uppercase
+        );
+
+        // Process sequences with progress reporting
+        let initial_count = sequences.len();
+
+        if args.batch {
+            // Use batch processing
+            let result = pipeline.process_with_progress(
+                &mut sequences,
+                args.batch_size / 100, // Batch size for processing
+                |processed, total| {
+                    task_list.set_task_message(load_task,
+                        &format!("Processing sequences: {}/{}", processed, total));
+                }
+            )?;
+
+            info(&format!(
+                "Pipeline processed {} sequences: {} filtered, {} modified",
+                result.processed,
+                result.filtered,
+                result.modified
+            ));
+        } else if args.low_complexity_filter {
+            // Just apply filters
+            let result = pipeline.process(&mut sequences)?;
+
+            if result.filtered > 0 {
+                info(&format!("Filtered {} low-complexity sequences", result.filtered));
+            }
+        }
+
+        // Log if sequences were filtered
+        let filtered_count = initial_count - sequences.len();
+        if filtered_count > 0 {
+            warning(&format!(
+                "Filtered {} sequences ({}% removed)",
+                filtered_count,
+                (filtered_count as f64 / initial_count as f64 * 100.0) as u32
+            ));
+        }
+    }
 
     // Keep a copy for the HTML report if needed
     let original_sequences = if args.html_report.is_some() {
@@ -722,7 +806,7 @@ fn store_reduction_in_casg(
     input_size: u64,
     database_name: Option<&str>,
 ) -> anyhow::Result<u64> {
-    use crate::casg::{CASGRepository, delta_generator::{DeltaGenerator, DeltaGeneratorConfig}, reduction::{ReductionManifest, ReductionParameters, ReferenceChunk, DeltaChunkRef}};
+    use crate::casg::{CASGRepository, delta_generator::DeltaGenerator, delta::DeltaGeneratorConfig, reduction::{ReductionManifest, ReductionParameters, ReferenceChunk, DeltaChunkRef}};
     use crate::casg::chunker::TaxonomicChunker;
     use crate::casg::types::SHA256Hash;
     use std::collections::HashMap;
@@ -736,6 +820,33 @@ fn store_reduction_in_casg(
     } else {
         CASGRepository::init(casg_path)?
     };
+
+    // Apply storage optimization if requested
+    if args.optimize_for_memory {
+        use crate::storage::{StandardStorageOptimizer, StorageOptimizer, StorageStrategy};
+        use crate::storage::optimizer::OptimizationOptions;
+
+        let mut optimizer = StandardStorageOptimizer::new(casg_path.clone());
+        let options = OptimizationOptions {
+            strategies: vec![StorageStrategy::Compression],
+            ..Default::default()
+        };
+
+        info("Optimizing storage for memory efficiency...");
+        let optimization_results = futures::executor::block_on(
+            optimizer.optimize(options)
+        )?;
+
+        if let Some(result) = optimization_results.first() {
+            if result.space_saved > 0 {
+                success(&format!(
+                    "Storage optimized: {} bytes saved, {} chunks affected",
+                    result.space_saved,
+                    result.chunks_affected
+                ));
+            }
+        }
+    }
 
     // Determine profile name
     let profile_name = args.profile.clone().unwrap_or_else(|| {
@@ -810,7 +921,7 @@ fn store_reduction_in_casg(
         special_taxa: Vec::new(),
     };
     let chunker = TaxonomicChunker::new(strategy);
-    let ref_chunks = chunker.chunk_sequences(references.to_vec())?;
+    let ref_chunks = chunker.chunk_sequences_into_taxonomy_aware(references.to_vec())?;
 
     let mut reference_chunk_refs = Vec::new();
     let mut ref_chunk_map = HashMap::new();
@@ -855,6 +966,10 @@ fn store_reduction_in_casg(
 
         // Create delta generator
         let delta_config = DeltaGeneratorConfig {
+            min_delta_size: 1024,
+            max_delta_size: 100 * 1024 * 1024,
+            compression_threshold: 0.8,
+            enable_caching: true,
             max_chunk_size: 16 * 1024 * 1024,
             min_similarity_threshold: 0.85,
             enable_compression: true,

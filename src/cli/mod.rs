@@ -52,6 +52,18 @@ pub enum Commands {
 
     /// Interactive mode with TUI
     Interactive(commands::interactive::InteractiveArgs),
+
+    /// Verify Merkle proofs and integrity
+    Verify(commands::verify::VerifyArgs),
+
+    /// Query database at specific temporal coordinates
+    Temporal(commands::temporal::TemporalArgs),
+
+    /// Look up and inspect chunk information
+    Chunk {
+        #[command(subcommand)]
+        command: commands::chunk::ChunkCommands,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]

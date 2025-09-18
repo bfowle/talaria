@@ -18,6 +18,7 @@
 # Storage Architecture
 
 - [Storage Overview](./casg/overview.md)
+- [Workflows and Operations](./casg/workflows.md)
 - [Real-World Case Studies](./casg/case-studies.md)
 - [Architecture Deep Dive](./casg/architecture.md)
 - [Manifest Format](./casg/manifest.md)

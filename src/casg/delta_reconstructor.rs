@@ -5,7 +5,7 @@
 
 use crate::bio::sequence::Sequence;
 use crate::casg::types::*;
-use crate::casg::delta::traits::DeltaReconstructor as DeltaReconstructorTrait;
+use crate::casg::delta::DeltaReconstructor as DeltaReconstructorTrait;
 use anyhow::Result;
 use dashmap::DashMap;
 use rayon::prelude::*;
@@ -443,100 +443,35 @@ mod tests {
 
 // Implement the DeltaReconstructor trait
 impl DeltaReconstructorTrait for DeltaReconstructor {
-    fn reconstruct_sequences(
+    fn reconstruct(
         &self,
-        delta_chunk: &DeltaChunk,
-        reference_chunk: &TaxonomyAwareChunk,
+        delta_chunks: &[DeltaChunk],
+        reference_sequences: &[Sequence],
     ) -> Result<Vec<Sequence>> {
-        // For now, we need to convert SequenceRef to actual Sequences
-        // In a real implementation, we'd load sequences from storage
-        // based on the SequenceRef chunk_hash and offset
-        let reference_sequences: Vec<Sequence> = reference_chunk.sequences
-            .iter()
-            .map(|seq_ref| Sequence {
-                id: seq_ref.sequence_id.clone(),
-                description: None,
-                sequence: Vec::new(), // Would be loaded from storage
-                taxon_id: None,
-            })
-            .collect();
-
-        // Use the existing reconstruct_chunk method
-        self.reconstruct_chunk(delta_chunk, reference_sequences)
-    }
-
-    fn apply_delta_operations(
-        &self,
-        operations: &[DeltaOperation],
-        reference_data: &[u8],
-    ) -> Result<Vec<u8>> {
-        // Create a temporary sequence from reference data
-        let ref_seq = Sequence {
-            id: "temp_ref".to_string(),
-            description: None,
-            sequence: reference_data.to_vec(),
-            taxon_id: None,
-        };
-
-        let ref_map = HashMap::from([("temp_ref".to_string(), &ref_seq)]);
-        let mut result_data = Vec::new();
-
-        for operation in operations {
-            if let Some(seq) = self.apply_delta_operation(operation, &ref_map)? {
-                result_data.extend_from_slice(&seq.sequence);
-            }
+        // Reconstruct all sequences from the delta chunks
+        let mut result = Vec::new();
+        for chunk in delta_chunks {
+            let sequences = self.reconstruct_chunk(chunk, reference_sequences.to_vec())?;
+            result.extend(sequences);
         }
-
-        Ok(result_data)
+        Ok(result)
     }
 
-    fn apply_operation(
+    fn verify_reconstruction(
         &self,
-        operation: &DeltaOperation,
-        current_data: &mut Vec<u8>,
-        reference_data: &[u8],
-    ) -> Result<()> {
-        match operation {
-            DeltaOperation::UseReference { reference_offset, length, .. } => {
-                // Replace current data with reference substring
-                current_data.clear();
-                let end = (*reference_offset + *length).min(reference_data.len());
-                current_data.extend_from_slice(&reference_data[*reference_offset..end]);
-            }
-
-            DeltaOperation::Insert { data, .. } => {
-                // Replace with new data
-                current_data.clear();
-                current_data.extend_from_slice(data);
-            }
-
-            DeltaOperation::Modify { operations, .. } => {
-                // Apply sequence edits
-                for edit in operations {
-                    self.apply_sequence_edit(current_data, edit)?;
-                }
-            }
-
-            DeltaOperation::Delete { .. } => {
-                // Clear the data
-                current_data.clear();
-            }
-        }
-
-        Ok(())
-    }
-
-    fn validate_reconstruction(
-        &self,
-        original_hash: &SHA256Hash,
-        reconstructed: &[u8],
+        original: &[Sequence],
+        reconstructed: &[Sequence],
     ) -> Result<bool> {
-        // Compute hash of reconstructed data
-        let reconstructed_hash = SHA256Hash::compute(reconstructed);
-        Ok(reconstructed_hash == *original_hash)
-    }
+        if original.len() != reconstructed.len() {
+            return Ok(false);
+        }
 
-    fn name(&self) -> &str {
-        "DeltaReconstructor"
+        for (orig, recon) in original.iter().zip(reconstructed.iter()) {
+            if orig.id != recon.id || orig.sequence != recon.sequence {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 }
+

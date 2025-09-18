@@ -47,6 +47,7 @@ sha2 = "0.10"
 md5 = "0.8.0"
 flate2 = "1.1.2"
 tar = "0.4.44"
+zstd = "0.13"
 url = "2.5.7"
 
 # File I/O and parsing
@@ -90,6 +91,9 @@ regex = "1.10"
 tempfile = "3.22.0"
 pretty_assertions = "1.4.1"
 quickcheck = "1.0.3"
+mockall = "0.13.0"
+test-case = "3.3.1"
+rstest = "0.23.0"
 
 [[bench]]
 name = "alignment_bench"

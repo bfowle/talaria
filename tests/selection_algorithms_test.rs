@@ -1,7 +1,7 @@
 /// Integration tests for selection algorithms
 
 use talaria::bio::sequence::Sequence;
-use talaria::core::reference_selector::{ReferenceSelector, SelectionAlgorithm};
+use talaria::core::reference_selector::{ReferenceSelectorImpl, SelectionAlgorithm};
 use talaria::core::reducer::Reducer;
 use talaria::core::config::Config;
 use talaria::cli::TargetAligner;
@@ -22,12 +22,12 @@ fn test_both_algorithms_end_to_end() {
     let target_ratio = 0.3; // Select 30% as references
 
     // Test with SinglePass algorithm
-    let selector_sp = ReferenceSelector::new()
+    let selector_sp = ReferenceSelectorImpl::new()
         .with_selection_algorithm(SelectionAlgorithm::SinglePass);
     let result_sp = selector_sp.simple_select_references(sequences.clone(), target_ratio);
 
     // Test with SimilarityMatrix algorithm
-    let selector_sm = ReferenceSelector::new()
+    let selector_sm = ReferenceSelectorImpl::new()
         .with_selection_algorithm(SelectionAlgorithm::SimilarityMatrix);
     let result_sm = selector_sm.simple_select_references(sequences.clone(), target_ratio);
 
@@ -103,7 +103,7 @@ fn test_algorithm_consistency() {
         .map(|i| Sequence::new(format!("seq{}", i), vec![65; 100 - i * 2]))
         .collect();
 
-    let selector = ReferenceSelector::new()
+    let selector = ReferenceSelectorImpl::new()
         .with_selection_algorithm(SelectionAlgorithm::SinglePass);
 
     // Run the same selection multiple times
@@ -131,7 +131,7 @@ fn test_algorithm_invariants() {
     ];
 
     for algorithm in [SelectionAlgorithm::SinglePass, SelectionAlgorithm::SimilarityMatrix] {
-        let selector = ReferenceSelector::new()
+        let selector = ReferenceSelectorImpl::new()
             .with_selection_algorithm(algorithm);
         let result = selector.simple_select_references(sequences.clone(), 0.4);
 

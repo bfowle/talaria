@@ -116,6 +116,48 @@ ${TALARIA_WORKSPACE_DIR}/{timestamp}_{uuid}/    # Default: /tmp/talaria/{timesta
 - Avoid emoji characters in favor of standard Unicode symbols to ensure terminal compatibility
 - Prefer structured output with tree-like formatting for hierarchical information display
 
+## Architecture Guidelines
+
+### Trait Organization and Design
+
+When implementing traits in Talaria, follow these principles:
+
+#### 1. Colocate with Functionality
+Traits should live in the same module as their primary implementation:
+- `MerkleVerifiable` trait lives in `src/casg/merkle.rs`
+- `TemporalVersioned` trait lives in `src/casg/temporal.rs`
+- `ChunkingStrategy` trait lives in `src/casg/chunker/mod.rs`
+
+**DO NOT** create a catch-all `src/traits/` directory. Exceptions are only for truly cross-cutting concerns used across multiple unrelated modules.
+
+#### 2. Traits Represent Capabilities, Not Data Structures
+- ✅ Good: `MerkleVerifiable` (can be verified), `Queryable`, `Addressable`
+- ❌ Bad: `MerkleTree` (is a data structure), `Database` (too broad)
+
+#### 3. Example Patterns
+```rust
+// Good - capability trait with its implementation
+// src/casg/merkle.rs
+pub trait MerkleVerifiable {
+    fn compute_hash(&self) -> SHA256Hash;
+}
+
+pub struct MerkleDAG { ... }
+impl MerkleVerifiable for ChunkMetadata { ... }
+
+// Bad - trait in separate location
+// src/traits/merkle_verifiable.rs
+pub trait MerkleVerifiable { ... }
+```
+
+#### 4. Design Principles
+- Keep traits focused on single responsibilities
+- Use associated types for related type definitions
+- Provide default implementations where sensible
+- Prefer generics over trait objects (`dyn Trait`)
+- Document trait contracts clearly
+- Use semantic naming (adjectives/verbs over nouns)
+
 ## Testing
 
 ### Testing Philosophy

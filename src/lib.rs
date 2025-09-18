@@ -10,7 +10,7 @@ pub mod storage;
 pub mod tools;
 pub mod utils;
 
-pub use crate::core::{reducer::Reducer, reference_selector::ReferenceSelector};
+pub use crate::core::{reducer::Reducer, reference_selector::ReferenceSelectorImpl};
 
 use thiserror::Error;
 

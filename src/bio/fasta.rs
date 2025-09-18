@@ -30,58 +30,155 @@ fn parse_header(input: &[u8]) -> IResult<&[u8], (&str, Option<&str>)> {
 }
 
 /// Parse sequence lines until next header or EOF
-fn parse_sequence(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
+fn parse_sequence(input: &[u8]) -> IResult<&[u8], (Vec<u8>, Option<String>)> {
     let mut sequence = Vec::new();
     let mut remaining = input;
-    
+    let mut continuation_lines = Vec::new();
+    let mut line_num = 0;
+
     while !remaining.is_empty() && remaining[0] != b'>' {
-        // Parse a line of sequence data
+        // Parse a line
         let (rest, line) = take_till::<_, _, nom::error::Error<_>>(|c: u8| c == b'\n' || c == b'\r')(remaining)?;
         let (rest, _) = opt(line_ending)(rest)?;
-        
-        // Add non-whitespace characters to sequence
+
+        let line_str = std::str::from_utf8(line).unwrap_or("");
+
+        // First few lines might be wrapped header continuations
+        // Look for UniProt-style metadata patterns
+        if line_num < 3 && line.len() > 0 {
+            // Check if line contains metadata patterns
+            let has_metadata = line_str.contains("OX=") || line_str.contains("OS=") ||
+                               line_str.contains("GN=") || line_str.contains("PE=") ||
+                               line_str.contains("SV=");
+
+            // Check if line starts with a digit followed by space (like "3 SV=")
+            let starts_with_digit_space = line.len() >= 2 &&
+                                          line[0].is_ascii_digit() &&
+                                          line[1] == b' ';
+
+            if has_metadata || starts_with_digit_space {
+                // This looks like metadata continuation
+                if starts_with_digit_space && line_str.contains("SV=") {
+                    // Handle "3 SV=1SEQUENCE..." case
+                    if let Some(sv_pos) = line_str.find("SV=") {
+                        // Find where the version number ends (usually 1 digit after SV=)
+                        let version_end = sv_pos + 3 + // "SV="
+                            line_str[sv_pos + 3..]
+                                .chars()
+                                .take_while(|c| c.is_ascii_digit())
+                                .count();
+
+                        let metadata_part = &line_str[..version_end];
+                        continuation_lines.push(metadata_part.to_string());
+
+                        // The rest is sequence data
+                        if version_end < line.len() {
+                            for &c in &line[version_end..] {
+                                if !c.is_ascii_whitespace() && c != b'=' {
+                                    sequence.push(c.to_ascii_uppercase());
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Full line is metadata
+                    continuation_lines.push(line_str.to_string());
+                }
+                line_num += 1;
+                remaining = rest;
+                continue;
+            }
+        }
+
+        // Regular sequence line
         for &c in line {
             if !c.is_ascii_whitespace() {
                 sequence.push(c.to_ascii_uppercase());
             }
         }
-        
+
+        line_num += 1;
         remaining = rest;
     }
-    
-    Ok((remaining, sequence))
+
+    let continuation_desc = if !continuation_lines.is_empty() {
+        Some(continuation_lines.join(" "))
+    } else {
+        None
+    };
+
+    Ok((remaining, (sequence, continuation_desc)))
 }
 
 /// Parse a single FASTA record
 fn parse_record(input: &[u8]) -> IResult<&[u8], Sequence> {
     let (input, (id, description)) = parse_header(input)?;
-    let (input, sequence) = parse_sequence(input)?;
-    
+    let (input, (sequence, continuation_desc)) = parse_sequence(input)?;
+
     let mut seq = Sequence::new(id.to_string(), sequence);
-    if let Some(desc) = description {
-        seq = seq.with_description(desc.to_string());
-    }
-    
-    // Extract taxon ID if present in description
-    if let Some(desc) = &seq.description {
-        if let Some(taxon) = extract_taxon_id(desc) {
-            seq = seq.with_taxon(taxon);
+
+    // Combine description with continuation if present
+    let full_desc = match (description, continuation_desc.as_deref()) {
+        (Some(desc), Some(cont)) => Some(format!("{} {}", desc, cont)),
+        (Some(desc), None) => Some(desc.to_string()),
+        (None, Some(cont)) => Some(cont.to_string()),
+        (None, None) => None,
+    };
+
+    if let Some(desc) = full_desc {
+        seq = seq.with_description(desc.clone());
+
+        // Extract taxon ID from the full description
+        if let Some(taxon) = extract_taxon_id(&desc) {
+            // Only use non-zero taxon IDs
+            if taxon > 0 {
+                seq = seq.with_taxon(taxon);
+            }
         }
     }
-    
+
     Ok((input, seq))
 }
 
 /// Extract taxon ID from description (handles various formats)
 fn extract_taxon_id(description: &str) -> Option<u32> {
-    // Try common patterns: OX=12345, TaxID=12345, taxon:12345
+    // First check for TaxID - if it's non-zero, use it
+    if let Some(pos) = description.find("TaxID=") {
+        let start = pos + "TaxID=".len();
+        let taxon_str: String = description[start..]
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+
+        if let Ok(taxon) = taxon_str.parse::<u32>() {
+            if taxon > 0 {
+                return Some(taxon);
+            }
+            // TaxID=0, fall through to check OX=
+        }
+    }
+
+    // Try OX= (UniProt organism taxon) as priority fallback
+    if let Some(pos) = description.find("OX=") {
+        let start = pos + "OX=".len();
+        let taxon_str: String = description[start..]
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+
+        if let Ok(taxon) = taxon_str.parse::<u32>() {
+            if taxon > 0 {
+                return Some(taxon);
+            }
+        }
+    }
+
+    // Try other patterns
     let patterns = [
-        ("OX=", ""),
-        ("TaxID=", ""),
         ("taxon:", ""),
         ("tax_id=", ""),
     ];
-    
+
     for (prefix, _) in patterns {
         if let Some(pos) = description.find(prefix) {
             let start = pos + prefix.len();
@@ -89,9 +186,11 @@ fn extract_taxon_id(description: &str) -> Option<u32> {
                 .chars()
                 .take_while(|c| c.is_ascii_digit())
                 .collect();
-            
+
             if let Ok(taxon) = taxon_str.parse::<u32>() {
-                return Some(taxon);
+                if taxon > 0 {
+                    return Some(taxon);
+                }
             }
         }
     }
@@ -126,13 +225,66 @@ pub fn parse_fasta_from_bytes(data: &[u8]) -> Result<Vec<Sequence>, TalariaError
         let (rest, (id, description)) = parse_header(remaining)
             .map_err(|_| TalariaError::Parse("Failed to parse FASTA header".to_string()))?;
 
-        // Parse sequence
-        let (rest, seq_data) = parse_sequence(rest)
+        // Check if the description contains embedded sequence (like "SV=1ACGTACGT")
+        let mut embedded_seq = Vec::new();
+        let final_description = if let Some(desc) = description {
+            let desc_str = desc.to_string();
+            // Look for patterns like SV=XSEQUENCE where X is a digit and SEQUENCE is uppercase letters
+            if let Some(sv_pos) = desc_str.find("SV=") {
+                let after_sv = &desc_str[sv_pos + 3..];
+                // Find where digits end and potential sequence begins
+                let digit_end = after_sv.chars().take_while(|c| c.is_ascii_digit()).count();
+                if digit_end > 0 && digit_end < after_sv.len() {
+                    let potential_seq = &after_sv[digit_end..];
+                    // Check if the rest looks like a sequence (all uppercase letters)
+                    if potential_seq.chars().all(|c| c.is_ascii_uppercase()) {
+                        // Split the description and sequence
+                        embedded_seq = potential_seq.as_bytes().to_vec();
+                        // Keep the description up to and including SV=X
+                        Some(desc_str[..sv_pos + 3 + digit_end].to_string())
+                    } else {
+                        Some(desc_str)
+                    }
+                } else {
+                    Some(desc_str)
+                }
+            } else {
+                Some(desc_str)
+            }
+        } else {
+            None
+        };
+
+        // Parse sequence from next lines
+        let (rest, (mut seq_data, continuation_desc)) = parse_sequence(rest)
             .map_err(|_| TalariaError::Parse("Failed to parse FASTA sequence".to_string()))?;
 
+        // If we found embedded sequence in the header, prepend it
+        if !embedded_seq.is_empty() {
+            embedded_seq.extend(seq_data);
+            seq_data = embedded_seq;
+        }
+
         let mut seq = Sequence::new(id.to_string(), seq_data);
-        if let Some(desc) = description {
-            seq.description = Some(desc.to_string());
+
+        // Combine description with continuation if present
+        let full_desc = match (final_description.as_deref(), continuation_desc.as_deref()) {
+            (Some(desc), Some(cont)) => Some(format!("{} {}", desc, cont)),
+            (Some(desc), None) => Some(desc.to_string()),
+            (None, Some(cont)) => Some(cont.to_string()),
+            (None, None) => None,
+        };
+
+        if let Some(desc) = full_desc {
+            seq.description = Some(desc.clone());
+
+            // Extract taxon ID from the full description
+            if let Some(taxon) = extract_taxon_id(&desc) {
+                // Only use non-zero taxon IDs
+                if taxon > 0 {
+                    seq = seq.with_taxon(taxon);
+                }
+            }
         }
         sequences.push(seq);
 
@@ -324,5 +476,67 @@ mod tests {
         assert_eq!(extract_taxon_id("TaxID=12345"), Some(12345));
         assert_eq!(extract_taxon_id("taxon:98765"), Some(98765));
         assert_eq!(extract_taxon_id("No taxon here"), None);
+    }
+
+    #[test]
+    fn test_extract_taxon_id_with_zero_fallback() {
+        // TaxID=0 should fall back to OX= field
+        assert_eq!(extract_taxon_id("TaxID=0 OX=666"), Some(666));
+        assert_eq!(extract_taxon_id("Something TaxID=0 more text OX=9606 end"), Some(9606));
+
+        // TaxID=0 with no OX= should return None (not 0)
+        assert_eq!(extract_taxon_id("TaxID=0"), None);
+
+        // Non-zero TaxID should be used even if OX= exists
+        assert_eq!(extract_taxon_id("TaxID=123 OX=456"), Some(123));
+    }
+
+    #[test]
+    fn test_parse_wrapped_header() {
+        // Test wrapped header with continuation line
+        let input = b">tr|A0A0H6|A0A0H6_VIBCL\nFatty acid oxidation OS=Vibrio OX=666\nMKLTF";
+        let result = parse_fasta_from_bytes(input).unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, "tr|A0A0H6|A0A0H6_VIBCL");
+        assert!(result[0].description.as_ref().unwrap().contains("Fatty acid oxidation"));
+        assert_eq!(result[0].taxon_id, Some(666));
+        assert_eq!(result[0].sequence, b"MKLTF");
+    }
+
+    #[test]
+    fn test_parse_metadata_bleeding() {
+        // Test SV=1SEQUENCE format where metadata bleeds into sequence
+        let input = b">test PE=1 SV=1ACGTACGT\n";
+        let result = parse_fasta_from_bytes(input).unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(String::from_utf8(result[0].sequence.clone()).unwrap(), "ACGTACGT");
+        assert!(result[0].description.as_ref().unwrap().contains("SV=1"));
+    }
+
+    #[test]
+    fn test_parse_sequence_with_digit_space() {
+        // Test "3 SV=1" format - parse_sequence expects input after the header
+        let input = b"3 SV=1MKLTFFF\n";
+        let (_, (sequence, continuation)) = parse_sequence(input).unwrap();
+
+        assert!(continuation.is_some());
+        assert!(continuation.as_ref().unwrap().contains("3 SV=1"));
+        assert_eq!(sequence, b"MKLTFFF");
+    }
+
+    #[test]
+    fn test_parse_multiple_records() {
+        let input = b">seq1 OX=123\nACGT\n>seq2 TaxID=456\nTGCA\n>seq3\nAAAA\n";
+        let result = parse_fasta_from_bytes(input).unwrap();
+
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].id, "seq1");
+        assert_eq!(result[0].taxon_id, Some(123));
+        assert_eq!(result[1].id, "seq2");
+        assert_eq!(result[1].taxon_id, Some(456));
+        assert_eq!(result[2].id, "seq3");
+        assert_eq!(result[2].taxon_id, None);
     }
 }

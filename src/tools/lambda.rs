@@ -16,6 +16,7 @@ fn stream_output_with_progress<R: Read + Send + 'static>(
     mut reader: R,
     prefix: &'static str,
     progress_counter: Arc<AtomicUsize>,
+    progress_bar: Option<indicatif::ProgressBar>,
 ) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         let lambda_verbose = std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok();
@@ -52,6 +53,10 @@ fn stream_output_with_progress<R: Read + Send + 'static>(
                                 if let Some(num) = current_line.split_whitespace()
                                     .find_map(|s| s.parse::<usize>().ok()) {
                                     progress_counter.store(num, Ordering::Relaxed);
+                                    // Update progress bar if available
+                                    if let Some(ref pb) = progress_bar {
+                                        pb.set_position(num as u64);
+                                    }
                                 }
                             }
                             current_line.clear();
@@ -142,25 +147,41 @@ impl LambdaAligner {
     fn find_taxonomy_files() -> (Option<PathBuf>, Option<PathBuf>) {
         use crate::core::paths;
 
-        // First check TALARIA_TAXONOMY_DIR or default taxonomy location
-        let taxonomy_dir = paths::talaria_taxonomy_dir();
-        let tax_dump_dir = taxonomy_dir.join("taxdump");
+        // Check unified taxonomy location
+        let taxonomy_dir = paths::talaria_taxonomy_current_dir();
+
+        // Resolve symlink to actual directory to ensure we find files
+        let taxonomy_dir = taxonomy_dir.canonicalize().unwrap_or(taxonomy_dir.clone());
+
+        let tax_dump_dir = taxonomy_dir.join("tree");  // Changed from "taxdump" to "tree"
+        let mappings_dir = taxonomy_dir.join("mappings");
+
+        // Debug output if verbose mode
+        let lambda_verbose = std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok();
+        if lambda_verbose {
+            eprintln!("LAMBDA taxonomy search:");
+            eprintln!("  Base dir: {:?}", taxonomy_dir);
+            eprintln!("  Tree dir: {:?}", tax_dump_dir);
+            eprintln!("  Tree dir exists: {}", tax_dump_dir.exists());
+            eprintln!("  nodes.dmp: {}", tax_dump_dir.join("nodes.dmp").exists());
+            eprintln!("  names.dmp: {}", tax_dump_dir.join("names.dmp").exists());
+        }
 
         // Check if we have the required taxonomy dump files
         if tax_dump_dir.join("nodes.dmp").exists() &&
            tax_dump_dir.join("names.dmp").exists() {
 
-            // Look for idmapping files - PRIORITIZE NCBI format which LAMBDA expects
+            // Look for idmapping files in mappings directory
             // Skip huge UniProt idmapping files unless explicitly enabled
             let use_large_idmapping = std::env::var("TALARIA_USE_LARGE_IDMAPPING").is_ok();
 
             let mut idmap_candidates = vec![
                 // PRIORITIZE NCBI format (what LAMBDA expects)
-                // Check in ncbi subdirectory (consistent with uniprot/ structure)
-                taxonomy_dir.join("ncbi/prot.accession2taxid.gz"),
-                taxonomy_dir.join("ncbi/prot.accession2taxid"),
-                taxonomy_dir.join("ncbi/nucl.accession2taxid.gz"),
-                taxonomy_dir.join("ncbi/nucl.accession2taxid"),
+                // Using simplified naming without "ncbi_" prefix
+                mappings_dir.join("prot.accession2taxid.gz"),
+                mappings_dir.join("prot.accession2taxid"),
+                mappings_dir.join("nucl.accession2taxid.gz"),
+                mappings_dir.join("nucl.accession2taxid"),
             ];
 
             // Only check for huge UniProt files if explicitly enabled
@@ -168,8 +189,8 @@ impl LambdaAligner {
             if use_large_idmapping {
                 println!("  Warning: Large UniProt idmapping enabled (may be slow)");
                 idmap_candidates.extend(vec![
-                    taxonomy_dir.join("uniprot/idmapping.dat.gz"),
-                    taxonomy_dir.join("uniprot/idmapping.dat"),
+                    mappings_dir.join("uniprot_idmapping.dat.gz"),
+                    mappings_dir.join("uniprot_idmapping.dat"),
                 ]);
             };
 
@@ -179,68 +200,24 @@ impl LambdaAligner {
             if let Some(ref idmap) = idmap_path {
                 println!("  Found accession mapping: {:?}", idmap);
             } else {
-                if !use_large_idmapping && taxonomy_dir.join("uniprot/idmapping.dat.gz").exists() {
+                if !use_large_idmapping && mappings_dir.join("uniprot_idmapping.dat.gz").exists() {
                     println!("  Note: Large UniProt idmapping.dat.gz found but skipped (24GB file causes LAMBDA to hang)");
                     println!("  To use it anyway, set TALARIA_USE_LARGE_IDMAPPING=1 (not recommended)");
-                    println!("  Using NCBI prot.accession2taxid.gz is recommended");
+                    println!("  Using prot.accession2taxid.gz is recommended");
                 } else {
                     println!("  Note: No accession2taxid mapping file found");
-                    println!("  Expected location: {:?}", taxonomy_dir.join("ncbi/prot.accession2taxid.gz"));
-                    println!("  (Consistent with uniprot/ subdirectory structure)");
+                    println!("  Expected location: {:?}", mappings_dir.join("prot.accession2taxid.gz"));
                 }
             }
 
             return (idmap_path, Some(tax_dump_dir));
         }
 
-        // Fall back to check databases directory structure
-        let db_base = paths::talaria_databases_dir();
-
-        // Check alternative locations
-        let alt_tax_dump = db_base.join("ncbi/taxonomy/taxdump");
-        if alt_tax_dump.join("nodes.dmp").exists() &&
-           alt_tax_dump.join("names.dmp").exists() {
-
-            // Look for idmapping in various locations
-            let acc_tax_map = Self::find_latest_file(&db_base.join("uniprot"), "idmapping.dat.gz")
-                .or_else(|| Self::find_latest_file(&db_base.join("ncbi"), "prot.accession2taxid.gz"));
-
-            return (acc_tax_map, Some(alt_tax_dump));
-        }
+        // No fallback needed - all taxonomy is in unified location
 
         // No taxonomy found
         (None, None)
     }
-
-    /// Find the latest version of a file in a versioned directory structure
-    fn find_latest_file(base_dir: &Path, filename: &str) -> Option<PathBuf> {
-        if !base_dir.exists() {
-            return None;
-        }
-
-        // Find version directories (YYYY-MM-DD format)
-        let mut versions: Vec<_> = fs::read_dir(base_dir).ok()?
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| {
-                entry.file_type().ok().map(|t| t.is_dir()).unwrap_or(false) &&
-                !entry.file_name().to_string_lossy().starts_with('.')
-            })
-            .collect();
-
-        // Sort by name (which is date) to get the latest
-        versions.sort_by_key(|e| e.file_name());
-
-        // Check the latest version for the file
-        if let Some(latest) = versions.last() {
-            let file_path = latest.path().join(filename);
-            if file_path.exists() {
-                return Some(file_path);
-            }
-        }
-
-        None
-    }
-
 
     /// Extract accession numbers from a FASTA file
     #[allow(dead_code)]
@@ -968,22 +945,73 @@ impl LambdaAligner {
         let mut child = cmd.spawn()
             .context("Failed to start LAMBDA mkindexp")?;
 
+        let child_pid = child.id();
+        println!("  LAMBDA process started (PID: {})", child_pid);
+
         // Stream both stdout and stderr in parallel using byte-based reading
         // This properly handles carriage returns for progress updates
+
+        // Create shared buffer to capture stderr for error reporting
+        let stderr_buffer = Arc::new(Mutex::new(String::new()));
+        let stderr_buffer_clone = stderr_buffer.clone();
 
         // Handle stderr in a thread
         let progress_counter = Arc::new(AtomicUsize::new(0));
         let stderr_handle = if let Some(stderr) = child.stderr.take() {
-            Some(stream_output_with_progress(stderr, "LAMBDA [stderr]", progress_counter.clone()))
+            Some(std::thread::spawn(move || {
+                let mut reader = BufReader::new(stderr);
+                let mut line = String::new();
+                while reader.read_line(&mut line).unwrap_or(0) > 0 {
+                    // Capture stderr for error reporting
+                    if let Ok(mut buffer) = stderr_buffer_clone.lock() {
+                        buffer.push_str(&line);
+                    }
+                    // Also print if verbose
+                    if std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok() {
+                        eprint!("LAMBDA [stderr]: {}", line);
+                    }
+                    line.clear();
+                }
+            }))
         } else {
             None
         };
 
         // Handle stdout in a thread
         let stdout_handle = if let Some(stdout) = child.stdout.take() {
-            Some(stream_output_with_progress(stdout, "LAMBDA [stdout]", progress_counter))
+            Some(stream_output_with_progress(stdout, "LAMBDA [stdout]", progress_counter, None))
         } else {
             None
+        };
+
+        // Set up timeout (10 minutes for indexing by default, configurable via env var)
+        let timeout_seconds = std::env::var("TALARIA_LAMBDA_TIMEOUT")
+            .unwrap_or_else(|_| "600".to_string())
+            .parse::<u64>()
+            .unwrap_or(600);
+
+        let start_time = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(timeout_seconds);
+
+        // Wait for process with timeout
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) => {
+                    // Still running
+                    if start_time.elapsed() > timeout {
+                        eprintln!("\n⚠ LAMBDA indexing timeout after {} seconds", timeout_seconds);
+                        eprintln!("  Killing LAMBDA process (PID: {})", child_pid);
+                        child.kill().ok();
+                        let _ = child.wait();
+                        anyhow::bail!("LAMBDA indexing timed out after {} seconds. Consider:\n  1. Increasing timeout with TALARIA_LAMBDA_TIMEOUT env var\n  2. Using smaller input or batch mode\n  3. Checking system resources", timeout_seconds);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                Err(e) => {
+                    anyhow::bail!("Failed to check LAMBDA process status: {}", e);
+                }
+            }
         };
 
         // Wait for threads to finish
@@ -994,16 +1022,108 @@ impl LambdaAligner {
             handle.join().ok();
         }
 
-        let status = child.wait()
-            .context("Failed to wait for LAMBDA index creation")?;
-
         if !status.success() {
+            // Capture stderr output for error message
+            let stderr_output = stderr_buffer.lock()
+                .map(|s| s.clone())
+                .unwrap_or_else(|_| String::new());
+
             // Try to provide more helpful error message
-            let mut error_msg = format!("LAMBDA indexing failed with exit code: {:?}", status.code());
+            let mut error_msg = if let Some(code) = status.code() {
+                format!("LAMBDA indexing failed with exit code: {}", code)
+            } else {
+                // Process was killed by signal
+                #[cfg(unix)]
+                {
+                    use std::os::unix::process::ExitStatusExt;
+                    if let Some(signal) = status.signal() {
+                        match signal {
+                            9 => "LAMBDA process was killed (SIGKILL) - likely out of memory or killed by system".to_string(),
+                            15 => "LAMBDA process was terminated (SIGTERM)".to_string(),
+                            11 => "LAMBDA process crashed (SIGSEGV) - segmentation fault".to_string(),
+                            6 => "LAMBDA process aborted (SIGABRT)".to_string(),
+                            _ => format!("LAMBDA process killed by signal {}", signal),
+                        }
+                    } else {
+                        "LAMBDA process terminated abnormally".to_string()
+                    }
+                }
+                #[cfg(not(unix))]
+                {
+                    "LAMBDA process terminated abnormally (no exit code)".to_string()
+                }
+            };
+
+            // Add memory estimation
+            let input_size = fs::metadata(fasta_path).map(|m| m.len()).unwrap_or(0);
+            let estimated_memory_mb = (input_size / 1_000_000) * 10; // Rough estimate: 10x input size
+            error_msg.push_str(&format!("\n\nInput file size: {} MB", input_size / 1_000_000));
+            error_msg.push_str(&format!("\nEstimated memory needed: ~{} MB", estimated_memory_mb));
+
+            // Check available memory
+            #[cfg(target_os = "linux")]
+            {
+                if let Ok(meminfo) = fs::read_to_string("/proc/meminfo") {
+                    if let Some(line) = meminfo.lines().find(|l| l.starts_with("MemAvailable:")) {
+                        if let Some(kb_str) = line.split_whitespace().nth(1) {
+                            if let Ok(kb) = kb_str.parse::<u64>() {
+                                let available_mb = kb / 1024;
+                                error_msg.push_str(&format!("\nAvailable memory: {} MB", available_mb));
+                                if available_mb < estimated_memory_mb {
+                                    error_msg.push_str("\n\nâš  INSUFFICIENT MEMORY: Consider:");
+                                    error_msg.push_str("\n  1. Using --batch mode with smaller batch size");
+                                    error_msg.push_str("\n  2. Reducing input size with stricter filtering");
+                                    error_msg.push_str("\n  3. Running on a machine with more RAM");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             if !has_tax_in_sequences && has_taxdump {
-                error_msg.push_str("\n\nThis may be because sequences lack TaxID tags but taxonomy was requested.");
+                error_msg.push_str("\n\nAdditional issue: Sequences lack TaxID tags but taxonomy was requested.");
                 error_msg.push_str("\nConsider downloading idmapping files or using sequences with TaxID tags.");
+            }
+
+            // Add stderr output if available
+            if !stderr_output.is_empty() {
+                error_msg.push_str("\n\nLAMBDA stderr output:\n");
+                // Limit stderr output to last 20 lines to avoid huge error messages
+                let lines: Vec<&str> = stderr_output.lines().collect();
+                let start = if lines.len() > 20 { lines.len() - 20 } else { 0 };
+                for line in &lines[start..] {
+                    error_msg.push_str(&format!("  {}\n", line));
+                }
+                if lines.len() > 20 {
+                    error_msg.push_str(&format!("  ... ({} more lines)\n", lines.len() - 20));
+                }
+            }
+
+            // Add information about the command that failed
+            error_msg.push_str(&format!("\n\nFailed command: {:?}", cmd.get_program()));
+            error_msg.push_str(&format!("\nWorking directory: {:?}", self.get_temp_dir()));
+
+            // Write full error log to workspace if available
+            if let Some(workspace) = &self.workspace {
+                let error_log_path = workspace.lock().unwrap().get_file_path("lambda_index_error", "log");
+                let full_error = format!(
+                    "LAMBDA mkindexp error log\n\
+                    ========================\n\
+                    Exit code: {:?}\n\
+                    Command: {:?}\n\
+                    Working dir: {:?}\n\n\
+                    Full stderr:\n{}\n",
+                    status.code(),
+                    cmd.get_program(),
+                    self.get_temp_dir(),
+                    stderr_output
+                );
+                if let Err(e) = std::fs::write(&error_log_path, full_error) {
+                    eprintln!("Warning: Could not write error log: {}", e);
+                } else {
+                    error_msg.push_str(&format!("\nFull error log saved to: {:?}", error_log_path));
+                }
             }
 
             anyhow::bail!(error_msg);
@@ -1017,6 +1137,17 @@ impl LambdaAligner {
         Ok(index_path)
     }
 
+    /// Count sequences in a FASTA file
+    fn count_sequences(path: &Path) -> Option<usize> {
+        let file = fs::File::open(path).ok()?;
+        let reader = std::io::BufReader::new(file);
+        let count = reader.lines()
+            .filter_map(Result::ok)
+            .filter(|line| line.starts_with('>'))
+            .count();
+        Some(count)
+    }
+
     /// Run a LAMBDA search with given query and index
     fn run_lambda_search(&mut self, query_path: &Path, index_path: &Path, output_path: &Path) -> Result<()> {
         // Clean up any existing output file to avoid LAMBDA error
@@ -1024,7 +1155,9 @@ impl LambdaAligner {
             fs::remove_file(output_path).ok();
         }
 
-        println!("Running LAMBDA alignment (this may take a few minutes for large datasets)...");
+        // Count query sequences to show progress
+        let query_count = Self::count_sequences(query_path).unwrap_or(0);
+        println!("Running LAMBDA alignment on {} queries (this may take a few minutes)...", query_count);
 
         let mut cmd = Command::new(&self.binary_path);
         cmd.arg("searchp")
@@ -1063,12 +1196,29 @@ impl LambdaAligner {
         cmd.stderr(Stdio::piped());
 
         use crate::cli::output::*;
+        use indicatif::{ProgressBar, ProgressStyle};
+
         action("Starting LAMBDA search...");
         let mut child = cmd.spawn()
             .context("Failed to start LAMBDA searchp")?;
 
         let pid = child.id();
         info(&format!("LAMBDA process PID: {} (monitor with: ps aux | grep {})", pid, pid));
+
+        // Create progress bar for query processing
+        let pb = if query_count > 0 && !std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok() {
+            let progress = ProgressBar::new(query_count as u64);
+            progress.set_style(
+                ProgressStyle::default_bar()
+                    .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} queries processed ({per_sec})")
+                    .unwrap()
+                    .progress_chars("##-"),
+            );
+            progress.set_position(0);
+            Some(progress)
+        } else {
+            None
+        };
 
         // Start memory monitoring thread if debug mode
         let monitor_handle = if std::env::var("TALARIA_DEBUG").is_ok() {
@@ -1111,15 +1261,17 @@ impl LambdaAligner {
 
         // Handle stderr in a thread
         let progress_counter = Arc::new(AtomicUsize::new(0));
+        let pb_clone = pb.clone();
         let stderr_handle = if let Some(stderr) = child.stderr.take() {
-            Some(stream_output_with_progress(stderr, "LAMBDA [stderr]", progress_counter.clone()))
+            Some(stream_output_with_progress(stderr, "LAMBDA [stderr]", progress_counter.clone(), pb_clone))
         } else {
             None
         };
 
         // Handle stdout in a thread
+        let pb_clone = pb.clone();
         let stdout_handle = if let Some(stdout) = child.stdout.take() {
-            Some(stream_output_with_progress(stdout, "LAMBDA [stdout]", progress_counter))
+            Some(stream_output_with_progress(stdout, "LAMBDA [stdout]", progress_counter, pb_clone))
         } else {
             None
         };
@@ -1130,6 +1282,11 @@ impl LambdaAligner {
         }
         if let Some(handle) = stdout_handle {
             handle.join().ok();
+        }
+
+        // Finish progress bar
+        if let Some(progress) = pb {
+            progress.finish_and_clear();
         }
 
         let status = child.wait()
@@ -1149,13 +1306,35 @@ impl LambdaAligner {
             }
 
             // Provide detailed exit information
-            let exit_detail = match status.code() {
-                Some(137) => "SIGKILL (code 137) - likely killed by OOM killer or ulimit".to_string(),
-                Some(139) => "SIGSEGV (code 139) - segmentation fault in LAMBDA".to_string(),
-                Some(134) => "SIGABRT (code 134) - LAMBDA aborted".to_string(),
-                Some(1) => "General error (code 1) - check LAMBDA stderr output above".to_string(),
-                Some(code) => format!("Exit code {} - check stderr output above", code),
-                None => "Killed by signal (no exit code) - likely SIGKILL from OOM killer".to_string(),
+            let exit_detail = if let Some(code) = status.code() {
+                match code {
+                    137 => "SIGKILL (code 137) - likely killed by OOM killer or ulimit".to_string(),
+                    139 => "SIGSEGV (code 139) - segmentation fault in LAMBDA".to_string(),
+                    134 => "SIGABRT (code 134) - LAMBDA aborted".to_string(),
+                    1 => "General error (code 1) - check LAMBDA stderr output above".to_string(),
+                    _ => format!("Exit code {} - check stderr output above", code),
+                }
+            } else {
+                // Process was killed by signal
+                #[cfg(unix)]
+                {
+                    use std::os::unix::process::ExitStatusExt;
+                    if let Some(signal) = status.signal() {
+                        match signal {
+                            9 => "LAMBDA process was killed (SIGKILL) - likely out of memory".to_string(),
+                            15 => "LAMBDA process was terminated (SIGTERM)".to_string(),
+                            11 => "LAMBDA process crashed (SIGSEGV) - segmentation fault".to_string(),
+                            6 => "LAMBDA process aborted (SIGABRT)".to_string(),
+                            _ => format!("LAMBDA process killed by signal {}", signal),
+                        }
+                    } else {
+                        "LAMBDA process terminated abnormally".to_string()
+                    }
+                }
+                #[cfg(not(unix))]
+                {
+                    "LAMBDA process terminated abnormally (no exit code)".to_string()
+                }
             };
 
             // Mark as failed for cleanup decision
@@ -1598,22 +1777,21 @@ impl LambdaAligner {
 
             let result = AlignmentResult {
                 query_id: parts[0].to_string(),
-                subject_id: parts[1].to_string(),
+                reference_id: parts[1].to_string(),
                 identity: parts[2].parse().unwrap_or(0.0),
                 alignment_length: parts[3].parse().unwrap_or(0),
                 mismatches: parts[4].parse().unwrap_or(0),
                 gap_opens: parts[5].parse().unwrap_or(0),
                 query_start: parts[6].parse().unwrap_or(0),
                 query_end: parts[7].parse().unwrap_or(0),
-                subject_start: parts[8].parse().unwrap_or(0),
-                subject_end: parts[9].parse().unwrap_or(0),
-                evalue: parts[10].parse().unwrap_or(1.0),
+                ref_start: parts[8].parse().unwrap_or(0),
+                ref_end: parts[9].parse().unwrap_or(0),
+                e_value: parts[10].parse().unwrap_or(1.0),
                 bit_score: parts[11].parse().unwrap_or(0.0),
-                taxon_id: None,  // TODO: Parse from staxids column if available
             };
 
             // Skip self-alignments
-            if result.query_id != result.subject_id {
+            if result.query_id != result.reference_id {
                 results.push(result);
             }
         }
@@ -1765,8 +1943,8 @@ pub fn process_alignment_results(alignments: Vec<AlignmentResult>) -> AlignmentG
     for alignment in alignments {
         graph.add_edge(
             alignment.query_id.clone(),
-            alignment.subject_id.clone(),
-            alignment.identity,
+            alignment.reference_id.clone(),
+            alignment.identity as f64,
             alignment.alignment_length,
         );
     }
@@ -1821,7 +1999,6 @@ impl AlignmentGraph {
     }
 }
 
-// Implement the Aligner trait for LambdaAligner
 impl Aligner for LambdaAligner {
     fn search(
         &mut self,
@@ -1832,89 +2009,33 @@ impl Aligner for LambdaAligner {
         self.search(query, reference)
     }
 
-    fn search_batched(
-        &mut self,
-        query: &[Sequence],
-        reference: &[Sequence],
-        batch_size: usize,
-    ) -> Result<Vec<AlignmentResult>> {
-        // Use the existing search_batched method
-        self.search_batched(query, reference, batch_size)
-    }
-
-    fn build_index(
-        &mut self,
-        reference_path: &Path,
-        index_path: &Path,
-    ) -> Result<()> {
-        // Run lambda3 mkindexp to build index
-        println!("Building LAMBDA index...");
-
-        let mut cmd = Command::new(&self.binary_path);
-        cmd.arg("mkindexp")
-            .arg("-d")
-            .arg(reference_path)
-            .arg("-i")
-            .arg(index_path);
-
-        // Add taxonomy if available
-        if let Some(ref tax_dir) = self.tax_dump_dir {
-            cmd.arg("-t").arg(tax_dir);
-        }
-        if let Some(ref acc_map) = self.acc_tax_map {
-            cmd.arg("-m").arg(acc_map);
-        }
-
-        let output = cmd.output()
-            .context("Failed to run lambda3 mkindexp")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("LAMBDA index building failed: {}", stderr);
-        }
-
-        println!("LAMBDA index built successfully at {:?}", index_path);
-        Ok(())
-    }
-
-    fn verify_installation(&self) -> Result<()> {
-        // Check if the binary exists and is executable
-        if !self.binary_path.exists() {
-            anyhow::bail!("LAMBDA binary not found at {:?}", self.binary_path);
-        }
-
-        // Try to run lambda3 --version to verify it works
+    fn version(&self) -> Result<String> {
+        // Get LAMBDA version
         let output = Command::new(&self.binary_path)
             .arg("--version")
             .output()
             .context("Failed to run LAMBDA --version")?;
 
-        if !output.status.success() {
-            anyhow::bail!("LAMBDA binary exists but failed to run")
-        }
-
-        Ok(())
+        let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok(version)
     }
 
-    fn supports_taxonomy(&self) -> bool {
-        // LAMBDA supports taxonomy if we have the required files
-        self.acc_tax_map.is_some() && self.tax_dump_dir.is_some()
+    fn is_available(&self) -> bool {
+        // Check if the binary exists and is executable
+        self.binary_path.exists() && self.binary_path.is_file()
     }
 
-    fn name(&self) -> &str {
-        "LAMBDA"
-    }
 
     fn recommended_batch_size(&self) -> usize {
         5000  // LAMBDA works well with batches of 5000 sequences
     }
 
     fn supports_protein(&self) -> bool {
-        true  // LAMBDA primarily supports protein sequences
+        true  // LAMBDA supports protein sequences
     }
 
     fn supports_nucleotide(&self) -> bool {
-        false  // LAMBDA is designed for protein sequences
+        true  // LAMBDA supports nucleotide sequences
     }
 }
 

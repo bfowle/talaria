@@ -37,22 +37,92 @@ pub struct ValidateArgs {
 /// Validate database reduction from CASG system
 fn validate_from_casg(_db_ref_str: &str, profile: String) -> Result<()> {
     use crate::casg::storage::CASGStorage;
+    use crate::casg::{StandardTemporalManifestValidator, ValidationOptions};
     use crate::cli::output::*;
+    use crate::utils::progress::create_spinner;
+    use crate::utils::format::format_bytes;
+
+    let pb = create_spinner("Initializing CASG storage...");
 
     // Initialize CASG storage
     let casg_path = crate::core::paths::talaria_databases_dir();
     let storage = CASGStorage::open(&casg_path)?;
 
+    pb.set_message("Loading reduction manifest...");
+
     // Get the reduction manifest for the profile
     let manifest = storage.get_reduction_by_profile(&profile)?
         .ok_or_else(|| anyhow::anyhow!("Reduction manifest not found for profile: {}", profile))?;
 
+    // Get the temporal manifest from the manifest file
+    let manifest_path = casg_path.join("manifest.json");
+    let temporal_manifest: crate::casg::types::TemporalManifest = if manifest_path.exists() {
+        let data = std::fs::read_to_string(&manifest_path)?;
+        serde_json::from_str(&data)?
+    } else {
+        anyhow::bail!("Temporal manifest not found at {:?}", manifest_path);
+    };
+
+    pb.set_message("Validating manifest integrity...");
+
+    // Create validator and validation options
+    let chunks_dir = casg_path.join("chunks");
+    let validator = StandardTemporalManifestValidator::new(chunks_dir);
+    let options = ValidationOptions {
+        verify_hashes: true,
+        check_storage: true,
+        verify_sizes: true,
+        check_overlaps: false,
+        check_metadata: true,
+        fail_fast: false,
+        max_chunks: 0, // Check all chunks
+    };
+
+    // Perform validation
+    use crate::casg::validator::TemporalManifestValidator;
+    let validation_result = futures::executor::block_on(
+        validator.validate(&temporal_manifest, options)
+    )?;
+
+    pb.finish_and_clear();
+
     // Display validation results as tree
-    success("Manifest loaded");
+    if validation_result.is_valid {
+        success("✓ Manifest validation successful");
+    } else {
+        error(&format!("✗ Manifest validation failed with {} errors", validation_result.errors.len()));
+    }
+
+    subsection_header("Validation Details");
+
     tree_item(false, "Reduction profile", Some(&profile));
     tree_item(false, "Reference chunks", Some(&manifest.reference_chunks.len().to_string()));
     tree_item(false, "Delta chunks", Some(&manifest.delta_chunks.len().to_string()));
-    tree_item(true, "Coverage", Some(&format!("{:.1}%", manifest.statistics.sequence_coverage * 100.0)));
+    tree_item(false, "Coverage", Some(&format!("{:.1}%", manifest.statistics.sequence_coverage * 100.0)));
+
+    // Validation statistics
+    tree_item(false, "Chunks validated", Some(&validation_result.stats.chunks_validated.to_string()));
+    tree_item(false, "Bytes validated", Some(&format_bytes(validation_result.stats.bytes_validated as u64)));
+    tree_item(false, "Chunks verified", Some(&validation_result.stats.chunks_verified.to_string()));
+    tree_item(true, "Validation time", Some(&format!("{}ms", validation_result.stats.validation_time_ms)));
+
+    // Show errors if any
+    if !validation_result.errors.is_empty() {
+        subsection_header("Validation Errors");
+        for (i, error) in validation_result.errors.iter().enumerate() {
+            let is_last = i == validation_result.errors.len() - 1;
+            tree_item(is_last, &format!("Error {}", i + 1), Some(&format!("{:?}", error)));
+        }
+    }
+
+    // Show warnings if any
+    if !validation_result.warnings.is_empty() {
+        subsection_header("Warnings");
+        for (i, warning) in validation_result.warnings.iter().enumerate() {
+            let is_last = i == validation_result.warnings.len() - 1;
+            tree_item(is_last, &format!("Warning {}", i + 1), Some(warning));
+        }
+    }
 
     Ok(())
 }
@@ -126,7 +196,7 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<()> {
     
     // Calculate coverage metrics
     pb.set_message("Calculating validation metrics...");
-    let validator = crate::core::validator::Validator::new();
+    let validator = crate::core::validator::ValidatorImpl::new();
     let metrics = validator.calculate_metrics(&original_seqs, &reduced_seqs, &deltas, original_size, reduced_size)?;
     
     // Compare alignment results if provided
@@ -172,9 +242,74 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<()> {
     }
 
     if let Some(report_path) = args.report {
-        let report = serde_json::to_string_pretty(&metrics)?;
-        std::fs::write(&report_path, report)?;
-        info(&format!("Detailed report saved to {:?}", report_path));
+        // Use Reporter trait based on file extension
+        use crate::report::{create_reporter_from_path};
+        use crate::report::traits::{ReportData, ReportSection, SectionContent, ReportStatistics, StatValue};
+
+        // Create report metadata
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("description".to_string(), format!("Validation report for {} sequences", metrics.total_sequences));
+        metadata.insert("footer".to_string(), "Generated by Talaria".to_string());
+
+        // Create statistics
+        let mut custom_stats = std::collections::HashMap::new();
+        custom_stats.insert("coverage".to_string(), StatValue::Float(metrics.sequence_coverage));
+        custom_stats.insert("status".to_string(), StatValue::String(
+            if metrics.sequence_coverage > 0.99 { "valid" } else { "partial" }.to_string()
+        ));
+
+        let statistics = ReportStatistics {
+            total_sequences: metrics.total_sequences,
+            total_size: metrics.original_file_size as usize,
+            processing_time_ms: 0,
+            custom_stats,
+        };
+
+        // Create report data
+        let report_data = ReportData {
+            title: "Talaria Validation Report".to_string(),
+            timestamp: chrono::Utc::now(),
+            sections: vec![
+                ReportSection {
+                    title: "Coverage Metrics".to_string(),
+                    content: SectionContent::Text(format!(
+                        "Sequence Coverage: {:.1}%\nTaxonomic Coverage: {:.1}%",
+                        metrics.sequence_coverage * 100.0,
+                        metrics.taxonomic_coverage * 100.0
+                    )),
+                    level: 2,
+                },
+                ReportSection {
+                    title: "Reduction Statistics".to_string(),
+                    content: SectionContent::Text(format!(
+                        "References: {}\nDeltas: {}\nTotal Original: {}\nReduction Ratio: {:.1}%",
+                        metrics.reference_count,
+                        metrics.child_count,
+                        metrics.total_sequences,
+                        (metrics.reference_count as f64 / metrics.total_sequences as f64) * 100.0
+                    )),
+                    level: 2,
+                },
+                ReportSection {
+                    title: "File Sizes".to_string(),
+                    content: SectionContent::Text(format!(
+                        "Original: {}\nReduced: {}\nCompression: {:.1}%",
+                        format_bytes(metrics.original_file_size),
+                        format_bytes(metrics.reduced_file_size),
+                        (1.0 - metrics.reduced_file_size as f64 / metrics.original_file_size as f64) * 100.0
+                    )),
+                    level: 2,
+                },
+            ],
+            metadata,
+            statistics,
+        };
+
+        let reporter = create_reporter_from_path(&report_path);
+        let report_content = reporter.generate(&report_data)?;
+        reporter.export(&report_content, &report_path)?;
+
+        info(&format!("Detailed report saved to {:?} ({})", report_path, reporter.name()));
     }
     
     Ok(())

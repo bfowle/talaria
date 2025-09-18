@@ -5,6 +5,27 @@ use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Digest};
 use std::fmt;
 
+// Custom serialization module for DateTime to handle MessagePack
+mod datetime_serde {
+    use chrono::{DateTime, Utc, TimeZone};
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(date: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_i64(date.timestamp())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let timestamp = i64::deserialize(deserializer)?;
+        Ok(Utc.timestamp_opt(timestamp, 0).single().unwrap_or_else(Utc::now))
+    }
+}
+
 /// SHA256 hash type
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct SHA256Hash(#[serde(with = "serde_bytes")] pub [u8; 32]);
@@ -41,6 +62,11 @@ impl SHA256Hash {
     pub fn zero() -> Self {
         Self([0u8; 32])
     }
+
+    /// Check if hash is zero (uninitialized)
+    pub fn is_zero(&self) -> bool {
+        self.0.iter().all(|&b| b == 0)
+    }
 }
 
 impl fmt::Display for SHA256Hash {
@@ -51,6 +77,51 @@ impl fmt::Display for SHA256Hash {
 
 /// Merkle hash alias
 pub type MerkleHash = SHA256Hash;
+
+/// Serialized representation of a Merkle tree for storage
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializedMerkleTree {
+    pub root_hash: MerkleHash,
+    pub node_count: usize,
+    #[serde(with = "serde_bytes")]
+    pub serialized_nodes: Vec<u8>,  // Compact binary representation
+}
+
+/// Bi-temporal coordinate for versioning
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BiTemporalCoordinate {
+    #[serde(with = "datetime_serde")]
+    pub sequence_time: DateTime<Utc>,
+    #[serde(with = "datetime_serde")]
+    pub taxonomy_time: DateTime<Utc>,
+}
+
+impl BiTemporalCoordinate {
+    /// Create a coordinate at a specific time (both dimensions)
+    pub fn at(time: DateTime<Utc>) -> Self {
+        Self {
+            sequence_time: time,
+            taxonomy_time: time,
+        }
+    }
+
+    /// Create a coordinate at current time
+    pub fn now() -> Self {
+        let now = Utc::now();
+        Self {
+            sequence_time: now,
+            taxonomy_time: now,
+        }
+    }
+
+    /// Create with separate times
+    pub fn new(sequence_time: DateTime<Utc>, taxonomy_time: DateTime<Utc>) -> Self {
+        Self {
+            sequence_time,
+            taxonomy_time,
+        }
+    }
+}
 
 /// Taxonomic identifier
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -109,19 +180,26 @@ pub enum DiscrepancyType {
     Invalid,           // Invalid taxon ID
 }
 
-/// Manifest for efficient update checking
+/// Manifest for efficient update checking with Merkle tree support
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemporalManifest {
     pub version: String,
+    #[serde(with = "datetime_serde")]
     pub created_at: DateTime<Utc>,
 
     /// Bi-temporal versioning
     pub sequence_version: String,
     pub taxonomy_version: String,
 
-    /// Merkle roots
+    /// Bi-temporal coordinate for this manifest
+    pub temporal_coordinate: Option<BiTemporalCoordinate>,
+
+    /// Merkle roots - these are now actual tree roots
     pub taxonomy_root: MerkleHash,
     pub sequence_root: MerkleHash,
+
+    /// Merkle tree for chunk verification
+    pub chunk_merkle_tree: Option<SerializedMerkleTree>,
 
     /// Reference to the taxonomy manifest used
     pub taxonomy_manifest_hash: SHA256Hash,
@@ -145,6 +223,7 @@ pub struct ChunkMetadata {
     pub size: usize,
     pub compressed_size: Option<usize>,
 }
+
 
 /// Merkle tree node
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -209,6 +288,7 @@ pub struct TemporalProof {
     pub sequence_proof: MerkleProof,       // Proves sequence existed
     pub taxonomy_proof: MerkleProof,       // Proves classification
     pub temporal_link: CrossTimeHash,      // Links sequence to taxonomy version
+    #[serde(with = "datetime_serde")]
     pub timestamp: DateTime<Utc>,
     pub attestation: CryptographicSeal,    // Optional external timestamp
 }
@@ -296,6 +376,7 @@ pub struct ChunkInfo {
     pub path: std::path::PathBuf,
     pub size: usize,
     pub compressed: bool,
+    pub format: ChunkFormat,
 }
 
 /// Type of chunk content
@@ -312,6 +393,56 @@ pub enum ChunkType {
     Index,
     /// Metadata-only chunk
     Metadata,
+}
+
+/// Compression format for chunks
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ChunkFormat {
+    /// Legacy JSON + gzip format (for backward compatibility)
+    JsonGzip,
+    /// Binary MessagePack for metadata + Zstd for sequences
+    Binary,
+    /// Binary with dictionary-based compression
+    BinaryDict { dict_id: u32 },
+}
+
+impl Default for ChunkFormat {
+    fn default() -> Self {
+        ChunkFormat::Binary  // Use efficient format by default
+    }
+}
+
+impl ChunkFormat {
+    /// Get the file extension for this format
+    pub fn extension(&self) -> &str {
+        match self {
+            ChunkFormat::JsonGzip => ".json.gz",
+            ChunkFormat::Binary => ".bin.zst",
+            ChunkFormat::BinaryDict { .. } => ".dict.zst",
+        }
+    }
+
+    /// Detect format from file contents
+    pub fn detect(data: &[u8]) -> Self {
+        // Check for gzip magic bytes (1f 8b)
+        if data.len() >= 2 && data[0] == 0x1f && data[1] == 0x8b {
+            return ChunkFormat::JsonGzip;
+        }
+
+        // Check for Zstandard magic bytes (28 b5 2f fd)
+        if data.len() >= 4
+            && data[0] == 0x28
+            && data[1] == 0xb5
+            && data[2] == 0x2f
+            && data[3] == 0xfd {
+            // Could be Binary or BinaryDict, check for dictionary
+            // For now, assume Binary (dictionary detection would need more context)
+            return ChunkFormat::Binary;
+        }
+
+        // Default to legacy format if unknown
+        ChunkFormat::JsonGzip
+    }
 }
 
 /// Delta chunk containing compressed sequence differences

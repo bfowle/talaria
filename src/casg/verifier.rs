@@ -74,13 +74,8 @@ impl<'a> CASGVerifier<'a> {
 
     /// Verify Merkle roots in manifest
     fn verify_merkle_roots(&self) -> Result<bool> {
-        // Build Merkle tree from chunks
-        let chunk_hashes: Vec<Vec<u8>> = self.manifest.chunk_index
-            .iter()
-            .map(|meta| meta.hash.as_bytes().to_vec())
-            .collect();
-
-        let dag = MerkleDAG::build_from_chunks(chunk_hashes)?;
+        // Build Merkle tree from chunks using ChunkMetadata which implements MerkleVerifiable
+        let dag = MerkleDAG::build_from_items(self.manifest.chunk_index.clone())?;
 
         // Check sequence root
         if let Some(computed_root) = dag.root_hash() {
@@ -117,22 +112,29 @@ impl<'a> CASGVerifier<'a> {
 
     /// Verify a Merkle proof
     pub fn verify_proof(&self, proof: &MerkleProof) -> bool {
-        MerkleDAG::verify_proof(proof)
+        MerkleDAG::verify_proof(proof, &[])
     }
 
     /// Generate proof for an assembly operation
     pub fn generate_assembly_proof(&self, chunk_hashes: &[SHA256Hash]) -> Result<MerkleProof> {
         // Build DAG from assembled chunks
-        let chunk_data: Vec<Vec<u8>> = chunk_hashes
+        // Create minimal ChunkMetadata wrappers for the hashes
+        let chunks: Vec<ChunkMetadata> = chunk_hashes
             .iter()
-            .map(|h| h.as_bytes().to_vec())
+            .map(|h| ChunkMetadata {
+                hash: h.clone(),
+                taxon_ids: Vec::new(),
+                sequence_count: 0,
+                size: 0,
+                compressed_size: None,
+            })
             .collect();
 
-        let dag = MerkleDAG::build_from_chunks(chunk_data)?;
+        let dag = MerkleDAG::build_from_items(chunks)?;
 
         // Generate proof for first chunk (as example)
         if let Some(first_hash) = chunk_hashes.first() {
-            dag.generate_proof(first_hash.as_bytes())
+            dag.generate_proof(&first_hash.0)
         } else {
             Err(anyhow::anyhow!("No chunks to prove"))
         }
@@ -221,12 +223,19 @@ impl<'a> CASGVerifier<'a> {
     /// Generate proof for a subset
     fn generate_subset_proof(&self, chunk_hashes: &[SHA256Hash]) -> Result<SubsetProof> {
         // Build Merkle tree for subset
-        let chunk_data: Vec<Vec<u8>> = chunk_hashes
+        // Create minimal ChunkMetadata wrappers for the hashes
+        let chunks: Vec<ChunkMetadata> = chunk_hashes
             .iter()
-            .map(|h| h.as_bytes().to_vec())
+            .map(|h| ChunkMetadata {
+                hash: h.clone(),
+                taxon_ids: Vec::new(),
+                sequence_count: 0,
+                size: 0,
+                compressed_size: None,
+            })
             .collect();
 
-        let subset_dag = MerkleDAG::build_from_chunks(chunk_data)?;
+        let subset_dag = MerkleDAG::build_from_items(chunks)?;
         let subset_root = subset_dag.root_hash()
             .ok_or_else(|| anyhow::anyhow!("Failed to compute subset root"))?;
 

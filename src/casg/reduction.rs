@@ -213,27 +213,40 @@ impl ReductionManifest {
     /// Compute and update all Merkle roots
     pub fn compute_merkle_roots(&mut self) -> Result<()> {
         use crate::casg::merkle::MerkleDAG;
+        use crate::casg::types::ChunkMetadata;
 
         // Build Merkle tree for reference chunks
-        let ref_data: Vec<Vec<u8>> = self.reference_chunks
-            .iter()
-            .map(|c| c.chunk_hash.as_bytes().to_vec())
-            .collect();
+        if !self.reference_chunks.is_empty() {
+            let ref_chunks: Vec<ChunkMetadata> = self.reference_chunks
+                .iter()
+                .map(|c| ChunkMetadata {
+                    hash: c.chunk_hash.clone(),
+                    taxon_ids: Vec::new(),
+                    sequence_count: c.sequence_ids.len(),
+                    size: c.size,
+                    compressed_size: c.compressed_size,
+                })
+                .collect();
 
-        if !ref_data.is_empty() {
-            let ref_dag = MerkleDAG::build_from_chunks(ref_data)?;
+            let ref_dag = MerkleDAG::build_from_items(ref_chunks)?;
             self.reference_merkle_root = ref_dag.root_hash()
                 .unwrap_or_else(|| SHA256Hash([0; 32]));
         }
 
         // Build Merkle tree for delta chunks
-        let delta_data: Vec<Vec<u8>> = self.delta_chunks
-            .iter()
-            .map(|c| c.chunk_hash.as_bytes().to_vec())
-            .collect();
+        if !self.delta_chunks.is_empty() {
+            let delta_chunks_meta: Vec<ChunkMetadata> = self.delta_chunks
+                .iter()
+                .map(|c| ChunkMetadata {
+                    hash: c.chunk_hash.clone(),
+                    taxon_ids: Vec::new(),
+                    sequence_count: 1, // Delta chunks typically represent individual sequences
+                    size: c.size,
+                    compressed_size: None,
+                })
+                .collect();
 
-        if !delta_data.is_empty() {
-            let delta_dag = MerkleDAG::build_from_chunks(delta_data)?;
+            let delta_dag = MerkleDAG::build_from_items(delta_chunks_meta)?;
             self.delta_merkle_root = delta_dag.root_hash()
                 .unwrap_or_else(|| SHA256Hash([0; 32]));
         }

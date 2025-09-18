@@ -255,24 +255,14 @@ impl VersionExtractor for UniProtVersionExtractor {
     }
 
     fn parse_version_string(&self, version: &str) -> Result<String> {
-        // Convert date format to UniProt format
-        // e.g., "2025-09-15" or "20250915" -> "2025_03" (estimate release number)
-        if version.len() >= 10 {
+        // Convert timestamp to UniProt monthly format
+        // e.g., "20250915_053033" -> "2025_09" (monthly releases)
+        if version.len() >= 8 {
             let year = &version[0..4];
-            let month = version[5..7].trim_start_matches('0');
+            let month = &version[4..6];
 
-            // Estimate release number based on month (UniProt does ~6 releases/year)
-            let release_num = match month {
-                "1" | "2" => "01",
-                "3" | "4" => "02",
-                "5" | "6" => "03",
-                "7" | "8" => "04",
-                "9" | "10" => "05",
-                "11" | "12" => "06",
-                _ => "01",
-            };
-
-            return Ok(format!("{}_{}", year, release_num));
+            // UniProt uses monthly releases with format YYYY_MM
+            return Ok(format!("{}_{}", year, month));
         }
 
         Ok(version.to_string())

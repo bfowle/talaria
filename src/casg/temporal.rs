@@ -130,6 +130,95 @@ impl TemporalIndex {
         Ok(versions)
     }
 
+    /// Get snapshots between two dates
+    pub fn get_snapshots_between(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> Result<Vec<DateTime<Utc>>> {
+        let mut snapshots = Vec::new();
+
+        // Get all unique timestamps from both timelines
+        for (timestamp, _) in self.sequence_timeline.range(from..=to) {
+            snapshots.push(*timestamp);
+        }
+
+        for (timestamp, _) in self.taxonomy_timeline.range(from..=to) {
+            if !snapshots.contains(timestamp) {
+                snapshots.push(*timestamp);
+            }
+        }
+
+        snapshots.sort();
+        Ok(snapshots)
+    }
+
+    /// Get chunks at a specific temporal coordinate
+    pub fn get_chunks_at_time(&self, coordinate: &BiTemporalCoordinate) -> Result<Vec<ChunkMetadata>> {
+        // Get the manifest at this point in time
+        let state = self.get_state_at(coordinate.sequence_time)?;
+
+        // If we have a manifest with chunks, return them
+        if let Some(manifest) = state.manifest {
+            return Ok(manifest.chunk_index);
+        }
+
+        // Otherwise return empty vec
+        Ok(Vec::new())
+    }
+
+    /// Load manifest at a specific timestamp
+    fn load_manifest_at(&self, timestamp: DateTime<Utc>) -> Result<Option<TemporalManifest>> {
+        // Find the manifest file for this timestamp
+        let manifest_dir = self.base_path.join("manifests");
+
+        if !manifest_dir.exists() {
+            return Ok(None);
+        }
+
+        // Look for manifest files matching the timestamp
+        // Format: manifest_YYYY-MM-DD_HH-MM-SS.json
+        let timestamp_str = timestamp.format("%Y-%m-%d_%H-%M-%S").to_string();
+        let manifest_file = manifest_dir.join(format!("manifest_{}.json", timestamp_str));
+
+        if manifest_file.exists() {
+            let content = fs::read_to_string(&manifest_file)?;
+            let manifest: TemporalManifest = serde_json::from_str(&content)?;
+            return Ok(Some(manifest));
+        }
+
+        // If no exact match, find the closest earlier manifest
+        let entries = fs::read_dir(&manifest_dir)?;
+        let mut best_match: Option<(DateTime<Utc>, PathBuf)> = None;
+
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+            if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
+                if filename.starts_with("manifest_") && filename.ends_with(".json") {
+                    // Parse timestamp from filename
+                    if let Some(ts_str) = filename.strip_prefix("manifest_").and_then(|s| s.strip_suffix(".json")) {
+                        if let Ok(file_ts) = DateTime::parse_from_str(
+                            &ts_str.replace('_', " "),
+                            "%Y-%m-%d %H-%M-%S"
+                        ) {
+                            let file_ts = file_ts.with_timezone(&Utc);
+                            if file_ts <= timestamp {
+                                if best_match.is_none() || best_match.as_ref().unwrap().0 < file_ts {
+                                    best_match = Some((file_ts, path));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some((_, path)) = best_match {
+            let content = fs::read_to_string(&path)?;
+            let manifest: TemporalManifest = serde_json::from_str(&content)?;
+            Ok(Some(manifest))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Get a specific version by ID
     pub fn get_version(&self, version_id: &str) -> Result<Option<VersionInfo>> {
         // Search in sequence timeline
@@ -444,11 +533,15 @@ impl TemporalIndex {
             })
             .cloned();
 
+        // Try to load manifest for this timestamp
+        let manifest = self.load_manifest_at(timestamp).ok().flatten();
+
         Ok(TemporalState {
             timestamp,
             sequence_version: seq_version,
             taxonomy_version: tax_version,
             cross_reference: cross_ref,
+            manifest,
         })
     }
 
@@ -592,6 +685,7 @@ pub struct TemporalState {
     pub sequence_version: Option<SequenceVersion>,
     pub taxonomy_version: Option<TaxonomyVersion>,
     pub cross_reference: Option<TemporalCrossReference>,
+    pub manifest: Option<TemporalManifest>,
 }
 
 #[derive(Debug)]
@@ -614,7 +708,7 @@ pub struct TimelineEvent {
     pub details: serde_json::Value,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TimelineEventType {
     SequenceUpdate,
     TaxonomyUpdate,
@@ -622,36 +716,4 @@ pub enum TimelineEventType {
     Verification,
 }
 
-/// Bi-temporal coordinate for queries
-#[derive(Debug, Clone)]
-pub struct BiTemporalCoordinate {
-    pub sequence_time: DateTime<Utc>,
-    pub taxonomy_time: DateTime<Utc>,
-}
-
-impl BiTemporalCoordinate {
-    pub fn now() -> Self {
-        let now = Utc::now();
-        Self {
-            sequence_time: now,
-            taxonomy_time: now,
-        }
-    }
-
-    pub fn at(time: DateTime<Utc>) -> Self {
-        Self {
-            sequence_time: time,
-            taxonomy_time: time,
-        }
-    }
-
-    pub fn with_sequence_time(mut self, time: DateTime<Utc>) -> Self {
-        self.sequence_time = time;
-        self
-    }
-
-    pub fn with_taxonomy_time(mut self, time: DateTime<Utc>) -> Self {
-        self.taxonomy_time = time;
-        self
-    }
-}
+// BiTemporalCoordinate is now defined in types.rs

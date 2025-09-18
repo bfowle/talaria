@@ -3,7 +3,7 @@
 use crate::casg::types::*;
 use crate::bio::sequence::Sequence;
 use crate::utils::progress::{create_progress_bar, create_spinner};
-use crate::casg::chunker::traits::{Chunker, TaxonomyAwareChunker};
+use super::traits::{Chunker, ChunkingStats};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
@@ -26,7 +26,7 @@ impl TaxonomicChunker {
     }
 
     /// Chunk sequences by taxonomic groups
-    pub fn chunk_sequences(
+    pub fn chunk_sequences_into_taxonomy_aware(
         &self,
         sequences: Vec<Sequence>,
     ) -> Result<Vec<TaxonomyAwareChunk>> {
@@ -39,7 +39,8 @@ impl TaxonomicChunker {
             taxon_groups.entry(taxon_id).or_default().push(seq);
             grouping_progress.inc(1);
         }
-        grouping_progress.finish_with_message(format!("Grouped into {} taxa", taxon_groups.len()));
+        grouping_progress.finish_and_clear();
+        println!("Grouped into {} taxa", taxon_groups.len());
 
         // Apply chunking strategy to each group
         let chunking_progress = create_progress_bar(taxon_groups.len() as u64, "Creating chunks from taxa groups");
@@ -50,12 +51,14 @@ impl TaxonomicChunker {
             chunks.extend(group_chunks);
             chunking_progress.inc(1);
         }
-        chunking_progress.finish_with_message(format!("Created {} chunks", chunks.len()));
+        chunking_progress.finish_and_clear();
+        println!("Created {} chunks", chunks.len());
 
         // Apply special handling for important taxa
         let special_progress = create_spinner("Applying special taxa rules");
         chunks = self.apply_special_taxa_rules(chunks)?;
-        special_progress.finish_with_message("Special taxa rules applied");
+        special_progress.finish_and_clear();
+        println!("Special taxa rules applied");
 
         Ok(chunks)
     }
@@ -546,171 +549,34 @@ impl Default for ChunkingStrategy {
 
 // Implement the Chunker trait for TaxonomicChunker
 impl Chunker for TaxonomicChunker {
-    fn chunk_sequences(
-        &self,
-        sequences: Vec<Sequence>,
-    ) -> Result<Vec<TaxonomyAwareChunk>> {
-        self.chunk_sequences(sequences)
+    fn chunk_sequences(&mut self, sequences: &[Sequence]) -> Result<Vec<ChunkMetadata>> {
+        // Call the existing chunk_sequences method and convert the result
+        let chunks = self.chunk_sequences_into_taxonomy_aware(sequences.to_vec())?;
+
+        // Convert TaxonomyAwareChunk to ChunkMetadata
+        Ok(chunks.into_iter().map(|chunk| ChunkMetadata {
+            hash: chunk.content_hash,
+            taxon_ids: chunk.taxon_ids,
+            sequence_count: chunk.sequences.len(),
+            size: chunk.size,
+            compressed_size: chunk.compressed_size,
+        }).collect())
     }
 
-    fn merge_chunks(
-        &self,
-        chunks: Vec<TaxonomyAwareChunk>,
-    ) -> Result<TaxonomyAwareChunk> {
-        // Merge multiple chunks into one
-        let mut merged_sequences = Vec::new();
-        let mut merged_taxa = HashSet::new();
-        let mut total_size = 0;
-
-        for chunk in chunks {
-            merged_sequences.extend(chunk.sequences);
-            merged_taxa.extend(chunk.taxon_ids);
-            total_size += chunk.size;
+    fn get_stats(&self) -> ChunkingStats {
+        ChunkingStats {
+            total_chunks: 0,
+            total_sequences: 0,
+            avg_chunk_size: 0,
+            compression_ratio: 1.0,
         }
-
-        let merged_sequence_data = Vec::new(); // Would need actual sequence data
-        let content_hash = SHA256Hash::compute(&merged_sequence_data);
-
-        Ok(TaxonomyAwareChunk {
-            content_hash,
-            taxonomy_version: MerkleHash::zero(),
-            sequence_version: MerkleHash::zero(),
-            taxon_ids: merged_taxa.into_iter().collect(),
-            sequences: merged_sequences,
-            sequence_data: merged_sequence_data,
-            created_at: chrono::Utc::now(),
-            valid_from: chrono::Utc::now(),
-            valid_until: None,
-            size: total_size,
-            compressed_size: None,
-        })
     }
 
-    fn split_chunk(
-        &self,
-        chunk: &TaxonomyAwareChunk,
-        max_size: usize,
-    ) -> Result<Vec<TaxonomyAwareChunk>> {
-        // Split chunk into smaller chunks
-        let mut result = Vec::new();
-        let mut current_sequences = Vec::new();
-        let mut current_size = 0;
-
-        for seq_ref in &chunk.sequences {
-            if current_size + seq_ref.length > max_size && !current_sequences.is_empty() {
-                // Create a new chunk
-                let chunk_data = Vec::new(); // Would need actual sequence data
-                let content_hash = SHA256Hash::compute(&chunk_data);
-
-                result.push(TaxonomyAwareChunk {
-                    content_hash,
-                    taxonomy_version: chunk.taxonomy_version.clone(),
-                    sequence_version: chunk.sequence_version.clone(),
-                    taxon_ids: chunk.taxon_ids.clone(),
-                    sequences: current_sequences.clone(),
-                    sequence_data: chunk_data,
-                    created_at: chrono::Utc::now(),
-                    valid_from: chrono::Utc::now(),
-                    valid_until: None,
-                    size: current_size,
-                    compressed_size: None,
-                });
-
-                current_sequences.clear();
-                current_size = 0;
-            }
-
-            current_sequences.push(seq_ref.clone());
-            current_size += seq_ref.length;
-        }
-
-        // Add remaining sequences
-        if !current_sequences.is_empty() {
-            let chunk_data = Vec::new();
-            let content_hash = SHA256Hash::compute(&chunk_data);
-
-            result.push(TaxonomyAwareChunk {
-                content_hash,
-                taxonomy_version: chunk.taxonomy_version.clone(),
-                sequence_version: chunk.sequence_version.clone(),
-                taxon_ids: chunk.taxon_ids.clone(),
-                sequences: current_sequences,
-                sequence_data: chunk_data,
-                created_at: chrono::Utc::now(),
-                valid_from: chrono::Utc::now(),
-                valid_until: None,
-                size: current_size,
-                compressed_size: None,
-            });
-        }
-
-        Ok(result)
-    }
-
-    fn strategy(&self) -> &ChunkingStrategy {
-        &self.strategy
-    }
-
-    fn should_add_to_chunk(
-        &self,
-        chunk_size: usize,
-        seq_size: usize,
-        chunk_taxa: &[TaxonId],
-        seq_taxon: Option<TaxonId>,
-    ) -> bool {
-        // Check size constraints
-        if chunk_size + seq_size > self.strategy.max_chunk_size {
-            return false;
-        }
-
-        // Check taxonomic coherence if applicable
-        if let Some(taxon) = seq_taxon {
-            if !chunk_taxa.is_empty() && !chunk_taxa.contains(&taxon) {
-                // Calculate if adding this taxon maintains coherence
-                let unique_taxa = chunk_taxa.len() + 1;
-                let coherence = 1.0 / unique_taxa as f32;
-                return coherence >= self.strategy.taxonomic_coherence;
-            }
-        }
-
-        true
-    }
-
-    fn name(&self) -> &str {
-        "TaxonomicChunker"
+    fn set_chunk_size(&mut self, _min_size: usize, _max_size: usize) {
+        // Would update internal configuration
     }
 }
 
-// Implement the TaxonomyAwareChunker trait
-impl TaxonomyAwareChunker for TaxonomicChunker {
-    fn load_taxonomy_mapping(&mut self, mapping: HashMap<String, TaxonId>) {
-        self.load_taxonomy_mapping(mapping);
-    }
 
-    fn get_taxon_id(&self, sequence: &Sequence) -> Result<TaxonId> {
-        self.get_taxon_id(sequence)
-    }
-
-    fn apply_special_taxa_rules(
-        &self,
-        chunks: Vec<TaxonomyAwareChunk>,
-    ) -> Result<Vec<TaxonomyAwareChunk>> {
-        self.apply_special_taxa_rules(chunks)
-    }
-
-    fn calculate_coherence(&self, chunk: &TaxonomyAwareChunk) -> f32 {
-        if chunk.sequences.is_empty() {
-            return 1.0;
-        }
-
-        let unique_taxa = chunk.taxon_ids.len();
-        let total_sequences = chunk.sequences.len();
-
-        if unique_taxa == 0 || total_sequences == 0 {
-            return 0.0;
-        }
-
-        // Coherence is inversely proportional to taxonomic diversity
-        1.0 - (unique_taxa as f32 - 1.0) / total_sequences as f32
-    }
-}
+// Additional helper methods for TaxonomicChunker
+// (These are already defined in the main impl block above)

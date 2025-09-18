@@ -61,25 +61,45 @@ impl Sequence {
     pub fn header(&self) -> String {
         let mut header = format!(">{}", self.id);
 
-        if let Some(desc) = &self.description {
-            header.push(' ');
-            header.push_str(desc);
-        }
-
-        // Add TaxID to header if present and not already in description
+        // If we have a taxon_id, it's authoritative (from bi-temporal chunk context)
+        // We need to replace any existing TaxID in the description
         if let Some(taxon) = self.taxon_id {
-            // Check if TaxID is already in the description to avoid duplication
-            let has_taxid = self.description
-                .as_ref()
-                .map(|d| d.contains("TaxID=") || d.contains("OX=") || d.contains("taxon:"))
-                .unwrap_or(false);
-
-            if !has_taxid {
-                header.push_str(&format!(" TaxID={}", taxon));
+            if let Some(desc) = &self.description {
+                // Remove existing TaxID from description if present
+                let cleaned_desc = Self::remove_taxid_from_description(desc);
+                if !cleaned_desc.is_empty() {
+                    header.push(' ');
+                    header.push_str(&cleaned_desc);
+                }
+            }
+            // Always add the authoritative TaxID from chunk context
+            header.push_str(&format!(" TaxID={}", taxon));
+        } else {
+            // No taxon_id from chunk, use original description as-is
+            if let Some(desc) = &self.description {
+                header.push(' ');
+                header.push_str(desc);
             }
         }
 
         header
+    }
+
+    /// Remove existing TaxID from description to avoid conflicts
+    fn remove_taxid_from_description(desc: &str) -> String {
+        // Remove TaxID=N pattern
+        let desc = regex::Regex::new(r"\s*TaxID=\d+")
+            .unwrap()
+            .replace_all(desc, "")
+            .to_string();
+
+        // Also remove taxon:N pattern for completeness
+        let desc = regex::Regex::new(r"\s*taxon:\d+")
+            .unwrap()
+            .replace_all(&desc, "")
+            .to_string();
+
+        desc.trim().to_string()
     }
 
     /// Check if sequence contains ambiguous amino acids

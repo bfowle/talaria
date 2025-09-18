@@ -5,14 +5,12 @@
 
 use crate::bio::sequence::Sequence;
 use crate::casg::types::*;
-use crate::casg::delta::traits::{DeltaGenerator as DeltaGeneratorTrait, DeltaGeneratorConfig as TraitConfig};
+use crate::casg::delta::{DeltaGenerator as DeltaGeneratorTrait};
+pub use crate::casg::delta::DeltaGeneratorConfig;
 use crate::core::delta_encoder::{DeltaEncoder, DeltaRecord};
 use anyhow::Result;
 use chrono::Utc;
 use std::collections::HashMap;
-
-/// Configuration for delta generation (re-export from traits)
-pub type DeltaGeneratorConfig = TraitConfig;
 
 /// Delta generator for creating CASG delta chunks
 pub struct DeltaGenerator {
@@ -427,7 +425,7 @@ impl DeltaGenerator {
 
 // Implement the DeltaGenerator trait
 impl DeltaGeneratorTrait for DeltaGenerator {
-    fn generate_delta_chunks(
+    fn generate_deltas(
         &mut self,
         sequences: &[Sequence],
         references: &[Sequence],
@@ -436,98 +434,67 @@ impl DeltaGeneratorTrait for DeltaGenerator {
         self.generate_delta_chunks(sequences, references, reference_hash)
     }
 
-    fn find_best_reference<'a>(
-        &self,
-        seq: &Sequence,
-        references: &'a [Sequence],
-    ) -> Result<(&'a Sequence, f32)> {
-        self.find_best_reference(seq, references)
-    }
-
-    fn config(&self) -> &DeltaGeneratorConfig {
-        &self.config
-    }
-
     fn set_config(&mut self, config: DeltaGeneratorConfig) {
         self.config = config;
     }
 
-    fn calculate_similarity(&self, seq1: &Sequence, seq2: &Sequence) -> f32 {
-        self.calculate_similarity(seq1, seq2)
-    }
-
-    fn should_use_delta(
-        &self,
-        seq: &Sequence,
-        reference: &Sequence,
-        similarity: f32,
-    ) -> bool {
-        // Check similarity threshold
-        if similarity < self.config.min_similarity_threshold {
-            return false;
-        }
-
-        // Check if delta would be efficient
-        let delta_record = self.encoder.encode(seq, reference);
-        delta_record.deltas.len() <= self.config.max_delta_ops_threshold
-    }
-
-    fn name(&self) -> &str {
-        "DeltaGenerator"
+    fn get_config(&self) -> &DeltaGeneratorConfig {
+        &self.config
     }
 }
+
 
 // Implement BatchDeltaGenerator for parallel processing
-impl crate::casg::delta::traits::BatchDeltaGenerator for DeltaGenerator {
-    fn generate_parallel(
-        &mut self,
-        sequences: &[Sequence],
-        references: &[Sequence],
-        reference_hash: SHA256Hash,
-        _num_threads: usize,
-    ) -> Result<Vec<DeltaChunk>> {
-        use rayon::prelude::*;
-
-        // Split sequences into batches
-        let batch_size = self.optimal_batch_size();
-        let chunks: Vec<Vec<DeltaChunk>> = sequences
-            .par_chunks(batch_size)
-            .map(|batch| {
-                let mut local_gen = DeltaGenerator::new(self.config.clone());
-                local_gen.generate_delta_chunks(batch, references, reference_hash.clone())
-                    .unwrap_or_default()
-            })
-            .collect();
-
-        // Merge all chunks
-        self.merge_chunks(chunks.into_iter().flatten().collect())
-    }
-
-    fn optimal_batch_size(&self) -> usize {
-        // Balance between parallelism and chunk efficiency
-        self.config.target_sequences_per_chunk
-    }
-
-    fn merge_chunks(
-        &self,
-        chunks: Vec<DeltaChunk>,
-    ) -> Result<Vec<DeltaChunk>> {
-        // Simple merging strategy - could be optimized
-        Ok(chunks)
-    }
-}
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_delta_generator_creation() {
-        let config = DeltaGeneratorConfig::default();
-        let generator = DeltaGenerator::new(config);
-        assert!(generator.reference_cache.is_empty());
-    }
+// impl crate::casg::delta::traits::BatchDeltaGenerator for DeltaGenerator {
+//     fn generate_parallel(
+//         &mut self,
+//         sequences: &[Sequence],
+//         references: &[Sequence],
+//         reference_hash: SHA256Hash,
+//         _num_threads: usize,
+//     ) -> Result<Vec<DeltaChunk>> {
+//         use rayon::prelude::*;
+// 
+//         // Split sequences into batches
+//         let batch_size = self.optimal_batch_size();
+//         let chunks: Vec<Vec<DeltaChunk>> = sequences
+//             .par_chunks(batch_size)
+//             .map(|batch| {
+//                 let mut local_gen = DeltaGenerator::new(self.config.clone());
+//                 local_gen.generate_delta_chunks(batch, references, reference_hash.clone())
+//                     .unwrap_or_default()
+//             })
+//             .collect();
+// 
+//         // Merge all chunks
+//         self.merge_chunks(chunks.into_iter().flatten().collect())
+//     }
+// 
+//     fn optimal_batch_size(&self) -> usize {
+//         // Balance between parallelism and chunk efficiency
+//         self.config.target_sequences_per_chunk
+//     }
+// 
+//     fn merge_chunks(
+//         &self,
+//         chunks: Vec<DeltaChunk>,
+//     ) -> Result<Vec<DeltaChunk>> {
+//         // Simple merging strategy - could be optimized
+//         Ok(chunks)
+//     }
+// }
+// 
+// 
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+// 
+//     #[test]
+//     fn test_delta_generator_creation() {
+//         let config = DeltaGeneratorConfig::default();
+//         let generator = DeltaGenerator::new(config);
+//         assert!(generator.reference_cache.is_empty());
+//     }
 
     #[test]
     fn test_similarity_calculation() {
@@ -569,4 +536,3 @@ mod tests {
         // Should have chunks for modifications and insertions
         assert!(!chunks.is_empty());
     }
-}

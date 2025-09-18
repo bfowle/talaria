@@ -1,6 +1,7 @@
 /// Manifest management for CASG with ETag-based update checking
 
 use crate::casg::types::*;
+use crate::casg::merkle::MerkleDAG;
 use crate::utils::progress::create_progress_bar;
 use anyhow::{Context, Result};
 use chrono::Utc;
@@ -409,13 +410,38 @@ impl Manifest {
         // Generate ETag from content
         let etag = Self::generate_etag(&taxonomy_root, &sequence_root);
 
+        // Build Merkle tree from chunks
+        let chunk_merkle_tree = if !chunk_index.is_empty() {
+            let dag = MerkleDAG::build_from_items(chunk_index.clone())?;
+            let root_hash = dag.root_hash()
+                .ok_or_else(|| anyhow::anyhow!("Failed to get Merkle root"))?;
+
+            // Serialize the Merkle tree
+            let serialized = Self::serialize_merkle_dag(&dag)?;
+            Some(SerializedMerkleTree {
+                root_hash,
+                node_count: chunk_index.len(),
+                serialized_nodes: serialized,
+            })
+        } else {
+            None
+        };
+
+        // Create bi-temporal coordinate
+        let temporal_coordinate = Some(BiTemporalCoordinate {
+            sequence_time: Utc::now(),
+            taxonomy_time: Utc::now(),
+        });
+
         let manifest = TemporalManifest {
             version: Utc::now().format("%Y%m%d_%H%M%S").to_string(),
             created_at: Utc::now(),
             sequence_version: Utc::now().format("%Y-%m-%d").to_string(),
             taxonomy_version: Utc::now().format("%Y-%m-%d").to_string(),
+            temporal_coordinate,
             taxonomy_root,
             sequence_root,
+            chunk_merkle_tree,
             taxonomy_manifest_hash: SHA256Hash::compute(b"default_taxonomy"),
             taxonomy_dump_version: Utc::now().format("%Y-%m-%d").to_string(),
             source_database: None,
@@ -456,6 +482,14 @@ impl Manifest {
     /// Set manifest data
     pub fn set_data(&mut self, data: TemporalManifest) {
         self.data = Some(data);
+    }
+
+    /// Serialize a Merkle DAG to bytes
+    fn serialize_merkle_dag(dag: &MerkleDAG) -> Result<Vec<u8>> {
+        // For now, use MessagePack serialization
+        // This is consistent with our binary manifest format
+        let bytes = rmp_serde::to_vec(dag)?;
+        Ok(bytes)
     }
 
     /// Get summary of manifest

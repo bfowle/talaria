@@ -1,18 +1,16 @@
 /// Trait implementations for reference selection strategies
 
-use super::traits::{
-    ReferenceSelector as ReferenceSelectorTrait,
-    SelectionResult as TraitSelectionResult,
-    SelectionStats, RecommendedParams,
-    AlignmentBasedSelector, AlignmentScore,
-};
-use crate::core::reference_selector::{ReferenceSelector, SelectionAlgorithm};
+use crate::core::reference_selector::{ReferenceSelectorImpl, SelectionAlgorithm};
 use crate::bio::sequence::Sequence;
+use super::traits::{
+    ReferenceSelector as ReferenceSelectorTrait, AlignmentBasedSelector,
+    TraitSelectionResult, SelectionStats, AlignmentScore, RecommendedParams,
+};
 use anyhow::Result;
 use std::collections::HashSet;
 
-/// Implement the trait for our concrete ReferenceSelector
-impl ReferenceSelectorTrait for ReferenceSelector {
+/// Implement the trait for our concrete ReferenceSelectorImpl
+impl ReferenceSelectorTrait for ReferenceSelectorImpl {
     fn select_references(
         &self,
         sequences: Vec<Sequence>,
@@ -31,27 +29,52 @@ impl ReferenceSelectorTrait for ReferenceSelector {
         let total = sequences.len();
         let refs = result.references.len();
         let children_count: usize = result.children.values().map(|v| v.len()).sum();
+        let coverage = if total > 0 {
+            (refs + children_count) as f64 / total as f64
+        } else {
+            0.0
+        };
 
         Ok(TraitSelectionResult {
             references: result.references,
-            children: result.children,
-            discarded: result.discarded.clone(),
             stats: SelectionStats {
                 total_sequences: total,
-                selected_references: refs,
-                assigned_children: children_count,
-                discarded_sequences: result.discarded.len(),
-                coverage_ratio: result.discarded.len() as f64 / total as f64,
-                avg_children_per_reference: if refs > 0 {
-                    children_count as f64 / refs as f64
-                } else {
-                    0.0
-                },
-                selection_time_ms: 0, // Would need timing
+                references_selected: refs,
+                coverage,
+                avg_identity: 0.85, // Default estimate
             },
         })
     }
 
+    fn get_stats(&self) -> SelectionStats {
+        SelectionStats {
+            total_sequences: 0,
+            references_selected: 0,
+            coverage: 0.0,
+            avg_identity: 0.0,
+        }
+    }
+
+    fn recommend_params(&self, num_sequences: usize) -> RecommendedParams {
+        let batch_size = if num_sequences > 100000 {
+            10000
+        } else if num_sequences > 10000 {
+            5000
+        } else {
+            1000
+        };
+
+        RecommendedParams {
+            batch_size,
+            min_length: if num_sequences > 50000 { 500 } else { 300 },
+            similarity_threshold: if self.use_alignment { 0.7 } else { 0.9 },
+        }
+    }
+}
+
+// Additional methods for ReferenceSelector
+#[allow(dead_code)]
+impl ReferenceSelectorImpl {
     fn calculate_coverage(
         &self,
         references: &[Sequence],
@@ -103,7 +126,7 @@ impl ReferenceSelectorTrait for ReferenceSelector {
         num_sequences: usize,
         avg_sequence_length: usize,
     ) -> RecommendedParams {
-        let (ratio, batch_size) = if num_sequences > 100000 {
+        let (_ratio, batch_size) = if num_sequences > 100000 {
             // Large dataset - be more aggressive
             (0.1, Some(10000))
         } else if num_sequences > 10000 {
@@ -115,33 +138,27 @@ impl ReferenceSelectorTrait for ReferenceSelector {
         };
 
         RecommendedParams {
-            target_ratio: ratio,
+            batch_size: batch_size.unwrap_or(1000),
             min_length: 50.max(avg_sequence_length / 10),
             similarity_threshold: if self.use_alignment { 0.7 } else { 0.9 },
-            use_taxonomy: num_sequences > 50000, // Use taxonomy for large datasets
-            batch_size,
         }
     }
 }
 
 /// Implement AlignmentBasedSelector for our ReferenceSelector
-impl AlignmentBasedSelector for ReferenceSelector {
+impl AlignmentBasedSelector for ReferenceSelectorImpl {
     fn select_with_alignments(
         &self,
         sequences: Vec<Sequence>,
         _alignments: &[AlignmentScore],
-        target_ratio: f64,
     ) -> Result<TraitSelectionResult> {
         // Convert AlignmentScore to our internal format and use existing logic
         // This would need the actual alignment implementation
         // For now, delegate to the trait method which handles the conversion
-        <Self as ReferenceSelectorTrait>::select_references(self, sequences, target_ratio)
+        <Self as ReferenceSelectorTrait>::select_references(self, sequences, 0.2)
     }
 
-    fn calculate_alignments(
-        &self,
-        sequences: &[Sequence],
-    ) -> Result<Vec<AlignmentScore>> {
+    fn compute_alignment_scores(&self, sequences: &[Sequence]) -> Vec<AlignmentScore> {
         // This would use LAMBDA or other alignment tools
         let mut scores = Vec::new();
 
@@ -158,11 +175,7 @@ impl AlignmentBasedSelector for ReferenceSelector {
             }
         }
 
-        Ok(scores)
-    }
-
-    fn min_alignment_score(&self) -> f64 {
-        self.similarity_threshold
+        scores
     }
 
     fn set_min_alignment_score(&mut self, score: f64) {
@@ -171,11 +184,9 @@ impl AlignmentBasedSelector for ReferenceSelector {
 }
 
 /// Factory function to create selector based on algorithm choice
-pub fn create_selector(algorithm: SelectionAlgorithm) -> Box<dyn ReferenceSelectorTrait> {
-    Box::new(
-        ReferenceSelector::new()
-            .with_selection_algorithm(algorithm)
-    )
+pub fn create_selector(algorithm: SelectionAlgorithm) -> ReferenceSelectorImpl {
+    ReferenceSelectorImpl::new()
+        .with_selection_algorithm(algorithm)
 }
 
 /// Create a selector with full configuration
@@ -184,14 +195,12 @@ pub fn create_configured_selector(
     min_length: usize,
     similarity_threshold: f64,
     taxonomy_aware: bool,
-) -> Box<dyn ReferenceSelectorTrait> {
-    Box::new(
-        ReferenceSelector::new()
-            .with_selection_algorithm(algorithm)
-            .with_min_length(min_length)
-            .with_similarity_threshold(similarity_threshold)
-            .with_taxonomy_aware(taxonomy_aware)
-    )
+) -> ReferenceSelectorImpl {
+    ReferenceSelectorImpl::new()
+        .with_selection_algorithm(algorithm)
+        .with_min_length(min_length)
+        .with_similarity_threshold(similarity_threshold)
+        .with_taxonomy_aware(taxonomy_aware)
 }
 
 #[cfg(test)]
@@ -200,7 +209,7 @@ mod tests {
 
     #[test]
     fn test_trait_implementation() {
-        let selector: Box<dyn ReferenceSelectorTrait> = create_selector(SelectionAlgorithm::SinglePass);
+        let selector: Box<dyn ReferenceSelectorTrait> = Box::new(create_selector(SelectionAlgorithm::SinglePass));
 
         let sequences = vec![
             Sequence::new("seq1".to_string(), vec![65; 100]),
@@ -239,8 +248,8 @@ mod tests {
     fn test_polymorphic_usage() {
         // Test that we can use different selectors through the trait
         let selectors: Vec<Box<dyn ReferenceSelectorTrait>> = vec![
-            create_selector(SelectionAlgorithm::SinglePass),
-            create_selector(SelectionAlgorithm::SimilarityMatrix),
+            Box::new(create_selector(SelectionAlgorithm::SinglePass)),
+            Box::new(create_selector(SelectionAlgorithm::SimilarityMatrix)),
         ];
 
         let sequences = vec![

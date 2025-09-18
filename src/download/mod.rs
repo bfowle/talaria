@@ -117,6 +117,48 @@ impl std::fmt::Display for DatabaseSource {
     }
 }
 
+impl DatabaseSource {
+    /// Parse a database name string into a DatabaseSource
+    pub fn from_string(name: &str) -> anyhow::Result<Self> {
+        // Try common UniProt databases
+        if name.eq_ignore_ascii_case("swissprot") || name.eq_ignore_ascii_case("sprot") {
+            return Ok(DatabaseSource::UniProt(UniProtDatabase::SwissProt));
+        }
+        if name.eq_ignore_ascii_case("trembl") {
+            return Ok(DatabaseSource::UniProt(UniProtDatabase::TrEMBL));
+        }
+        if name.eq_ignore_ascii_case("uniref50") {
+            return Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef50));
+        }
+        if name.eq_ignore_ascii_case("uniref90") {
+            return Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef90));
+        }
+        if name.eq_ignore_ascii_case("uniref100") {
+            return Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef100));
+        }
+
+        // Try common NCBI databases
+        if name.eq_ignore_ascii_case("refseq_protein") || name.eq_ignore_ascii_case("refseq") {
+            return Ok(DatabaseSource::NCBI(NCBIDatabase::RefSeqProtein));
+        }
+        if name.eq_ignore_ascii_case("refseq_genomic") {
+            return Ok(DatabaseSource::NCBI(NCBIDatabase::RefSeqGenomic));
+        }
+        if name.eq_ignore_ascii_case("nr") || name.eq_ignore_ascii_case("ncbi_nr") {
+            return Ok(DatabaseSource::NCBI(NCBIDatabase::NR));
+        }
+        if name.eq_ignore_ascii_case("nt") {
+            return Ok(DatabaseSource::NCBI(NCBIDatabase::NT));
+        }
+        if name.eq_ignore_ascii_case("taxonomy") {
+            return Ok(DatabaseSource::NCBI(NCBIDatabase::Taxonomy));
+        }
+
+        // Default to Custom
+        Ok(DatabaseSource::Custom(name.to_string()))
+    }
+}
+
 pub async fn download_database(
     source: DatabaseSource,
     output_path: &Path,
@@ -216,8 +258,9 @@ pub async fn download_database_with_full_options(
                     }
                 }
                 NCBIDatabase::Taxonomy => {
-                    let output_dir = output_path.parent().unwrap_or(Path::new("."));
-                    downloader.download_taxonomy(output_dir, progress).await
+                    // Download the tar.gz file directly to output_path
+                    // store_taxonomy_mapping_file will handle extraction
+                    downloader.download_taxonomy(output_path, progress).await
                 }
                 NCBIDatabase::ProtAccession2TaxId => {
                     if resume {

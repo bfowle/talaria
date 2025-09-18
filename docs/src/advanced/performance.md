@@ -4,29 +4,18 @@ Advanced techniques for maximizing Talaria's performance across different worklo
 
 ## Performance Profiling
 
-### Built-in Profiling
+### Using External Profilers
 
-```bash
-# Enable profiling mode
-talaria reduce --profile -i input.fasta -o output.fasta
-
-# Generate detailed performance report
-talaria reduce --profile-output profile.html -i input.fasta -o output.fasta
-
-# Profile specific components
-talaria reduce --profile-alignment --profile-io -i input.fasta -o output.fasta
-```
+**Note:** Talaria does not currently have built-in profiling. Use external tools for performance analysis.
 
 ### Performance Metrics
 
-Key metrics tracked during profiling:
+Metrics you can track with external tools:
 
 - **Throughput**: Sequences processed per second
 - **Memory usage**: Peak and average memory consumption
-- **Cache efficiency**: Hit rates for alignment cache
-- **I/O performance**: Read/write speeds and buffer utilization
 - **Thread utilization**: CPU usage across cores
-- **Bottleneck analysis**: Identification of performance limiters
+- **I/O performance**: Read/write speeds
 
 ### Using External Profilers
 
@@ -87,15 +76,9 @@ sketch_size = 1000
 
 #### SIMD Acceleration
 
-```toml
-[performance]
-# Enable SIMD instructions
-use_simd = true
-simd_alignment = "avx2"  # Options: sse4, avx2, avx512
+**Status: Not Implemented**
 
-# Auto-detect best SIMD level
-auto_detect_simd = true
-```
+SIMD acceleration is planned for future releases but not currently available.
 
 ### 2. Memory Optimization
 
@@ -160,78 +143,27 @@ locked_memory_gb = 8
 
 ### CPU Optimization
 
-#### Intel Processors
+**Status: Basic Implementation Only**
 
-```toml
-[performance.intel]
-# Intel-specific optimizations
-use_mkl = true  # Intel Math Kernel Library
-prefetch_hint = "t0"  # L1 cache
-use_tsx = true  # Transactional memory
-```
+Talaria currently uses standard Rust optimizations and multi-threading via Rayon. CPU-specific optimizations are not implemented.
 
-#### AMD Processors
-
-```toml
-[performance.amd]
-# AMD-specific optimizations
-use_aocc = true  # AMD Optimizing Compiler
-infinity_fabric_aware = true
-ccx_affinity = true
-```
-
-#### ARM Processors
-
-```toml
-[performance.arm]
-# ARM-specific optimizations
-use_neon = true
-use_sve = true  # Scalable Vector Extension
-big_little_aware = true
+You can control thread count with:
+```bash
+export TALARIA_THREADS=8
+talaria reduce -i input.fasta -o output.fasta
 ```
 
 ### GPU Acceleration
 
-#### CUDA Support
+**Status: Not Implemented**
 
-```toml
-[gpu]
-# Enable GPU acceleration
-use_gpu = true
-gpu_backend = "cuda"
-
-# CUDA settings
-cuda_device = 0
-cuda_streams = 4
-cuda_blocks = 256
-cuda_threads_per_block = 256
-```
-
-#### OpenCL Support
-
-```toml
-[gpu]
-# OpenCL configuration
-gpu_backend = "opencl"
-opencl_platform = 0
-opencl_device = 0
-work_group_size = 256
-```
+GPU acceleration is a planned future feature but is not currently available.
 
 ### NUMA Optimization
 
-```toml
-[performance.numa]
-# NUMA-aware processing
-numa_aware = true
-numa_nodes = 2
-interleave_memory = false
-local_allocation = true
+**Status: Not Implemented**
 
-# Thread pinning
-pin_threads = true
-thread_affinity = "compact"  # Options: compact, scatter
-```
+NUMA-aware processing is not currently implemented. The system relies on the OS scheduler for thread management.
 
 ## Workload-Specific Tuning
 

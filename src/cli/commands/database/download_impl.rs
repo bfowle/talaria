@@ -1,12 +1,15 @@
 /// Database download implementation using content-addressed storage
 
 use crate::cli::commands::database::download::DownloadArgs;
-use crate::cli::formatter::{self, TaskList, TaskStatus, info_box, print_tip, format_bytes};
+use crate::cli::formatter::{self, TaskList, TaskStatus, print_tip, format_bytes, format_number};
 use crate::cli::output::*;
 use crate::core::database_manager::{DatabaseManager, DownloadResult};
 use crate::download::DatabaseSource;
+use crate::utils::progress::create_spinner;
 use anyhow::Result;
 use std::sync::{Arc, Mutex};
+use indicatif::ProgressBar;
+use colored::Colorize;
 
 pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource) -> Result<()> {
     // Apply CLI flag overrides for environment variables
@@ -25,115 +28,200 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
     // Initialize formatter
     formatter::init();
 
+    // Print header based on mode (only if not called from interactive mode)
+    let _db_name = format!("{}", database_source);
+    if args.dry_run {
+        info("Running in dry-run mode - no downloads will be performed");
+        println!();
+    }
+
     // Create task list for tracking operations
     let mut task_list = TaskList::new();
 
-    // Print header
-    let db_name = format!("{}", database_source);
-    task_list.print_header(&format!("Database Download: {}", db_name));
-
-    // Info box about CASG
-    info_box("Content-Addressed Storage (CASG)", &[
-        "Automatic deduplication",
-        "Incremental updates",
-        "Cryptographic verification",
-        "Bandwidth-efficient downloads"
-    ]);
-
-    // Add initialization task
+    // Add all tasks upfront
     let init_task = task_list.add_task("Initialize CASG repository");
-    let spinner = task_list.start_spinner(init_task, "Setting up storage system...");
-
-    // Initialize database manager with JSON flag
-    let mut manager = DatabaseManager::with_options(None, args.json)?;
-
-    if let Some(spinner) = spinner {
-        spinner.finish_and_clear();
-    }
-    task_list.update_task(init_task, TaskStatus::Complete);
-
-    // Check for resumable operations
-    if args.resume {
-        let resume_task = task_list.add_task("Check for resumable downloads");
-        task_list.update_task(resume_task, TaskStatus::InProgress);
-
-        let resumable_ops = manager.list_resumable_operations()?;
-        if !resumable_ops.is_empty() {
-            subsection_header(&format!("Found {} resumable operation(s)", resumable_ops.len()));
-            for (i, (op_id, state)) in resumable_ops.iter().enumerate() {
-                let is_last = i == resumable_ops.len() - 1;
-                tree_item(is_last, &format!("{}: {}", op_id, state.summary()), None);
-            }
-            task_list.update_task(resume_task, TaskStatus::Complete);
-        } else {
-            task_list.update_task(resume_task, TaskStatus::Skipped);
-        }
-    }
-
-    // Add download tasks
     let check_task = task_list.add_task("Check for existing data");
     let download_task = task_list.add_task("Download database");
     let process_task = task_list.add_task("Process into chunks");
     let store_task = task_list.add_task("Store in repository");
     let manifest_task = task_list.add_task("Create manifest");
 
+    // Initialize CASG repository
+    task_list.update_task(init_task, TaskStatus::InProgress);
+    let mut manager = DatabaseManager::with_options(None, args.json)?;
+    task_list.update_task(init_task, TaskStatus::Complete);
+
+    // Ensure version integrity (fix symlinks, create version.json if missing)
+    manager.ensure_version_integrity(&database_source)?;
+
+    // Check for resumable operations
+    if args.resume {
+        println!();
+        let spinner = create_spinner("Checking for resumable downloads...");
+        let resumable_ops = manager.list_resumable_operations()?;
+        spinner.finish_and_clear();
+
+        if !resumable_ops.is_empty() {
+            subsection_header(&format!("◆ Found {} resumable operation(s)", resumable_ops.len()));
+            for (i, (op_id, state)) in resumable_ops.iter().enumerate() {
+                let is_last = i == resumable_ops.len() - 1;
+                tree_item(is_last, &format!("{}: {}", op_id, state.summary()), None);
+            }
+        }
+    }
+
     // Create a shared task list for progress callback
     let shared_task_list = Arc::new(Mutex::new(task_list));
     let task_list_clone = Arc::clone(&shared_task_list);
 
-    // Progress callback that updates task list
+    // Track current phase and spinner
+    let current_spinner: Arc<Mutex<Option<ProgressBar>>> = Arc::new(Mutex::new(None));
+    let spinner_clone = Arc::clone(&current_spinner);
+
+    // Progress callback that updates task list and shows detailed output
     let progress = move |msg: &str| {
-        // Parse the message to update appropriate task
+        let mut tl = task_list_clone.lock().unwrap();
+        let mut spinner = spinner_clone.lock().unwrap();
+
+        // Parse message and update task states
         if msg.contains("[NEW]") || msg.contains("Initial download required") {
-            let mut tl = task_list_clone.lock().unwrap();
             tl.update_task(check_task, TaskStatus::Complete);
-            // Don't print warnings here, they interfere with task list
+            tl.update_task(download_task, TaskStatus::InProgress);
+            drop(tl);
+
+            // Clear any existing spinner and show message
+            if let Some(s) = spinner.take() {
+                s.finish_and_clear();
+            }
+            println!("\n  {} {}", "●".yellow(), "Initial download required");
+
         } else if msg.contains("Checking for updates") {
-            let mut tl = task_list_clone.lock().unwrap();
             tl.update_task(check_task, TaskStatus::InProgress);
+
         } else if msg.contains("up to date") || msg.contains("Up to date") {
-            let mut tl = task_list_clone.lock().unwrap();
             tl.update_task(check_task, TaskStatus::Complete);
             tl.update_task(download_task, TaskStatus::Skipped);
             tl.update_task(process_task, TaskStatus::Skipped);
             tl.update_task(store_task, TaskStatus::Skipped);
             tl.update_task(manifest_task, TaskStatus::Skipped);
+
+            if let Some(s) = spinner.take() {
+                s.finish_and_clear();
+            }
+
         } else if msg.contains("Downloading full database") {
-            // This is when the actual download with progress bar starts
-            let mut tl = task_list_clone.lock().unwrap();
             tl.update_task(download_task, TaskStatus::InProgress);
-            tl.pause_updates(); // Pause task list updates during download progress bar
+            tl.pause_updates();
             drop(tl);
-            println!("\n{}", msg); // Print the message below task list
-        } else if msg.contains("Downloading") && msg.contains("database") {
-            let mut tl = task_list_clone.lock().unwrap();
-            tl.update_task(download_task, TaskStatus::InProgress);
-        } else if msg.contains("Processing") || msg.contains("Creating") && msg.contains("chunks") {
-            let mut tl = task_list_clone.lock().unwrap();
-            tl.resume_updates(); // Resume updates after download completes
+
+            if let Some(s) = spinner.take() {
+                s.finish_and_clear();
+            }
+            println!("\n  {} {}", "○".dimmed(), "Download");
+            println!("{}", msg);
+
+        } else if msg.contains("Reading sequences from FASTA") {
+            // Clear download phase, start processing
+            tl.resume_updates();
             tl.update_task(download_task, TaskStatus::Complete);
             tl.update_task(process_task, TaskStatus::InProgress);
-        } else if msg.contains("Storing") || msg.contains("chunks stored") {
-            let mut tl = task_list_clone.lock().unwrap();
+            drop(tl);
+
+            if let Some(s) = spinner.take() {
+                s.finish_and_clear();
+            }
+
+            println!("\n  {} Process into chunks", "●".yellow());
+            *spinner = Some(create_spinner("Reading sequences from FASTA file..."));
+
+        } else if msg.contains("Analyzing database structure") {
+            if let Some(s) = spinner.take() {
+                s.finish_and_clear();
+            }
+            *spinner = Some(create_spinner("Analyzing database structure..."));
+
+        } else if msg.contains("Database analysis:") || msg.contains("Total sequences:") {
+            // Clear spinner and show analysis results
+            if let Some(s) = spinner.take() {
+                s.finish_and_clear();
+            }
+            println!("{}", msg);
+
+        } else if msg.contains("Creating taxonomy-aware chunks") {
+            *spinner = Some(create_spinner("Creating taxonomy-aware chunks..."));
+
+        } else if msg.contains("Special taxa rules applied") {
+            if let Some(ref s) = *spinner {
+                s.set_message("Applying special taxa rules...");
+            }
+
+        } else if msg.contains("Created") && msg.contains("chunks") {
+            if let Some(s) = spinner.take() {
+                s.finish_and_clear();
+            }
+
+            // Extract chunk count for tree display
+            if let Some(num_str) = msg.split("Created ").nth(1).and_then(|s| s.split(" chunks").next()) {
+                println!("  {} Created {} chunks", "✓".green(), format_number(num_str.parse::<usize>().unwrap_or(0)));
+            }
+
             tl.update_task(process_task, TaskStatus::Complete);
             tl.update_task(store_task, TaskStatus::InProgress);
-        } else if msg.contains("manifest") || msg.contains("Manifest") {
-            let mut tl = task_list_clone.lock().unwrap();
+            drop(tl);
+
+            println!("\n  {} Store in repository", "●".yellow());
+            *spinner = Some(create_spinner("Storing chunks in CASG repository..."));
+
+        } else if msg.contains("All chunks stored") {
+            if let Some(s) = spinner.take() {
+                s.finish_and_clear();
+            }
+
             tl.update_task(store_task, TaskStatus::Complete);
             tl.update_task(manifest_task, TaskStatus::InProgress);
-        }
+            drop(tl);
 
-        // Don't print raw messages during task list updates - they interfere with rendering
+            println!("  {} All chunks stored", "✓".green());
+            println!("\n  {} Create manifest", "●".yellow());
+            *spinner = Some(create_spinner("Creating and saving manifest..."));
+
+        } else if msg.contains("Creating and saving manifest") {
+            // Already handled above
+        } else if !msg.is_empty() && !msg.contains("[0") { // Ignore progress bar messages
+            // Pass through other messages but format them nicely
+            if let Some(s) = spinner.as_ref() {
+                s.set_message(msg.to_string());
+            }
+        }
     };
 
-    // Run the download
-    let result = runtime.block_on(async {
-        manager.download(&database_source, progress).await
-    })?;
+    // Run the download (or dry-run check)
+    let result = if args.dry_run {
+        // In dry-run mode, just check what would be downloaded
+        runtime.block_on(async {
+            manager.check_for_updates(&database_source, progress).await
+        })?
+    } else if args.force {
+        // Force download even if up-to-date
+        runtime.block_on(async {
+            manager.force_download(&database_source, progress).await
+        })?
+    } else {
+        // Normal download (idempotent)
+        runtime.block_on(async {
+            manager.download(&database_source, progress).await
+        })?
+    };
+
+    // Clear any remaining spinner
+    if let Some(s) = current_spinner.lock().unwrap().take() {
+        s.finish_and_clear();
+    }
 
     // Update final task statuses based on result
     {
         let mut tl = shared_task_list.lock().unwrap();
+        tl.resume_updates(); // Make sure updates are resumed
         match result {
             DownloadResult::UpToDate => {
                 // Tasks already marked as skipped
@@ -144,14 +232,38 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
         }
     }
 
+    println!("  {} Manifest created", "✓".green());
+    println!();
+
     // Report results with nice formatting
     match result {
         DownloadResult::UpToDate => {
-            success("Database is already up to date!");
+            println!("{}", "─".repeat(80).dimmed());
+            if args.dry_run {
+                success("Database is up to date - no download needed");
+            } else {
+                success("Database is already up to date!");
+            }
             info("No downloads needed - saved bandwidth and time");
+
+            // Show version information
+            if let Ok(version_info) = manager.get_current_version_info(&database_source) {
+                println!();
+                subsection_header("◆ Current Version");
+                tree_item(false, "Timestamp", Some(&version_info.timestamp));
+                if let Some(upstream) = version_info.upstream_version {
+                    tree_item(false, "Upstream", Some(&upstream));
+                }
+                tree_item(true, "Aliases", Some(&version_info.aliases.join(", ")));
+            }
         }
         DownloadResult::Updated { chunks_added, chunks_removed } => {
-            success("Database updated successfully!");
+            println!("{}", "─".repeat(80).dimmed());
+            if args.dry_run {
+                warning("Updates available - run without --dry-run to download");
+            } else {
+                success("Database updated successfully!");
+            }
             let mut items = vec![
                 ("Added", format!("{} new chunks", format_number(chunks_added))),
             ];
@@ -160,26 +272,44 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
             }
             items.push(("Efficiency", "Only downloaded what changed".to_string()));
             tree_section("Update Summary", items, true);
+
+            if args.dry_run {
+                println!();
+                info(&format!("Run without --dry-run to download {} chunks", chunks_added));
+            }
         }
         DownloadResult::InitialDownload => {
-            success("Initial database setup complete!");
-            info("Database has been chunked and stored");
-            info("Future updates will only download changed chunks");
-            print_tip("Set TALARIA_MANIFEST_SERVER environment variable to enable incremental updates from a manifest server");
+            println!("{}", "─".repeat(80).dimmed());
+            if args.dry_run {
+                warning("Initial download required - run without --dry-run to download");
+                println!();
+                info("This database has not been downloaded yet");
+                info("Full download will be performed on first run");
+            } else {
+                success("Database downloaded successfully!");
+                println!();
+                subsection_header("◆ Download Summary");
+                tree_item(false, "Status", Some("Initial download complete"));
+                tree_item(false, "Storage", Some("Database chunked and stored in CASG"));
+                tree_item(true, "Updates", Some("Future updates will be incremental"));
+                println!();
+                print_tip("Set TALARIA_MANIFEST_SERVER to enable incremental updates from a manifest server");
+            }
         }
     }
 
-    // Show stats in a nice table
+    // Show stats in a tree format
     let stats = manager.get_stats()?;
-    let stats_data = vec![
-        ("Total chunks", stats.total_chunks.to_string()),
-        ("Total size", format_bytes(stats.total_size as u64)),
-        ("Compressed chunks", stats.compressed_chunks.to_string()),
-        ("Deduplication ratio", format!("{:.2}x", stats.deduplication_ratio)),
-        ("Databases managed", stats.database_count.to_string()),
-    ];
 
-    formatter::print_stats_table("Repository Statistics", stats_data);
+    println!();
+    subsection_header("◆ Repository Statistics");
+    tree_item(false, "Total chunks", Some(&format_number(stats.total_chunks)));
+    tree_item(false, "Total size", Some(&format_bytes(stats.total_size as u64)));
+    tree_item(false, "Compressed chunks", Some(&format_number(stats.compressed_chunks)));
+    tree_item(false, "Deduplication ratio", Some(&format!("{:.2}x", stats.deduplication_ratio)));
+    tree_item(true, "Databases managed", Some(&format_number(stats.database_count)));
+
+    println!();
 
     Ok(())
 }

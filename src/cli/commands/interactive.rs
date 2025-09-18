@@ -1,8 +1,9 @@
 use clap::Args;
 use crossterm::{
+    cursor,
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen, Clear, ClearType},
 };
 use ratatui::{
     backend::CrosstermBackend,
@@ -12,8 +13,9 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph},
     Terminal,
 };
-use std::io;
+use std::io::{self, Write};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Args)]
 pub struct InteractiveArgs {
@@ -22,7 +24,37 @@ pub struct InteractiveArgs {
     pub mode: Option<String>,
 }
 
+// Shared flag for cleanup
+static CLEANUP_DONE: AtomicBool = AtomicBool::new(false);
+
+/// Cleanup function to restore terminal state
+fn cleanup_terminal() {
+    if CLEANUP_DONE.swap(true, Ordering::SeqCst) {
+        return; // Already cleaned up
+    }
+
+    let mut stdout = io::stdout();
+
+    // Best effort cleanup - ignore errors
+    let _ = execute!(
+        stdout,
+        Clear(ClearType::All),
+        DisableMouseCapture,
+        LeaveAlternateScreen,
+        cursor::Show
+    );
+    let _ = disable_raw_mode();
+    let _ = stdout.flush();
+}
+
 pub fn run(_args: InteractiveArgs) -> anyhow::Result<()> {
+    // Set up panic handler
+    let default_panic = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        cleanup_terminal();
+        default_panic(panic_info);
+    }));
+
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -30,17 +62,32 @@ pub fn run(_args: InteractiveArgs) -> anyhow::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
+    // Hide cursor
+    terminal.hide_cursor()?;
+
     // Run app
     let res = run_app(&mut terminal);
 
-    // Restore terminal
-    disable_raw_mode()?;
+    // Restore terminal (improved cleanup)
+    terminal.clear()?;
+    terminal.show_cursor()?;
     execute!(
         terminal.backend_mut(),
+        Clear(ClearType::All),
+        DisableMouseCapture,
         LeaveAlternateScreen,
-        DisableMouseCapture
+        cursor::Show
     )?;
-    terminal.show_cursor()?;
+    disable_raw_mode()?;
+
+    // Ensure all escape sequences are flushed
+    terminal.backend_mut().flush()?;
+
+    // Mark cleanup as done
+    CLEANUP_DONE.store(true, Ordering::SeqCst);
+
+    // Restore default panic handler
+    let _ = std::panic::take_hook();
 
     if let Err(err) = res {
         eprintln!("Error: {:?}", err);

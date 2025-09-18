@@ -1,5 +1,12 @@
 # Distributed Processing Design
 
+> **Implementation Status: DESIGN DOCUMENT ONLY**
+>
+> This document describes the planned architecture for distributed processing in Talaria.
+> **None of these features are currently implemented.** They represent future development goals.
+>
+> Current Talaria operates in single-node mode only.
+
 ## Overview
 
 Processing massive FASTA files (200GB+) requires distributed computing strategies that respect biological constraints. Unlike generic data processing, biological sequence databases cannot be arbitrarily sharded without affecting alignment accuracy and statistical significance.

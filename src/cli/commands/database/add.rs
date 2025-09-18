@@ -1,6 +1,10 @@
 use clap::Args;
 use std::path::PathBuf;
-use crate::cli::output::*;
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use flate2::read::GzDecoder;
+// use crate::cli::output::*;  // TODO: Remove if not needed
 
 /// Magic bytes for Talaria manifest format
 const TALARIA_MAGIC: &[u8] = b"TAL\x01";
@@ -40,12 +44,17 @@ pub struct AddArgs {
     /// Copy file instead of moving (keeps original in place)
     #[arg(long)]
     pub copy: bool,
+
+    /// Automatically download taxonomy prerequisites if missing
+    #[arg(long)]
+    pub download_prerequisites: bool,
 }
 
 pub fn run(args: AddArgs) -> anyhow::Result<()> {
     use crate::core::database_manager::DatabaseManager;
     use crate::casg::chunker::TaxonomicChunker;
-    use crate::casg::types::{ChunkingStrategy, ChunkMetadata, TemporalManifest, SHA256Hash};
+    use crate::casg::types::{ChunkingStrategy, ChunkMetadata, TemporalManifest, SHA256Hash, BiTemporalCoordinate, SerializedMerkleTree};
+    use crate::casg::merkle::MerkleDAG;
     use crate::bio::fasta::parse_fasta;
     use crate::utils::progress::create_progress_bar;
     use crate::cli::output::*;
@@ -71,9 +80,16 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
 
     let manager = DatabaseManager::new(Some(base_path.to_string_lossy().to_string()))?;
 
+    // Generate version timestamp (UTC for consistency)
+    let version = args.version.clone().unwrap_or_else(|| {
+        crate::core::paths::generate_utc_timestamp()
+    });
+
     // Check if database already exists
-    let db_path = base_path.join(&args.source).join(&dataset);
-    if db_path.exists() && !args.replace {
+    let db_base = base_path.join("versions").join(&args.source).join(&dataset);
+    let db_path = db_base.join(&version);
+
+    if db_base.exists() && !args.replace {
         anyhow::bail!(
             "Database already exists: {}/{}. Use --replace to overwrite.",
             args.source,
@@ -92,20 +108,34 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     let sequence_count = sequences.len();
     tree_item(false, "Sequences read", Some(&format_number(sequence_count)));
 
-    // Create chunker
-    let strategy = ChunkingStrategy {
-        target_chunk_size: 5 * 1024 * 1024, // 5MB target
-        max_chunk_size: 10 * 1024 * 1024, // 10MB max
-        min_sequences_per_chunk: 10, // At least 10 sequences
-        taxonomic_coherence: 0.0, // No taxonomy optimization for custom DBs
-        special_taxa: Vec::new(),
-    };
+    // Create chunker with default strategy (same as database download)
+    // This ensures consistency across all database operations
+    let strategy = ChunkingStrategy::default();
+    let mut chunker = TaxonomicChunker::new(strategy);
 
-    let chunker = TaxonomicChunker::new(strategy);
+    // Check taxonomy prerequisites
+    use crate::core::taxonomy_prerequisites::TaxonomyPrerequisites;
+    let prereqs = TaxonomyPrerequisites::new();
+    prereqs.display_status();
+
+    // Ensure prerequisites if requested
+    if args.download_prerequisites {
+        prereqs.ensure_prerequisites(true)?;
+    }
+
+    // Try to load accession-to-taxid mappings for better taxonomy resolution
+    action("Loading taxonomy mappings...");
+    let taxonomy_map = load_taxonomy_mappings()?;
+    if !taxonomy_map.is_empty() {
+        chunker.load_taxonomy_mapping(taxonomy_map.clone());
+        tree_item(false, "Accession mappings loaded", Some(&format_number(taxonomy_map.len())));
+    } else {
+        tree_item(false, "No accession mappings found", Some("Will use TaxID from headers"));
+    }
 
     // Chunk the sequences
     action("Chunking sequences...");
-    let chunks = chunker.chunk_sequences(sequences)?;
+    let chunks = chunker.chunk_sequences_into_taxonomy_aware(sequences)?;
     tree_item(false, "Chunks created", Some(&format_number(chunks.len())));
 
     // Store chunks in CASG
@@ -133,12 +163,31 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     pb.finish_with_message("All chunks stored");
 
     // Create manifest
-    let version = args.version.unwrap_or_else(|| {
-        Utc::now().format("%Y%m%d").to_string()
-    });
-
     let _description = args.description.unwrap_or_else(|| {
         format!("Custom database imported from {:?}", args.input.file_name().unwrap_or_default())
+    });
+
+    // Build Merkle tree from chunks
+    let chunk_merkle_tree = if !chunk_infos.is_empty() {
+        let dag = MerkleDAG::build_from_items(chunk_infos.clone())?;
+        let root_hash = dag.root_hash()
+            .ok_or_else(|| anyhow::anyhow!("Failed to get Merkle root"))?;
+
+        // Serialize the Merkle tree
+        let serialized = rmp_serde::to_vec(&dag)?;
+        Some(SerializedMerkleTree {
+            root_hash,
+            node_count: chunk_infos.len(),
+            serialized_nodes: serialized,
+        })
+    } else {
+        None
+    };
+
+    // Create bi-temporal coordinate
+    let temporal_coordinate = Some(BiTemporalCoordinate {
+        sequence_time: Utc::now(),
+        taxonomy_time: Utc::now(),
     });
 
     let temporal_manifest = TemporalManifest {
@@ -146,8 +195,10 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
         created_at: Utc::now(),
         sequence_version: version.clone(),
         taxonomy_version: "none".to_string(),
+        temporal_coordinate,
         taxonomy_root: SHA256Hash::zero(),
         sequence_root: SHA256Hash::zero(),
+        chunk_merkle_tree,
         taxonomy_manifest_hash: SHA256Hash::zero(),
         taxonomy_dump_version: "none".to_string(),
         source_database: Some(format!("{}/{}", args.source, dataset)),
@@ -169,6 +220,20 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     let json_content = serde_json::to_string_pretty(&temporal_manifest)?;
     std::fs::write(&manifest_path, json_content)?;
 
+    // Create current symlink
+    let current_link = db_base.join("current");
+    if current_link.exists() {
+        std::fs::remove_file(&current_link)?;
+    }
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&version, &current_link)?;
+    }
+    #[cfg(windows)]
+    {
+        std::fs::write(&current_link, &version)?;
+    }
+
     success(&format!("Successfully added custom database: {}/{}", args.source, dataset));
 
     // Build tree of database details
@@ -187,4 +252,108 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Load taxonomy mappings from available accession2taxid files
+fn load_taxonomy_mappings() -> anyhow::Result<HashMap<String, crate::casg::types::TaxonId>> {
+    use crate::casg::types::TaxonId;
+    use crate::core::paths;
+
+    let mut mapping = HashMap::new();
+    let mappings_dir = paths::talaria_taxonomy_current_dir().join("mappings");
+
+    // Try NCBI prot.accession2taxid first (most common for protein sequences)
+    let ncbi_file = mappings_dir.join("prot.accession2taxid.gz");
+    if ncbi_file.exists() {
+        use crate::cli::output::info;
+        info(&format!("Loading NCBI accession2taxid from: {}", ncbi_file.display()));
+        mapping.extend(load_ncbi_accession2taxid(&ncbi_file)?);
+        if !mapping.is_empty() {
+            return Ok(mapping);
+        }
+    }
+
+    // Try UniProt idmapping if NCBI not found
+    let uniprot_file = mappings_dir.join("uniprot_idmapping.dat.gz");
+    if uniprot_file.exists() {
+        use crate::cli::output::info;
+        info(&format!("Loading UniProt idmapping from: {}", uniprot_file.display()));
+        mapping.extend(load_uniprot_idmapping(&uniprot_file)?);
+    }
+
+    // Check for a simple accession2taxid file in taxonomy root
+    let simple_file = paths::talaria_taxonomy_current_dir().join("accession2taxid.txt");
+    if simple_file.exists() {
+        use crate::cli::output::info;
+        info(&format!("Loading custom accession2taxid from: {}", simple_file.display()));
+        let file = File::open(&simple_file)?;
+        let reader = BufReader::new(file);
+
+        for line in reader.lines().skip(1) { // Skip header
+            let line = line?;
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 3 {
+                let accession = parts[0].to_string();
+                if let Ok(taxid) = parts[2].parse::<u32>() {
+                    mapping.insert(accession, TaxonId(taxid));
+                }
+            }
+        }
+    }
+
+    Ok(mapping)
+}
+
+/// Load NCBI prot.accession2taxid format
+fn load_ncbi_accession2taxid(path: &PathBuf) -> anyhow::Result<HashMap<String, crate::casg::types::TaxonId>> {
+    use crate::casg::types::TaxonId;
+
+    let mut mapping = HashMap::new();
+    let file = File::open(path)?;
+    let decoder = GzDecoder::new(file);
+    let reader = BufReader::new(decoder);
+
+    // Format: accession<tab>accession.version<tab>taxid<tab>gi
+    for (idx, line) in reader.lines().enumerate() {
+        if idx == 0 { continue; } // Skip header
+        if idx > 1000000 { break; } // Limit for performance
+
+        let line = line?;
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() >= 3 {
+            let accession = parts[0].to_string();
+            if let Ok(taxid) = parts[2].parse::<u32>() {
+                mapping.insert(accession, TaxonId(taxid));
+            }
+        }
+    }
+
+    Ok(mapping)
+}
+
+/// Load UniProt idmapping format
+fn load_uniprot_idmapping(path: &PathBuf) -> anyhow::Result<HashMap<String, crate::casg::types::TaxonId>> {
+    use crate::casg::types::TaxonId;
+
+    let mut mapping = HashMap::new();
+    let file = File::open(path)?;
+    let decoder = GzDecoder::new(file);
+    let reader = BufReader::new(decoder);
+
+    // Format: UniProtKB-AC<tab>ID-type<tab>ID-value
+    // We're looking for NCBI-taxon entries
+    for (idx, line) in reader.lines().enumerate() {
+        if idx > 1000000 { break; } // Limit for performance
+
+        let line = line?;
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() >= 3 && parts[1] == "NCBI-taxon" {
+            let accession = parts[0].to_string();
+            if let Ok(taxid) = parts[2].parse::<u32>() {
+                mapping.insert(accession, TaxonId(taxid));
+            }
+        }
+    }
+
+    Ok(mapping)
 }

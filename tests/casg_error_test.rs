@@ -13,8 +13,10 @@ fn create_test_manifest(version: &str, seq_version: &str, tax_version: &str) -> 
         created_at: Utc::now(),
         sequence_version: seq_version.to_string(),
         taxonomy_version: tax_version.to_string(),
+        temporal_coordinate: None,
         taxonomy_root: SHA256Hash::compute(format!("tax_{}", version).as_bytes()),
         sequence_root: SHA256Hash::compute(format!("seq_{}", version).as_bytes()),
+        chunk_merkle_tree: None,
         taxonomy_manifest_hash: SHA256Hash::compute(b"test_tax_manifest"),
         taxonomy_dump_version: "2024-01-01".to_string(),
         source_database: Some("test_db".to_string()),
@@ -212,20 +214,45 @@ async fn test_network_timeout_simulation() {
 
 #[test]
 fn test_merkle_proof_tampering() {
-    let chunks = vec![
-        b"chunk1".to_vec(),
-        b"chunk2".to_vec(),
-        b"chunk3".to_vec(),
+    use talaria::casg::ChunkMetadata;
+
+    // Create verifiable items using ChunkMetadata
+    let items = vec![
+        ChunkMetadata {
+            hash: SHA256Hash::compute(b"chunk1"),
+            taxon_ids: vec![],
+            sequence_count: 1,
+            size: 6,
+            compressed_size: None,
+        },
+        ChunkMetadata {
+            hash: SHA256Hash::compute(b"chunk2"),
+            taxon_ids: vec![],
+            sequence_count: 1,
+            size: 6,
+            compressed_size: None,
+        },
+        ChunkMetadata {
+            hash: SHA256Hash::compute(b"chunk3"),
+            taxon_ids: vec![],
+            sequence_count: 1,
+            size: 6,
+            compressed_size: None,
+        },
     ];
 
-    let dag = MerkleDAG::build_from_chunks(chunks.clone()).unwrap();
-    let mut proof = dag.generate_proof(&chunks[0]).unwrap();
+    let dag = MerkleDAG::build_from_items(items.clone()).unwrap();
+    // Generate proof for the first item's data
+    let item_data = b"chunk1";
+    let proof = dag.generate_proof(item_data).unwrap();
 
-    // Tamper with the proof
-    proof.leaf_hash = SHA256Hash::compute(b"tampered");
+    // Create a tampered proof
+    let mut tampered_proof = proof.clone();
+    tampered_proof.leaf_hash = SHA256Hash::compute(b"tampered");
 
-    // Verification should fail
-    assert!(!MerkleDAG::verify_proof(&proof));
+    // Verification should fail for tampered proof
+    // verify_proof takes the proof and the original data
+    assert!(!MerkleDAG::verify_proof(&tampered_proof, item_data));
 }
 
 #[test]

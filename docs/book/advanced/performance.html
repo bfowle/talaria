@@ -200,27 +200,17 @@
 <h1 id="performance-optimization"><a class="header" href="#performance-optimization">Performance Optimization</a></h1>
 <p>Advanced techniques for maximizing Talaria’s performance across different workloads and hardware configurations.</p>
 <h2 id="performance-profiling"><a class="header" href="#performance-profiling">Performance Profiling</a></h2>
-<h3 id="built-in-profiling"><a class="header" href="#built-in-profiling">Built-in Profiling</a></h3>
-<pre><code class="language-bash"># Enable profiling mode
-talaria reduce --profile -i input.fasta -o output.fasta
-
-# Generate detailed performance report
-talaria reduce --profile-output profile.html -i input.fasta -o output.fasta
-
-# Profile specific components
-talaria reduce --profile-alignment --profile-io -i input.fasta -o output.fasta
-</code></pre>
+<h3 id="using-external-profilers"><a class="header" href="#using-external-profilers">Using External Profilers</a></h3>
+<p><strong>Note:</strong> Talaria does not currently have built-in profiling. Use external tools for performance analysis.</p>
 <h3 id="performance-metrics"><a class="header" href="#performance-metrics">Performance Metrics</a></h3>
-<p>Key metrics tracked during profiling:</p>
+<p>Metrics you can track with external tools:</p>
 <ul>
 <li><strong>Throughput</strong>: Sequences processed per second</li>
 <li><strong>Memory usage</strong>: Peak and average memory consumption</li>
-<li><strong>Cache efficiency</strong>: Hit rates for alignment cache</li>
-<li><strong>I/O performance</strong>: Read/write speeds and buffer utilization</li>
 <li><strong>Thread utilization</strong>: CPU usage across cores</li>
-<li><strong>Bottleneck analysis</strong>: Identification of performance limiters</li>
+<li><strong>I/O performance</strong>: Read/write speeds</li>
 </ul>
-<h3 id="using-external-profilers"><a class="header" href="#using-external-profilers">Using External Profilers</a></h3>
+<h3 id="using-external-profilers-1"><a class="header" href="#using-external-profilers-1">Using External Profilers</a></h3>
 <h4 id="perf-linux"><a class="header" href="#perf-linux">Perf (Linux)</a></h4>
 <pre><code class="language-bash"># Record performance data
 perf record -g talaria reduce -i input.fasta -o output.fasta
@@ -263,14 +253,8 @@ use_sketching = true
 sketch_size = 1000
 </code></pre>
 <h4 id="simd-acceleration"><a class="header" href="#simd-acceleration">SIMD Acceleration</a></h4>
-<pre><code class="language-toml">[performance]
-# Enable SIMD instructions
-use_simd = true
-simd_alignment = "avx2"  # Options: sse4, avx2, avx512
-
-# Auto-detect best SIMD level
-auto_detect_simd = true
-</code></pre>
+<p><strong>Status: Not Implemented</strong></p>
+<p>SIMD acceleration is planned for future releases but not currently available.</p>
 <h3 id="2-memory-optimization"><a class="header" href="#2-memory-optimization">2. Memory Optimization</a></h3>
 <h4 id="chunking-strategies"><a class="header" href="#chunking-strategies">Chunking Strategies</a></h4>
 <pre><code class="language-toml">[performance]
@@ -318,60 +302,18 @@ locked_memory_gb = 8
 </code></pre>
 <h2 id="hardware-specific-optimization"><a class="header" href="#hardware-specific-optimization">Hardware-Specific Optimization</a></h2>
 <h3 id="cpu-optimization"><a class="header" href="#cpu-optimization">CPU Optimization</a></h3>
-<h4 id="intel-processors"><a class="header" href="#intel-processors">Intel Processors</a></h4>
-<pre><code class="language-toml">[performance.intel]
-# Intel-specific optimizations
-use_mkl = true  # Intel Math Kernel Library
-prefetch_hint = "t0"  # L1 cache
-use_tsx = true  # Transactional memory
-</code></pre>
-<h4 id="amd-processors"><a class="header" href="#amd-processors">AMD Processors</a></h4>
-<pre><code class="language-toml">[performance.amd]
-# AMD-specific optimizations
-use_aocc = true  # AMD Optimizing Compiler
-infinity_fabric_aware = true
-ccx_affinity = true
-</code></pre>
-<h4 id="arm-processors"><a class="header" href="#arm-processors">ARM Processors</a></h4>
-<pre><code class="language-toml">[performance.arm]
-# ARM-specific optimizations
-use_neon = true
-use_sve = true  # Scalable Vector Extension
-big_little_aware = true
+<p><strong>Status: Basic Implementation Only</strong></p>
+<p>Talaria currently uses standard Rust optimizations and multi-threading via Rayon. CPU-specific optimizations are not implemented.</p>
+<p>You can control thread count with:</p>
+<pre><code class="language-bash">export TALARIA_THREADS=8
+talaria reduce -i input.fasta -o output.fasta
 </code></pre>
 <h3 id="gpu-acceleration"><a class="header" href="#gpu-acceleration">GPU Acceleration</a></h3>
-<h4 id="cuda-support"><a class="header" href="#cuda-support">CUDA Support</a></h4>
-<pre><code class="language-toml">[gpu]
-# Enable GPU acceleration
-use_gpu = true
-gpu_backend = "cuda"
-
-# CUDA settings
-cuda_device = 0
-cuda_streams = 4
-cuda_blocks = 256
-cuda_threads_per_block = 256
-</code></pre>
-<h4 id="opencl-support"><a class="header" href="#opencl-support">OpenCL Support</a></h4>
-<pre><code class="language-toml">[gpu]
-# OpenCL configuration
-gpu_backend = "opencl"
-opencl_platform = 0
-opencl_device = 0
-work_group_size = 256
-</code></pre>
+<p><strong>Status: Not Implemented</strong></p>
+<p>GPU acceleration is a planned future feature but is not currently available.</p>
 <h3 id="numa-optimization"><a class="header" href="#numa-optimization">NUMA Optimization</a></h3>
-<pre><code class="language-toml">[performance.numa]
-# NUMA-aware processing
-numa_aware = true
-numa_nodes = 2
-interleave_memory = false
-local_allocation = true
-
-# Thread pinning
-pin_threads = true
-thread_affinity = "compact"  # Options: compact, scatter
-</code></pre>
+<p><strong>Status: Not Implemented</strong></p>
+<p>NUMA-aware processing is not currently implemented. The system relies on the OS scheduler for thread management.</p>
 <h2 id="workload-specific-tuning"><a class="header" href="#workload-specific-tuning">Workload-Specific Tuning</a></h2>
 <h3 id="large-file-processing"><a class="header" href="#large-file-processing">Large File Processing</a></h3>
 <pre><code class="language-toml">[performance.large_files]
@@ -654,6 +596,22 @@ compression_level = 3
 
         </div>
 
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
 
 
 

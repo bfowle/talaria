@@ -209,8 +209,10 @@ fn test_identify_exact_version() {
         created_at: Utc::now(),
         sequence_version: "2024.01".to_string(),
         taxonomy_version: "2024.01".to_string(),
+        temporal_coordinate: None,
         taxonomy_root: SHA256Hash::compute(b"tax"),
         sequence_root,
+        chunk_merkle_tree: None,
         chunk_index: vec![
             ChunkMetadata {
                 hash: chunk_hash,
@@ -295,8 +297,10 @@ fn test_identify_modified_version() {
         created_at: Utc::now(),
         sequence_version: "2024.01".to_string(),
         taxonomy_version: "2024.01".to_string(),
+        temporal_coordinate: None,
         taxonomy_root: SHA256Hash::compute(b"tax"),
         sequence_root,
+        chunk_merkle_tree: None,
         chunk_index: vec![
             ChunkMetadata {
                 hash: chunk1_hash,
@@ -392,8 +396,10 @@ fn test_multi_taxon_version_identification() {
         created_at: Utc::now(),
         sequence_version: "2024.02".to_string(),
         taxonomy_version: "2024.02".to_string(),
+        temporal_coordinate: None,
         taxonomy_root: SHA256Hash::compute(b"tax2"),
         sequence_root,
+        chunk_merkle_tree: None,
         chunk_index: vec![
             ChunkMetadata {
                 hash: chunk_hash,

@@ -2,18 +2,111 @@
 
 use crate::casg::types::*;
 use crate::casg::storage::CASGStorage;
-use crate::casg::taxonomy::TaxonomyManager;
 use anyhow::Result;
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
 
-pub struct DiscrepancyDetector<'a> {
-    taxonomy: &'a TaxonomyManager,
+pub struct DiscrepancyDetector {
+    taxonomy_mappings: HashMap<String, TaxonId>,
 }
 
-impl<'a> DiscrepancyDetector<'a> {
-    pub fn new(taxonomy: &'a TaxonomyManager) -> Self {
-        Self { taxonomy }
+impl DiscrepancyDetector {
+    pub fn new() -> Self {
+        Self {
+            taxonomy_mappings: HashMap::new(),
+        }
+    }
+
+    /// Set taxonomy mappings (accession -> taxon ID)
+    pub fn set_taxonomy_mappings(&mut self, mappings: HashMap<String, TaxonId>) {
+        self.taxonomy_mappings = mappings;
+    }
+
+    /// Detect discrepancies in a chunk (simplified version for CLI)
+    pub fn detect(&self, chunk: &TaxonomyAwareChunk) -> Vec<TaxonomicDiscrepancy> {
+        let mut discrepancies = Vec::new();
+
+        for seq_ref in &chunk.sequences {
+            // Extract claimed taxon from sequence ID/header
+            let header_taxon = self.extract_taxon_from_header(&seq_ref.sequence_id);
+
+            // Look up in accession mapping
+            let accession = self.extract_accession(&seq_ref.sequence_id);
+            let mapped_taxon = self.taxonomy_mappings.get(&accession).cloned();
+
+            // Infer from chunk context
+            let inferred_taxon = self.infer_taxon_from_chunk(&chunk.taxon_ids);
+
+            // Check for discrepancies
+            if let Some(discrepancy) = self.check_simple_discrepancy(
+                &seq_ref.sequence_id,
+                header_taxon,
+                mapped_taxon,
+                inferred_taxon,
+            ) {
+                discrepancies.push(discrepancy);
+            }
+        }
+
+        discrepancies
+    }
+
+    /// Simplified discrepancy check without full taxonomy tree
+    fn check_simple_discrepancy(
+        &self,
+        sequence_id: &str,
+        header_taxon: Option<TaxonId>,
+        mapped_taxon: Option<TaxonId>,
+        inferred_taxon: Option<TaxonId>,
+    ) -> Option<TaxonomicDiscrepancy> {
+        // Determine discrepancy type
+        let discrepancy_type = match (header_taxon.as_ref(), mapped_taxon.as_ref(), inferred_taxon.as_ref()) {
+            (None, None, None) => Some(DiscrepancyType::Missing),
+            (Some(h), Some(m), _) if h != m => Some(DiscrepancyType::Conflict),
+            (Some(h), _, Some(i)) if h != i => Some(DiscrepancyType::Conflict),
+            (_, Some(m), Some(i)) if m != i => Some(DiscrepancyType::Conflict),
+            _ => None,
+        };
+
+        discrepancy_type.map(|dtype| {
+            // Calculate confidence based on available sources
+            let mut confidence = 0.0;
+            let mut sources = 0;
+
+            if header_taxon.is_some() {
+                sources += 1;
+                confidence += 0.33;
+            }
+            if mapped_taxon.is_some() {
+                sources += 1;
+                confidence += 0.33;
+            }
+            if inferred_taxon.is_some() {
+                sources += 1;
+                confidence += 0.34;
+            }
+
+            // Adjust confidence based on agreement
+            if sources > 1 {
+                let all_equal = header_taxon == mapped_taxon &&
+                               mapped_taxon == inferred_taxon;
+                if all_equal {
+                    confidence = 1.0;
+                } else {
+                    confidence *= 0.5; // Lower confidence on disagreement
+                }
+            }
+
+            TaxonomicDiscrepancy {
+                sequence_id: sequence_id.to_string(),
+                header_taxon,
+                mapped_taxon,
+                inferred_taxon,
+                confidence,
+                detection_date: Utc::now(),
+                discrepancy_type: dtype,
+            }
+        })
     }
 
     /// Detect all discrepancies in the repository
@@ -75,10 +168,7 @@ impl<'a> DiscrepancyDetector<'a> {
 
             // Look up in accession mapping
             let accession = self.extract_accession(&seq_ref.sequence_id);
-            let mapped_taxon = self.taxonomy
-                .get_accession_mapping()
-                .get(&accession)
-                .cloned();
+            let mapped_taxon = self.taxonomy_mappings.get(&accession).cloned();
 
             // Check for discrepancies
             if let Some(discrepancy) = self.check_discrepancy(
@@ -112,10 +202,8 @@ impl<'a> DiscrepancyDetector<'a> {
                 Some(DiscrepancyType::Conflict)
             }
             (Some(taxon), None) | (None, Some(taxon)) => {
-                // Check if taxon is valid
-                if self.taxonomy.get_node(taxon).is_none() {
-                    Some(DiscrepancyType::Invalid)
-                } else if self.is_outdated_classification(taxon) {
+                // Check if taxon is outdated (simple check without full taxonomy tree)
+                if self.is_outdated_classification(taxon) {
                     Some(DiscrepancyType::Outdated)
                 } else {
                     None

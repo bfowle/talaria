@@ -2,9 +2,13 @@
 
 pub mod evolution;
 pub mod discrepancy;
+pub mod extractor;
+pub mod manifest;
+pub mod version_store;
 
 use crate::casg::types::*;
 use crate::casg::storage::CASGStorage;
+use crate::core::paths;
 use crate::utils::progress::{create_progress_bar, create_spinner};
 use anyhow::Result;
 use std::collections::HashMap;
@@ -43,9 +47,34 @@ pub struct TaxonomyNode {
 }
 
 impl TaxonomyManager {
-    pub fn new(base_path: &Path) -> Result<Self> {
-        let taxonomy_dir = base_path.join("taxonomy");
-        fs::create_dir_all(&taxonomy_dir)?;
+    pub fn new(_base_path: &Path) -> Result<Self> {
+        // Use unified taxonomy directory
+        let taxonomy_dir = paths::talaria_taxonomy_current_dir();
+
+        // Create directory if it doesn't exist (in case current symlink is broken)
+        if !taxonomy_dir.exists() {
+            // Try to use the actual version directory
+            let versions_dir = paths::talaria_taxonomy_versions_dir();
+            fs::create_dir_all(&versions_dir)?;
+
+            // If no versions exist, create a default one
+            let default_version = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
+            let version_dir = versions_dir.join(&default_version);
+            fs::create_dir_all(&version_dir)?;
+
+            // Create current symlink
+            let current_link = versions_dir.join("current");
+            #[cfg(unix)]
+            {
+                let _ = std::os::unix::fs::symlink(&default_version, &current_link);
+            }
+            #[cfg(windows)]
+            {
+                let _ = fs::write(&current_link, default_version.as_bytes());
+            }
+        } else {
+            fs::create_dir_all(&taxonomy_dir)?;
+        }
 
         Ok(Self {
             base_path: taxonomy_dir,
@@ -79,8 +108,18 @@ impl TaxonomyManager {
 
     /// Load NCBI taxonomy from taxdump files
     pub fn load_ncbi_taxonomy(&mut self, taxdump_dir: &Path) -> Result<()> {
-        let nodes_file = taxdump_dir.join("nodes.dmp");
-        let names_file = taxdump_dir.join("names.dmp");
+        // Support both old path structure (with taxdump subdir) and new (direct files)
+        let nodes_file = if taxdump_dir.join("taxdump").join("nodes.dmp").exists() {
+            taxdump_dir.join("taxdump").join("nodes.dmp")
+        } else {
+            taxdump_dir.join("nodes.dmp")
+        };
+
+        let names_file = if taxdump_dir.join("taxdump").join("names.dmp").exists() {
+            taxdump_dir.join("taxdump").join("names.dmp")
+        } else {
+            taxdump_dir.join("names.dmp")
+        };
 
         if !nodes_file.exists() || !names_file.exists() {
             return Err(anyhow::anyhow!("Taxonomy files not found"));
@@ -178,6 +217,19 @@ impl TaxonomyManager {
 
     /// Load UniProt ID mapping
     pub fn load_uniprot_mapping(&mut self, idmapping_file: &Path) -> Result<()> {
+        // Check if file exists in current taxonomy version
+        let idmapping_path = if idmapping_file.is_absolute() {
+            idmapping_file.to_path_buf()
+        } else {
+            // Try in current taxonomy version
+            paths::talaria_taxonomy_current_dir().join(idmapping_file)
+        };
+
+        if !idmapping_path.exists() {
+            return Err(anyhow::anyhow!("UniProt ID mapping file not found: {}", idmapping_path.display()));
+        }
+
+        let idmapping_file = &idmapping_path;
         use flate2::read::GzDecoder;
         use std::io::{BufRead, BufReader};
 
@@ -313,7 +365,9 @@ impl TaxonomyManager {
     pub fn detect_discrepancies(&self, storage: &CASGStorage) -> Result<Vec<TaxonomicDiscrepancy>> {
         use discrepancy::DiscrepancyDetector;
 
-        let detector = DiscrepancyDetector::new(self);
+        let mut detector = DiscrepancyDetector::new();
+        // Pass accession mappings to detector
+        detector.set_taxonomy_mappings(self.accession_to_taxon.clone());
         detector.detect_all(storage)
     }
 

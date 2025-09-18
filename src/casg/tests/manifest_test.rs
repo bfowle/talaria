@@ -3,7 +3,6 @@ use crate::casg::manifest::{ManifestFormat, TALARIA_MAGIC};
 use chrono::Utc;
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
 use tempfile::TempDir;
 
 // Helper to create test manifests with required fields
@@ -13,8 +12,10 @@ fn create_test_manifest(version: &str, seq_version: &str, tax_version: &str) -> 
         created_at: Utc::now(),
         sequence_version: seq_version.to_string(),
         taxonomy_version: tax_version.to_string(),
+        temporal_coordinate: None,
         taxonomy_root: SHA256Hash::compute(format!("tax_{}", version).as_bytes()),
         sequence_root: SHA256Hash::compute(format!("seq_{}", version).as_bytes()),
+        chunk_merkle_tree: None,
         taxonomy_manifest_hash: SHA256Hash::compute(b"test_tax_manifest"),
         taxonomy_dump_version: "2024-01-01".to_string(),
         source_database: Some("test_db".to_string()),
@@ -346,10 +347,14 @@ fn test_manifest_roundtrip_tal_format() {
     let manifest_path = temp_dir.path().join("manifest.tal");
     let mut data = Vec::new();
     data.extend_from_slice(TALARIA_MAGIC);
-    data.extend_from_slice(&rmp_serde::to_vec(&manifest).unwrap());
+    let serialized = rmp_serde::to_vec(&manifest).unwrap();
+    println!("DEBUG: Serialized manifest size: {} bytes", serialized.len());
+    println!("DEBUG: First 100 bytes: {:?}", &serialized[..serialized.len().min(100)]);
+    data.extend_from_slice(&serialized);
     fs::write(&manifest_path, data).unwrap();
 
     // Load it back using Manifest::load_file
+    println!("DEBUG: Loading manifest from {:?}", manifest_path);
     let loaded = Manifest::load_file(&manifest_path).unwrap();
     let loaded_data = loaded.get_data().unwrap();
 

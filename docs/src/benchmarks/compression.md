@@ -1,6 +1,16 @@
 # Compression Rates
 
-This section presents comprehensive compression benchmark results for Talaria, demonstrating database reduction effectiveness across various datasets, parameters, and comparison with alternative approaches.
+> **Note on Benchmark Data**
+>
+> The compression rates shown in this document are **estimated projections** based on theoretical analysis
+> and limited testing. Actual compression rates will vary significantly based on:
+> - Dataset composition and redundancy
+> - Selected reference ratio
+> - Sequence similarity within the dataset
+>
+> Real-world compression typically ranges from 30% to 70% reduction.
+
+This section presents compression benchmark projections for Talaria, demonstrating expected database reduction effectiveness across various datasets and parameters.
 
 ## Executive Summary
 

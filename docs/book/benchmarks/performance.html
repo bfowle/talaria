@@ -198,14 +198,25 @@
                     <main>
                         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="performance-benchmarks"><a class="header" href="#performance-benchmarks">Performance Benchmarks</a></h1>
-<p>This section presents comprehensive performance benchmarks for Talaria across various hardware configurations, dataset sizes, and operational scenarios.</p>
-<h2 id="executive-summary"><a class="header" href="#executive-summary">Executive Summary</a></h2>
-<p>Talaria demonstrates significant performance improvements over traditional FASTA processing tools:</p>
+<blockquote>
+<p><strong>IMPORTANT: Synthetic Benchmarks</strong></p>
+<p>The performance numbers in this document are <strong>synthetic projections</strong> and not from actual benchmarks.
+Talaria has not been benchmarked against CD-HIT, MMseqs2, or other tools in controlled tests.</p>
+<p><strong>Actual performance characteristics:</strong></p>
 <ul>
-<li>■ <strong>3-5x faster</strong> than comparable tools</li>
-<li>● <strong>Linear scaling</strong> with thread count up to hardware limits</li>
-<li>▶ <strong>Sub-linear memory growth</strong> with dataset size</li>
-<li>◆ <strong>Consistent performance</strong> across diverse sequence types</li>
+<li>Multi-threading via Rayon provides good parallelization</li>
+<li>Memory usage scales with input size</li>
+<li>No formal performance comparisons have been conducted</li>
+</ul>
+<p>Real-world performance will vary significantly based on hardware and dataset characteristics.</p>
+</blockquote>
+<h2 id="executive-summary"><a class="header" href="#executive-summary">Executive Summary</a></h2>
+<p>Talaria’s expected performance characteristics (not benchmarked):</p>
+<ul>
+<li>■ <strong>Multi-threaded processing</strong> using Rayon</li>
+<li>● <strong>Reasonable scaling</strong> with available cores</li>
+<li>▶ <strong>Memory usage</strong> proportional to dataset size</li>
+<li>◆ <strong>Standard I/O performance</strong> using Rust libraries</li>
 </ul>
 <h2 id="test-hardware-specifications"><a class="header" href="#test-hardware-specifications">Test Hardware Specifications</a></h2>
 <h3 id="primary-test-system-server"><a class="header" href="#primary-test-system-server">Primary Test System (Server)</a></h3>
@@ -526,6 +537,22 @@ Current Phase:       Similarity Analysis
 
         </div>
 
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
 
 
 

@@ -198,6 +198,12 @@
                     <main>
                         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="distributed-processing-design"><a class="header" href="#distributed-processing-design">Distributed Processing Design</a></h1>
+<blockquote>
+<p><strong>Implementation Status: DESIGN DOCUMENT ONLY</strong></p>
+<p>This document describes the planned architecture for distributed processing in Talaria.
+<strong>None of these features are currently implemented.</strong> They represent future development goals.</p>
+<p>Current Talaria operates in single-node mode only.</p>
+</blockquote>
 <h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
 <p>Processing massive FASTA files (200GB+) requires distributed computing strategies that respect biological constraints. Unlike generic data processing, biological sequence databases cannot be arbitrarily sharded without affecting alignment accuracy and statistical significance.</p>
 <h2 id="the-challenge"><a class="header" href="#the-challenge">The Challenge</a></h2>
@@ -523,6 +529,22 @@ Real-time rebalancing</li>
 
         </div>
 
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
 
 
 

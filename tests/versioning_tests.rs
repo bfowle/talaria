@@ -3,9 +3,8 @@
 /// Tests timestamp-based storage, alias management, version resolution,
 /// and integration with database commands
 
-use talaria::utils::version_detector::{DatabaseVersion, VersionManager, VersionDetector, VersionAliases};
-use talaria::utils::database_ref::{parse_database_reference, DatabaseReference};
-use std::path::PathBuf;
+use talaria::utils::version_detector::{DatabaseVersion, VersionManager, VersionDetector};
+use talaria::utils::database_ref::parse_database_reference;
 use tempfile::TempDir;
 use chrono::Utc;
 
@@ -366,7 +365,7 @@ fn test_concurrent_version_operations() {
 #[test]
 fn test_version_metadata_persistence() {
     let temp_dir = TempDir::new().unwrap();
-    let manager = VersionManager::new(temp_dir.path());
+    let _manager = VersionManager::new(temp_dir.path());
 
     // Create and save version
     let versions_dir = temp_dir.path()

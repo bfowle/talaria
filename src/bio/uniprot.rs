@@ -61,8 +61,12 @@ impl UniProtClient {
 
         pb.finish_and_clear();
 
-        // Parse FASTA
-        self.parse_fasta(&body)
+        // Parse FASTA and set taxon_id for all sequences
+        let mut sequences = self.parse_fasta(&body)?;
+        for seq in &mut sequences {
+            seq.taxon_id = Some(taxid);
+        }
+        Ok(sequences)
     }
 
     /// Fetch sequences for multiple TaxIDs with optional progress callback

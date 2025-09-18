@@ -3,7 +3,24 @@
 use crate::casg::types::*;
 use anyhow::Result;
 use sha2::{Sha256, Digest};
+use serde::{Serialize, Deserialize};
 
+/// Trait for types that can participate in Merkle tree construction
+pub trait MerkleVerifiable {
+    /// Compute the hash of this item
+    fn compute_hash(&self) -> SHA256Hash;
+}
+
+/// Trait for types that can provide Merkle proofs
+pub trait ProofProvider {
+    /// Generate a proof that the target hash is in the tree
+    fn generate_proof(&self, target: &SHA256Hash) -> Result<MerkleProof>;
+
+    /// Verify a proof against the expected root
+    fn verify_proof(&self, proof: &MerkleProof, data: &[u8]) -> bool;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MerkleDAG {
     root: Option<MerkleNode>,
 }
@@ -13,16 +30,24 @@ impl MerkleDAG {
         Self { root: None }
     }
 
-    /// Build a Merkle tree from data chunks
-    pub fn build_from_chunks(chunks: Vec<Vec<u8>>) -> Result<Self> {
-        if chunks.is_empty() {
+    /// Build a Merkle tree from verifiable items
+    pub fn build_from_items<T: MerkleVerifiable>(items: Vec<T>) -> Result<Self> {
+        if items.is_empty() {
             return Ok(Self { root: None });
         }
 
-        // Create leaf nodes
-        let mut nodes: Vec<MerkleNode> = chunks
+        // Create leaf nodes from verifiable items
+        let mut nodes: Vec<MerkleNode> = items
             .into_iter()
-            .map(MerkleNode::leaf)
+            .map(|item| {
+                let hash = item.compute_hash();
+                MerkleNode {
+                    hash: hash.clone(),
+                    data: Some(hash.0.to_vec()),
+                    left: None,
+                    right: None,
+                }
+            })
             .collect();
 
         // Build tree bottom-up
@@ -121,7 +146,8 @@ impl MerkleDAG {
     }
 
     /// Verify a Merkle proof
-    pub fn verify_proof(proof: &MerkleProof) -> bool {
+    pub fn verify_proof(proof: &MerkleProof, _data: &[u8]) -> bool {
+        // Note: data parameter kept for future use when we might verify against actual data
         let mut current_hash = proof.leaf_hash.clone();
 
         for step in &proof.path {
@@ -231,7 +257,39 @@ impl MerkleDAG {
 
         nodes.into_iter().next().unwrap()
     }
+}
 
+impl ProofProvider for MerkleDAG {
+    fn generate_proof(&self, target: &SHA256Hash) -> Result<MerkleProof> {
+        let root = self.root.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Empty Merkle tree"))?;
+
+        let mut path = Vec::new();
+        if self.find_path(&root, target, &mut path) {
+            Ok(MerkleProof {
+                leaf_hash: target.clone(),
+                root_hash: root.hash.clone(),
+                path,
+            })
+        } else {
+            Err(anyhow::anyhow!("Target not found in tree"))
+        }
+    }
+
+    fn verify_proof(&self, proof: &MerkleProof, data: &[u8]) -> bool {
+        MerkleDAG::verify_proof(proof, data)
+    }
+}
+
+/// Implement MerkleVerifiable for ChunkMetadata
+impl MerkleVerifiable for ChunkMetadata {
+    fn compute_hash(&self) -> SHA256Hash {
+        // The chunk already has its hash computed
+        self.hash.clone()
+    }
+}
+
+impl MerkleDAG {
     /// Sign a temporal proof using SHA256 (placeholder for real signature)
     fn sign_temporal_proof(temporal_link: &CrossTimeHash) -> Vec<u8> {
         // In production, this would use actual cryptographic signing (e.g., Ed25519)
@@ -329,16 +387,27 @@ impl serde::Serialize for TaxonomyNode {
 mod tests {
     use super::*;
 
+    // Test implementation of MerkleVerifiable for testing
+    struct TestChunk {
+        data: Vec<u8>,
+    }
+
+    impl MerkleVerifiable for TestChunk {
+        fn compute_hash(&self) -> SHA256Hash {
+            SHA256Hash::compute(&self.data)
+        }
+    }
+
     #[test]
     fn test_merkle_tree_construction() {
         let chunks = vec![
-            b"chunk1".to_vec(),
-            b"chunk2".to_vec(),
-            b"chunk3".to_vec(),
-            b"chunk4".to_vec(),
+            TestChunk { data: b"chunk1".to_vec() },
+            TestChunk { data: b"chunk2".to_vec() },
+            TestChunk { data: b"chunk3".to_vec() },
+            TestChunk { data: b"chunk4".to_vec() },
         ];
 
-        let dag = MerkleDAG::build_from_chunks(chunks).unwrap();
+        let dag = MerkleDAG::build_from_items(chunks).unwrap();
         assert!(dag.root_hash().is_some());
     }
 
@@ -350,10 +419,16 @@ mod tests {
             b"chunk3".to_vec(),
         ];
 
-        let dag = MerkleDAG::build_from_chunks(chunks.clone()).unwrap();
-        let proof = dag.generate_proof(&chunks[0]).unwrap();
+        // Create test chunks as MerkleVerifiable items
+        let test_chunks: Vec<TestChunk> = chunks
+            .into_iter()
+            .map(|data| TestChunk { data })
+            .collect();
 
-        assert!(MerkleDAG::verify_proof(&proof));
+        let dag = MerkleDAG::build_from_items(test_chunks).unwrap();
+        let proof = dag.generate_proof(&b"chunk1".to_vec()).unwrap();
+
+        assert!(MerkleDAG::verify_proof(&proof, b"chunk1"));
     }
 
     #[test]
@@ -363,12 +438,18 @@ mod tests {
             b"chunk2".to_vec(),
         ];
 
-        let dag = MerkleDAG::build_from_chunks(chunks.clone()).unwrap();
-        let mut proof = dag.generate_proof(&chunks[0]).unwrap();
+        // Create test chunks as MerkleVerifiable items
+        let test_chunks: Vec<TestChunk> = chunks
+            .into_iter()
+            .map(|data| TestChunk { data })
+            .collect();
+
+        let dag = MerkleDAG::build_from_items(test_chunks).unwrap();
+        let mut proof = dag.generate_proof(&b"chunk1".to_vec()).unwrap();
 
         // Tamper with proof
         proof.leaf_hash = SHA256Hash::compute(b"tampered");
 
-        assert!(!MerkleDAG::verify_proof(&proof));
+        assert!(!MerkleDAG::verify_proof(&proof, b"chunk1"));
     }
 }

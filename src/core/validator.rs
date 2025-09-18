@@ -28,9 +28,9 @@ pub struct AlignmentMetrics {
     pub specificity: f64,
 }
 
-pub struct Validator;
+pub struct ValidatorImpl;
 
-impl Validator {
+impl ValidatorImpl {
     pub fn new() -> Self {
         Self
     }

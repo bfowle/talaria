@@ -19,18 +19,33 @@ pub mod delta_generator;
 pub mod delta_reconstructor;
 pub mod processing_state;
 pub mod cloud;
+pub mod format;
+pub mod validator;
+pub mod differ;
+pub mod compression;
+pub mod traits;
+pub mod retroactive;
+pub mod temporal_renderable;
+pub mod evolution_tracker;
+pub mod chunk_index;
 
 pub use types::*;
+pub use chunk_index::{ChunkIndexBuilder, ChunkQuery, ChunkAccessTracker, ChunkRelationships, IndexStatistics, OptimizationSuggestion, DefaultChunkIndex};
 pub use manifest::Manifest;
 pub use storage::CASGStorage;
-pub use merkle::MerkleDAG;
-pub use chunker::{TaxonomicChunker, Chunker};
+pub use merkle::{MerkleDAG, MerkleVerifiable};
+pub use chunker::{TaxonomicChunker, Chunker, TaxonomyAwareChunker};
+pub use differ::{TemporalManifestDiffer, StandardTemporalManifestDiffer, DiffResult, DiffOptions, ChangeType};
+pub use validator::{TemporalManifestValidator, StandardTemporalManifestValidator, ValidationResult, ValidationOptions};
+pub use format::{ManifestFormat, TalariaFormat, JsonFormat, MessagePackFormat, FormatDetector};
 pub use assembler::FastaAssembler;
 pub use verifier::{CASGVerifier, VerificationResult};
 pub use taxonomy::TaxonomyManager;
+pub use taxonomy::discrepancy::DiscrepancyDetector;
 pub use taxonomy_manifest::{TaxonomyManifest, TaxonomySource};
 pub use temporal::TemporalIndex;
 pub use processing_state::{ProcessingState, ProcessingStateManager, OperationType, SourceInfo};
+pub use evolution_tracker::{TaxonomyEvolutionTracker, MassReclassification, TaxonEvolutionReport};
 
 #[cfg(test)]
 mod tests;
@@ -126,6 +141,19 @@ impl CASGRepository {
         let chunks = self.taxonomy.get_chunks_for_taxon(taxon)?;
         let assembler = FastaAssembler::new(&self.storage);
         assembler.assemble_from_chunks(&chunks)
+    }
+
+    /// Load sequences from multiple chunks
+    pub fn load_sequences_from_chunks(&self, chunks: &[ChunkMetadata]) -> Result<Vec<crate::bio::sequence::Sequence>> {
+        let mut sequences = Vec::new();
+
+        for chunk_meta in chunks {
+            if let Ok(chunk_sequences) = self.storage.load_sequences_from_chunk(&chunk_meta.hash) {
+                sequences.extend(chunk_sequences);
+            }
+        }
+
+        Ok(sequences)
     }
 
     /// Verify integrity of the repository

@@ -1,13 +1,11 @@
 /// Reference selection module
 
-pub mod traits;
 pub mod impls;
+pub mod traits;
 
 pub use traits::{
-    ReferenceSelector, AlignmentBasedSelector, TaxonomyAwareSelector,
-    ClusteringSelector, IncrementalSelector, SelectionResult,
-    SelectionStats, AlignmentScore, RecommendedParams,
-    SelectionUpdate, SelectionState, SelectorConfig,
+    ReferenceSelector, AlignmentBasedSelector,
+    TraitSelectionResult, SelectionStats, AlignmentScore, RecommendedParams,
 };
 
 pub use impls::{

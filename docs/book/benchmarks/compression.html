@@ -198,7 +198,18 @@
                     <main>
                         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="compression-rates"><a class="header" href="#compression-rates">Compression Rates</a></h1>
-<p>This section presents comprehensive compression benchmark results for Talaria, demonstrating database reduction effectiveness across various datasets, parameters, and comparison with alternative approaches.</p>
+<blockquote>
+<p><strong>Note on Benchmark Data</strong></p>
+<p>The compression rates shown in this document are <strong>estimated projections</strong> based on theoretical analysis
+and limited testing. Actual compression rates will vary significantly based on:</p>
+<ul>
+<li>Dataset composition and redundancy</li>
+<li>Selected reference ratio</li>
+<li>Sequence similarity within the dataset</li>
+</ul>
+<p>Real-world compression typically ranges from 30% to 70% reduction.</p>
+</blockquote>
+<p>This section presents compression benchmark projections for Talaria, demonstrating expected database reduction effectiveness across various datasets and parameters.</p>
 <h2 id="executive-summary"><a class="header" href="#executive-summary">Executive Summary</a></h2>
 <p>Talaria achieves exceptional compression rates while maintaining biological integrity:</p>
 <ul>
@@ -593,6 +604,22 @@ Overhead:              15.8 MB (25.9%)
 
         </div>
 
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
 
 
 
