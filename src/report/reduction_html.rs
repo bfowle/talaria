@@ -18,7 +18,11 @@ pub fn generate_reduction_html_report(
     // Calculate statistics
     let original_count = original_sequences.len();
     let reference_count = selection_result.references.len();
-    let delta_count = selection_result.children.values().map(|v| v.len()).sum::<usize>();
+    let delta_count = selection_result
+        .children
+        .values()
+        .map(|v| v.len())
+        .sum::<usize>();
     let discarded_count = selection_result.discarded.len();
     let reduction_rate = if original_count > 0 {
         ((original_count - reference_count) as f64 / original_count as f64) * 100.0
@@ -246,59 +250,80 @@ pub fn generate_reduction_html_report(
                 <p><strong>Input:</strong> <code>"#);
 
     html.push_str(&input_path.display().to_string());
-    html.push_str(r#"</code></p>
-                <p><strong>Output:</strong> <code>"#);
+    html.push_str(
+        r#"</code></p>
+                <p><strong>Output:</strong> <code>"#,
+    );
 
     html.push_str(&output_path.display().to_string());
-    html.push_str(r#"</code></p>
-                <p><strong>Generated:</strong> "#);
+    html.push_str(
+        r#"</code></p>
+                <p><strong>Generated:</strong> "#,
+    );
 
     html.push_str(&chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string());
 
-    html.push_str(r#"</p>
+    html.push_str(
+        r#"</p>
             </div>
 
             <!-- Summary Metrics -->
             <div class="summary-grid">
                 <div class="metric-card primary">
                     <h3>Reduction Rate</h3>
-                    <div class="value">"#);
+                    <div class="value">"#,
+    );
 
     html.push_str(&format!("{:.1}", reduction_rate));
-    html.push_str(r#"<span class="unit">%</span></div>
-                    <div class="change">↓ "#);
+    html.push_str(
+        r#"<span class="unit">%</span></div>
+                    <div class="change">↓ "#,
+    );
     html.push_str(&format!("{}", original_count - reference_count));
-    html.push_str(r#" sequences</div>
+    html.push_str(
+        r#" sequences</div>
                 </div>
 
                 <div class="metric-card">
                     <h3>Original Sequences</h3>
-                    <div class="value">"#);
+                    <div class="value">"#,
+    );
     html.push_str(&format_number(original_count));
-    html.push_str(r#"</div>
-                    <div class="change">"#);
+    html.push_str(
+        r#"</div>
+                    <div class="change">"#,
+    );
     html.push_str(&format_size(original_size));
-    html.push_str(r#" total</div>
+    html.push_str(
+        r#" total</div>
                 </div>
 
                 <div class="metric-card">
                     <h3>References Selected</h3>
-                    <div class="value">"#);
+                    <div class="value">"#,
+    );
     html.push_str(&format_number(reference_count));
-    html.push_str(r#"</div>
-                    <div class="change">"#);
+    html.push_str(
+        r#"</div>
+                    <div class="change">"#,
+    );
     html.push_str(&format_size(reference_size));
-    html.push_str(r#" total</div>
+    html.push_str(
+        r#" total</div>
                 </div>
 
                 <div class="metric-card">
                     <h3>Coverage</h3>
-                    <div class="value">"#);
+                    <div class="value">"#,
+    );
     html.push_str(&format!("{:.1}", coverage_percent));
-    html.push_str(r#"<span class="unit">%</span></div>
-                    <div class="change">"#);
+    html.push_str(
+        r#"<span class="unit">%</span></div>
+                    <div class="change">"#,
+    );
     html.push_str(&format!("{} deltas", delta_count));
-    html.push_str(r#"</div>
+    html.push_str(
+        r#"</div>
                 </div>
             </div>
 
@@ -306,12 +331,16 @@ pub fn generate_reduction_html_report(
             <div style="margin: 30px 0;">
                 <h4 style="margin-bottom: 10px; color: #666;">Size Reduction</h4>
                 <div class="progress-bar">
-                    <div class="progress-fill" style="width: "#);
+                    <div class="progress-fill" style="width: "#,
+    );
     html.push_str(&format!("{:.1}%", size_reduction));
-    html.push_str(r#";">
-                        "#);
+    html.push_str(
+        r#";">
+                        "#,
+    );
     html.push_str(&format!("{:.1}% size reduced", size_reduction));
-    html.push_str(r#"
+    html.push_str(
+        r#"
                     </div>
                 </div>
             </div>
@@ -332,22 +361,26 @@ pub fn generate_reduction_html_report(
                             <canvas id="sizeChart"></canvas>
                         </div>
                     </div>
-                </div>"#);
+                </div>"#,
+    );
 
     // Add taxonomic breakdown if available
     if let Some(stats) = taxonomic_stats {
         if !stats.is_empty() {
-            html.push_str(r#"
+            html.push_str(
+                r#"
                 <div class="chart-container" style="margin-top: 30px; height: 400px;">
                     <h4>Taxonomic Breakdown</h4>
                     <div class="chart-wrapper">
                         <canvas id="taxonomyChart"></canvas>
                     </div>
-                </div>"#);
+                </div>"#,
+            );
         }
     }
 
-    html.push_str(r#"
+    html.push_str(
+        r#"
             </div>
 
             <!-- Sequence Length Distribution -->
@@ -358,11 +391,13 @@ pub fn generate_reduction_html_report(
                         <canvas id="lengthHistogram"></canvas>
                     </div>
                 </div>
-            </div>"#);
+            </div>"#,
+    );
 
     // Add top sequences table
     if !selection_result.references.is_empty() {
-        html.push_str(r#"
+        html.push_str(
+            r#"
             <!-- Top Reference Sequences -->
             <div class="table-container">
                 <h2 class="section-title">Top Reference Sequences</h2>
@@ -375,11 +410,16 @@ pub fn generate_reduction_html_report(
                             <th>Description</th>
                         </tr>
                     </thead>
-                    <tbody>"#);
+                    <tbody>"#,
+        );
 
-        let mut sorted_refs: Vec<_> = selection_result.references.iter()
+        let mut sorted_refs: Vec<_> = selection_result
+            .references
+            .iter()
             .map(|seq| {
-                let children_count = selection_result.children.get(&seq.id)
+                let children_count = selection_result
+                    .children
+                    .get(&seq.id)
                     .map(|v| v.len())
                     .unwrap_or(0);
                 (seq, children_count)
@@ -403,13 +443,16 @@ pub fn generate_reduction_html_report(
             ));
         }
 
-        html.push_str(r#"
+        html.push_str(
+            r#"
                     </tbody>
                 </table>
-            </div>"#);
+            </div>"#,
+        );
     }
 
-    html.push_str(r#"
+    html.push_str(
+        r#"
         </div>
 
         <div class="footer">
@@ -428,12 +471,16 @@ pub fn generate_reduction_html_report(
             data: {
                 labels: ['References', 'Deltas', 'Discarded'],
                 datasets: [{
-                    data: ["#);
+                    data: ["#,
+    );
 
-    html.push_str(&format!("{}, {}, {}",
-        reference_count, delta_count, discarded_count));
+    html.push_str(&format!(
+        "{}, {}, {}",
+        reference_count, delta_count, discarded_count
+    ));
 
-    html.push_str(r#"],
+    html.push_str(
+        r#"],
                     backgroundColor: [
                         'rgba(102, 126, 234, 0.8)',
                         'rgba(118, 75, 162, 0.8)',
@@ -470,7 +517,8 @@ pub fn generate_reduction_html_report(
 
         // Size Chart
         const sizeCtx = document.getElementById('sizeChart').getContext('2d');
-"#);
+"#,
+    );
 
     // Dynamically choose unit based on file size
     let max_size = original_size.max(reference_size);
@@ -484,17 +532,22 @@ pub fn generate_reduction_html_report(
 
     // Ensure minimum visibility - if value would be 0.00, show 0.01
     let orig_val = (original_size as f64 / divisor).max(if original_size > 0 { 0.01 } else { 0.0 });
-    let ref_val = (reference_size as f64 / divisor).max(if reference_size > 0 { 0.01 } else { 0.0 });
+    let ref_val =
+        (reference_size as f64 / divisor).max(if reference_size > 0 { 0.01 } else { 0.0 });
 
-    html.push_str(&format!(r#"        new Chart(sizeCtx, {{
+    html.push_str(&format!(
+        r#"        new Chart(sizeCtx, {{
             type: 'bar',
             data: {{
                 labels: ['Original', 'References'],
                 datasets: [{{
                     label: 'Size ({})',
-                    data: [{:.2}, {:.2}],"#, unit, orig_val, ref_val));
+                    data: [{:.2}, {:.2}],"#,
+        unit, orig_val, ref_val
+    ));
 
-    html.push_str(r#"
+    html.push_str(
+        r#"
                     backgroundColor: [
                         'rgba(102, 126, 234, 0.8)',
                         'rgba(118, 75, 162, 0.8)'
@@ -521,24 +574,32 @@ pub fn generate_reduction_html_report(
 
         // Length Histogram
         const lengthCtx = document.getElementById('lengthHistogram').getContext('2d');
-        const lengths = ["#);
+        const lengths = ["#,
+    );
 
     // Create histogram data
     let length_buckets = create_length_histogram(&selection_result.references, 20);
     for (i, bucket) in length_buckets.iter().enumerate() {
-        if i > 0 { html.push_str(", "); }
+        if i > 0 {
+            html.push_str(", ");
+        }
         html.push_str(&bucket.count.to_string());
     }
 
-    html.push_str(r#"];
-        const labels = ["#);
+    html.push_str(
+        r#"];
+        const labels = ["#,
+    );
 
     for (i, bucket) in length_buckets.iter().enumerate() {
-        if i > 0 { html.push_str(", "); }
+        if i > 0 {
+            html.push_str(", ");
+        }
         html.push_str(&format!("'{}-{}'", bucket.min, bucket.max));
     }
 
-    html.push_str(r#"];
+    html.push_str(
+        r#"];
         new Chart(lengthCtx, {
             type: 'bar',
             data: {
@@ -571,42 +632,56 @@ pub fn generate_reduction_html_report(
                     }
                 }
             }
-        });"#);
+        });"#,
+    );
 
     // Add taxonomic chart if data is available
     if let Some(stats) = taxonomic_stats {
         if !stats.is_empty() {
-            html.push_str(r#"
+            html.push_str(
+                r#"
 
         // Taxonomic Chart
         const taxonomyCtx = document.getElementById('taxonomyChart').getContext('2d');
-        const taxonLabels = ["#);
+        const taxonLabels = ["#,
+            );
 
             let mut sorted_taxa: Vec<_> = stats.iter().collect();
             sorted_taxa.sort_by(|a, b| b.1.original_count.cmp(&a.1.original_count));
 
             for (i, (name, _)) in sorted_taxa.iter().take(10).enumerate() {
-                if i > 0 { html.push_str(", "); }
+                if i > 0 {
+                    html.push_str(", ");
+                }
                 html.push_str(&format!("'{}'", name));
             }
 
-            html.push_str(r#"];
-        const originalCounts = ["#);
+            html.push_str(
+                r#"];
+        const originalCounts = ["#,
+            );
 
             for (i, (_, stat)) in sorted_taxa.iter().take(10).enumerate() {
-                if i > 0 { html.push_str(", "); }
+                if i > 0 {
+                    html.push_str(", ");
+                }
                 html.push_str(&stat.original_count.to_string());
             }
 
-            html.push_str(r#"];
-        const referenceCounts = ["#);
+            html.push_str(
+                r#"];
+        const referenceCounts = ["#,
+            );
 
             for (i, (_, stat)) in sorted_taxa.iter().take(10).enumerate() {
-                if i > 0 { html.push_str(", "); }
+                if i > 0 {
+                    html.push_str(", ");
+                }
                 html.push_str(&stat.reference_count.to_string());
             }
 
-            html.push_str(r#"];
+            html.push_str(
+                r#"];
         new Chart(taxonomyCtx, {
             type: 'bar',
             data: {
@@ -637,14 +712,17 @@ pub fn generate_reduction_html_report(
                     }
                 }
             }
-        });"#);
+        });"#,
+            );
         }
     }
 
-    html.push_str(r#"
+    html.push_str(
+        r#"
     </script>
 </body>
-</html>"#);
+</html>"#,
+    );
 
     Ok(html)
 }
@@ -714,7 +792,7 @@ fn create_length_histogram(sequences: &[Sequence], num_buckets: usize) -> Vec<Hi
     }
 
     let range = max_len - min_len;
-    let bucket_size = (range + num_buckets - 1) / num_buckets; // Round up
+    let bucket_size = range.div_ceil(num_buckets); // Round up
 
     let mut buckets = Vec::new();
     for i in 0..num_buckets {
@@ -725,7 +803,8 @@ fn create_length_histogram(sequences: &[Sequence], num_buckets: usize) -> Vec<Hi
             min_len + (i + 1) * bucket_size - 1
         };
 
-        let count = lengths.iter()
+        let count = lengths
+            .iter()
             .filter(|&&len| len >= bucket_min && len <= bucket_max)
             .count();
 

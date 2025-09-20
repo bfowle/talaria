@@ -1,15 +1,14 @@
+use crate::casg::retroactive::RetroactiveAnalyzer;
+use crate::casg::traits::renderable::*;
+use crate::casg::traits::temporal::*;
+use crate::casg::types::{BiTemporalCoordinate, TaxonId};
+use crate::cli::output::*;
+use anyhow::Result;
+use chrono::{DateTime, NaiveDate, Utc};
 /// Temporal query commands for bi-temporal database operations
 ///
 /// Enables retroactive analysis, historical reproduction, and temporal joins
-
 use clap::{Args, Subcommand};
-use anyhow::Result;
-use chrono::{DateTime, Utc, NaiveDate};
-use crate::casg::traits::temporal::*;
-use crate::casg::traits::renderable::*;
-use crate::casg::retroactive::RetroactiveAnalyzer;
-use crate::casg::types::{BiTemporalCoordinate, TaxonId};
-use crate::cli::output::*;
 use std::path::PathBuf;
 
 #[derive(Args)]
@@ -213,8 +212,11 @@ fn run_reproduce(args: ReproduceArgs) -> Result<()> {
     // Write sequences if output specified
     if let Some(output_path) = args.output {
         write_sequences(&snapshot.sequences, &output_path)?;
-        success(&format!("Wrote {} sequences to {:?}",
-            snapshot.sequences.len(), output_path));
+        success(&format!(
+            "Wrote {} sequences to {:?}",
+            snapshot.sequences.len(),
+            output_path
+        ));
     }
 
     Ok(())
@@ -235,7 +237,11 @@ fn run_retroactive(args: RetroactiveArgs) -> Result<()> {
 
     info(&format!(
         "Applying {} taxonomy to {} sequences",
-        if args.taxonomy == "latest" { "latest" } else { &args.taxonomy },
+        if args.taxonomy == "latest" {
+            "latest"
+        } else {
+            &args.taxonomy
+        },
         args.sequences_from
     ));
 
@@ -361,7 +367,8 @@ fn run_join(args: JoinArgs) -> Result<()> {
             // Output as CSV for further processing
             println!("old_taxon,new_taxon,count");
             for group in &join_result.reclassified {
-                println!("{},{},{}",
+                println!(
+                    "{},{},{}",
                     group.old_taxon.map(|t| t.0.to_string()).unwrap_or_default(),
                     group.new_taxon.map(|t| t.0.to_string()).unwrap_or_default(),
                     group.count
@@ -426,8 +433,8 @@ fn run_diff(args: DiffArgs) -> Result<()> {
 // Helper functions
 
 fn create_analyzer(database: &Option<String>) -> Result<RetroactiveAnalyzer> {
-    use crate::core::paths::talaria_home;
     use crate::casg::CASGRepository;
+    use crate::core::paths::talaria_home;
 
     let base_path = if let Some(db) = database {
         talaria_home().join("databases").join("data").join(db)
@@ -443,7 +450,7 @@ fn parse_date(date_str: &str) -> Result<DateTime<Utc>> {
     let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d")?;
     Ok(DateTime::from_naive_utc_and_offset(
         date.and_hms_opt(0, 0, 0).unwrap(),
-        Utc
+        Utc,
     ))
 }
 
@@ -460,7 +467,10 @@ fn parse_taxon_filter(taxon_str: &str) -> Result<Vec<TaxonId>> {
     // Otherwise treat as taxon name and look up
     // For now, return empty vec - would need taxonomy lookup
     use crate::cli::output::warning;
-    warning(&format!("Taxon name lookup not yet implemented for '{}'", taxon_str));
+    warning(&format!(
+        "Taxon name lookup not yet implemented for '{}'",
+        taxon_str
+    ));
     Ok(vec![])
 }
 

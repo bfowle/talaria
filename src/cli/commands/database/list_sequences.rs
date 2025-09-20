@@ -40,8 +40,8 @@ pub enum OutputFormat {
 }
 
 pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
-    use crate::core::database_manager::DatabaseManager;
     use crate::casg::assembler::FastaAssembler;
+    use crate::core::database_manager::DatabaseManager;
     use crate::utils::progress::create_spinner;
     use std::io::Write;
 
@@ -59,7 +59,9 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
     // Parse database reference
     let parts: Vec<&str> = args.database.split('/').collect();
     if parts.len() != 2 {
-        anyhow::bail!("Invalid database reference. Use format: source/database (e.g., uniprot/swissprot)");
+        anyhow::bail!(
+            "Invalid database reference. Use format: source/database (e.g., uniprot/swissprot)"
+        );
     }
 
     let source = parts[0];
@@ -80,19 +82,25 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
         if alt_manifest_path.exists() {
             alt_manifest_path
         } else {
-            anyhow::bail!("Database not found: {}\nLooked for: {}\nand: {}",
+            anyhow::bail!(
+                "Database not found: {}\nLooked for: {}\nand: {}",
                 args.database,
                 manifest_path.display(),
-                alt_manifest_path.display());
+                alt_manifest_path.display()
+            );
         }
     };
 
     // Load manifest
     let manifest = crate::casg::manifest::Manifest::load_file(&manifest_path)?;
-    let manifest_data = manifest.get_data()
+    let manifest_data = manifest
+        .get_data()
         .ok_or_else(|| anyhow::anyhow!("No manifest data found"))?;
 
-    eprintln!("\u{25cf} Loading sequences from {} (version {})", args.database, manifest_data.version);
+    eprintln!(
+        "\u{25cf} Loading sequences from {} (version {})",
+        args.database, manifest_data.version
+    );
     eprintln!("  Total chunks: {}", manifest_data.chunk_index.len());
 
     // Create assembler
@@ -100,7 +108,10 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
 
     // Collect sequence references from chunks
     let mut all_sequences = Vec::new();
-    let pb = crate::utils::progress::create_progress_bar(manifest_data.chunk_index.len() as u64, "Reading chunks");
+    let pb = crate::utils::progress::create_progress_bar(
+        manifest_data.chunk_index.len() as u64,
+        "Reading chunks",
+    );
 
     let mut missing_chunks = 0;
     for chunk_info in &manifest_data.chunk_index {
@@ -109,24 +120,28 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
         // Load chunk
         match manager.get_storage().get_chunk(&chunk_info.hash) {
             Ok(chunk_data) => {
-            if let Ok(chunk) = serde_json::from_slice::<crate::casg::types::TaxonomyAwareChunk>(&chunk_data) {
-                // Apply filter if specified
-                let sequences: Vec<_> = if let Some(filter) = &args.filter {
-                    chunk.sequences.into_iter()
-                        .filter(|seq| seq.sequence_id.contains(filter))
-                        .collect()
-                } else {
-                    chunk.sequences
-                };
+                if let Ok(chunk) =
+                    serde_json::from_slice::<crate::casg::types::TaxonomyAwareChunk>(&chunk_data)
+                {
+                    // Apply filter if specified
+                    let sequences: Vec<_> = if let Some(filter) = &args.filter {
+                        chunk
+                            .sequences
+                            .into_iter()
+                            .filter(|seq| seq.sequence_id.contains(filter))
+                            .collect()
+                    } else {
+                        chunk.sequences
+                    };
 
-                all_sequences.extend(sequences);
+                    all_sequences.extend(sequences);
 
-                // Check limit
-                if all_sequences.len() >= args.limit {
-                    all_sequences.truncate(args.limit);
-                    break;
+                    // Check limit
+                    if all_sequences.len() >= args.limit {
+                        all_sequences.truncate(args.limit);
+                        break;
+                    }
                 }
-            }
             }
             Err(_) => {
                 missing_chunks += 1;
@@ -136,7 +151,10 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
     }
 
     if missing_chunks > 0 {
-        eprintln!("\n⚠ Warning: {} chunks referenced in manifest are not present on disk", missing_chunks);
+        eprintln!(
+            "\n⚠ Warning: {} chunks referenced in manifest are not present on disk",
+            missing_chunks
+        );
         eprintln!("  The database may need to be re-downloaded.");
         eprintln!("  Run: talaria database download {}", args.database);
     }
@@ -160,7 +178,11 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
                 } else if args.full {
                     writeln!(writer, "ID: {}", seq_ref.sequence_id)?;
                     writeln!(writer, "Chunk: {}", seq_ref.chunk_hash)?;
-                    writeln!(writer, "Offset: {}, Length: {}", seq_ref.offset, seq_ref.length)?;
+                    writeln!(
+                        writer,
+                        "Offset: {}, Length: {}",
+                        seq_ref.offset, seq_ref.length
+                    )?;
                     writeln!(writer, "---")?;
                 } else {
                     writeln!(writer, "{}", seq_ref.sequence_id)?;
@@ -182,7 +204,11 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
         OutputFormat::Tsv => {
             writeln!(writer, "id\tchunk_hash\toffset\tlength")?;
             for seq_ref in &all_sequences {
-                writeln!(writer, "{}\t{}\t{}\t{}", seq_ref.sequence_id, seq_ref.chunk_hash, seq_ref.offset, seq_ref.length)?;
+                writeln!(
+                    writer,
+                    "{}\t{}\t{}\t{}",
+                    seq_ref.sequence_id, seq_ref.chunk_hash, seq_ref.offset, seq_ref.length
+                )?;
             }
         }
     }

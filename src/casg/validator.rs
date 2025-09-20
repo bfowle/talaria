@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use crate::casg::types::{SHA256Hash, ChunkMetadata, TemporalManifest};
+use crate::casg::types::{ChunkMetadata, SHA256Hash, TemporalManifest};
 
 /// Validation error types
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -17,9 +17,7 @@ pub enum ValidationError {
         actual: SHA256Hash,
     },
     /// Chunk is missing from storage
-    MissingChunk {
-        chunk_hash: SHA256Hash,
-    },
+    MissingChunk { chunk_hash: SHA256Hash },
     /// Chunk size doesn't match manifest
     SizeMismatch {
         chunk_hash: SHA256Hash,
@@ -43,22 +41,13 @@ pub enum ValidationError {
         chunk2: SHA256Hash,
     },
     /// TemporalManifest version is unsupported
-    UnsupportedVersion {
-        version: String,
-    },
+    UnsupportedVersion { version: String },
     /// TemporalManifest is corrupted
-    CorruptedTemporalManifest {
-        reason: String,
-    },
+    CorruptedTemporalManifest { reason: String },
     /// Missing required field
-    MissingField {
-        field: String,
-    },
+    MissingField { field: String },
     /// Invalid metadata
-    InvalidMetadata {
-        key: String,
-        reason: String,
-    },
+    InvalidMetadata { key: String, reason: String },
 }
 
 /// Result of validation
@@ -110,25 +99,48 @@ pub struct ValidationOptions {
 #[async_trait]
 pub trait TemporalManifestValidator: Send + Sync {
     /// Validate a manifest
-    async fn validate(&self, manifest: &TemporalManifest, options: ValidationOptions) -> Result<ValidationResult>;
+    async fn validate(
+        &self,
+        manifest: &TemporalManifest,
+        options: ValidationOptions,
+    ) -> Result<ValidationResult>;
 
     /// Validate a manifest file
-    async fn validate_file(&self, path: &PathBuf, options: ValidationOptions) -> Result<ValidationResult>;
+    async fn validate_file(
+        &self,
+        path: &PathBuf,
+        options: ValidationOptions,
+    ) -> Result<ValidationResult>;
 
     /// Quick validation (structure only, no content checks)
     async fn quick_validate(&self, manifest: &TemporalManifest) -> Result<bool>;
 
     /// Validate chunk integrity
-    async fn validate_chunk(&self, chunk: &ChunkMetadata, content: &[u8]) -> Result<Vec<ValidationError>>;
+    async fn validate_chunk(
+        &self,
+        chunk: &ChunkMetadata,
+        content: &[u8],
+    ) -> Result<Vec<ValidationError>>;
 
     /// Repair a manifest if possible
-    async fn repair(&mut self, manifest: &mut TemporalManifest, errors: &[ValidationError]) -> Result<usize>;
+    async fn repair(
+        &mut self,
+        manifest: &mut TemporalManifest,
+        errors: &[ValidationError],
+    ) -> Result<usize>;
 
     /// Check compatibility between two manifests
-    async fn check_compatibility(&self, old: &TemporalManifest, new: &TemporalManifest) -> Result<bool>;
+    async fn check_compatibility(
+        &self,
+        old: &TemporalManifest,
+        new: &TemporalManifest,
+    ) -> Result<bool>;
 
     /// Validate manifest metadata
-    async fn validate_metadata(&self, metadata: &HashMap<String, String>) -> Result<Vec<ValidationError>>;
+    async fn validate_metadata(
+        &self,
+        metadata: &HashMap<String, String>,
+    ) -> Result<Vec<ValidationError>>;
 }
 
 /// Standard implementation of TemporalManifestValidator
@@ -181,7 +193,7 @@ impl StandardTemporalManifestValidator {
             if chunk.size == 0 {
                 errors.push(ValidationError::InvalidChunkBounds {
                     chunk_hash: chunk.hash.clone(),
-                    offset: 0,  // ChunkMetadata doesn't have offset
+                    offset: 0, // ChunkMetadata doesn't have offset
                     length: chunk.size,
                 });
             }
@@ -244,7 +256,11 @@ impl StandardTemporalManifestValidator {
 
 #[async_trait]
 impl TemporalManifestValidator for StandardTemporalManifestValidator {
-    async fn validate(&self, manifest: &TemporalManifest, options: ValidationOptions) -> Result<ValidationResult> {
+    async fn validate(
+        &self,
+        manifest: &TemporalManifest,
+        options: ValidationOptions,
+    ) -> Result<ValidationResult> {
         let start_time = std::time::Instant::now();
         let mut errors = Vec::new();
         let mut warnings = Vec::new();
@@ -341,7 +357,11 @@ impl TemporalManifestValidator for StandardTemporalManifestValidator {
         })
     }
 
-    async fn validate_file(&self, path: &PathBuf, options: ValidationOptions) -> Result<ValidationResult> {
+    async fn validate_file(
+        &self,
+        path: &PathBuf,
+        options: ValidationOptions,
+    ) -> Result<ValidationResult> {
         let data = std::fs::read(path)?;
 
         // Auto-detect format
@@ -356,7 +376,11 @@ impl TemporalManifestValidator for StandardTemporalManifestValidator {
         Ok(errors.is_empty())
     }
 
-    async fn validate_chunk(&self, chunk: &ChunkMetadata, content: &[u8]) -> Result<Vec<ValidationError>> {
+    async fn validate_chunk(
+        &self,
+        chunk: &ChunkMetadata,
+        content: &[u8],
+    ) -> Result<Vec<ValidationError>> {
         let mut errors = Vec::new();
 
         // Check hash
@@ -381,7 +405,11 @@ impl TemporalManifestValidator for StandardTemporalManifestValidator {
         Ok(errors)
     }
 
-    async fn repair(&mut self, manifest: &mut TemporalManifest, errors: &[ValidationError]) -> Result<usize> {
+    async fn repair(
+        &mut self,
+        manifest: &mut TemporalManifest,
+        errors: &[ValidationError],
+    ) -> Result<usize> {
         let mut repaired = 0;
 
         for error in errors {
@@ -423,13 +451,20 @@ impl TemporalManifestValidator for StandardTemporalManifestValidator {
         Ok(repaired)
     }
 
-    async fn check_compatibility(&self, old: &TemporalManifest, new: &TemporalManifest) -> Result<bool> {
+    async fn check_compatibility(
+        &self,
+        old: &TemporalManifest,
+        new: &TemporalManifest,
+    ) -> Result<bool> {
         // Check if versions are compatible
-        Ok(self.supported_versions.contains(&old.version) &&
-           self.supported_versions.contains(&new.version))
+        Ok(self.supported_versions.contains(&old.version)
+            && self.supported_versions.contains(&new.version))
     }
 
-    async fn validate_metadata(&self, metadata: &HashMap<String, String>) -> Result<Vec<ValidationError>> {
+    async fn validate_metadata(
+        &self,
+        metadata: &HashMap<String, String>,
+    ) -> Result<Vec<ValidationError>> {
         let mut errors = Vec::new();
 
         // Check for required metadata fields

@@ -1,7 +1,6 @@
-/// Manifest management for CASG with ETag-based update checking
-
-use crate::casg::types::*;
 use crate::casg::merkle::MerkleDAG;
+/// Manifest management for CASG with ETag-based update checking
+use crate::casg::types::*;
 use crate::utils::progress::create_progress_bar;
 use anyhow::{Context, Result};
 use chrono::Utc;
@@ -18,7 +17,7 @@ pub const TALARIA_MAGIC: &[u8] = b"TAL\x01";
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ManifestFormat {
     Json,
-    Talaria,  // Our proprietary MessagePack-based format
+    Talaria, // Our proprietary MessagePack-based format
 }
 
 impl ManifestFormat {
@@ -35,7 +34,7 @@ impl ManifestFormat {
         match path.extension().and_then(|e| e.to_str()) {
             Some("tal") => Self::Talaria,
             Some("json") => Self::Json,
-            _ => Self::Talaria,  // Default to Talaria format
+            _ => Self::Talaria, // Default to Talaria format
         }
     }
 }
@@ -87,43 +86,41 @@ impl Manifest {
     fn read_manifest_file(path: &Path, format: ManifestFormat) -> Result<TemporalManifest> {
         match format {
             ManifestFormat::Json => {
-                let content = fs::read_to_string(path)
-                    .context("Failed to read JSON manifest")?;
-                serde_json::from_str(&content)
-                    .context("Failed to parse JSON manifest")
+                let content = fs::read_to_string(path).context("Failed to read JSON manifest")?;
+                serde_json::from_str(&content).context("Failed to parse JSON manifest")
             }
             ManifestFormat::Talaria => {
-                let mut content = fs::read(path)
-                    .context("Failed to read Talaria manifest")?;
+                let mut content = fs::read(path).context("Failed to read Talaria manifest")?;
 
                 // Check for and skip magic header if present
                 if content.starts_with(TALARIA_MAGIC) {
                     content = content[TALARIA_MAGIC.len()..].to_vec();
                 }
 
-                rmp_serde::from_slice(&content)
-                    .context("Failed to parse Talaria manifest")
+                rmp_serde::from_slice(&content).context("Failed to parse Talaria manifest")
             }
         }
     }
 
     /// Write manifest file in specified format
-    fn write_manifest_file(path: &Path, manifest: &TemporalManifest, format: ManifestFormat) -> Result<()> {
+    fn write_manifest_file(
+        path: &Path,
+        manifest: &TemporalManifest,
+        format: ManifestFormat,
+    ) -> Result<()> {
         match format {
             ManifestFormat::Json => {
                 let content = serde_json::to_string_pretty(manifest)?;
-                fs::write(path, content)
-                    .context("Failed to write JSON manifest")
+                fs::write(path, content).context("Failed to write JSON manifest")
             }
             ManifestFormat::Talaria => {
                 let mut data = Vec::with_capacity(TALARIA_MAGIC.len() + 1024 * 1024);
-                data.extend_from_slice(TALARIA_MAGIC);  // Add magic header
+                data.extend_from_slice(TALARIA_MAGIC); // Add magic header
 
                 let content = rmp_serde::to_vec(manifest)?;
                 data.extend_from_slice(&content);
 
-                fs::write(path, data)
-                    .context("Failed to write Talaria manifest")
+                fs::write(path, data).context("Failed to write Talaria manifest")
             }
         }
     }
@@ -145,8 +142,7 @@ impl Manifest {
         };
 
         let cached_etag = if etag_path.exists() {
-            Some(fs::read_to_string(&etag_path)
-                .context("Failed to read cached ETag")?)
+            Some(fs::read_to_string(&etag_path).context("Failed to read cached ETag")?)
         } else {
             None
         };
@@ -154,10 +150,10 @@ impl Manifest {
         // Load remote URL from config
         let config_path = base_path.join("config.json");
         let remote_url = if config_path.exists() {
-            let config: serde_json::Value = serde_json::from_str(
-                &fs::read_to_string(&config_path)?
-            )?;
-            config.get("remote_url")
+            let config: serde_json::Value =
+                serde_json::from_str(&fs::read_to_string(&config_path)?)?;
+            config
+                .get("remote_url")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
         } else {
@@ -186,8 +182,7 @@ impl Manifest {
             // Save ETag if present
             if let Some(ref etag) = self.cached_etag {
                 let etag_path = path.with_extension("etag");
-                fs::write(etag_path, etag)
-                    .context("Failed to write ETag")?;
+                fs::write(etag_path, etag).context("Failed to write ETag")?;
             }
         }
         Ok(())
@@ -195,7 +190,9 @@ impl Manifest {
 
     /// Check if remote updates are available using ETag
     pub async fn check_remote_updates(&self) -> Result<bool> {
-        let url = self.remote_url.as_ref()
+        let url = self
+            .remote_url
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No remote URL configured"))?;
 
         let client = reqwest::Client::new();
@@ -206,7 +203,9 @@ impl Manifest {
             request = request.header(IF_NONE_MATCH, etag.as_str());
         }
 
-        let response = request.send().await
+        let response = request
+            .send()
+            .await
             .context("Failed to check for updates")?;
 
         // 304 Not Modified means no updates
@@ -216,8 +215,7 @@ impl Manifest {
 
         // Check if ETag is different
         if let Some(new_etag) = response.headers().get(ETAG) {
-            let new_etag_str = new_etag.to_str()
-                .context("Invalid ETag header")?;
+            let new_etag_str = new_etag.to_str().context("Invalid ETag header")?;
 
             if let Some(ref cached) = self.cached_etag {
                 return Ok(cached != new_etag_str);
@@ -230,26 +228,32 @@ impl Manifest {
 
     /// Fetch the remote manifest
     pub async fn fetch_remote(&self) -> Result<Manifest> {
-        let url = self.remote_url.as_ref()
+        let url = self
+            .remote_url
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No remote URL configured"))?;
 
         let client = reqwest::Client::new();
-        let response = client.get(url)
+        let response = client
+            .get(url)
             .send()
             .await
             .context("Failed to fetch manifest")?;
 
         // Extract ETag for caching
-        let etag = response.headers()
+        let etag = response
+            .headers()
             .get(ETAG)
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
 
-        let content = response.text().await
+        let content = response
+            .text()
+            .await
             .context("Failed to read manifest content")?;
 
-        let manifest_data: TemporalManifest = serde_json::from_str(&content)
-            .context("Failed to parse remote manifest")?;
+        let manifest_data: TemporalManifest =
+            serde_json::from_str(&content).context("Failed to parse remote manifest")?;
 
         Ok(Manifest {
             data: Some(manifest_data),
@@ -262,30 +266,25 @@ impl Manifest {
 
     /// Compute diff between this manifest and another
     pub fn diff(&self, other: &Manifest) -> Result<ManifestDiff> {
-        let current = self.data.as_ref()
+        let current = self
+            .data
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No current manifest"))?;
-        let new = other.data.as_ref()
+        let new = other
+            .data
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No new manifest"))?;
 
         // Build hash sets for efficient comparison
         use std::collections::HashSet;
 
-        let current_chunks: HashSet<_> = current.chunk_index
-            .iter()
-            .map(|c| c.hash.clone())
-            .collect();
+        let current_chunks: HashSet<_> =
+            current.chunk_index.iter().map(|c| c.hash.clone()).collect();
 
-        let new_chunks: HashSet<_> = new.chunk_index
-            .iter()
-            .map(|c| c.hash.clone())
-            .collect();
+        let new_chunks: HashSet<_> = new.chunk_index.iter().map(|c| c.hash.clone()).collect();
 
-        let added = new_chunks.difference(&current_chunks)
-            .cloned()
-            .collect();
-        let removed = current_chunks.difference(&new_chunks)
-            .cloned()
-            .collect();
+        let added = new_chunks.difference(&current_chunks).cloned().collect();
+        let removed = current_chunks.difference(&new_chunks).cloned().collect();
 
         // Detect taxonomy changes
         let taxonomy_changes = self.detect_taxonomy_changes(current, new)?;
@@ -295,8 +294,7 @@ impl Manifest {
         for chunk_info in &current.chunk_index {
             // Check if there's a chunk at the same logical position with different hash
             if let Some(new_chunk) = new.chunk_index.iter().find(|nc| {
-                nc.sequence_count == chunk_info.sequence_count &&
-                nc.hash != chunk_info.hash
+                nc.sequence_count == chunk_info.sequence_count && nc.hash != chunk_info.hash
             }) {
                 // Add the new hash as a modified chunk
                 modified.push(new_chunk.hash.clone());
@@ -314,7 +312,7 @@ impl Manifest {
     fn detect_taxonomy_changes(
         &self,
         current: &TemporalManifest,
-        new: &TemporalManifest
+        new: &TemporalManifest,
     ) -> Result<TaxonomyChanges> {
         // Compare taxonomy roots to detect changes
         let changed = current.taxonomy_root != new.taxonomy_root;
@@ -356,14 +354,13 @@ impl Manifest {
         }
 
         // Basic detection of new/deprecated taxa based on unique taxon IDs
-        let current_taxon_ids: std::collections::HashSet<_> = current.chunk_index
+        let current_taxon_ids: std::collections::HashSet<_> = current
+            .chunk_index
             .iter()
             .flat_map(|c| &c.taxon_ids)
             .collect();
-        let new_taxon_ids: std::collections::HashSet<_> = new.chunk_index
-            .iter()
-            .flat_map(|c| &c.taxon_ids)
-            .collect();
+        let new_taxon_ids: std::collections::HashSet<_> =
+            new.chunk_index.iter().flat_map(|c| &c.taxon_ids).collect();
 
         for taxon_id in new_taxon_ids.difference(&current_taxon_ids) {
             new_taxa.push(**taxon_id);
@@ -413,7 +410,8 @@ impl Manifest {
         // Build Merkle tree from chunks
         let chunk_merkle_tree = if !chunk_index.is_empty() {
             let dag = MerkleDAG::build_from_items(chunk_index.clone())?;
-            let root_hash = dag.root_hash()
+            let root_hash = dag
+                .root_hash()
                 .ok_or_else(|| anyhow::anyhow!("Failed to get Merkle root"))?;
 
             // Serialize the Merkle tree
@@ -494,7 +492,9 @@ impl Manifest {
 
     /// Get summary of manifest
     pub fn summary(&self) -> Result<String> {
-        let manifest = self.data.as_ref()
+        let manifest = self
+            .data
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No manifest loaded"))?;
 
         Ok(format!(
@@ -509,7 +509,11 @@ impl Manifest {
             manifest.version,
             manifest.created_at.format("%Y-%m-%d %H:%M:%S UTC"),
             manifest.chunk_index.len(),
-            manifest.chunk_index.iter().map(|c| c.sequence_count).sum::<usize>(),
+            manifest
+                .chunk_index
+                .iter()
+                .map(|c| c.sequence_count)
+                .sum::<usize>(),
             manifest.taxonomy_root,
             manifest.sequence_root,
             manifest.discrepancies.len(),

@@ -1,14 +1,13 @@
+use std::collections::HashMap;
+use talaria::bio::sequence::Sequence;
+use talaria::casg::types::{ChunkStrategy, SHA256Hash, SpecialTaxon, TaxonId};
+use talaria::casg::{ChunkingStrategy, TaxonomicChunker};
+use talaria::storage::ChunkStorage;
 /// Integration tests for trait implementations
 ///
 /// These tests verify that all trait implementations work correctly
 /// and can be used polymorphically.
-
 use talaria::tools::traits::{Aligner, AlignmentResult as ToolAlignmentResult};
-use talaria::storage::ChunkStorage;
-use talaria::casg::{TaxonomicChunker, ChunkingStrategy};
-use talaria::bio::sequence::Sequence;
-use talaria::casg::types::{SHA256Hash, TaxonId, SpecialTaxon, ChunkStrategy};
-use std::collections::HashMap;
 
 #[cfg(test)]
 mod aligner_tests {
@@ -88,12 +87,14 @@ mod aligner_tests {
                 description: None,
                 sequence: b"ACGT".to_vec(),
                 taxon_id: None,
+                taxonomy_sources: Default::default(),
             },
             Sequence {
                 id: "seq2".to_string(),
                 description: None,
                 sequence: b"TTGG".to_vec(),
                 taxon_id: None,
+                taxonomy_sources: Default::default(),
             },
         ];
 
@@ -103,12 +104,14 @@ mod aligner_tests {
                 description: None,
                 sequence: b"ACGT".to_vec(),
                 taxon_id: None,
+                taxonomy_sources: Default::default(),
             },
             Sequence {
                 id: "ref2".to_string(),
                 description: None,
                 sequence: b"TTGG".to_vec(),
                 taxon_id: None,
+                taxonomy_sources: Default::default(),
             },
         ];
 
@@ -117,7 +120,6 @@ mod aligner_tests {
         assert_eq!(results[0].query_id, "seq1");
         assert_eq!(results[0].reference_id, "ref1");
     }
-
 }
 
 #[cfg(test)]
@@ -144,7 +146,8 @@ mod storage_tests {
         }
 
         fn get_chunk(&self, hash: &SHA256Hash) -> anyhow::Result<Vec<u8>> {
-            self.chunks.get(hash)
+            self.chunks
+                .get(hash)
                 .cloned()
                 .ok_or_else(|| anyhow::anyhow!("Chunk not found"))
         }
@@ -181,12 +184,12 @@ mod storage_tests {
     #[test]
     fn test_storage_trait_operations() {
         let storage = MockStorage::new();
-        
+
         // Test basic operations through trait
         let data = b"test data";
         let hash = storage.store_chunk(data, false).unwrap();
         assert_eq!(hash, SHA256Hash::compute(data));
-        
+
         // Test stats
         let stats = storage.get_stats();
         assert_eq!(stats.total_chunks, 0); // Mock doesn't actually store
@@ -205,26 +208,23 @@ mod chunker_tests {
             max_chunk_size: 10 * 1024 * 1024,
             min_sequences_per_chunk: 1,
             taxonomic_coherence: 0.8,
-            special_taxa: vec![
-                SpecialTaxon {
-                    taxon_id: TaxonId(562),
-                    name: "E. coli".to_string(),
-                    strategy: ChunkStrategy::OwnChunks,
-                },
-            ],
+            special_taxa: vec![SpecialTaxon {
+                taxon_id: TaxonId(562),
+                name: "E. coli".to_string(),
+                strategy: ChunkStrategy::OwnChunks,
+            }],
         };
 
         let mut chunker = TaxonomicChunker::new(strategy.clone());
 
         // Test through trait
-        let sequences = vec![
-            Sequence {
-                id: "seq1".to_string(),
-                description: Some("test".to_string()),
-                sequence: b"ACGT".to_vec(),
-                taxon_id: Some(562),
-            },
-        ];
+        let sequences = vec![Sequence {
+            id: "seq1".to_string(),
+            description: Some("test".to_string()),
+            sequence: b"ACGT".to_vec(),
+            taxon_id: Some(562),
+            taxonomy_sources: Default::default(),
+        }];
 
         let chunks = chunker.chunk_sequences(&sequences).unwrap();
         assert!(!chunks.is_empty());
@@ -250,14 +250,13 @@ mod chunker_tests {
         chunker.load_taxonomy_mapping(mapping.clone());
 
         // Test that sequences get chunked with the loaded taxonomy
-        let sequences = vec![
-            Sequence {
-                id: "seq1".to_string(),
-                description: Some("test".to_string()),
-                sequence: b"ACGT".to_vec(),
-                taxon_id: None,  // Will use mapping
-            },
-        ];
+        let sequences = vec![Sequence {
+            id: "seq1".to_string(),
+            description: Some("test".to_string()),
+            sequence: b"ACGT".to_vec(),
+            taxon_id: None, // Will use mapping
+            taxonomy_sources: Default::default(),
+        }];
 
         // Test chunking with loaded taxonomy mapping
         let chunks = chunker.chunk_sequences(&sequences).unwrap();
@@ -287,26 +286,26 @@ mod delta_generator_tests {
         assert_eq!(trait_config.max_chunk_size, config.max_chunk_size);
 
         // Test generating deltas
-        let sequences = vec![
-            Sequence {
-                id: "seq1".to_string(),
-                description: Some("test".to_string()),
-                sequence: b"ACGTACGT".to_vec(),
-                taxon_id: Some(562),
-            },
-        ];
+        let sequences = vec![Sequence {
+            id: "seq1".to_string(),
+            description: Some("test".to_string()),
+            sequence: b"ACGTACGT".to_vec(),
+            taxon_id: Some(562),
+            taxonomy_sources: Default::default(),
+        }];
 
-        let references = vec![
-            Sequence {
-                id: "ref1".to_string(),
-                description: Some("reference".to_string()),
-                sequence: b"ACGTACGA".to_vec(),  // Similar to seq1
-                taxon_id: Some(562),
-            },
-        ];
+        let references = vec![Sequence {
+            id: "ref1".to_string(),
+            description: Some("reference".to_string()),
+            sequence: b"ACGTACGA".to_vec(), // Similar to seq1
+            taxon_id: Some(562),
+            taxonomy_sources: Default::default(),
+        }];
 
         let ref_hash = SHA256Hash::compute(b"test_reference");
-        let deltas = generator_trait.generate_deltas(&sequences, &references, ref_hash).unwrap();
+        let deltas = generator_trait
+            .generate_deltas(&sequences, &references, ref_hash)
+            .unwrap();
         assert!(!deltas.is_empty());
     }
 }
@@ -381,6 +380,7 @@ mod selector_tests {
                 description: None,
                 sequence: vec![],
                 taxon_id: None,
+                taxonomy_sources: Default::default(),
             })
             .collect();
 

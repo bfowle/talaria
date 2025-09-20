@@ -2,7 +2,6 @@
 ///
 /// These tests verify that the LAMBDA aligner properly integrates with
 /// the CASG workspace system and uses the correct temporary directories.
-
 use std::fs;
 
 mod common;
@@ -12,10 +11,16 @@ use common::create_shared_test_workspace;
 fn test_lambda_verbose_environment_variable() {
     // Test that the TALARIA_LAMBDA_VERBOSE flag works correctly
     std::env::remove_var("TALARIA_LAMBDA_VERBOSE");
-    assert!(std::env::var("TALARIA_LAMBDA_VERBOSE").is_err(), "Should not be set initially");
+    assert!(
+        std::env::var("TALARIA_LAMBDA_VERBOSE").is_err(),
+        "Should not be set initially"
+    );
 
     std::env::set_var("TALARIA_LAMBDA_VERBOSE", "1");
-    assert!(std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok(), "Should be set");
+    assert!(
+        std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok(),
+        "Should be set"
+    );
 
     let is_verbose = std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok();
     assert!(is_verbose, "Should detect verbose mode");
@@ -47,20 +52,26 @@ fn test_workspace_creation_for_lambda() {
     let workspace_root = ws.root.clone();
     drop(ws);
 
-    assert!(test_file.starts_with(&workspace_root),
-        "Test file should be under workspace root");
+    assert!(
+        test_file.starts_with(&workspace_root),
+        "Test file should be under workspace root"
+    );
 }
 
 #[test]
 fn test_lambda_preserve_on_failure_env() {
     // Test that TALARIA_PRESERVE_LAMBDA_ON_FAILURE environment variable works
     std::env::set_var("TALARIA_PRESERVE_LAMBDA_ON_FAILURE", "1");
-    assert!(std::env::var("TALARIA_PRESERVE_LAMBDA_ON_FAILURE").is_ok(),
-        "Environment variable should be set");
+    assert!(
+        std::env::var("TALARIA_PRESERVE_LAMBDA_ON_FAILURE").is_ok(),
+        "Environment variable should be set"
+    );
 
     std::env::remove_var("TALARIA_PRESERVE_LAMBDA_ON_FAILURE");
-    assert!(std::env::var("TALARIA_PRESERVE_LAMBDA_ON_FAILURE").is_err(),
-        "Environment variable should be removed");
+    assert!(
+        std::env::var("TALARIA_PRESERVE_LAMBDA_ON_FAILURE").is_err(),
+        "Environment variable should be removed"
+    );
 }
 
 #[test]
@@ -69,12 +80,21 @@ fn test_lambda_debug_vs_verbose_separation() {
     std::env::set_var("TALARIA_DEBUG", "1");
     std::env::remove_var("TALARIA_LAMBDA_VERBOSE");
 
-    assert!(std::env::var("TALARIA_DEBUG").is_ok(), "DEBUG should be set");
-    assert!(std::env::var("TALARIA_LAMBDA_VERBOSE").is_err(), "LAMBDA_VERBOSE should not be set");
+    assert!(
+        std::env::var("TALARIA_DEBUG").is_ok(),
+        "DEBUG should be set"
+    );
+    assert!(
+        std::env::var("TALARIA_LAMBDA_VERBOSE").is_err(),
+        "LAMBDA_VERBOSE should not be set"
+    );
 
     // Now set LAMBDA_VERBOSE
     std::env::set_var("TALARIA_LAMBDA_VERBOSE", "1");
-    assert!(std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok(), "LAMBDA_VERBOSE should be set");
+    assert!(
+        std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok(),
+        "LAMBDA_VERBOSE should be set"
+    );
 
     // Clean up
     std::env::remove_var("TALARIA_DEBUG");
@@ -100,18 +120,24 @@ fn test_workspace_batch_file_paths() {
     let workspace_root = ws.root.clone();
     drop(ws);
 
-    assert!(batch_file_1.starts_with(&workspace_root),
-        "Batch file 1 should be in workspace");
-    assert!(batch_file_2.starts_with(&workspace_root),
-        "Batch file 2 should be in workspace");
-    assert!(alignment_file_1.starts_with(&workspace_root),
-        "Alignment file should be in workspace");
+    assert!(
+        batch_file_1.starts_with(&workspace_root),
+        "Batch file 1 should be in workspace"
+    );
+    assert!(
+        batch_file_2.starts_with(&workspace_root),
+        "Batch file 2 should be in workspace"
+    );
+    assert!(
+        alignment_file_1.starts_with(&workspace_root),
+        "Alignment file should be in workspace"
+    );
 }
 
 #[test]
 fn test_lambda_progress_tracking_simulation() {
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
     // Create a progress counter like in the actual implementation
     let progress_counter = Arc::new(AtomicUsize::new(0));
@@ -126,13 +152,19 @@ fn test_lambda_progress_tracking_simulation() {
     for (line, expected) in test_cases {
         // Extract number like the actual implementation does
         if line.contains("Query no.") {
-            if let Some(num) = line.split_whitespace()
-                .find_map(|s| s.parse::<usize>().ok()) {
+            if let Some(num) = line
+                .split_whitespace()
+                .find_map(|s| s.parse::<usize>().ok())
+            {
                 progress_counter.store(num, Ordering::Relaxed);
             }
         }
-        assert_eq!(progress_counter.load(Ordering::Relaxed), expected,
-            "Progress counter should be {}", expected);
+        assert_eq!(
+            progress_counter.load(Ordering::Relaxed),
+            expected,
+            "Progress counter should be {}",
+            expected
+        );
     }
 }
 
@@ -164,8 +196,14 @@ fn test_extreme_sequence_threshold() {
     let large_protein = 10_000;
 
     assert!(titin_length > EXTREME_LONG_SEQ, "TITIN should be extreme");
-    assert!(!(normal_protein > EXTREME_LONG_SEQ), "Normal protein should not be extreme");
-    assert!(!(large_protein > EXTREME_LONG_SEQ), "Large protein should not be extreme");
+    assert!(
+        !(normal_protein > EXTREME_LONG_SEQ),
+        "Normal protein should not be extreme"
+    );
+    assert!(
+        !(large_protein > EXTREME_LONG_SEQ),
+        "Large protein should not be extreme"
+    );
 }
 
 #[test]
@@ -178,8 +216,14 @@ fn test_ambiguous_content_threshold() {
     assert_eq!(max_ambiguous, 5, "Should allow 5 ambiguous residues in 100");
 
     let ambiguous_count = 6;
-    assert!(ambiguous_count > max_ambiguous, "6 ambiguous should exceed threshold");
+    assert!(
+        ambiguous_count > max_ambiguous,
+        "6 ambiguous should exceed threshold"
+    );
 
     let ambiguous_count = 4;
-    assert!(!(ambiguous_count > max_ambiguous), "4 ambiguous should be under threshold");
+    assert!(
+        !(ambiguous_count > max_ambiguous),
+        "4 ambiguous should be under threshold"
+    );
 }

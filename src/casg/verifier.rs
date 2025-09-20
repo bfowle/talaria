@@ -1,8 +1,7 @@
-/// Cryptographic verification for CASG
-
-use crate::casg::types::*;
-use crate::casg::storage::CASGStorage;
 use crate::casg::merkle::MerkleDAG;
+use crate::casg::storage::CASGStorage;
+/// Cryptographic verification for CASG
+use crate::casg::types::*;
 use anyhow::{Context, Result};
 use std::collections::HashSet;
 
@@ -54,7 +53,9 @@ impl<'a> CASGVerifier<'a> {
     /// Verify a single chunk
     pub fn verify_chunk(&self, hash: &SHA256Hash) -> Result<()> {
         // Retrieve chunk
-        let chunk_data = self.storage.get_chunk(hash)
+        let chunk_data = self
+            .storage
+            .get_chunk(hash)
             .with_context(|| format!("Failed to retrieve chunk {}", hash))?;
 
         // Compute hash
@@ -82,8 +83,7 @@ impl<'a> CASGVerifier<'a> {
             if computed_root != self.manifest.sequence_root {
                 eprintln!(
                     "Sequence root mismatch: expected {}, got {}",
-                    self.manifest.sequence_root,
-                    computed_root
+                    self.manifest.sequence_root, computed_root
                 );
                 return Ok(false);
             }
@@ -99,8 +99,7 @@ impl<'a> CASGVerifier<'a> {
                 if computed_tax_root != self.manifest.taxonomy_root {
                     eprintln!(
                         "Taxonomy root mismatch: expected {}, got {}",
-                        self.manifest.taxonomy_root,
-                        computed_tax_root
+                        self.manifest.taxonomy_root, computed_tax_root
                     );
                     return Ok(false);
                 }
@@ -236,7 +235,8 @@ impl<'a> CASGVerifier<'a> {
             .collect();
 
         let subset_dag = MerkleDAG::build_from_items(chunks)?;
-        let subset_root = subset_dag.root_hash()
+        let subset_root = subset_dag
+            .root_hash()
             .ok_or_else(|| anyhow::anyhow!("Failed to compute subset root"))?;
 
         // Generate proof linking subset to full manifest
@@ -255,7 +255,9 @@ impl<'a> CASGVerifier<'a> {
         let mut issues = Vec::new();
 
         // Check for orphaned chunks (in storage but not in manifest)
-        let manifest_chunks: HashSet<_> = self.manifest.chunk_index
+        let manifest_chunks: HashSet<_> = self
+            .manifest
+            .chunk_index
             .iter()
             .map(|meta| meta.hash.clone())
             .collect();
@@ -269,7 +271,10 @@ impl<'a> CASGVerifier<'a> {
 
         let orphan_count = orphaned.len();
         if orphan_count > 0 {
-            eprintln!("Warning: {} potential orphaned chunks in storage", orphan_count);
+            eprintln!(
+                "Warning: {} potential orphaned chunks in storage",
+                orphan_count
+            );
         }
 
         // Check for missing chunks (in manifest but not in storage)
@@ -283,7 +288,9 @@ impl<'a> CASGVerifier<'a> {
         let mut seen = HashSet::new();
         for chunk_meta in &self.manifest.chunk_index {
             if !seen.insert(chunk_meta.hash.clone()) {
-                issues.push(ConsistencyIssue::DuplicateReference(chunk_meta.hash.clone()));
+                issues.push(ConsistencyIssue::DuplicateReference(
+                    chunk_meta.hash.clone(),
+                ));
             }
         }
 
@@ -315,7 +322,9 @@ impl<'a> CASGVerifier<'a> {
         for chunk_info in &self.manifest.chunk_index {
             // Load chunk to get taxon IDs
             if let Ok(chunk_data) = self.storage.get_chunk(&chunk_info.hash) {
-                if let Ok(chunk) = serde_json::from_slice::<crate::casg::types::TaxonomyAwareChunk>(&chunk_data) {
+                if let Ok(chunk) =
+                    serde_json::from_slice::<crate::casg::types::TaxonomyAwareChunk>(&chunk_data)
+                {
                     for taxid in &chunk.taxon_ids {
                         checked_count += 1;
                         if !taxonomy.taxon_exists(*taxid) {
@@ -340,10 +349,10 @@ impl<'a> CASGVerifier<'a> {
 
         // Verify taxonomy version alignment
         let expected_tax_root = taxonomy.get_taxonomy_root()?;
-        if self.manifest.taxonomy_root != expected_tax_root && self.manifest.taxonomy_root != SHA256Hash::zero() {
-            eprintln!(
-                "Warning: Manifest taxonomy root doesn't match current taxonomy"
-            );
+        if self.manifest.taxonomy_root != expected_tax_root
+            && self.manifest.taxonomy_root != SHA256Hash::zero()
+        {
+            eprintln!("Warning: Manifest taxonomy root doesn't match current taxonomy");
         }
 
         Ok(())
@@ -396,7 +405,10 @@ impl<'a> CASGVerifier<'a> {
         events.push(AuditEvent {
             timestamp: chrono::Utc::now(),
             event_type: AuditEventType::Verification,
-            description: format!("Full verification of {} chunks", self.manifest.chunk_index.len()),
+            description: format!(
+                "Full verification of {} chunks",
+                self.manifest.chunk_index.len()
+            ),
             hash: Some(self.manifest.sequence_root.clone()),
         });
 
@@ -438,7 +450,10 @@ pub enum ConsistencyIssue {
     OrphanedChunk(SHA256Hash),
     DuplicateReference(SHA256Hash),
     TaxonomyInconsistency(String),
-    HashMismatch { expected: SHA256Hash, actual: SHA256Hash },
+    HashMismatch {
+        expected: SHA256Hash,
+        actual: SHA256Hash,
+    },
 }
 
 #[derive(Debug)]
@@ -521,7 +536,8 @@ impl<'a> BatchVerifier<'a> {
         let results: Vec<_> = chunk_hashes
             .par_iter()
             .map(|hash| {
-                self.verifier.verify_chunk(hash)
+                self.verifier
+                    .verify_chunk(hash)
                     .map(|_| (hash.clone(), true))
                     .unwrap_or_else(|e| {
                         eprintln!("Verification failed for chunk {}: {}", hash, e);

@@ -3,7 +3,8 @@ use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    widgets::{Block, Borders, Paragraph, Wrap}, Terminal,
+    widgets::{Block, Borders, Paragraph, Wrap},
+    Terminal,
 };
 use std::io;
 use termimad::{Area, MadSkin};
@@ -26,23 +27,21 @@ impl MarkdownRenderer {
             skin: get_markdown_skin(),
         }
     }
-    
+
     pub fn render(&self, markdown: &str) -> String {
         let width = termimad::terminal_size().0 as usize;
         let area = Area::new(0, 0, width.min(120) as u16, 50);
-        
-        self.skin
-            .area_text(markdown, &area)
-            .to_string()
+
+        self.skin.area_text(markdown, &area).to_string()
     }
-    
+
     pub fn render_to_terminal(&self, markdown: &str) {
         let width = termimad::terminal_size().0 as usize;
         let area = Area::new(0, 0, width.min(120) as u16, 50);
-        
+
         print!("{}", self.skin.area_text(markdown, &area));
     }
-    
+
     pub fn render_inline(&self, text: &str) -> String {
         self.skin.inline(text).to_string()
     }
@@ -54,13 +53,13 @@ pub fn render_table(headers: Vec<&str>, rows: Vec<Vec<String>>) -> String {
         .load_preset(UTF8_FULL)
         .apply_modifier(UTF8_ROUND_CORNERS)
         .set_content_arrangement(ContentArrangement::Dynamic);
-    
+
     table.set_header(headers);
-    
+
     for row in rows {
         table.add_row(row);
     }
-    
+
     table.to_string()
 }
 
@@ -133,7 +132,7 @@ pub fn render_color(text: &str, color: Color) -> String {
         Color::LightCyan => 96,
         _ => 37,
     };
-    
+
     format!("\x1b[{}m{}\x1b[0m", color_code, text)
 }
 
@@ -144,26 +143,26 @@ pub fn display_markdown_in_tui<B: Backend>(
 ) -> io::Result<()> {
     let renderer = MarkdownRenderer::new();
     let rendered = renderer.render(markdown);
-    
+
     terminal.draw(|f| {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .margin(1)
             .constraints([Constraint::Min(0)])
             .split(f.area());
-        
+
         let block = Block::default()
             .title(title)
             .borders(Borders::ALL)
             .style(Style::default().fg(Color::Cyan));
-        
+
         let paragraph = Paragraph::new(rendered)
             .block(block)
             .wrap(Wrap { trim: false })
             .style(Style::default().fg(Color::White));
-        
+
         f.render_widget(paragraph, chunks[0]);
     })?;
-    
+
     Ok(())
 }

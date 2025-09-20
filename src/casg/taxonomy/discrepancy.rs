@@ -1,7 +1,6 @@
-/// Discrepancy detection between taxonomy and sequence annotations
-
-use crate::casg::types::*;
 use crate::casg::storage::CASGStorage;
+/// Discrepancy detection between taxonomy and sequence annotations
+use crate::casg::types::*;
 use anyhow::Result;
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
@@ -60,7 +59,11 @@ impl DiscrepancyDetector {
         inferred_taxon: Option<TaxonId>,
     ) -> Option<TaxonomicDiscrepancy> {
         // Determine discrepancy type
-        let discrepancy_type = match (header_taxon.as_ref(), mapped_taxon.as_ref(), inferred_taxon.as_ref()) {
+        let discrepancy_type = match (
+            header_taxon.as_ref(),
+            mapped_taxon.as_ref(),
+            inferred_taxon.as_ref(),
+        ) {
             (None, None, None) => Some(DiscrepancyType::Missing),
             (Some(h), Some(m), _) if h != m => Some(DiscrepancyType::Conflict),
             (Some(h), _, Some(i)) if h != i => Some(DiscrepancyType::Conflict),
@@ -88,8 +91,7 @@ impl DiscrepancyDetector {
 
             // Adjust confidence based on agreement
             if sources > 1 {
-                let all_equal = header_taxon == mapped_taxon &&
-                               mapped_taxon == inferred_taxon;
+                let all_equal = header_taxon == mapped_taxon && mapped_taxon == inferred_taxon;
                 if all_equal {
                     confidence = 1.0;
                 } else {
@@ -115,7 +117,10 @@ impl DiscrepancyDetector {
 
         // Scan storage for taxonomy discrepancies
         let stats = storage.get_stats();
-        eprintln!("Scanning {} chunks for taxonomy discrepancies...", stats.total_chunks);
+        eprintln!(
+            "Scanning {} chunks for taxonomy discrepancies...",
+            stats.total_chunks
+        );
 
         // Enumerate all chunks
         let chunk_infos = storage.enumerate_chunks();
@@ -132,7 +137,10 @@ impl DiscrepancyDetector {
                                 discrepancies.append(&mut chunk_discrepancies);
                             }
                             Err(e) => {
-                                eprintln!("Error detecting discrepancies in chunk {}: {}", chunk_info.hash, e);
+                                eprintln!(
+                                    "Error detecting discrepancies in chunk {}: {}",
+                                    chunk_info.hash, e
+                                );
                             }
                         }
                     }
@@ -315,9 +323,9 @@ impl DiscrepancyDetector {
     /// Calculate confidence in the discrepancy detection
     fn calculate_confidence(&self, header: &Option<TaxonId>, mapped: &Option<TaxonId>) -> f32 {
         match (header, mapped) {
-            (Some(_), Some(_)) => 0.9,  // Both sources present
-            (Some(_), None) | (None, Some(_)) => 0.6,  // One source
-            (None, None) => 0.3,  // No sources
+            (Some(_), Some(_)) => 0.9,                // Both sources present
+            (Some(_), None) | (None, Some(_)) => 0.6, // One source
+            (None, None) => 0.3,                      // No sources
         }
     }
 
@@ -384,7 +392,10 @@ impl DiscrepancyDetector {
 
         let mut report = String::new();
         report.push_str("# Taxonomy Discrepancy Report\n\n");
-        report.push_str(&format!("Total discrepancies found: {}\n\n", analysis.total_discrepancies));
+        report.push_str(&format!(
+            "Total discrepancies found: {}\n\n",
+            analysis.total_discrepancies
+        ));
 
         report.push_str("## Summary by Type\n");
         for (dtype, count) in &analysis.by_type {
@@ -393,9 +404,18 @@ impl DiscrepancyDetector {
         report.push_str("\n");
 
         report.push_str(&format!("## Statistics\n"));
-        report.push_str(&format!("- Affected taxa: {}\n", analysis.affected_taxa_count));
-        report.push_str(&format!("- Missing taxonomy: {}\n", analysis.missing_taxonomy_count));
-        report.push_str(&format!("- Outdated classifications: {}\n", analysis.outdated_count));
+        report.push_str(&format!(
+            "- Affected taxa: {}\n",
+            analysis.affected_taxa_count
+        ));
+        report.push_str(&format!(
+            "- Missing taxonomy: {}\n",
+            analysis.missing_taxonomy_count
+        ));
+        report.push_str(&format!(
+            "- Outdated classifications: {}\n",
+            analysis.outdated_count
+        ));
         report.push_str("\n");
 
         if !analysis.most_common_conflicts.is_empty() {

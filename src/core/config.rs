@@ -59,8 +59,8 @@ impl Default for Config {
                 target_ratio: 0.3,
                 min_sequence_length: 50,
                 max_delta_distance: 100,
-                similarity_threshold: 0.0,  // Disabled by default (0.0 = no similarity check)
-                taxonomy_aware: false,      // Disabled by default
+                similarity_threshold: 0.0, // Disabled by default (0.0 = no similarity check)
+                taxonomy_aware: false,     // Disabled by default
             },
             alignment: AlignmentConfig {
                 gap_penalty: 20,
@@ -78,10 +78,10 @@ impl Default for Config {
                 cache_alignments: true,
             },
             database: DatabaseConfig {
-                database_dir: None,  // Will default to ${TALARIA_HOME}/databases/data/
-                retention_count: 3,  // Keep 3 old versions by default
+                database_dir: None, // Will default to ${TALARIA_HOME}/databases/data/
+                retention_count: 3, // Keep 3 old versions by default
                 auto_update_check: false,
-                preferred_mirror: Some("ebi".to_string()),  // Use EBI mirror by default
+                preferred_mirror: Some("ebi".to_string()), // Use EBI mirror by default
             },
         }
     }

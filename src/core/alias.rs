@@ -5,7 +5,6 @@ use std::collections::HashMap;
 
 use crate::download::DatabaseSource;
 
-
 /// Trait for resolving version aliases to concrete versions
 #[async_trait]
 pub trait AliasResolver: Send + Sync {
@@ -16,7 +15,12 @@ pub trait AliasResolver: Send + Sync {
     async fn list_aliases(&self, database: &DatabaseSource) -> Result<HashMap<String, String>>;
 
     /// Create or update an alias
-    async fn set_alias(&mut self, database: &DatabaseSource, alias: &str, version: &str) -> Result<()>;
+    async fn set_alias(
+        &mut self,
+        database: &DatabaseSource,
+        alias: &str,
+        version: &str,
+    ) -> Result<()>;
 
     /// Remove an alias
     async fn remove_alias(&mut self, database: &DatabaseSource, alias: &str) -> Result<()>;
@@ -88,7 +92,11 @@ impl FilesystemAliasResolver {
         Ok(aliases)
     }
 
-    fn save_aliases(&self, database: &DatabaseSource, aliases: &HashMap<String, String>) -> Result<()> {
+    fn save_aliases(
+        &self,
+        database: &DatabaseSource,
+        aliases: &HashMap<String, String>,
+    ) -> Result<()> {
         let path = self.alias_path(database);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -104,7 +112,8 @@ impl FilesystemAliasResolver {
 impl AliasResolver for FilesystemAliasResolver {
     async fn resolve(&self, database: &DatabaseSource, alias: &str) -> Result<String> {
         let aliases = self.load_aliases(database)?;
-        aliases.get(alias)
+        aliases
+            .get(alias)
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("Alias '{}' not found", alias))
     }
@@ -113,7 +122,12 @@ impl AliasResolver for FilesystemAliasResolver {
         self.load_aliases(database)
     }
 
-    async fn set_alias(&mut self, database: &DatabaseSource, alias: &str, version: &str) -> Result<()> {
+    async fn set_alias(
+        &mut self,
+        database: &DatabaseSource,
+        alias: &str,
+        version: &str,
+    ) -> Result<()> {
         self.validate_alias_name(alias)?;
 
         let mut aliases = self.load_aliases(database)?;

@@ -1,11 +1,11 @@
-use anyhow::{Result, anyhow, Context};
+use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
+use dialoguer::Confirm;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::fs;
-use dialoguer::Confirm;
+use std::path::{Path, PathBuf};
 
 /// Magic bytes for Talaria taxonomy manifest format: "TTM" + version byte
 pub const TAXONOMY_MANIFEST_MAGIC: &[u8] = b"TTM\x01";
@@ -14,7 +14,7 @@ pub const TAXONOMY_MANIFEST_MAGIC: &[u8] = b"TTM\x01";
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TaxonomyManifestFormat {
     Json,
-    Talaria,  // MessagePack-based binary format
+    Talaria, // MessagePack-based binary format
 }
 
 impl TaxonomyManifestFormat {
@@ -31,7 +31,7 @@ impl TaxonomyManifestFormat {
         match path.extension().and_then(|e| e.to_str()) {
             Some("tal") => Self::Talaria,
             Some("json") => Self::Json,
-            _ => Self::Talaria,  // Default to Talaria format
+            _ => Self::Talaria, // Default to Talaria format
         }
     }
 }
@@ -43,7 +43,7 @@ pub struct ComponentSpec {
     pub required: bool,
     pub source: String,
     pub expected_update_frequency_days: u32,
-    pub is_primary: bool,  // Primary components trigger new versions
+    pub is_primary: bool, // Primary components trigger new versions
 }
 
 /// Installed component with metadata and provenance
@@ -53,8 +53,8 @@ pub struct InstalledComponent {
     pub checksum: String,
     pub size: u64,
     pub downloaded_at: DateTime<Utc>,
-    pub source_version: Option<String>,  // Version from source (e.g., NCBI date)
-    pub carried_from: Option<String>,    // Previous version if carried forward
+    pub source_version: Option<String>, // Version from source (e.g., NCBI date)
+    pub carried_from: Option<String>,   // Previous version if carried forward
     pub file_path: PathBuf,
     pub compressed: bool,
     pub format: FileFormat,
@@ -124,10 +124,7 @@ impl Default for TaxonomyVersionPolicy {
 /// Decision on whether to create new version or append
 #[derive(Debug)]
 pub enum VersionDecision {
-    CreateNew {
-        copy_forward: bool,
-        reason: String,
-    },
+    CreateNew { copy_forward: bool, reason: String },
     AppendToCurrent,
     UserCancelled,
 }
@@ -230,7 +227,8 @@ impl TaxonomyManager {
 
         // Find component spec
         let specs = Self::default_components();
-        let component_spec = specs.iter()
+        let component_spec = specs
+            .iter()
             .find(|s| s.name == component_name)
             .ok_or_else(|| anyhow!("Unknown component: {}", component_name))?;
 
@@ -246,9 +244,15 @@ impl TaxonomyManager {
                 if component_spec.is_primary {
                     // Primary component - check if we should create new version
                     if age_hours < 24 && interactive {
-                        println!("\n⚠ Warning: A taxonomy version was created {} hours ago.", age_hours);
+                        println!(
+                            "\n⚠ Warning: A taxonomy version was created {} hours ago.",
+                            age_hours
+                        );
                         println!("  Version: {}", manifest.version);
-                        println!("  Created: {}", manifest.created_at.format("%Y-%m-%d %H:%M"));
+                        println!(
+                            "  Created: {}",
+                            manifest.created_at.format("%Y-%m-%d %H:%M")
+                        );
 
                         if !Confirm::new()
                             .with_prompt("Create a new version anyway?")
@@ -273,7 +277,10 @@ impl TaxonomyManager {
                 } else {
                     // Secondary component - check staleness
                     if age_hours > self.policy.staleness_warning_hours as i64 && interactive {
-                        println!("\n⚠ Warning: Current taxonomy version is {} days old.", age_hours / 24);
+                        println!(
+                            "\n⚠ Warning: Current taxonomy version is {} days old.",
+                            age_hours / 24
+                        );
                         println!("  Version: {}", manifest.version);
 
                         if !Confirm::new()
@@ -294,8 +301,10 @@ impl TaxonomyManager {
                     } else {
                         // Outside session window
                         if interactive {
-                            println!("\n⚠ Current version is outside the session window ({} hours).",
-                                    self.policy.session_window_hours);
+                            println!(
+                                "\n⚠ Current version is outside the session window ({} hours).",
+                                self.policy.session_window_hours
+                            );
 
                             if Confirm::new()
                                 .with_prompt("Add to existing version anyway?")
@@ -323,9 +332,12 @@ impl TaxonomyManager {
 
     /// Prompt user about carrying forward secondary components
     fn prompt_for_carry_forward(&self, manifest: &TaxonomyManifest) -> Result<bool> {
-        let secondary: Vec<_> = manifest.installed_components.iter()
+        let secondary: Vec<_> = manifest
+            .installed_components
+            .iter()
             .filter(|(name, _)| {
-                Self::default_components().iter()
+                Self::default_components()
+                    .iter()
                     .any(|s| s.name == **name && !s.is_primary)
             })
             .collect();
@@ -353,7 +365,8 @@ impl TaxonomyManager {
 
     /// Check completeness of current taxonomy
     pub fn check_completeness(&self) -> Result<CompletenessReport> {
-        let manifest = self.load_current_manifest()?
+        let manifest = self
+            .load_current_manifest()?
             .ok_or_else(|| anyhow!("No current taxonomy version"))?;
 
         let mut report = CompletenessReport::default();
@@ -436,18 +449,16 @@ impl TaxonomyManifest {
         match format {
             TaxonomyManifestFormat::Json => {
                 let content = serde_json::to_string_pretty(self)?;
-                fs::write(path, content)
-                    .context("Failed to write JSON manifest")
+                fs::write(path, content).context("Failed to write JSON manifest")
             }
             TaxonomyManifestFormat::Talaria => {
                 let mut data = Vec::with_capacity(TAXONOMY_MANIFEST_MAGIC.len() + 1024 * 1024);
-                data.extend_from_slice(TAXONOMY_MANIFEST_MAGIC);  // Add magic header
+                data.extend_from_slice(TAXONOMY_MANIFEST_MAGIC); // Add magic header
 
                 let content = rmp_serde::to_vec(self)?;
                 data.extend_from_slice(&content);
 
-                fs::write(path, data)
-                    .context("Failed to write Talaria manifest")
+                fs::write(path, data).context("Failed to write Talaria manifest")
             }
         }
     }
@@ -458,22 +469,18 @@ impl TaxonomyManifest {
 
         match format {
             TaxonomyManifestFormat::Json => {
-                let content = fs::read_to_string(path)
-                    .context("Failed to read JSON manifest")?;
-                serde_json::from_str(&content)
-                    .context("Failed to parse JSON manifest")
+                let content = fs::read_to_string(path).context("Failed to read JSON manifest")?;
+                serde_json::from_str(&content).context("Failed to parse JSON manifest")
             }
             TaxonomyManifestFormat::Talaria => {
-                let mut content = fs::read(path)
-                    .context("Failed to read Talaria manifest")?;
+                let mut content = fs::read(path).context("Failed to read Talaria manifest")?;
 
                 // Check for and skip magic header if present
                 if content.starts_with(TAXONOMY_MANIFEST_MAGIC) {
                     content = content[TAXONOMY_MANIFEST_MAGIC.len()..].to_vec();
                 }
 
-                rmp_serde::from_slice(&content)
-                    .context("Failed to parse Talaria manifest")
+                rmp_serde::from_slice(&content).context("Failed to parse Talaria manifest")
             }
         }
     }

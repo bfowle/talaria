@@ -3,7 +3,10 @@ use crossterm::{
     cursor,
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen, Clear, ClearType},
+    terminal::{
+        disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen,
+        LeaveAlternateScreen,
+    },
 };
 use ratatui::{
     backend::CrosstermBackend,
@@ -99,9 +102,18 @@ pub fn run(_args: InteractiveArgs) -> anyhow::Result<()> {
 fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) -> anyhow::Result<()> {
     let mut selected_index = 0;
     let menu_items = vec![
-        ("▼ Download databases", "Download and manage biological databases"),
-        ("▶ Reduce a FASTA file", "Intelligently reduce a FASTA file for indexing"),
-        ("■ View statistics", "Analyze FASTA files and reduction results"),
+        (
+            "▼ Download databases",
+            "Download and manage biological databases",
+        ),
+        (
+            "▶ Reduce a FASTA file",
+            "Intelligently reduce a FASTA file for indexing",
+        ),
+        (
+            "■ View statistics",
+            "Analyze FASTA files and reduction results",
+        ),
         ("◆ Setup wizard", "Interactive setup for first-time users"),
         ("• Configure settings", "Modify Talaria configuration"),
         ("□ View documentation", "Browse built-in documentation"),
@@ -127,7 +139,9 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) -> anyhow::
                     Span::styled("▶ ", Style::default()),
                     Span::styled(
                         "TALARIA",
-                        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
                     ),
                     Span::raw(" - Intelligent FASTA Reduction Tool"),
                 ]),
@@ -161,22 +175,18 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) -> anyhow::
                                 Span::raw("  "),
                                 Span::styled(
                                     *desc,
-                                    Style::default().fg(Color::Gray).add_modifier(Modifier::ITALIC),
+                                    Style::default()
+                                        .fg(Color::Gray)
+                                        .add_modifier(Modifier::ITALIC),
                                 ),
                             ]),
                         ]
                     } else {
                         vec![
+                            Line::from(vec![Span::raw("  "), Span::raw(*title)]),
                             Line::from(vec![
                                 Span::raw("  "),
-                                Span::raw(*title),
-                            ]),
-                            Line::from(vec![
-                                Span::raw("  "),
-                                Span::styled(
-                                    *desc,
-                                    Style::default().fg(Color::DarkGray),
-                                ),
+                                Span::styled(*desc, Style::default().fg(Color::DarkGray)),
                             ]),
                         ]
                     };
@@ -184,23 +194,37 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) -> anyhow::
                 })
                 .collect();
 
-            let menu = List::new(items)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title(" Main Menu ")
-                        .border_style(Style::default().fg(Color::White)),
-                );
+            let menu = List::new(items).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Main Menu ")
+                    .border_style(Style::default().fg(Color::White)),
+            );
             f.render_widget(menu, chunks[1]);
 
             // Footer
             let footer = Paragraph::new(vec![Line::from(vec![
                 Span::raw("Use "),
-                Span::styled("↑↓", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "↑↓",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(" to navigate, "),
-                Span::styled("Enter", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Enter",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(" to select, "),
-                Span::styled("q", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "q",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(" to quit"),
             ])])
             .block(
@@ -246,14 +270,14 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) -> anyhow::
                         3 => {
                             // Setup wizard - need to temporarily exit raw mode for dialoguer
                             terminal.clear()?;
-                            
+
                             // Temporarily disable raw mode for dialoguer
                             disable_raw_mode()?;
                             terminal.show_cursor()?;
-                            
+
                             let config = crate::cli::interactive::wizard::run_setup_wizard()?;
                             save_wizard_config(config)?;
-                            
+
                             // Re-enable raw mode
                             enable_raw_mode()?;
                             terminal.hide_cursor()?;
@@ -279,41 +303,46 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) -> anyhow::
     }
 }
 
-fn save_wizard_config(wizard_config: crate::cli::interactive::wizard::WizardConfig) -> anyhow::Result<()> {
-    use dialoguer::{Confirm, Input, theme::ColorfulTheme};
-    use crate::core::config::{Config, ReductionConfig, AlignmentConfig, OutputConfig, PerformanceConfig, DatabaseConfig, save_config};
-    
+fn save_wizard_config(
+    wizard_config: crate::cli::interactive::wizard::WizardConfig,
+) -> anyhow::Result<()> {
+    use crate::core::config::{
+        save_config, AlignmentConfig, Config, DatabaseConfig, OutputConfig, PerformanceConfig,
+        ReductionConfig,
+    };
+    use dialoguer::{theme::ColorfulTheme, Confirm, Input};
+
     // Ask if user wants to save
     let should_save = Confirm::with_theme(&ColorfulTheme::default())
         .with_prompt("Save this configuration for future use?")
         .default(true)
         .interact()?;
-    
+
     if !should_save {
         return Ok(());
     }
-    
+
     // Get save path
     let default_path = dirs::config_dir()
         .map(|p| p.join("talaria").join("config.toml"))
         .unwrap_or_else(|| PathBuf::from("config.toml"));
-    
+
     let path_str: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Configuration file path")
         .default(default_path.to_string_lossy().to_string())
         .interact_text()?;
-    
+
     let path = PathBuf::from(path_str);
-    
+
     // Create directory if needed
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    
+
     // Convert WizardConfig to Config
     let config = Config {
         reduction: ReductionConfig {
-            target_ratio: 0.3, // Default, not in wizard
+            target_ratio: 0.3,       // Default, not in wizard
             min_sequence_length: 50, // Default
             max_delta_distance: 100, // Default
             similarity_threshold: wizard_config.clustering_threshold,
@@ -341,10 +370,10 @@ fn save_wizard_config(wizard_config: crate::cli::interactive::wizard::WizardConf
             preferred_mirror: Some("ebi".to_string()),
         },
     };
-    
+
     // Save config
     save_config(&path, &config)?;
     println!("Configuration saved to: {}", path.display());
-    
+
     Ok(())
 }

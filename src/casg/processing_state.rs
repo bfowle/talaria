@@ -3,7 +3,6 @@
 /// This module tracks the state of ongoing CASG operations (downloads, chunking, updates)
 /// to enable safe resumption after interruptions. It validates that the same version
 /// is being resumed to ensure data consistency.
-
 use crate::casg::types::SHA256Hash;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Utc};
@@ -120,7 +119,8 @@ impl ProcessingState {
 
     /// Get the number of remaining chunks
     pub fn remaining_chunks(&self) -> usize {
-        self.total_chunks.saturating_sub(self.completed_chunks.len())
+        self.total_chunks
+            .saturating_sub(self.completed_chunks.len())
     }
 
     /// Get completion percentage
@@ -177,8 +177,7 @@ impl ProcessingStateManager {
     /// Create a new state manager
     pub fn new(base_path: &Path) -> Result<Self> {
         let state_dir = base_path.join(".processing_states");
-        fs::create_dir_all(&state_dir)
-            .context("Failed to create processing state directory")?;
+        fs::create_dir_all(&state_dir).context("Failed to create processing state directory")?;
 
         Ok(Self { state_dir })
     }
@@ -186,11 +185,10 @@ impl ProcessingStateManager {
     /// Save a processing state
     pub fn save_state(&self, state: &ProcessingState, operation_id: &str) -> Result<()> {
         let state_file = self.state_dir.join(format!("{}.json", operation_id));
-        let content = serde_json::to_string_pretty(state)
-            .context("Failed to serialize processing state")?;
+        let content =
+            serde_json::to_string_pretty(state).context("Failed to serialize processing state")?;
 
-        fs::write(&state_file, content)
-            .context("Failed to write processing state file")?;
+        fs::write(&state_file, content).context("Failed to write processing state file")?;
 
         Ok(())
     }
@@ -203,11 +201,11 @@ impl ProcessingStateManager {
             return Ok(None);
         }
 
-        let content = fs::read_to_string(&state_file)
-            .context("Failed to read processing state file")?;
+        let content =
+            fs::read_to_string(&state_file).context("Failed to read processing state file")?;
 
-        let state: ProcessingState = serde_json::from_str(&content)
-            .context("Failed to deserialize processing state")?;
+        let state: ProcessingState =
+            serde_json::from_str(&content).context("Failed to deserialize processing state")?;
 
         // Check if state is expired
         if state.is_expired() {
@@ -224,8 +222,7 @@ impl ProcessingStateManager {
         let state_file = self.state_dir.join(format!("{}.json", operation_id));
 
         if state_file.exists() {
-            fs::remove_file(&state_file)
-                .context("Failed to delete processing state file")?;
+            fs::remove_file(&state_file).context("Failed to delete processing state file")?;
         }
 
         Ok(())
@@ -270,10 +267,7 @@ impl ProcessingStateManager {
     }
 
     /// Generate an operation ID from source info
-    pub fn generate_operation_id(
-        database: &str,
-        operation: &OperationType,
-    ) -> String {
+    pub fn generate_operation_id(database: &str, operation: &OperationType) -> String {
         let op_suffix = match operation {
             OperationType::InitialDownload => "initial",
             OperationType::IncrementalUpdate => "update",
@@ -347,22 +341,13 @@ mod tests {
         );
 
         // Should be resumable with same manifest
-        assert!(state.can_resume_with(
-            &SHA256Hash::compute(b"manifest"),
-            "v2.0"
-        ));
+        assert!(state.can_resume_with(&SHA256Hash::compute(b"manifest"), "v2.0"));
 
         // Should not be resumable with different manifest
-        assert!(!state.can_resume_with(
-            &SHA256Hash::compute(b"different"),
-            "v2.0"
-        ));
+        assert!(!state.can_resume_with(&SHA256Hash::compute(b"different"), "v2.0"));
 
         // Should not be resumable with different version
-        assert!(!state.can_resume_with(
-            &SHA256Hash::compute(b"manifest"),
-            "v3.0"
-        ));
+        assert!(!state.can_resume_with(&SHA256Hash::compute(b"manifest"), "v3.0"));
     }
 
     #[test]

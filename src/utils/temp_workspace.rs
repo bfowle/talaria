@@ -1,6 +1,5 @@
 /// Comprehensive temp workspace management for CASG-based reduction pipeline
 /// All temporary operations go through CASG - this is NOT optional
-
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -172,25 +171,43 @@ impl TempWorkspace {
     pub fn get_file_path(&self, purpose: &str, extension: &str) -> PathBuf {
         match purpose {
             "input_fasta" => self.get_path("input").join(format!("input.{}", extension)),
-            "sanitized_fasta" => self.get_path("sanitized").join(format!("sanitized.{}", extension)),
-            "references" => self.get_path("reference_selection").join(format!("references.{}", extension)),
-            "similarity_matrix" => self.get_path("reference_selection").join(format!("similarity_matrix.{}", extension)),
-            "lambda_index" => self.get_path("indices").join(format!("lambda_index.{}", extension)),
-            "lambda_output" => self.get_path("temp").join(format!("lambda_output.{}", extension)),
-            "final_output" => self.get_path("output").join(format!("reduced.{}", extension)),
-            "log" => self.get_path("logs").join(format!("{}.{}", purpose, extension)),
+            "sanitized_fasta" => self
+                .get_path("sanitized")
+                .join(format!("sanitized.{}", extension)),
+            "references" => self
+                .get_path("reference_selection")
+                .join(format!("references.{}", extension)),
+            "similarity_matrix" => self
+                .get_path("reference_selection")
+                .join(format!("similarity_matrix.{}", extension)),
+            "lambda_index" => self
+                .get_path("indices")
+                .join(format!("lambda_index.{}", extension)),
+            "lambda_output" => self
+                .get_path("temp")
+                .join(format!("lambda_output.{}", extension)),
+            "final_output" => self
+                .get_path("output")
+                .join(format!("reduced.{}", extension)),
+            "log" => self
+                .get_path("logs")
+                .join(format!("{}.{}", purpose, extension)),
             _ => self.root.join(format!("{}.{}", purpose, extension)),
         }
     }
 
     /// Get iteration-specific path
     pub fn get_iteration_path(&self, iteration: usize, filename: &str) -> PathBuf {
-        self.get_path("iterations").join(format!("iter_{:03}", iteration)).join(filename)
+        self.get_path("iterations")
+            .join(format!("iter_{:03}", iteration))
+            .join(filename)
     }
 
     /// Create iteration directory
     pub fn create_iteration_dir(&self, iteration: usize) -> Result<PathBuf> {
-        let iter_dir = self.get_path("iterations").join(format!("iter_{:03}", iteration));
+        let iter_dir = self
+            .get_path("iterations")
+            .join(format!("iter_{:03}", iteration));
         fs::create_dir_all(&iter_dir)
             .with_context(|| format!("Failed to create iteration directory: {:?}", iter_dir))?;
         Ok(iter_dir)
@@ -233,8 +250,8 @@ impl TempWorkspace {
     /// Clean up the workspace (called on drop)
     pub fn cleanup(&self) -> Result<()> {
         // Determine if we should preserve
-        let should_preserve = self.config.preserve_always
-            || (self.config.preserve_on_failure && self.had_error);
+        let should_preserve =
+            self.config.preserve_always || (self.config.preserve_on_failure && self.had_error);
 
         if should_preserve {
             // Move to preserved directory
@@ -365,7 +382,9 @@ pub fn find_workspace(id: &str, config: &WorkspaceConfig) -> Result<Option<PathB
     }
 
     // Check preserved directory in databases
-    let preserved_path = crate::core::paths::talaria_databases_dir().join("preserved").join(id);
+    let preserved_path = crate::core::paths::talaria_databases_dir()
+        .join("preserved")
+        .join(id);
     if preserved_path.exists() {
         return Ok(Some(preserved_path));
     }
@@ -439,10 +458,12 @@ mod tests {
         let config = setup_test_env();
         let mut workspace = TempWorkspace::with_config("test_command", config).unwrap();
 
-        workspace.update_stats(|s| {
-            s.input_sequences = 1000;
-            s.selected_references = 100;
-        }).unwrap();
+        workspace
+            .update_stats(|s| {
+                s.input_sequences = 1000;
+                s.selected_references = 100;
+            })
+            .unwrap();
 
         assert_eq!(workspace.get_stats().input_sequences, 1000);
         assert_eq!(workspace.get_stats().selected_references, 100);

@@ -1,6 +1,5 @@
 /// Structured output formatter for CLI commands
 /// Provides Claude Code-style formatting with sections and progress tracking
-
 use colored::*;
 use std::fmt;
 
@@ -189,11 +188,10 @@ impl ProgressItem {
             _ => progress.normal(),
         };
 
-        println!("{}{} {} ({})",
-                 indent_str,
-                 self.status,
-                 self.label,
-                 status_color);
+        println!(
+            "{}{} {} ({})",
+            indent_str, self.status, self.label, status_color
+        );
     }
 }
 

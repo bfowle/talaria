@@ -1,6 +1,6 @@
 use crate::casg::types::*;
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Manifest for taxonomy data stored as CASG chunks
@@ -82,15 +82,15 @@ pub struct TaxonomyChunkMetadata {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TaxonomyFileType {
-    Nodes,      // nodes.dmp
-    Names,      // names.dmp
-    Merged,     // merged.dmp
-    Deleted,    // delnodes.dmp
-    Accession2Taxid,  // prot.accession2taxid
-    IdMapping,  // UniProt idmapping.dat
+    Nodes,           // nodes.dmp
+    Names,           // names.dmp
+    Merged,          // merged.dmp
+    Deleted,         // delnodes.dmp
+    Accession2Taxid, // prot.accession2taxid
+    IdMapping,       // UniProt idmapping.dat
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TaxonomyStats {
     /// Total number of taxon IDs
     pub total_taxa: usize,
@@ -143,10 +143,16 @@ impl TaxonomyManifest {
         let mut deleted_chunks = Vec::new();
 
         // Build hash maps for efficient lookup
-        let self_chunks: HashMap<SHA256Hash, &TaxonomyChunkMetadata> =
-            self.chunk_index.iter().map(|c| (c.hash.clone(), c)).collect();
-        let other_chunks: HashMap<SHA256Hash, &TaxonomyChunkMetadata> =
-            other.chunk_index.iter().map(|c| (c.hash.clone(), c)).collect();
+        let self_chunks: HashMap<SHA256Hash, &TaxonomyChunkMetadata> = self
+            .chunk_index
+            .iter()
+            .map(|c| (c.hash.clone(), c))
+            .collect();
+        let other_chunks: HashMap<SHA256Hash, &TaxonomyChunkMetadata> = other
+            .chunk_index
+            .iter()
+            .map(|c| (c.hash.clone(), c))
+            .collect();
 
         // Find new and modified chunks
         for chunk in &self.chunk_index {
@@ -174,27 +180,15 @@ impl TaxonomyManifest {
         StatsChanges {
             taxa_added: self.stats.total_taxa.saturating_sub(other.total_taxa),
             taxa_removed: other.total_taxa.saturating_sub(self.stats.total_taxa),
-            species_changed: (self.stats.species_count as i64 - other.species_count as i64).abs() as usize,
+            species_changed: (self.stats.species_count as i64 - other.species_count as i64).unsigned_abs() as usize,
             accessions_changed: match (self.stats.accession_count, other.accession_count) {
-                (Some(a), Some(b)) => Some((a as i64 - b as i64).abs() as usize),
+                (Some(a), Some(b)) => Some((a as i64 - b as i64).unsigned_abs() as usize),
                 _ => None,
             },
         }
     }
 }
 
-impl Default for TaxonomyStats {
-    fn default() -> Self {
-        Self {
-            total_taxa: 0,
-            species_count: 0,
-            genus_count: 0,
-            accession_count: None,
-            merged_count: None,
-            deleted_count: None,
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct TaxonomyDiff {
@@ -215,7 +209,8 @@ pub struct StatsChanges {
 impl TaxonomyDiff {
     /// Calculate total download size needed
     pub fn download_size(&self, chunk_sizes: &HashMap<SHA256Hash, usize>) -> usize {
-        self.new_chunks.iter()
+        self.new_chunks
+            .iter()
             .chain(&self.modified_chunks)
             .filter_map(|hash| chunk_sizes.get(hash))
             .sum()

@@ -1,10 +1,9 @@
+use crate::cli::output::TreeNode;
 /// Rendering traits for temporal data visualization
 ///
 /// These traits enable rich terminal visualization of temporal query results
 /// using the existing output utilities.
-
 use comfy_table::Table;
-use crate::cli::output::TreeNode;
 
 /// Trait for rendering temporal data in various formats
 pub trait TemporalRenderable {
@@ -52,7 +51,10 @@ fn render_tree_to_string(nodes: &[TreeNode], prefix: &str) -> String {
         let connector = if is_last { "└─" } else { "├─" };
 
         if let Some(value) = &node.value {
-            output.push_str(&format!("{}{} {}: {}\n", prefix, connector, node.label, value));
+            output.push_str(&format!(
+                "{}{} {}: {}\n",
+                prefix, connector, node.label, value
+            ));
         } else {
             output.push_str(&format!("{}{} {}\n", prefix, connector, node.label));
         }
@@ -132,7 +134,13 @@ pub fn create_timeline(
     // Events
     for (year, marker, description) in events {
         let position = (year - start_year) as usize * 12 + 4;
-        output.push_str(&format!("{:>width$}{} {}\n", "", marker, description, width = position));
+        output.push_str(&format!(
+            "{:>width$}{} {}\n",
+            "",
+            marker,
+            description,
+            width = position
+        ));
     }
 
     output
@@ -155,7 +163,12 @@ pub fn create_progress_visualization(current: usize, total: usize, width: usize)
 /// Helper to create a box around content
 pub fn create_box(title: &str, content: &str) -> String {
     let lines: Vec<&str> = content.lines().collect();
-    let max_width = lines.iter().map(|l| l.len()).max().unwrap_or(0).max(title.len());
+    let max_width = lines
+        .iter()
+        .map(|l| l.len())
+        .max()
+        .unwrap_or(0)
+        .max(title.len());
 
     let mut output = String::new();
 

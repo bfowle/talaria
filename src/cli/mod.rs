@@ -20,11 +20,11 @@ use clap::{Parser, Subcommand};
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
-    
+
     /// Verbosity level (can be repeated)
     #[arg(short, long, action = clap::ArgAction::Count, global = true)]
     pub verbose: u8,
-    
+
     /// Number of threads to use (0 = all available)
     #[arg(short = 'j', long, default_value = "0", global = true)]
     pub threads: usize,
@@ -34,16 +34,16 @@ pub struct Cli {
 pub enum Commands {
     /// Reduce a FASTA file for optimal indexing
     Reduce(commands::reduce::ReduceArgs),
-    
+
     /// Reconstruct sequences from reference and delta files
     Reconstruct(commands::reconstruct::ReconstructArgs),
-    
+
     /// Show statistics about a FASTA file or reduction
     Stats(commands::stats::StatsArgs),
-    
+
     /// Validate reduction quality against original
     Validate(commands::validate::ValidateArgs),
-    
+
     /// Manage biological databases
     Database(commands::database::DatabaseArgs),
 
@@ -78,7 +78,7 @@ pub enum TargetAligner {
 
 impl std::str::FromStr for TargetAligner {
     type Err = String;
-    
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "lambda" => Ok(TargetAligner::Lambda),

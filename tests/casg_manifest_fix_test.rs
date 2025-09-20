@@ -42,13 +42,19 @@ mod tests {
         create_fake_manifest(&expected_path, "uniprot-swissprot").unwrap();
 
         // Verify it exists
-        assert!(expected_path.exists(),
-            "Manifest should exist at {:?}", expected_path);
+        assert!(
+            expected_path.exists(),
+            "Manifest should exist at {:?}",
+            expected_path
+        );
 
         // Verify it's NOT at the old location
         let old_path = casg_dir.join("manifest.json");
-        assert!(!old_path.exists(),
-            "Manifest should NOT exist at old location {:?}", old_path);
+        assert!(
+            !old_path.exists(),
+            "Manifest should NOT exist at old location {:?}",
+            old_path
+        );
     }
 
     #[test]
@@ -114,8 +120,14 @@ mod tests {
         }
 
         // Verify migration worked
-        assert!(new_path.exists(), "Manifest should be migrated to new location");
-        assert!(old_path.exists(), "Old manifest still exists (not deleted during migration)");
+        assert!(
+            new_path.exists(),
+            "Manifest should be migrated to new location"
+        );
+        assert!(
+            old_path.exists(),
+            "Old manifest still exists (not deleted during migration)"
+        );
 
         let new_etag = new_path.with_extension("etag");
         assert!(new_etag.exists(), "Etag should also be migrated");
@@ -123,7 +135,10 @@ mod tests {
         // Verify content is identical
         let old_content = fs::read_to_string(&old_path).unwrap();
         let new_content = fs::read_to_string(&new_path).unwrap();
-        assert_eq!(old_content, new_content, "Content should be identical after migration");
+        assert_eq!(
+            old_content, new_content,
+            "Content should be identical after migration"
+        );
     }
 
     #[test]

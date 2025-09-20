@@ -1,0 +1,35 @@
+# Clippy configuration for Talaria
+# This sets reasonable defaults for a production Rust codebase
+
+# Maximum allowed cognitive complexity of a function
+cognitive-complexity-threshold = 30
+
+# Maximum number of lines in a single function
+too-many-lines-threshold = 200
+
+# Maximum number of arguments to a function
+too-many-arguments-threshold = 8
+
+# Maximum nesting level for blocks
+excessive-nesting-threshold = 7
+
+# Minimum number of enum variants to not trigger the large_enum_variant lint
+enum-variant-size-threshold = 200
+
+# Maximum size difference between enum variants (using correct field name)
+# large-enum-variant-threshold = 200  # This field name is deprecated
+
+# Type complexity threshold
+type-complexity-threshold = 250
+
+# Avoid breaking existing public APIs
+avoid-breaking-exported-api = true
+
+# Allow common patterns that clippy::pedantic complains about
+allow-dbg-in-tests = true
+
+# Maximum inline array size before suggesting a Vec
+array-size-threshold = 512000
+
+# Cargo manifest lints
+cargo-ignore-publish = true

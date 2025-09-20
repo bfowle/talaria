@@ -45,22 +45,6 @@ impl DatabaseReference {
         }
     }
 
-    /// Format as a string for display
-    pub fn to_string(&self) -> String {
-        let mut result = format!("{}/{}", self.source, self.dataset);
-
-        if let Some(ref version) = self.version {
-            result.push('@');
-            result.push_str(version);
-        }
-
-        if let Some(ref profile) = self.profile {
-            result.push(':');
-            result.push_str(profile);
-        }
-
-        result
-    }
 
     /// Get the base reference without version or profile
     pub fn base_ref(&self) -> String {
@@ -80,7 +64,19 @@ impl DatabaseReference {
 
 impl std::fmt::Display for DatabaseReference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_string())
+        let mut result = format!("{}/{}", self.source, self.dataset);
+
+        if let Some(ref version) = self.version {
+            result.push('@');
+            result.push_str(version);
+        }
+
+        if let Some(ref profile) = self.profile {
+            result.push(':');
+            result.push_str(profile);
+        }
+
+        write!(f, "{}", result)
     }
 }
 
@@ -168,7 +164,10 @@ pub fn validate_source(source: &str) -> Result<&str> {
         "pfam" => Ok("pfam"),
         "kegg" => Ok("kegg"),
         "custom" => Ok("custom"),
-        _ => anyhow::bail!("Unknown database source: {}. Valid sources: uniprot, ncbi, pdb, pfam, kegg, custom", source)
+        _ => anyhow::bail!(
+            "Unknown database source: {}. Valid sources: uniprot, ncbi, pdb, pfam, kegg, custom",
+            source
+        ),
     }
 }
 

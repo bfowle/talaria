@@ -1,14 +1,13 @@
 // Processing pipelines module
 
-pub mod traits;
 pub mod pipeline;
+pub mod traits;
 
 pub use traits::{
-    SequenceProcessor, BatchProcessor, ProcessingPipeline,
-    FilterProcessor, TransformProcessor, EnrichmentProcessor
+    BatchProcessor, EnrichmentProcessor, FilterProcessor, ProcessingPipeline, SequenceProcessor,
+    TransformProcessor,
 };
 
 pub use pipeline::{
-    StandardProcessingPipeline, LowComplexityFilter, CaseTransformer,
-    create_reduction_pipeline
+    create_reduction_pipeline, CaseTransformer, LowComplexityFilter, StandardProcessingPipeline,
 };

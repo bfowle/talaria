@@ -1,8 +1,8 @@
+use crate::cli::output::*;
+use crate::utils::progress::create_spinner;
 use anyhow::Result;
 use clap::Args;
 use colored::*;
-use crate::cli::output::*;
-use crate::utils::progress::create_spinner;
 
 #[derive(Args)]
 pub struct UpdateArgs {
@@ -28,8 +28,8 @@ pub struct UpdateArgs {
 }
 
 pub fn run(args: UpdateArgs) -> Result<()> {
-    use crate::core::database_manager::DatabaseManager;
     use crate::cli::output::format_number;
+    use crate::core::database_manager::DatabaseManager;
 
     // Header based on mode
     if args.dry_run {
@@ -41,9 +41,7 @@ pub fn run(args: UpdateArgs) -> Result<()> {
 
     // Initialize database manager with spinner
     let spinner = create_spinner("Checking for updates...");
-    let mut manager = DatabaseManager::new(
-        args.db_path.map(|p| p.to_string_lossy().to_string())
-    )?;
+    let mut manager = DatabaseManager::new(args.db_path.map(|p| p.to_string_lossy().to_string()))?;
 
     // Get list of databases to check
     let databases_to_check = if let Some(ref db_name) = args.database {
@@ -58,8 +56,12 @@ pub fn run(args: UpdateArgs) -> Result<()> {
     };
 
     // Also check taxonomy if requested or if checking all
-    let check_taxonomy = args.include_taxonomy || args.database.is_none() ||
-                         args.database.as_ref().map_or(false, |d| d == "ncbi/taxonomy" || d == "taxonomy");
+    let check_taxonomy = args.include_taxonomy
+        || args.database.is_none()
+        || args
+            .database
+            .as_ref()
+            .map_or(false, |d| d == "ncbi/taxonomy" || d == "taxonomy");
 
     spinner.finish_and_clear();
 
@@ -78,7 +80,10 @@ pub fn run(args: UpdateArgs) -> Result<()> {
                 up_to_date.push((db_name.clone(), version));
             }
             Ok(UpdateStatus::NotFound) => {
-                errors.push((db_name.clone(), "Database not found in repository".to_string()));
+                errors.push((
+                    db_name.clone(),
+                    "Database not found in repository".to_string(),
+                ));
             }
             Err(e) => {
                 errors.push((db_name.clone(), e.to_string()));
@@ -105,7 +110,12 @@ pub fn run(args: UpdateArgs) -> Result<()> {
         for (db, current, latest) in &updates_available {
             tree_item(false, db, None);
             println!("   {} Current: {}", "├─".dimmed(), current);
-            println!("   {} Latest:  {} {}", "└─".dimmed(), latest, "✨ NEW".yellow());
+            println!(
+                "   {} Latest:  {} {}",
+                "└─".dimmed(),
+                latest,
+                "✨ NEW".yellow()
+            );
         }
 
         if !args.dry_run {
@@ -128,7 +138,10 @@ pub fn run(args: UpdateArgs) -> Result<()> {
             }
         } else {
             println!();
-            info(&format!("Run without --dry-run to download {} update(s)", updates_available.len()));
+            info(&format!(
+                "Run without --dry-run to download {} update(s)",
+                updates_available.len()
+            ));
         }
     }
 
@@ -167,10 +180,10 @@ enum UpdateStatus {
 fn check_database_update(
     manager: &mut crate::core::database_manager::DatabaseManager,
     database: &str,
-    force: bool
+    force: bool,
 ) -> Result<UpdateStatus> {
+    use crate::download::{DatabaseSource, NCBIDatabase, UniProtDatabase};
     use crate::utils::database_ref::parse_database_ref;
-    use crate::download::{DatabaseSource, UniProtDatabase, NCBIDatabase};
 
     // Parse database reference to get source
     let (source_str, dataset) = parse_database_ref(database)?;
@@ -206,7 +219,8 @@ fn check_database_update(
             match manager.check_for_updates(&source, progress).await {
                 Ok(crate::core::database_manager::DownloadResult::UpToDate) => {
                     Ok(UpdateStatus::UpToDate {
-                        version: manager.get_current_version_info(&source)
+                        version: manager
+                            .get_current_version_info(&source)
                             .map(|v| v.timestamp)
                             .unwrap_or_else(|_| "unknown".to_string()),
                     })
@@ -230,7 +244,7 @@ fn check_database_update(
 
 fn check_taxonomy_update(
     manager: &mut crate::core::database_manager::DatabaseManager,
-    force: bool
+    force: bool,
 ) -> Result<UpdateStatus> {
     // Get current taxonomy version
     let current_version = manager.get_taxonomy_version()?;
@@ -284,6 +298,10 @@ fn perform_update(database: &str) -> Result<()> {
         reference_proteomes: false,
         max_sequences: None,
         description: None,
+        at_time: None,
+        sequence_version: None,
+        taxonomy_version: None,
+        show_versions: false,
     };
 
     // Run download which will handle update if needed

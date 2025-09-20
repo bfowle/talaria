@@ -65,6 +65,6 @@ pub fn generate_json_report(result: &ComparisonResult, _options: &ReportOptions)
             })).collect::<Vec<_>>(),
         }
     });
-    
+
     Ok(serde_json::to_string_pretty(&report)?)
 }

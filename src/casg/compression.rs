@@ -2,8 +2,7 @@
 ///
 /// Provides specialized compression for biological sequence data,
 /// using Zstandard with trained dictionaries for taxonomy-aware compression.
-
-use crate::casg::types::{ChunkFormat, TaxonomyAwareChunk, SHA256Hash, TaxonId, SequenceRef};
+use crate::casg::types::{ChunkFormat, SHA256Hash, SequenceRef, TaxonId, TaxonomyAwareChunk};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -27,10 +26,10 @@ pub struct CompressionConfig {
 impl Default for CompressionConfig {
     fn default() -> Self {
         Self {
-            level: 19,  // High compression for long-term storage
+            level: 19, // High compression for long-term storage
             use_dictionaries: true,
             dict_min_samples: 100,
-            dict_max_size: 100_000,  // 100KB max dictionary
+            dict_max_size: 100_000, // 100KB max dictionary
             cache_dictionaries: true,
         }
     }
@@ -39,7 +38,7 @@ impl Default for CompressionConfig {
 /// Chunk compressor with format-specific handling
 pub struct ChunkCompressor {
     config: CompressionConfig,
-    dictionary_cache: HashMap<u32, Vec<u8>>,  // TaxonID -> Dictionary
+    dictionary_cache: HashMap<u32, Vec<u8>>, // TaxonID -> Dictionary
 }
 
 impl ChunkCompressor {
@@ -60,9 +59,7 @@ impl ChunkCompressor {
         match format {
             ChunkFormat::JsonGzip => self.compress_json_gzip(data),
             ChunkFormat::Binary => self.compress_binary(data),
-            ChunkFormat::BinaryDict { dict_id } => {
-                self.compress_with_dictionary(data, dict_id)
-            }
+            ChunkFormat::BinaryDict { dict_id } => self.compress_with_dictionary(data, dict_id),
         }
     }
 
@@ -73,9 +70,7 @@ impl ChunkCompressor {
         match format {
             ChunkFormat::JsonGzip => self.decompress_json_gzip(data),
             ChunkFormat::Binary => self.decompress_binary(data),
-            ChunkFormat::BinaryDict { dict_id } => {
-                self.decompress_with_dictionary(data, dict_id)
-            }
+            ChunkFormat::BinaryDict { dict_id } => self.decompress_with_dictionary(data, dict_id),
         }
     }
 
@@ -85,9 +80,11 @@ impl ChunkCompressor {
         use flate2::Compression;
 
         let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(data)
+        encoder
+            .write_all(data)
             .context("Failed to write to gzip encoder")?;
-        encoder.finish()
+        encoder
+            .finish()
             .context("Failed to finish gzip compression")
     }
 
@@ -97,21 +94,20 @@ impl ChunkCompressor {
 
         let mut decoder = GzDecoder::new(data);
         let mut result = Vec::new();
-        decoder.read_to_end(&mut result)
+        decoder
+            .read_to_end(&mut result)
             .context("Failed to decompress gzip data")?;
         Ok(result)
     }
 
     /// Binary format with Zstandard compression
     fn compress_binary(&self, data: &[u8]) -> Result<Vec<u8>> {
-        zstd::encode_all(data, self.config.level)
-            .context("Failed to compress with Zstandard")
+        zstd::encode_all(data, self.config.level).context("Failed to compress with Zstandard")
     }
 
     /// Binary format decompression
     fn decompress_binary(&self, data: &[u8]) -> Result<Vec<u8>> {
-        zstd::decode_all(data)
-            .context("Failed to decompress Zstandard data")
+        zstd::decode_all(data).context("Failed to decompress Zstandard data")
     }
 
     /// Compress with trained dictionary
@@ -121,13 +117,16 @@ impl ChunkCompressor {
         // Use zstd with dictionary
         let mut encoder = zstd::Encoder::with_dictionary(Vec::new(), self.config.level, &dict)?;
         encoder.write_all(data)?;
-        encoder.finish()
+        encoder
+            .finish()
             .context("Failed to compress with dictionary")
     }
 
     /// Decompress with dictionary
     fn decompress_with_dictionary(&self, data: &[u8], dict_id: u32) -> Result<Vec<u8>> {
-        let dict = self.dictionary_cache.get(&dict_id)
+        let dict = self
+            .dictionary_cache
+            .get(&dict_id)
             .ok_or_else(|| anyhow::anyhow!("Dictionary {} not found in cache", dict_id))?;
 
         let mut decoder = zstd::Decoder::with_dictionary(data, dict)?;
@@ -188,10 +187,7 @@ impl ChunkSplitter {
     }
 
     /// Combine metadata and sequences back into a chunk
-    pub fn combine(
-        metadata_bytes: &[u8],
-        sequence_bytes: &[u8],
-    ) -> Result<TaxonomyAwareChunk> {
+    pub fn combine(metadata_bytes: &[u8], sequence_bytes: &[u8]) -> Result<TaxonomyAwareChunk> {
         let metadata: ChunkMetadata = rmp_serde::from_slice(metadata_bytes)
             .context("Failed to deserialize chunk metadata")?;
 

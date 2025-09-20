@@ -1,6 +1,6 @@
+use std::path::PathBuf;
 use talaria::core::database_manager::DatabaseManager;
 use talaria::core::paths;
-use std::path::PathBuf;
 use tempfile::TempDir;
 
 /// Test that we can parse TaxIDs correctly
@@ -41,8 +41,9 @@ fn test_database_name_generation() {
 }
 
 fn generate_db_name_from_taxids(taxids: &[u32]) -> String {
-    let taxids_str = taxids.iter()
-        .take(3)  // Limit to first 3 for readability
+    let taxids_str = taxids
+        .iter()
+        .take(3) // Limit to first 3 for readability
         .map(|t| t.to_string())
         .collect::<Vec<_>>()
         .join("_");
@@ -62,14 +63,16 @@ fn test_fetch_args_validation() {
     assert!(validate_fetch_input(None, None).is_err());
     assert!(validate_fetch_input(Some("9606".to_string()), None).is_ok());
     assert!(validate_fetch_input(None, Some(PathBuf::from("taxids.txt"))).is_ok());
-    assert!(validate_fetch_input(Some("9606".to_string()), Some(PathBuf::from("taxids.txt"))).is_err());
+    assert!(
+        validate_fetch_input(Some("9606".to_string()), Some(PathBuf::from("taxids.txt"))).is_err()
+    );
 }
 
 fn validate_fetch_input(taxids: Option<String>, taxid_list: Option<PathBuf>) -> Result<(), String> {
     match (taxids, taxid_list) {
         (None, None) => Err("Must specify either --taxids or --taxid-list".to_string()),
         (Some(_), Some(_)) => Err("Cannot specify both --taxids and --taxid-list".to_string()),
-        _ => Ok(())
+        _ => Ok(()),
     }
 }
 
@@ -77,8 +80,8 @@ fn validate_fetch_input(taxids: Option<String>, taxid_list: Option<PathBuf>) -> 
 #[test]
 fn test_sequence_chunking() {
     use talaria::bio::sequence::Sequence;
-    use talaria::casg::chunker::{TaxonomicChunker, Chunker};
-    use talaria::casg::types::{ChunkingStrategy, TaxonId, SpecialTaxon, ChunkStrategy};
+    use talaria::casg::chunker::{Chunker, TaxonomicChunker};
+    use talaria::casg::types::{ChunkStrategy, ChunkingStrategy, SpecialTaxon, TaxonId};
 
     // Create test sequences
     let sequences = vec![
@@ -87,34 +90,35 @@ fn test_sequence_chunking() {
             description: Some("Test sequence 1 OX=9606".to_string()),
             sequence: b"ACGTACGTACGT".to_vec(),
             taxon_id: Some(9606),
+            taxonomy_sources: Default::default(),
         },
         Sequence {
             id: "seq2".to_string(),
             description: Some("Test sequence 2 OX=9606".to_string()),
             sequence: b"TGCATGCATGCA".to_vec(),
             taxon_id: Some(9606),
+            taxonomy_sources: Default::default(),
         },
         Sequence {
             id: "seq3".to_string(),
             description: Some("Test sequence 3 OX=10090".to_string()),
             sequence: b"GGGGCCCCAAAA".to_vec(),
             taxon_id: Some(10090),
+            taxonomy_sources: Default::default(),
         },
     ];
 
     // Create chunking strategy
     let strategy = ChunkingStrategy {
-        target_chunk_size: 100,  // Small for testing
+        target_chunk_size: 100, // Small for testing
         max_chunk_size: 1000,
         min_sequences_per_chunk: 1,
         taxonomic_coherence: 0.8,
-        special_taxa: vec![
-            SpecialTaxon {
-                taxon_id: TaxonId(9606),
-                name: "Human".to_string(),
-                strategy: ChunkStrategy::OwnChunks,
-            }
-        ],
+        special_taxa: vec![SpecialTaxon {
+            taxon_id: TaxonId(9606),
+            name: "Human".to_string(),
+            strategy: ChunkStrategy::OwnChunks,
+        }],
     };
 
     let mut chunker = TaxonomicChunker::new(strategy);
@@ -133,8 +137,8 @@ fn test_sequence_chunking() {
 /// Test manifest creation for fetched databases
 #[test]
 fn test_manifest_creation() {
-    use talaria::casg::types::{TemporalManifest, ChunkMetadata, SHA256Hash, TaxonId};
     use chrono::Utc;
+    use talaria::casg::types::{ChunkMetadata, SHA256Hash, TaxonId, TemporalManifest};
 
     let manifest = TemporalManifest {
         version: "20240101_120000".to_string(),
@@ -148,15 +152,13 @@ fn test_manifest_creation() {
         taxonomy_manifest_hash: SHA256Hash::zero(),
         taxonomy_dump_version: "uniprot".to_string(),
         source_database: Some("custom/test".to_string()),
-        chunk_index: vec![
-            ChunkMetadata {
-                hash: SHA256Hash::zero(),
-                taxon_ids: vec![TaxonId(9606)],
-                sequence_count: 2,
-                size: 100,
-                compressed_size: Some(50),
-            }
-        ],
+        chunk_index: vec![ChunkMetadata {
+            hash: SHA256Hash::zero(),
+            taxon_ids: vec![TaxonId(9606)],
+            sequence_count: 2,
+            size: 100,
+            compressed_size: Some(50),
+        }],
         discrepancies: Vec::new(),
         etag: "test-etag".to_string(),
         previous_version: None,
@@ -225,8 +227,7 @@ mod integration_tests {
         let databases = manager.list_databases().unwrap();
 
         // Should find our custom database
-        let custom_db = databases.iter()
-            .find(|db| db.name == "custom/test_db");
+        let custom_db = databases.iter().find(|db| db.name == "custom/test_db");
         assert!(custom_db.is_some());
 
         // Clean up

@@ -20,7 +20,7 @@ impl DocsViewer {
     pub fn new() -> Self {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
-        
+
         let sections = vec![
             ("Quick Start", QUICK_START_DOC),
             ("Reduction Algorithm", REDUCTION_ALGORITHM_DOC),
@@ -29,7 +29,7 @@ impl DocsViewer {
             ("Examples", EXAMPLES_DOC),
             ("FAQ", FAQ_DOC),
         ];
-        
+
         Self {
             sections,
             current_section: 0,
@@ -37,13 +37,13 @@ impl DocsViewer {
             scroll_offset: 0,
         }
     }
-    
+
     fn next_section(&mut self) {
         self.current_section = (self.current_section + 1) % self.sections.len();
         self.list_state.select(Some(self.current_section));
         self.scroll_offset = 0;
     }
-    
+
     fn previous_section(&mut self) {
         if self.current_section == 0 {
             self.current_section = self.sections.len() - 1;
@@ -53,26 +53,24 @@ impl DocsViewer {
         self.list_state.select(Some(self.current_section));
         self.scroll_offset = 0;
     }
-    
+
     fn scroll_up(&mut self) {
         if self.scroll_offset > 0 {
             self.scroll_offset -= 1;
         }
     }
-    
+
     fn scroll_down(&mut self) {
         self.scroll_offset += 1;
     }
 }
 
-pub fn run_docs_viewer<B: Backend>(
-    terminal: &mut Terminal<B>,
-) -> io::Result<()> {
+pub fn run_docs_viewer<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
     let mut viewer = DocsViewer::new();
-    
+
     loop {
         terminal.draw(|f| draw_viewer(f, &mut viewer))?;
-        
+
         if let Event::Key(key) = event::read()? {
             match key.code {
                 KeyCode::Esc | KeyCode::Char('q') => break,
@@ -94,7 +92,7 @@ pub fn run_docs_viewer<B: Backend>(
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -108,31 +106,35 @@ fn draw_viewer(f: &mut Frame, viewer: &mut DocsViewer) {
             Constraint::Length(3),
         ])
         .split(f.area());
-    
+
     // Section tabs
-    let titles: Vec<Span> = viewer.sections
+    let titles: Vec<Span> = viewer
+        .sections
         .iter()
         .enumerate()
         .map(|(i, (title, _))| {
             if i == viewer.current_section {
                 Span::styled(
                     format!(" {} ", title),
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
                 )
             } else {
-                Span::styled(
-                    format!(" {} ", title),
-                    Style::default().fg(Color::White),
-                )
+                Span::styled(format!(" {} ", title), Style::default().fg(Color::White))
             }
         })
         .collect();
-    
+
     let tabs = Paragraph::new(Line::from(titles))
-        .block(Block::default().title(" Documentation ").borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(" Documentation ")
+                .borders(Borders::ALL),
+        )
         .alignment(Alignment::Center);
     f.render_widget(tabs, chunks[0]);
-    
+
     // Content
     let (_title, content) = viewer.sections[viewer.current_section];
     let lines: Vec<Line> = content
@@ -140,7 +142,12 @@ fn draw_viewer(f: &mut Frame, viewer: &mut DocsViewer) {
         .skip(viewer.scroll_offset as usize)
         .map(|line| {
             if line.starts_with('#') {
-                Line::from(Span::styled(line, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)))
+                Line::from(Span::styled(
+                    line,
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ))
             } else if line.starts_with('-') || line.starts_with('*') {
                 Line::from(Span::styled(line, Style::default().fg(Color::Yellow)))
             } else if line.starts_with("```") {
@@ -150,17 +157,18 @@ fn draw_viewer(f: &mut Frame, viewer: &mut DocsViewer) {
             }
         })
         .collect();
-    
+
     let paragraph = Paragraph::new(lines)
         .block(Block::default().borders(Borders::ALL))
         .wrap(Wrap { trim: false });
     f.render_widget(paragraph, chunks[1]);
-    
+
     // Help bar
-    let help = Paragraph::new("Tab/←→: Switch section | ↑/↓: Scroll | PgUp/PgDn: Fast scroll | q: Quit")
-        .style(Style::default().fg(Color::DarkGray))
-        .block(Block::default().borders(Borders::ALL))
-        .alignment(Alignment::Center);
+    let help =
+        Paragraph::new("Tab/←→: Switch section | ↑/↓: Scroll | PgUp/PgDn: Fast scroll | q: Quit")
+            .style(Style::default().fg(Color::DarkGray))
+            .block(Block::default().borders(Borders::ALL))
+            .alignment(Alignment::Center);
     f.render_widget(help, chunks[2]);
 }
 

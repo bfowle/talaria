@@ -4,7 +4,7 @@ use anyhow::Result;
 
 pub fn generate_html_report(result: &ComparisonResult, options: &ReportOptions) -> Result<String> {
     let mut html = String::new();
-    
+
     html.push_str(r#"<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -35,10 +35,11 @@ pub fn generate_html_report(result: &ComparisonResult, options: &ReportOptions) 
     <div class="container">
         <h1>Database Comparison Report</h1>
         <p><strong>Generated:</strong> "#);
-    
+
     html.push_str(&chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string());
-    
-    html.push_str(r#"</p>
+
+    html.push_str(
+        r#"</p>
         <h2>Databases Compared</h2>
         <table>
             <tr>
@@ -48,59 +49,73 @@ pub fn generate_html_report(result: &ComparisonResult, options: &ReportOptions) 
             </tr>
             <tr>
                 <td>Old</td>
-                <td>"#);
-    
+                <td>"#,
+    );
+
     html.push_str(&format!("{}", result.old_path.display()));
     html.push_str(&format!("</td><td>{}</td></tr>", result.old_count));
-    
-    html.push_str(r#"<tr>
+
+    html.push_str(
+        r#"<tr>
                 <td>New</td>
-                <td>"#);
-    
+                <td>"#,
+    );
+
     html.push_str(&format!("{}", result.new_path.display()));
     html.push_str(&format!("</td><td>{}</td></tr>", result.new_count));
-    
-    html.push_str(r#"
+
+    html.push_str(
+        r#"
         </table>
         
         <h2>Summary</h2>
         <div class="summary">
             <div class="stat-card added">
                 <h3>Added</h3>
-                <div class="value">"#);
-    
+                <div class="value">"#,
+    );
+
     html.push_str(&format!("{}", result.added.len()));
-    
-    html.push_str(r#"</div>
+
+    html.push_str(
+        r#"</div>
             </div>
             <div class="stat-card removed">
                 <h3>Removed</h3>
-                <div class="value">"#);
-    
+                <div class="value">"#,
+    );
+
     html.push_str(&format!("{}", result.removed.len()));
-    
-    html.push_str(r#"</div>
+
+    html.push_str(
+        r#"</div>
             </div>
             <div class="stat-card modified">
                 <h3>Modified</h3>
-                <div class="value">"#);
-    
+                <div class="value">"#,
+    );
+
     html.push_str(&format!("{}", result.modified.len()));
-    
-    html.push_str(r#"</div>
+
+    html.push_str(
+        r#"</div>
             </div>
             <div class="stat-card unchanged">
                 <h3>Unchanged</h3>
-                <div class="value">"#);
-    
+                <div class="value">"#,
+    );
+
     html.push_str(&format!("{}", result.unchanged_count));
-    
-    html.push_str(r#"</div>
+
+    html.push_str(
+        r#"</div>
             </div>
-        </div>"#);
-    
+        </div>"#,
+    );
+
     if options.include_visuals {
-        html.push_str(r#"
+        html.push_str(
+            r#"
         <div class="chart-container">
             <canvas id="changesChart"></canvas>
         </div>
@@ -113,15 +128,19 @@ pub fn generate_html_report(result: &ComparisonResult, options: &ReportOptions) 
                 data: {
                     labels: ['Added', 'Removed', 'Modified', 'Unchanged'],
                     datasets: [{
-                        data: ["#);
-        
-        html.push_str(&format!("{}, {}, {}, {}",
+                        data: ["#,
+        );
+
+        html.push_str(&format!(
+            "{}, {}, {}, {}",
             result.added.len(),
             result.removed.len(),
             result.modified.len(),
-            result.unchanged_count));
-        
-        html.push_str(r#"],
+            result.unchanged_count
+        ));
+
+        html.push_str(
+            r#"],
                         backgroundColor: ['#4CAF50', '#f44336', '#FF9800', '#2196F3']
                     }]
                 },
@@ -136,19 +155,22 @@ pub fn generate_html_report(result: &ComparisonResult, options: &ReportOptions) 
                     }
                 }
             });
-        </script>"#);
+        </script>"#,
+        );
     }
-    
+
     if options.include_details && !result.added.is_empty() {
-        html.push_str(r#"
+        html.push_str(
+            r#"
         <h2>Added Sequences (Top 20)</h2>
         <table>
             <tr>
                 <th>ID</th>
                 <th>Length</th>
                 <th>Description</th>
-            </tr>"#);
-        
+            </tr>"#,
+        );
+
         for seq in result.added.iter().take(20) {
             html.push_str(&format!(
                 "<tr><td>{}</td><td>{}</td><td>{}</td></tr>",
@@ -157,14 +179,16 @@ pub fn generate_html_report(result: &ComparisonResult, options: &ReportOptions) 
                 seq.description.as_deref().unwrap_or("")
             ));
         }
-        
+
         html.push_str("</table>");
     }
-    
-    html.push_str(r#"
+
+    html.push_str(
+        r#"
     </div>
 </body>
-</html>"#);
-    
+</html>"#,
+    );
+
     Ok(html)
 }

@@ -1,5 +1,4 @@
 /// Delta encoding and decoding for sequence compression
-
 use crate::bio::alignment::{Alignment, AlignmentResult};
 use crate::bio::sequence::Sequence;
 use serde::{Deserialize, Serialize};
@@ -38,9 +37,13 @@ pub struct DeltaRange {
 impl DeltaRange {
     /// Create a new delta range
     pub fn new(start: usize, end: usize, substitution: Vec<u8>) -> Self {
-        Self { start, end, substitution }
+        Self {
+            start,
+            end,
+            substitution,
+        }
     }
-    
+
     /// Check if this range represents a single position
     pub fn is_single(&self) -> bool {
         self.start == self.end
@@ -53,7 +56,7 @@ impl DeltaEncoder {
     pub fn new() -> Self {
         Self
     }
-    
+
     /// Encode a child sequence as deltas from a reference
     pub fn encode(&self, reference: &Sequence, child: &Sequence) -> DeltaRecord {
         let alignment = Alignment::global(reference, child);
@@ -64,7 +67,7 @@ impl DeltaEncoder {
             Some(HeaderChange {
                 old_description: reference.description.clone(),
                 new_description: child.description.clone(),
-                id_changed: false,  // IDs should match in our current model
+                id_changed: false, // IDs should match in our current model
                 old_id: None,
             })
         } else {
@@ -79,39 +82,42 @@ impl DeltaEncoder {
             header_change,
         }
     }
-    
+
     /// Compress consecutive deltas into ranges (like in deltas-db-gen.cpp)
     fn compress_deltas(&self, alignment: &AlignmentResult) -> Vec<DeltaRange> {
         if alignment.deltas.is_empty() {
             return Vec::new();
         }
-        
+
         let mut ranges = Vec::new();
         let mut current_start = alignment.deltas[0].position;
         let mut current_sub = vec![alignment.deltas[0].query];
         let mut last_pos = alignment.deltas[0].position;
-        
+
         for delta in &alignment.deltas[1..] {
             // Check if this delta is consecutive and has the same substitution pattern
-            if delta.position == last_pos + 1 && 
-               current_sub.last() == Some(&delta.query) {
+            if delta.position == last_pos + 1 && current_sub.last() == Some(&delta.query) {
                 // Extend current range
                 last_pos = delta.position;
             } else {
                 // Save current range and start new one
-                ranges.push(DeltaRange::new(current_start, last_pos, current_sub.clone()));
+                ranges.push(DeltaRange::new(
+                    current_start,
+                    last_pos,
+                    current_sub.clone(),
+                ));
                 current_start = delta.position;
                 current_sub = vec![delta.query];
                 last_pos = delta.position;
             }
         }
-        
+
         // Don't forget the last range
         ranges.push(DeltaRange::new(current_start, last_pos, current_sub));
-        
+
         ranges
     }
-    
+
     /// Encode multiple children against their references
     pub fn encode_batch(
         &self,
@@ -121,22 +127,22 @@ impl DeltaEncoder {
     ) -> Vec<DeltaRecord> {
         self.encode_batch_with_progress(references, children, all_sequences, |_| {})
     }
-    
+
     pub fn encode_batch_with_progress<F>(
         &self,
         references: &HashMap<String, Sequence>,
         children: &HashMap<String, Vec<String>>,
         all_sequences: &HashMap<String, Sequence>,
         progress_callback: F,
-    ) -> Vec<DeltaRecord> 
+    ) -> Vec<DeltaRecord>
     where
         F: Fn(&str) + Send + Sync,
     {
         use rayon::prelude::*;
         use std::sync::Arc;
-        
+
         let callback = Arc::new(progress_callback);
-        
+
         let delta_records: Vec<DeltaRecord> = children
             .par_iter()
             .flat_map(|(ref_id, child_ids)| {
@@ -144,22 +150,20 @@ impl DeltaEncoder {
                     Some(r) => r,
                     None => return Vec::new(),
                 };
-                
+
                 let callback_clone = callback.clone();
                 child_ids
                     .par_iter()
                     .filter_map(move |child_id| {
-                        all_sequences
-                            .get(child_id)
-                            .map(|child| {
-                                callback_clone(child_id);
-                                self.encode(reference, child)
-                            })
+                        all_sequences.get(child_id).map(|child| {
+                            callback_clone(child_id);
+                            self.encode(reference, child)
+                        })
                     })
                     .collect::<Vec<_>>()
             })
             .collect();
-        
+
         delta_records
     }
 }
@@ -170,11 +174,11 @@ impl DeltaReconstructor {
     pub fn new() -> Self {
         Self
     }
-    
+
     /// Reconstruct a child sequence from a reference and deltas
     pub fn reconstruct(&self, reference: &Sequence, delta_record: &DeltaRecord) -> Sequence {
         let mut reconstructed = reference.sequence.clone();
-        
+
         // Apply deltas in order
         for range in &delta_record.deltas {
             if range.is_single() {
@@ -191,7 +195,7 @@ impl DeltaReconstructor {
                 }
             }
         }
-        
+
         Sequence {
             id: delta_record.child_id.clone(),
             description: reference.description.clone(),
@@ -200,7 +204,7 @@ impl DeltaReconstructor {
             taxonomy_sources: Default::default(),
         }
     }
-    
+
     /// Reconstruct all sequences from references and deltas
     pub fn reconstruct_all(
         &self,
@@ -208,35 +212,36 @@ impl DeltaReconstructor {
         deltas: Vec<DeltaRecord>,
         filter_ids: Vec<String>,
     ) -> Result<Vec<Sequence>, crate::TalariaError> {
-        let ref_map: HashMap<String, Sequence> = references
-            .into_iter()
-            .map(|s| (s.id.clone(), s))
-            .collect();
-        
+        let ref_map: HashMap<String, Sequence> =
+            references.into_iter().map(|s| (s.id.clone(), s)).collect();
+
         let filter_set: Option<std::collections::HashSet<String>> = if filter_ids.is_empty() {
             None
         } else {
             Some(filter_ids.into_iter().collect())
         };
-        
+
         let mut reconstructed = Vec::new();
-        
+
         // Add references if they match filter
         for (id, seq) in &ref_map {
             if filter_set.as_ref().map_or(true, |f| f.contains(id)) {
                 reconstructed.push(seq.clone());
             }
         }
-        
+
         // Reconstruct children
         for delta in deltas {
-            if filter_set.as_ref().map_or(true, |f| f.contains(&delta.child_id)) {
+            if filter_set
+                .as_ref()
+                .map_or(true, |f| f.contains(&delta.child_id))
+            {
                 if let Some(reference) = ref_map.get(&delta.reference_id) {
                     reconstructed.push(self.reconstruct(reference, &delta));
                 }
             }
         }
-        
+
         Ok(reconstructed)
     }
 }
@@ -245,17 +250,23 @@ impl DeltaReconstructor {
 pub fn format_deltas_dat(delta_record: &DeltaRecord) -> String {
     let mut parts = vec![
         delta_record.child_id.clone(),
-        delta_record.reference_id.clone(),  // Include reference_id in output
+        delta_record.reference_id.clone(), // Include reference_id in output
     ];
 
     for range in &delta_record.deltas {
         let delta_str = if range.is_single() {
-            format!("{},{}", range.start, String::from_utf8_lossy(&range.substitution))
+            format!(
+                "{},{}",
+                range.start,
+                String::from_utf8_lossy(&range.substitution)
+            )
         } else {
-            format!("{}>{},{}",
+            format!(
+                "{}>{},{}",
                 range.start,
                 range.end,
-                String::from_utf8_lossy(&range.substitution))
+                String::from_utf8_lossy(&range.substitution)
+            )
         };
         parts.push(delta_str);
     }
@@ -267,13 +278,11 @@ pub fn format_deltas_dat(delta_record: &DeltaRecord) -> String {
 pub fn parse_deltas_dat(line: &str) -> Result<DeltaRecord, crate::TalariaError> {
     let parts: Vec<&str> = line.split('\t').collect();
     if parts.is_empty() {
-        return Err(crate::TalariaError::Parse(
-            "Empty delta line".to_string()
-        ));
+        return Err(crate::TalariaError::Parse("Empty delta line".to_string()));
     }
 
     let child_id = parts[0].to_string();
-    
+
     // Detect format: if second field contains ',' or '>', it's a delta (old format)
     // Otherwise it's a reference_id (new format)
     let (reference_id, delta_start_idx) = if parts.len() > 1 {
@@ -289,7 +298,7 @@ pub fn parse_deltas_dat(line: &str) -> Result<DeltaRecord, crate::TalariaError> 
         // Only child_id, no deltas
         (String::new(), 1)
     };
-    
+
     let mut deltas = Vec::new();
 
     // Parse deltas starting from the determined index
@@ -306,7 +315,9 @@ pub fn parse_deltas_dat(line: &str) -> Result<DeltaRecord, crate::TalariaError> 
                 continue;
             }
 
-            if let (Ok(start), Ok(end)) = (pos_parts[0].parse::<usize>(), pos_parts[1].parse::<usize>()) {
+            if let (Ok(start), Ok(end)) =
+                (pos_parts[0].parse::<usize>(), pos_parts[1].parse::<usize>())
+            {
                 let substitution = range_parts[1].as_bytes().to_vec();
                 deltas.push(DeltaRange::new(start, end, substitution));
             }
@@ -326,10 +337,10 @@ pub fn parse_deltas_dat(line: &str) -> Result<DeltaRecord, crate::TalariaError> 
 
     Ok(DeltaRecord {
         child_id,
-        reference_id,  // Use the parsed reference_id
+        reference_id, // Use the parsed reference_id
         taxon_id: None,
         deltas,
-        header_change: None,  // No header change tracking in the old format
+        header_change: None, // No header change tracking in the old format
     })
 }
 
@@ -356,8 +367,10 @@ mod tests {
         let parsed = parse_deltas_dat(&formatted).unwrap();
 
         // Check that reference_id is preserved
-        assert_eq!(parsed.reference_id, "ref_seq_1",
-                   "reference_id should be preserved through format/parse cycle");
+        assert_eq!(
+            parsed.reference_id, "ref_seq_1",
+            "reference_id should be preserved through format/parse cycle"
+        );
         assert_eq!(parsed.child_id, "child_seq_1");
         assert_eq!(parsed.deltas.len(), 2);
     }
@@ -381,8 +394,10 @@ mod tests {
         // Format, parse, and verify reference_id is preserved
         let formatted = format_deltas_dat(&delta_record);
         let parsed = parse_deltas_dat(&formatted).unwrap();
-        assert_eq!(parsed.reference_id, "ref_seq_1",
-                   "reference_id must be preserved for reconstruction to work");
+        assert_eq!(
+            parsed.reference_id, "ref_seq_1",
+            "reference_id must be preserved for reconstruction to work"
+        );
 
         // Reconstruct and verify
         let reconstructor = DeltaReconstructor::new();

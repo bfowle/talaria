@@ -1,10 +1,12 @@
+use crate::cli::formatter::{
+    self, format_bytes, info_box, print_error, print_success, print_tip, TaskList, TaskStatus,
+};
+use crate::cli::output::*;
+use crate::cli::TargetAligner;
+use crate::utils::casg_workspace::CasgWorkspaceManager;
 use clap::Args;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::path::PathBuf;
-use crate::cli::TargetAligner;
-use crate::cli::formatter::{self, TaskList, TaskStatus, info_box, print_success, print_error, print_tip, format_bytes};
-use crate::cli::output::*;
-use crate::utils::casg_workspace::CasgWorkspaceManager;
 use std::sync::{Arc, Mutex};
 
 #[derive(Args, Debug)]
@@ -17,58 +19,57 @@ pub struct ReduceArgs {
     /// Output reduced FASTA file (optional - stores in CASG by default)
     #[arg(short, long, value_name = "FILE")]
     pub output: Option<PathBuf>,
-    
+
     /// Target aligner for optimization
     #[arg(short = 'a', long, default_value = "generic")]
     pub target_aligner: TargetAligner,
-    
+
     /// Target reduction ratio (0.0-1.0, where 0.3 = 30% of original size)
     /// If not specified, uses dynamic selection based on sequence alignments
     #[arg(short = 'r', long)]
     pub reduction_ratio: Option<f64>,
-    
+
     /// Minimum sequence length to consider
     #[arg(long, default_value = "50")]
     pub min_length: usize,
-    
+
     /// Output metadata file for deltas
     #[arg(short = 'm', long)]
     pub metadata: Option<PathBuf>,
-    
+
     /// Configuration file
     #[arg(short = 'c', long)]
     pub config: Option<PathBuf>,
-    
+
     /// Use amino acid scoring (default: auto-detect)
     #[arg(long)]
     pub protein: bool,
-    
+
     /// Use nucleotide scoring (default: auto-detect)
     #[arg(long)]
     pub nucleotide: bool,
-    
+
     /// Skip validation step
     #[arg(long)]
     pub skip_validation: bool,
-    
+
     /// Number of threads (passed from global)
     #[arg(skip)]
     pub threads: usize,
-    
+
     // Optional advanced features (not in original db-reduce)
-    
     /// Enable similarity-based clustering (default: disabled)
     #[arg(long, value_name = "THRESHOLD")]
     pub similarity_threshold: Option<f64>,
-    
+
     /// Filter out low complexity sequences
     #[arg(long)]
     pub low_complexity_filter: bool,
-    
+
     /// Use alignment-based selection instead of simple greedy
     #[arg(long)]
     pub align_select: bool,
-    
+
     /// Enable taxonomy-aware clustering
     #[arg(long)]
     pub taxonomy_aware: bool,
@@ -106,11 +107,11 @@ pub struct ReduceArgs {
     /// Maximum sequence length for alignment (longer sequences skip delta encoding)
     #[arg(long, default_value = "10000")]
     pub max_align_length: usize,
-    
+
     /// Store reduced version in database structure (only needed when using -i)
     #[arg(long)]
     pub store: bool,
-    
+
     /// Profile name for stored reduction (e.g., "blast-optimized")
     /// If not specified, uses reduction ratio (e.g., "30-percent")
     #[arg(long, value_name = "NAME")]
@@ -128,21 +129,23 @@ pub struct ReduceArgs {
     #[arg(long)]
     pub no_visualize: bool,
 
-
     /// Generate HTML report with visualization
     #[arg(long)]
     pub html_report: Option<PathBuf>,
 }
 
 /// Parse the selection algorithm string into the enum
-fn parse_selection_algorithm(algorithm: &str) -> anyhow::Result<crate::core::reference_selector::SelectionAlgorithm> {
+fn parse_selection_algorithm(
+    algorithm: &str,
+) -> anyhow::Result<crate::core::reference_selector::SelectionAlgorithm> {
     use crate::core::reference_selector::SelectionAlgorithm;
 
     match algorithm.to_lowercase().as_str() {
         "single-pass" | "singlepass" | "single_pass" => Ok(SelectionAlgorithm::SinglePass),
         "similarity-matrix" | "similarity_matrix" | "matrix" => Ok(SelectionAlgorithm::SimilarityMatrix),
         "hybrid" => Ok(SelectionAlgorithm::Hybrid),
-        _ => anyhow::bail!("Invalid selection algorithm: '{}'. Options: single-pass, similarity-matrix", algorithm)
+        "graph" | "graph-centrality" | "graphcentrality" | "centrality" => Ok(SelectionAlgorithm::GraphCentrality),
+        _ => anyhow::bail!("Invalid selection algorithm: '{}'. Options: single-pass, similarity-matrix, graph-centrality", algorithm)
     }
 }
 
@@ -182,6 +185,18 @@ mod tests {
             parse_selection_algorithm("hybrid").unwrap(),
             SelectionAlgorithm::Hybrid
         );
+        assert_eq!(
+            parse_selection_algorithm("graph").unwrap(),
+            SelectionAlgorithm::GraphCentrality
+        );
+        assert_eq!(
+            parse_selection_algorithm("graph-centrality").unwrap(),
+            SelectionAlgorithm::GraphCentrality
+        );
+        assert_eq!(
+            parse_selection_algorithm("centrality").unwrap(),
+            SelectionAlgorithm::GraphCentrality
+        );
     }
 
     #[test]
@@ -197,6 +212,10 @@ mod tests {
         assert_eq!(
             parse_selection_algorithm("HYBRID").unwrap(),
             SelectionAlgorithm::Hybrid
+        );
+        assert_eq!(
+            parse_selection_algorithm("GRAPH-CENTRALITY").unwrap(),
+            SelectionAlgorithm::GraphCentrality
         );
     }
 
@@ -234,14 +253,14 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
-    
+
     // Check for default config file from environment
     if args.config.is_none() {
         if let Ok(config_path) = std::env::var("TALARIA_CONFIG") {
             args.config = Some(PathBuf::from(config_path));
         }
     }
-    
+
     // Validate database exists
     use crate::core::database_manager::DatabaseManager;
     let db_manager = DatabaseManager::new(None)?;
@@ -261,12 +280,21 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     // Check if database exists and get its version
     let databases = db_manager.list_databases()?;
     let db_full_name = format!("{}/{}", source, dataset);
-    let db_info = databases.iter()
+    let db_info = databases
+        .iter()
         .find(|db| db.name == db_full_name)
-        .ok_or_else(|| anyhow::anyhow!("Database '{}' not found. Use 'talaria database list' to see available databases.", db_full_name))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Database '{}' not found. Use 'talaria database list' to see available databases.",
+                db_full_name
+            )
+        })?;
     let db_version = db_info.version.clone();
     // Assemble FASTA from CASG chunks
-    let temp_file = workspace.lock().unwrap().get_file_path("input_fasta", "fasta");
+    let temp_file = workspace
+        .lock()
+        .unwrap()
+        .get_file_path("input_fasta", "fasta");
 
     // Map database to internal source enum if it's a standard database
     use crate::download::{DatabaseSource, NCBIDatabase, UniProtDatabase};
@@ -275,7 +303,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         "uniprot/trembl" => Some(DatabaseSource::UniProt(UniProtDatabase::TrEMBL)),
         "ncbi/nr" => Some(DatabaseSource::NCBI(NCBIDatabase::NR)),
         "ncbi/nt" => Some(DatabaseSource::NCBI(NCBIDatabase::NT)),
-        _ => None,  // Custom database
+        _ => None, // Custom database
     };
 
     // Use spinner for assembly
@@ -284,7 +312,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         ProgressStyle::default_spinner()
             .template("{spinner:.cyan} {msg}")
             .unwrap()
-            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
     );
     spinner.set_message("Assembling database from CASG chunks...");
     spinner.enable_steady_tick(std::time::Duration::from_millis(100));
@@ -292,6 +320,8 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     // Assemble the database from CASG
     if let Some(db_source) = &database_source {
         db_manager.assemble_database(db_source, &temp_file)?;
+        spinner.finish_and_clear();
+        println!("Database assembled successfully");
     } else {
         // For custom databases, assemble from chunks referenced in manifest
         use crate::casg::assembler::FastaAssembler;
@@ -319,8 +349,11 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
             is_tal_format = false;
 
             if !manifest_path.exists() {
-                anyhow::bail!("Cannot find manifest for database: {}. Expected at: {}",
-                    db_full_name, versions_path.display());
+                anyhow::bail!(
+                    "Cannot find manifest for database: {}. Expected at: {}",
+                    db_full_name,
+                    versions_path.display()
+                );
             }
         }
 
@@ -341,35 +374,57 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
             serde_json::from_str(&manifest_content)?
         };
 
-        // Assemble from the chunks referenced in the manifest
+        // Stream assembly directly to file (much more efficient than loading into memory)
         let assembler = FastaAssembler::new(db_manager.get_storage());
-        let chunk_hashes: Vec<_> = manifest.chunk_index.iter().map(|c| c.hash.clone()).collect();
-        let sequences = assembler.assemble_from_chunks(&chunk_hashes)?;
+        let chunk_hashes: Vec<_> = manifest
+            .chunk_index
+            .iter()
+            .map(|c| c.hash.clone())
+            .collect();
 
-        // Write to temp file
-        crate::bio::fasta::write_fasta(&temp_file, &sequences)?;
+        // Open output file for streaming
+        let mut output_file = std::fs::File::create(&temp_file)?;
+
+        // Stream chunks directly to file without loading all sequences into memory
+        spinner.set_message("Streaming sequences from CASG chunks to file...");
+        let sequence_count = assembler.stream_assembly(&chunk_hashes, &mut output_file)?;
+
+        spinner.finish_and_clear();
+        println!(
+            "Assembled {} sequences from CASG chunks",
+            format_number(sequence_count)
+        );
+        println!("Database written successfully");
     }
 
-    spinner.finish_and_clear();
-    println!("Database assembled successfully");
-
     // Create accession2taxid mapping from manifest if using LAMBDA
-    let manifest_acc2taxid = if args.target_aligner == TargetAligner::Lambda && database_source.is_some() {
-        spinner.set_message("Creating taxonomy mapping from manifest...");
-        spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+    let manifest_acc2taxid = if args.target_aligner == TargetAligner::Lambda {
+        if let Some(ref db_src) = database_source {
+            let spinner = ProgressBar::new_spinner();
+            spinner.set_style(
+                ProgressStyle::default_spinner()
+                    .template("{spinner:.cyan} {msg}")
+                    .unwrap()
+                    .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
+            );
+            spinner.set_message("Creating taxonomy mapping from manifest...");
+            spinner.enable_steady_tick(std::time::Duration::from_millis(100));
 
-        match db_manager.create_accession2taxid_from_manifest(database_source.as_ref().unwrap()) {
-            Ok(path) => {
-                spinner.finish_and_clear();
-                println!("Taxonomy mapping created from manifest");
-                Some(path)
+            match db_manager.create_accession2taxid_from_manifest(db_src) {
+                Ok(path) => {
+                    spinner.finish_and_clear();
+                    println!("Taxonomy mapping created from manifest");
+                    Some(path)
+                }
+                Err(e) => {
+                    spinner.finish_and_clear();
+                    println!("Warning: Could not create taxonomy mapping from manifest");
+                    warning(&e.to_string());
+                    None
+                }
             }
-            Err(e) => {
-                spinner.finish_and_clear();
-                println!("Warning: Could not create taxonomy mapping from manifest");
-                warning(&e.to_string());
-                None
-            }
+        } else {
+            None
         }
     } else {
         None
@@ -397,7 +452,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         ratio
     } else {
         // Auto-detection will be handled by the reducer
-        0.0  // Sentinel value for auto-detection
+        0.0 // Sentinel value for auto-detection
     };
 
     // Create task list for tracking reduction pipeline
@@ -409,16 +464,25 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
 
     // Show reduction mode info
     if reduction_ratio == 0.0 {
-        info_box("Using LAMBDA for intelligent auto-detection", &[
-            "Alignment-based selection",
-            "Taxonomy-aware clustering",
-            "Dynamic coverage optimization"
-        ]);
+        info_box(
+            "Using LAMBDA for intelligent auto-detection",
+            &[
+                "Alignment-based selection",
+                "Taxonomy-aware clustering",
+                "Dynamic coverage optimization",
+            ],
+        );
     } else {
-        info_box(&format!("Fixed reduction to {:.0}% of original", reduction_ratio * 100.0), &[
-            "Greedy selection by sequence length",
-            "Predictable output size"
-        ]);
+        info_box(
+            &format!(
+                "Fixed reduction to {:.0}% of original",
+                reduction_ratio * 100.0
+            ),
+            &[
+                "Greedy selection by sequence length",
+                "Predictable output size",
+            ],
+        );
     }
 
     // Add tasks
@@ -429,35 +493,39 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     let write_task = task_list.add_task("Write output files");
 
     task_list.update_task(init_task, TaskStatus::InProgress);
-    
+
     // Set up thread pool
     let threads = if args.threads == 0 {
         rayon::current_num_threads()
     } else {
         args.threads
     };
-    
+
     // Only initialize if not already done
     if let Err(_) = rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
-        .build_global() {
+        .build_global()
+    {
         // Thread pool already initialized, that's fine
     }
 
     task_list.set_task_message(init_task, &format!("Using {} threads", threads));
     task_list.update_task(init_task, TaskStatus::Complete);
-    
+
     // Load configuration if provided
     let mut config = if let Some(config_path) = &args.config {
-        task_list.set_task_message(init_task, &format!("Loading configuration from {:?}...", config_path));
+        task_list.set_task_message(
+            init_task,
+            &format!("Loading configuration from {:?}...", config_path),
+        );
         crate::core::config::load_config(config_path)?
     } else {
         crate::core::config::default_config()
     };
-    
+
     // Override config with command-line arguments
     config.reduction.min_sequence_length = args.min_length;
-    
+
     // Default to no similarity threshold (matching original db-reduce)
     // Only use similarity if explicitly specified
     if let Some(threshold) = args.similarity_threshold {
@@ -466,12 +534,12 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         // Set to 0.0 to disable similarity checking in simple mode
         config.reduction.similarity_threshold = 0.0;
     }
-    
+
     config.reduction.taxonomy_aware = args.taxonomy_aware;
-    
+
     // Get input file size
     let input_size = get_file_size(&actual_input).unwrap_or(0);
-    
+
     // Update workspace metadata with input information
     workspace.lock().unwrap().update_metadata(|m| {
         m.input_file = Some(actual_input.to_string_lossy().to_string());
@@ -487,13 +555,13 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
 
     // Apply processing pipeline if batch processing or filtering is enabled
     if args.batch || args.low_complexity_filter {
-        use crate::processing::{create_reduction_pipeline, ProcessingPipeline, BatchProcessor};
+        use crate::processing::{create_reduction_pipeline, BatchProcessor, ProcessingPipeline};
 
         task_list.set_task_message(load_task, "Applying sequence processing pipeline...");
 
         // Create pipeline with filters
         let pipeline = create_reduction_pipeline(
-            0.3,  // Low complexity threshold
+            0.3, // Low complexity threshold
             args.min_length,
             true, // Convert to uppercase
         );
@@ -507,23 +575,26 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
                 &mut sequences,
                 args.batch_size / 100, // Batch size for processing
                 |processed, total| {
-                    task_list.set_task_message(load_task,
-                        &format!("Processing sequences: {}/{}", processed, total));
-                }
+                    task_list.set_task_message(
+                        load_task,
+                        &format!("Processing sequences: {}/{}", processed, total),
+                    );
+                },
             )?;
 
             info(&format!(
                 "Pipeline processed {} sequences: {} filtered, {} modified",
-                result.processed,
-                result.filtered,
-                result.modified
+                result.processed, result.filtered, result.modified
             ));
         } else if args.low_complexity_filter {
             // Just apply filters
             let result = pipeline.process(&mut sequences)?;
 
             if result.filtered > 0 {
-                info(&format!("Filtered {} low-complexity sequences", result.filtered));
+                info(&format!(
+                    "Filtered {} low-complexity sequences",
+                    result.filtered
+                ));
             }
         }
 
@@ -550,17 +621,22 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         s.input_sequences = sequences.len();
     })?;
 
-    task_list.set_task_message(load_task, &format!("Loaded {} sequences ({})",
-        sequences.len(),
-        format_bytes(input_size)));
+    task_list.set_task_message(
+        load_task,
+        &format!(
+            "Loaded {} sequences ({})",
+            sequences.len(),
+            format_bytes(input_size)
+        ),
+    );
     task_list.update_task(load_task, TaskStatus::Complete);
-    
+
     // Run reduction pipeline with workspace
     task_list.update_task(select_task, TaskStatus::InProgress);
     let mut reducer = crate::core::reducer::Reducer::new(config)
         .with_selection_mode(
             args.similarity_threshold.is_some() || args.align_select,
-            args.align_select
+            args.align_select,
         )
         .with_no_deltas(args.no_deltas)
         .with_max_align_length(args.max_align_length)
@@ -570,18 +646,17 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         .with_batch_settings(args.batch, args.batch_size)
         .with_selection_algorithm(parse_selection_algorithm(&args.selection_algorithm)?)
         .with_file_sizes(input_size, 0)
-        .with_workspace(workspace.clone());  // Pass workspace to reducer
+        .with_workspace(workspace.clone()); // Pass workspace to reducer
 
     // Run reduction with better error handling
-    let reduction_result = reducer.reduce(
-        sequences,
-        reduction_ratio,
-        args.target_aligner.clone(),
-    );
+    let reduction_result = reducer.reduce(sequences, reduction_ratio, args.target_aligner.clone());
 
     let (references, deltas, original_count) = match reduction_result {
         Ok(result) => {
-            task_list.set_task_message(select_task, &format!("Selected {} reference sequences", result.0.len()));
+            task_list.set_task_message(
+                select_task,
+                &format!("Selected {} reference sequences", result.0.len()),
+            );
             task_list.update_task(select_task, TaskStatus::Complete);
             result
         }
@@ -605,7 +680,10 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
             // Workspace preserved for debugging
             let ws_id = workspace.lock().unwrap().id.clone();
             warning(&format!("Workspace preserved for debugging: {}", ws_id));
-            info(&format!("To inspect: talaria tools workspace inspect {}", ws_id));
+            info(&format!(
+                "To inspect: talaria tools workspace inspect {}",
+                ws_id
+            ));
 
             return Err(e.into());
         }
@@ -615,7 +693,10 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     if args.no_deltas {
         task_list.update_task(encode_task, TaskStatus::Skipped);
     } else if !deltas.is_empty() {
-        task_list.set_task_message(encode_task, &format!("Encoded {} child sequences as deltas", deltas.len()));
+        task_list.set_task_message(
+            encode_task,
+            &format!("Encoded {} child sequences as deltas", deltas.len()),
+        );
         task_list.update_task(encode_task, TaskStatus::Complete);
     } else {
         task_list.update_task(encode_task, TaskStatus::Skipped);
@@ -626,7 +707,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         s.selected_references = references.len();
         s.final_output_sequences = references.len() + deltas.len();
     })?;
-    
+
     // Determine output method
     let use_casg_storage = args.output.is_none();
 
@@ -651,9 +732,12 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         (specified_output.clone(), metadata_path)
     } else {
         // CASG storage mode - these are placeholder paths as actual storage goes to CASG repository
-        (PathBuf::from("casg_storage"), PathBuf::from("casg_storage.deltas"))
+        (
+            PathBuf::from("casg_storage"),
+            PathBuf::from("casg_storage.deltas"),
+        )
     };
-    
+
     // Choose output method: CASG storage (default) or traditional files
     let output_size = if use_casg_storage || args.casg_output {
         // Output to CASG repository
@@ -673,7 +757,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
             reduction_ratio,
             original_count,
             input_size,
-            Some(&db_full_name),  // Use original database name, not a new one
+            Some(&db_full_name), // Use original database name, not a new one
             &source,
             &dataset,
             &db_version,
@@ -698,10 +782,10 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
 
         output_size
     };
-    
+
     // Print statistics using the new stats display
+    use crate::cli::charts::{create_length_histogram, create_reduction_summary_chart};
     use crate::cli::stats_display::create_reduction_stats;
-    use crate::cli::charts::{create_reduction_summary_chart, create_length_histogram};
 
     let avg_deltas = if deltas.is_empty() {
         0.0
@@ -728,7 +812,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
             original_count,
             references.len(),
             deltas.len(),
-            coverage
+            coverage,
         );
         println!("{}", summary_chart);
 
@@ -739,14 +823,15 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
             println!("{}", length_histogram);
         }
     }
-    
+
     // Show completion message with nice formatting
     let file_size_reduction = if input_size > 0 && output_size > 0 {
         (1.0 - (output_size as f64 / input_size as f64)) * 100.0
     } else {
         0.0
     };
-    let sequence_coverage = (references.len() + deltas.len()) as f64 / original_count as f64 * 100.0;
+    let sequence_coverage =
+        (references.len() + deltas.len()) as f64 / original_count as f64 * 100.0;
 
     // Generate HTML report if requested
     if let Some(html_path) = &args.html_report {
@@ -776,13 +861,16 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         )?;
 
         // Write HTML report to file
-        std::fs::write(&html_path, html_content)?;
-        task_list.set_task_message(write_task, &format!("✓ HTML report saved to: {}", html_path.display()));
+        std::fs::write(html_path, html_content)?;
+        task_list.set_task_message(
+            write_task,
+            &format!("✓ HTML report saved to: {}", html_path.display()),
+        );
     }
 
-    print_success(&format!("Reduction complete: {:.1}% file size reduction, {:.1}% sequence coverage",
-        file_size_reduction,
-        sequence_coverage
+    print_success(&format!(
+        "Reduction complete: {:.1}% file size reduction, {:.1}% sequence coverage",
+        file_size_reduction, sequence_coverage
     ));
 
     if !args.no_deltas && !deltas.is_empty() {
@@ -793,7 +881,14 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     workspace.lock().unwrap().mark_completed()?;
 
     // Log operation to CASG
-    casg_manager.log_operation("reduce", &format!("Completed: {} sequences -> {} references", original_count, references.len()))?;
+    casg_manager.log_operation(
+        "reduce",
+        &format!(
+            "Completed: {} sequences -> {} references",
+            original_count,
+            references.len()
+        ),
+    )?;
 
     Ok(())
 }
@@ -813,9 +908,14 @@ fn store_reduction_in_casg(
     dataset: &str,
     version: &str,
 ) -> anyhow::Result<u64> {
-    use crate::casg::{CASGRepository, delta_generator::DeltaGenerator, delta::DeltaGeneratorConfig, reduction::{ReductionManifest, ReductionParameters, ReferenceChunk, DeltaChunkRef}};
     use crate::casg::chunker::TaxonomicChunker;
     use crate::casg::types::SHA256Hash;
+    use crate::casg::{
+        delta::DeltaGeneratorConfig,
+        delta_generator::DeltaGenerator,
+        reduction::{DeltaChunkRef, ReductionManifest, ReductionParameters, ReferenceChunk},
+        CASGRepository,
+    };
     use std::collections::HashMap;
     use std::time::Instant;
 
@@ -830,8 +930,8 @@ fn store_reduction_in_casg(
 
     // Apply storage optimization if requested
     if args.optimize_for_memory {
-        use crate::storage::{StandardStorageOptimizer, StorageOptimizer, StorageStrategy};
         use crate::storage::optimizer::OptimizationOptions;
+        use crate::storage::{StandardStorageOptimizer, StorageOptimizer, StorageStrategy};
 
         let mut optimizer = StandardStorageOptimizer::new(casg_path.clone());
         let options = OptimizationOptions {
@@ -840,16 +940,13 @@ fn store_reduction_in_casg(
         };
 
         info("Optimizing storage for memory efficiency...");
-        let optimization_results = futures::executor::block_on(
-            optimizer.optimize(options)
-        )?;
+        let optimization_results = futures::executor::block_on(optimizer.optimize(options))?;
 
         if let Some(result) = optimization_results.first() {
             if result.space_saved > 0 {
                 success(&format!(
                     "Storage optimized: {} bytes saved, {} chunks affected",
-                    result.space_saved,
-                    result.chunks_affected
+                    result.space_saved, result.chunks_affected
                 ));
             }
         }
@@ -868,7 +965,8 @@ fn store_reduction_in_casg(
     let source_database = if let Some(db_name) = database_name {
         db_name.to_string()
     } else {
-        input_path.file_stem()
+        input_path
+            .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown")
             .to_string()
@@ -921,8 +1019,8 @@ fn store_reduction_in_casg(
     action("Chunking reference sequences...");
     use crate::casg::types::ChunkingStrategy;
     let strategy = ChunkingStrategy {
-        target_chunk_size: 1024 * 1024,  // 1MB
-        max_chunk_size: 10 * 1024 * 1024,  // 10MB
+        target_chunk_size: 1024 * 1024,   // 1MB
+        max_chunk_size: 10 * 1024 * 1024, // 10MB
         min_sequences_per_chunk: 1,
         taxonomic_coherence: 0.8,
         special_taxa: Vec::new(),
@@ -939,7 +1037,11 @@ fn store_reduction_in_casg(
         // Create reference chunk metadata
         let ref_chunk = ReferenceChunk {
             chunk_hash: chunk_hash.clone(),
-            sequence_ids: chunk.sequences.iter().map(|s| s.sequence_id.clone()).collect(),
+            sequence_ids: chunk
+                .sequences
+                .iter()
+                .map(|s| s.sequence_id.clone())
+                .collect(),
             sequence_count: chunk.sequences.len(),
             size: chunk.size,
             compressed_size: chunk.compressed_size,
@@ -961,11 +1063,12 @@ fn store_reduction_in_casg(
         action("Storing delta chunks...");
 
         // Group deltas by reference sequence
-        let mut deltas_by_ref: HashMap<String, Vec<crate::core::delta_encoder::DeltaRecord>> = HashMap::new();
+        let mut deltas_by_ref: HashMap<String, Vec<crate::core::delta_encoder::DeltaRecord>> =
+            HashMap::new();
         for delta in deltas {
             deltas_by_ref
                 .entry(delta.reference_id.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(delta.clone());
         }
 
@@ -986,22 +1089,26 @@ fn store_reduction_in_casg(
         let mut delta_generator = DeltaGenerator::new(delta_config);
 
         // Convert delta records to sequences for delta generation
-        let all_child_sequences: Vec<crate::bio::sequence::Sequence> =
-            deltas.iter().map(|d| crate::bio::sequence::Sequence {
+        let all_child_sequences: Vec<crate::bio::sequence::Sequence> = deltas
+            .iter()
+            .map(|d| crate::bio::sequence::Sequence {
                 id: d.child_id.clone(),
                 description: None,
                 sequence: Vec::new(), // Will be filled by delta generator
                 taxon_id: d.taxon_id,
                 taxonomy_sources: Default::default(),
-            }).collect();
+            })
+            .collect();
 
         let all_ref_sequences: Vec<crate::bio::sequence::Sequence> =
-            references.iter().cloned().collect();
+            references.to_vec();
 
         // Generate delta chunks using the new system
         if !all_child_sequences.is_empty() && !all_ref_sequences.is_empty() {
             // Get the first reference chunk hash as the base
-            let base_ref_hash = ref_chunk_map.values().next()
+            let base_ref_hash = ref_chunk_map
+                .values()
+                .next()
                 .ok_or_else(|| anyhow::anyhow!("No reference chunks available"))?;
 
             let delta_chunks = delta_generator.generate_delta_chunks(
@@ -1018,9 +1125,14 @@ fn store_reduction_in_casg(
                     chunk_hash: delta_hash,
                     reference_chunk_hash: delta_chunk.reference_hash.clone(),
                     child_count: delta_chunk.sequences.len(),
-                    child_ids: delta_chunk.sequences.iter().map(|s| s.sequence_id.clone()).collect(),
+                    child_ids: delta_chunk
+                        .sequences
+                        .iter()
+                        .map(|s| s.sequence_id.clone())
+                        .collect(),
                     size: delta_chunk.compressed_size,
-                    avg_delta_ops: delta_chunk.deltas.len() as f32 / delta_chunk.sequences.len().max(1) as f32,
+                    avg_delta_ops: delta_chunk.deltas.len() as f32
+                        / delta_chunk.sequences.len().max(1) as f32,
                 };
 
                 delta_chunk_refs.push(delta_ref);
@@ -1038,12 +1150,9 @@ fn store_reduction_in_casg(
     manifest.calculate_statistics(original_count, input_size, elapsed);
 
     // Store the reduction manifest as a profile in the database version directory
-    let manifest_hash = casg.storage.store_database_reduction_manifest(
-        &manifest,
-        source,
-        dataset,
-        version,
-    )?;
+    let manifest_hash = casg
+        .storage
+        .store_database_reduction_manifest(&manifest, source, dataset, version)?;
 
     // Note: We do NOT create a new database manifest here
     // The reduction is stored as a profile associated with the original database
@@ -1057,13 +1166,22 @@ fn store_reduction_in_casg(
         ("Database", source_database.clone()),
         ("Profile", profile_name.clone()),
         ("Manifest", manifest_hash.to_string()),
-        ("References", format!("{} chunks", format_number(manifest.reference_chunks.len()))),
+        (
+            "References",
+            format!("{} chunks", format_number(manifest.reference_chunks.len())),
+        ),
     ];
     if !args.no_deltas {
-        details.push(("Deltas", format!("{} chunks", format_number(manifest.delta_chunks.len()))));
+        details.push((
+            "Deltas",
+            format!("{} chunks", format_number(manifest.delta_chunks.len())),
+        ));
     }
     details.push(("Merkle root", manifest.reduction_merkle_root.to_string()));
-    details.push(("Deduplication", format!("{:.1}%", manifest.statistics.deduplication_ratio * 100.0)));
+    details.push((
+        "Deduplication",
+        format!("{:.1}%", manifest.statistics.deduplication_ratio * 100.0),
+    ));
 
     tree_section("Storage Summary", details, false);
 
@@ -1073,5 +1191,3 @@ fn store_reduction_in_casg(
 
     Ok(total_size)
 }
-
-

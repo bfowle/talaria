@@ -1,4 +1,6 @@
-use crate::casg::{FastaAssembler, CASGStorage, SHA256Hash, TaxonomyAwareChunk, TaxonId, SequenceRef};
+use crate::casg::{
+    CASGStorage, FastaAssembler, SHA256Hash, SequenceRef, TaxonId, TaxonomyAwareChunk,
+};
 use tempfile::TempDir;
 
 fn create_test_storage() -> (TempDir, CASGStorage) {
@@ -22,13 +24,13 @@ fn create_test_chunks() -> Vec<TaxonomyAwareChunk> {
                 SequenceRef {
                     chunk_hash: SHA256Hash::compute(&chunk1_data),
                     offset: 0,
-                    length: 16,  // ">seq1\nMVALPRWFDK\n"
+                    length: 16, // ">seq1\nMVALPRWFDK\n"
                     sequence_id: "seq1".to_string(),
                 },
                 SequenceRef {
                     chunk_hash: SHA256Hash::compute(&chunk1_data),
                     offset: 16,
-                    length: 17,  // ">seq2\nACGTACGTAC\n"
+                    length: 17, // ">seq2\nACGTACGTAC\n"
                     sequence_id: "seq2".to_string(),
                 },
             ],
@@ -44,14 +46,12 @@ fn create_test_chunks() -> Vec<TaxonomyAwareChunk> {
             taxonomy_version: SHA256Hash::compute(b"tax_v1"),
             sequence_version: SHA256Hash::compute(b"seq_v1"),
             taxon_ids: vec![TaxonId(9606)], // Human
-            sequences: vec![
-                SequenceRef {
-                    chunk_hash: SHA256Hash::compute(&chunk2_data),
-                    offset: 0,
-                    length: 24,  // ">seq3\nMKWVTFISLLFLFSSAYS\n"
-                    sequence_id: "seq3".to_string(),
-                },
-            ],
+            sequences: vec![SequenceRef {
+                chunk_hash: SHA256Hash::compute(&chunk2_data),
+                offset: 0,
+                length: 24, // ">seq3\nMKWVTFISLLFLFSSAYS\n"
+                sequence_id: "seq3".to_string(),
+            }],
             sequence_data: chunk2_data,
             created_at: chrono::Utc::now(),
             valid_from: chrono::Utc::now(),
@@ -118,7 +118,9 @@ fn test_streaming_assembly() {
 
     let assembler = FastaAssembler::new(&storage);
     let chunk_hashes: Vec<_> = chunks.iter().map(|c| c.content_hash.clone()).collect();
-    let count = assembler.stream_assembly(&chunk_hashes, &mut writer).unwrap();
+    let count = assembler
+        .stream_assembly(&chunk_hashes, &mut writer)
+        .unwrap();
 
     assert_eq!(count, 3); // Total sequences written
 
@@ -179,14 +181,12 @@ fn test_large_database_streaming() {
             taxonomy_version: SHA256Hash::compute(b"tax_v1"),
             sequence_version: SHA256Hash::compute(b"seq_v1"),
             taxon_ids: vec![TaxonId(i)],
-            sequences: vec![
-                SequenceRef {
-                    chunk_hash: SHA256Hash::compute(&seq_data),
-                    offset: 0,
-                    length: seq_data.len(),
-                    sequence_id: format!("seq_{}_1", i),
-                },
-            ],
+            sequences: vec![SequenceRef {
+                chunk_hash: SHA256Hash::compute(&seq_data),
+                offset: 0,
+                length: seq_data.len(),
+                sequence_id: format!("seq_{}_1", i),
+            }],
             sequence_data: seq_data,
             created_at: chrono::Utc::now(),
             valid_from: chrono::Utc::now(),
@@ -204,7 +204,9 @@ fn test_large_database_streaming() {
 
     let assembler = FastaAssembler::new(&storage);
     let chunk_hashes: Vec<_> = all_chunks.iter().map(|c| c.content_hash.clone()).collect();
-    let count = assembler.stream_assembly(&chunk_hashes, &mut writer).unwrap();
+    let count = assembler
+        .stream_assembly(&chunk_hashes, &mut writer)
+        .unwrap();
 
     assert_eq!(count, 100); // All sequences written
 }
@@ -220,14 +222,12 @@ fn test_assembly_with_compression() {
         taxonomy_version: SHA256Hash::compute(b"tax_v1"),
         sequence_version: SHA256Hash::compute(b"seq_v1"),
         taxon_ids: vec![TaxonId(1)],
-        sequences: vec![
-            SequenceRef {
-                chunk_hash: SHA256Hash::compute(&seq_data),
-                offset: 0,
-                length: seq_data.len(),
-                sequence_id: "compressed_seq".to_string(),
-            },
-        ],
+        sequences: vec![SequenceRef {
+            chunk_hash: SHA256Hash::compute(&seq_data),
+            offset: 0,
+            length: seq_data.len(),
+            sequence_id: "compressed_seq".to_string(),
+        }],
         sequence_data: seq_data,
         created_at: chrono::Utc::now(),
         valid_from: chrono::Utc::now(),
@@ -240,7 +240,9 @@ fn test_assembly_with_compression() {
 
     // Should decompress and assemble correctly
     let assembler = FastaAssembler::new(&storage);
-    let sequences = assembler.assemble_from_chunks(&vec![compressed_chunk.content_hash]).unwrap();
+    let sequences = assembler
+        .assemble_from_chunks(&vec![compressed_chunk.content_hash])
+        .unwrap();
 
     assert_eq!(sequences.len(), 1);
     assert_eq!(sequences[0].id, "compressed_seq");
@@ -281,14 +283,12 @@ fn test_assembly_preserves_metadata() {
         taxonomy_version: SHA256Hash::compute(b"tax_v1"),
         sequence_version: SHA256Hash::compute(b"seq_v1"),
         taxon_ids: vec![TaxonId(562)],
-        sequences: vec![
-            SequenceRef {
-                chunk_hash: SHA256Hash::compute(&seq_data),
-                offset: 0,
-                length: seq_data.len(),
-                sequence_id: "NP_123456.1".to_string(),
-            },
-        ],
+        sequences: vec![SequenceRef {
+            chunk_hash: SHA256Hash::compute(&seq_data),
+            offset: 0,
+            length: seq_data.len(),
+            sequence_id: "NP_123456.1".to_string(),
+        }],
         sequence_data: seq_data,
         created_at: chrono::Utc::now(),
         valid_from: chrono::Utc::now(),
@@ -300,10 +300,15 @@ fn test_assembly_preserves_metadata() {
     storage.store_taxonomy_chunk(&chunk).unwrap();
 
     let assembler = FastaAssembler::new(&storage);
-    let sequences = assembler.assemble_from_chunks(&vec![chunk.content_hash]).unwrap();
+    let sequences = assembler
+        .assemble_from_chunks(&vec![chunk.content_hash])
+        .unwrap();
 
     // All metadata should be preserved
     assert_eq!(sequences[0].id, "NP_123456.1");
-    assert_eq!(sequences[0].description, Some("RecA protein [Escherichia coli]".to_string()));
+    assert_eq!(
+        sequences[0].description,
+        Some("RecA protein [Escherichia coli]".to_string())
+    );
     assert_eq!(sequences[0].taxon_id, Some(562));
 }

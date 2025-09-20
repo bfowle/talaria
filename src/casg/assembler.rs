@@ -1,9 +1,8 @@
-/// FASTA reassembly from content-addressed chunks
-
-use crate::casg::types::*;
-use crate::casg::storage::CASGStorage;
-use crate::casg::verifier::CASGVerifier;
 use crate::bio::sequence::Sequence;
+use crate::casg::storage::CASGStorage;
+/// FASTA reassembly from content-addressed chunks
+use crate::casg::types::*;
+use crate::casg::verifier::CASGVerifier;
 use anyhow::{Context, Result};
 use std::io::Write;
 
@@ -26,10 +25,7 @@ impl<'a> FastaAssembler<'a> {
     }
 
     /// Assemble sequences from a list of chunk hashes
-    pub fn assemble_from_chunks(
-        &self,
-        chunk_hashes: &[SHA256Hash],
-    ) -> Result<Vec<Sequence>> {
+    pub fn assemble_from_chunks(&self, chunk_hashes: &[SHA256Hash]) -> Result<Vec<Sequence>> {
         let mut sequences = Vec::new();
 
         for hash in chunk_hashes {
@@ -59,7 +55,9 @@ impl<'a> FastaAssembler<'a> {
     /// Extract sequences from a single chunk
     fn extract_sequences_from_chunk(&self, hash: &SHA256Hash) -> Result<Vec<Sequence>> {
         // Get chunk data
-        let chunk_data = self.storage.get_chunk(hash)
+        let chunk_data = self
+            .storage
+            .get_chunk(hash)
             .with_context(|| format!("Failed to retrieve chunk {}", hash))?;
 
         // Try to deserialize as TaxonomyAwareChunk first
@@ -86,7 +84,8 @@ impl<'a> FastaAssembler<'a> {
             if &actual_hash != hash {
                 return Err(anyhow::anyhow!(
                     "Chunk verification failed: expected {}, got {}",
-                    hash, actual_hash
+                    hash,
+                    actual_hash
                 ));
             }
         }
@@ -96,17 +95,17 @@ impl<'a> FastaAssembler<'a> {
     }
 
     /// Stream a chunk directly to writer
-    fn stream_chunk_to_writer<W: Write>(
-        &self,
-        hash: &SHA256Hash,
-        writer: &mut W,
-    ) -> Result<usize> {
+    fn stream_chunk_to_writer<W: Write>(&self, hash: &SHA256Hash, writer: &mut W) -> Result<usize> {
         // Get chunk data to access taxonomy information
-        let chunk_data = self.storage.get_chunk(hash)
+        let chunk_data = self
+            .storage
+            .get_chunk(hash)
             .with_context(|| format!("Failed to retrieve chunk {}", hash))?;
 
         // Try to deserialize as TaxonomyAwareChunk to get taxon_ids
-        let taxon_id = if let Ok(chunk) = serde_json::from_slice::<crate::casg::TaxonomyAwareChunk>(&chunk_data) {
+        let taxon_id = if let Ok(chunk) =
+            serde_json::from_slice::<crate::casg::TaxonomyAwareChunk>(&chunk_data)
+        {
             // Use the primary taxon ID if available
             if !chunk.taxon_ids.is_empty() {
                 Some(chunk.taxon_ids[0].0)
@@ -163,7 +162,11 @@ impl<'a> FastaAssembler<'a> {
                 if in_sequence && !current_id.is_empty() {
                     sequences.push(Sequence {
                         id: current_id.clone(),
-                        description: if current_desc.is_empty() { None } else { Some(current_desc.clone()) },
+                        description: if current_desc.is_empty() {
+                            None
+                        } else {
+                            Some(current_desc.clone())
+                        },
                         sequence: current_seq.clone(),
                         taxon_id: self.extract_taxon_from_description(&current_desc),
                         taxonomy_sources: Default::default(),
@@ -188,7 +191,11 @@ impl<'a> FastaAssembler<'a> {
         if in_sequence && !current_id.is_empty() {
             sequences.push(Sequence {
                 id: current_id,
-                description: if current_desc.is_empty() { None } else { Some(current_desc) },
+                description: if current_desc.is_empty() {
+                    None
+                } else {
+                    Some(current_desc)
+                },
                 sequence: current_seq,
                 taxon_id: None,
                 taxonomy_sources: Default::default(),
@@ -262,11 +269,10 @@ impl<'a> FastaAssembler<'a> {
         manifest: &TemporalManifest,
     ) -> Result<Vec<Sequence>> {
         // Find chunks containing these taxa
-        let relevant_chunks: Vec<SHA256Hash> = manifest.chunk_index
+        let relevant_chunks: Vec<SHA256Hash> = manifest
+            .chunk_index
             .iter()
-            .filter(|chunk| {
-                chunk.taxon_ids.iter().any(|tid| taxon_ids.contains(tid))
-            })
+            .filter(|chunk| chunk.taxon_ids.iter().any(|tid| taxon_ids.contains(tid)))
             .map(|chunk| chunk.hash.clone())
             .collect();
 

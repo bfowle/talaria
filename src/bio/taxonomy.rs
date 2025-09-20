@@ -3,6 +3,58 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
+/// Standard taxonomic ranks from kingdom to species
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum TaxonomicRank {
+    Superkingdom,
+    Kingdom,
+    Phylum,
+    Class,
+    Order,
+    Family,
+    Genus,
+    Species,
+    Subspecies,
+    Strain,
+    NoRank,
+}
+
+impl TaxonomicRank {
+    /// Parse rank from NCBI taxonomy string
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "superkingdom" => Self::Superkingdom,
+            "kingdom" => Self::Kingdom,
+            "phylum" => Self::Phylum,
+            "class" => Self::Class,
+            "order" => Self::Order,
+            "family" => Self::Family,
+            "genus" => Self::Genus,
+            "species" => Self::Species,
+            "subspecies" => Self::Subspecies,
+            "strain" | "varietas" | "forma" => Self::Strain,
+            _ => Self::NoRank,
+        }
+    }
+
+    /// Get rank depth for distance calculations (lower = higher in hierarchy)
+    pub fn depth(&self) -> u32 {
+        match self {
+            Self::Superkingdom => 0,
+            Self::Kingdom => 1,
+            Self::Phylum => 2,
+            Self::Class => 3,
+            Self::Order => 4,
+            Self::Family => 5,
+            Self::Genus => 6,
+            Self::Species => 7,
+            Self::Subspecies => 8,
+            Self::Strain => 9,
+            Self::NoRank => 10,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaxonomyInfo {
     pub taxon_id: u32,
@@ -22,32 +74,32 @@ impl TaxonomyDB {
             taxa: HashMap::new(),
         }
     }
-    
+
     pub fn add_taxon(&mut self, info: TaxonomyInfo) {
         self.taxa.insert(info.taxon_id, info);
     }
-    
+
     pub fn get_taxon(&self, taxon_id: u32) -> Option<&TaxonomyInfo> {
         self.taxa.get(&taxon_id)
     }
-    
+
     pub fn get_lineage(&self, taxon_id: u32) -> Vec<u32> {
         let mut lineage = Vec::new();
         let mut current_id = Some(taxon_id);
-        
+
         while let Some(id) = current_id {
             lineage.push(id);
             current_id = self.taxa.get(&id).and_then(|t| t.parent_id);
         }
-        
+
         lineage.reverse();
         lineage
     }
-    
+
     pub fn common_ancestor(&self, taxon_a: u32, taxon_b: u32) -> Option<u32> {
         let lineage_a = self.get_lineage(taxon_a);
         let lineage_b = self.get_lineage(taxon_b);
-        
+
         let mut common = None;
         for (a, b) in lineage_a.iter().zip(lineage_b.iter()) {
             if a == b {
@@ -56,10 +108,10 @@ impl TaxonomyDB {
                 break;
             }
         }
-        
+
         common
     }
-    
+
     pub fn distance(&self, taxon_a: u32, taxon_b: u32) -> Option<usize> {
         let lineage_a = self.get_lineage(taxon_a);
         let lineage_b = self.get_lineage(taxon_b);
@@ -76,6 +128,123 @@ impl TaxonomyDB {
     pub fn taxa_count(&self) -> usize {
         self.taxa.len()
     }
+
+    /// Get the taxonomic rank of a taxon
+    pub fn get_rank(&self, taxon_id: u32) -> Option<TaxonomicRank> {
+        self.taxa
+            .get(&taxon_id)
+            .map(|info| TaxonomicRank::from_str(&info.rank))
+    }
+
+    /// Find the ancestor of a taxon at a specific rank
+    pub fn find_ancestor_at_rank(&self, taxon_id: u32, target_rank: TaxonomicRank) -> Option<u32> {
+        let lineage = self.get_lineage(taxon_id);
+
+        for ancestor_id in lineage {
+            if let Some(rank) = self.get_rank(ancestor_id) {
+                if rank == target_rank {
+                    return Some(ancestor_id);
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Calculate phylogenetic distance between two taxa
+    /// Returns a normalized distance score (0.0 = identical, 1.0 = maximally distant)
+    pub fn phylogenetic_distance(&self, taxon_a: u32, taxon_b: u32) -> f64 {
+        if taxon_a == taxon_b {
+            return 0.0;
+        }
+
+        // Find common ancestor and calculate distances
+        let lineage_a = self.get_lineage(taxon_a);
+        let lineage_b = self.get_lineage(taxon_b);
+
+        // Find divergence point
+        let mut common_depth = 0;
+        for (a, b) in lineage_a.iter().zip(lineage_b.iter()) {
+            if a == b {
+                common_depth += 1;
+            } else {
+                break;
+            }
+        }
+
+        // Calculate distance based on divergence depth
+        // Normalize by maximum possible depth
+        let max_depth = lineage_a.len().max(lineage_b.len()) as f64;
+        if max_depth == 0.0 {
+            return 1.0;
+        }
+
+        let divergence_depth = (lineage_a.len() + lineage_b.len() - 2 * common_depth) as f64;
+        (divergence_depth / (2.0 * max_depth)).min(1.0)
+    }
+
+    /// Get all taxa at a specific rank
+    pub fn get_taxa_at_rank(&self, rank: TaxonomicRank) -> Vec<u32> {
+        self.taxa
+            .iter()
+            .filter(|(_, info)| TaxonomicRank::from_str(&info.rank) == rank)
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
+    /// Group taxa by their common ancestor at a specific rank
+    pub fn group_by_ancestor_at_rank(
+        &self,
+        taxon_ids: &[u32],
+        rank: TaxonomicRank,
+    ) -> HashMap<u32, Vec<u32>> {
+        let mut groups: HashMap<u32, Vec<u32>> = HashMap::new();
+
+        for &taxon_id in taxon_ids {
+            if let Some(ancestor) = self.find_ancestor_at_rank(taxon_id, rank) {
+                groups.entry(ancestor).or_default().push(taxon_id);
+            } else {
+                // No ancestor at this rank, use root (0) as placeholder
+                groups.entry(0).or_default().push(taxon_id);
+            }
+        }
+
+        groups
+    }
+
+    /// Check if two taxa are closely related (within same genus)
+    pub fn are_closely_related(&self, taxon_a: u32, taxon_b: u32) -> bool {
+        // Check if they share the same genus
+        if let (Some(genus_a), Some(genus_b)) = (
+            self.find_ancestor_at_rank(taxon_a, TaxonomicRank::Genus),
+            self.find_ancestor_at_rank(taxon_b, TaxonomicRank::Genus),
+        ) {
+            genus_a == genus_b
+        } else {
+            false
+        }
+    }
+
+    /// Get the lowest common rank between two taxa
+    pub fn lowest_common_rank(&self, taxon_a: u32, taxon_b: u32) -> Option<TaxonomicRank> {
+        if let Some(common_ancestor) = self.common_ancestor(taxon_a, taxon_b) {
+            self.get_rank(common_ancestor)
+        } else {
+            None
+        }
+    }
+
+    /// Find related taxa within a phylogenetic distance threshold
+    pub fn find_related_taxa(&self, taxon_id: u32, distance_threshold: f64) -> Vec<u32> {
+        self.taxa
+            .keys()
+            .filter(|&&other_id| {
+                other_id != taxon_id
+                    && self.phylogenetic_distance(taxon_id, other_id) <= distance_threshold
+            })
+            .copied()
+            .collect()
+    }
 }
 
 /// Parse NCBI taxonomy dump files
@@ -84,47 +253,54 @@ pub mod ncbi {
     use std::fs::File;
     use std::io::{BufRead, BufReader};
     use std::path::Path;
-    
+
     pub fn load_names<P: AsRef<Path>>(path: P) -> Result<HashMap<u32, String>, std::io::Error> {
         let file = File::open(path)?;
         let reader = BufReader::new(file);
         let mut names = HashMap::new();
-        
+
         for line in reader.lines() {
             let line = line?;
             let parts: Vec<&str> = line.split("\t|\t").collect();
-            
+
             if parts.len() >= 4 && parts[3].trim_end_matches("\t|") == "scientific name" {
                 if let Ok(taxon_id) = parts[0].parse::<u32>() {
                     names.insert(taxon_id, parts[1].to_string());
                 }
             }
         }
-        
+
         Ok(names)
     }
-    
-    pub fn load_nodes<P: AsRef<Path>>(path: P) -> Result<HashMap<u32, (u32, String)>, std::io::Error> {
+
+    pub fn load_nodes<P: AsRef<Path>>(
+        path: P,
+    ) -> Result<HashMap<u32, (u32, String)>, std::io::Error> {
         let file = File::open(path)?;
         let reader = BufReader::new(file);
         let mut nodes = HashMap::new();
-        
+
         for line in reader.lines() {
             let line = line?;
             let parts: Vec<&str> = line.split("\t|\t").collect();
-            
+
             if parts.len() >= 3 {
-                if let (Ok(taxon_id), Ok(parent_id)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+                if let (Ok(taxon_id), Ok(parent_id)) =
+                    (parts[0].parse::<u32>(), parts[1].parse::<u32>())
+                {
                     let rank = parts[2].to_string();
                     nodes.insert(taxon_id, (parent_id, rank));
                 }
             }
         }
-        
+
         Ok(nodes)
     }
-    
-    pub fn build_taxonomy_db<P: AsRef<Path>>(names_path: P, nodes_path: P) -> Result<TaxonomyDB, std::io::Error> {
+
+    pub fn build_taxonomy_db<P: AsRef<Path>>(
+        names_path: P,
+        nodes_path: P,
+    ) -> Result<TaxonomyDB, std::io::Error> {
         let names = load_names(names_path)?;
         let nodes = load_nodes(nodes_path)?;
 
@@ -136,7 +312,11 @@ pub mod ncbi {
                     taxon_id,
                     scientific_name: name,
                     rank: rank.clone(),
-                    parent_id: if *parent_id == taxon_id { None } else { Some(*parent_id) },
+                    parent_id: if *parent_id == taxon_id {
+                        None
+                    } else {
+                        Some(*parent_id)
+                    },
                 };
                 db.add_taxon(info);
             }
@@ -146,7 +326,10 @@ pub mod ncbi {
     }
 
     // Alias for convenience
-    pub fn parse_ncbi_taxonomy<P: AsRef<Path>>(names_path: P, nodes_path: P) -> Result<TaxonomyDB, std::io::Error> {
+    pub fn parse_ncbi_taxonomy<P: AsRef<Path>>(
+        names_path: P,
+        nodes_path: P,
+    ) -> Result<TaxonomyDB, std::io::Error> {
         build_taxonomy_db(names_path, nodes_path)
     }
 }
@@ -284,12 +467,21 @@ impl TaxonomyResolution {
             TaxonomyResolution::None => TaxonomyConfidence::None,
             TaxonomyResolution::Unanimous { sources, .. } => {
                 // If API or User provided and others agree, very high confidence
-                if sources.iter().any(|(s, _)| matches!(s, TaxonomySource::Api | TaxonomySource::User))
-                   && sources.len() > 1 {
+                if sources
+                    .iter()
+                    .any(|(s, _)| matches!(s, TaxonomySource::Api | TaxonomySource::User))
+                    && sources.len() > 1
+                {
                     TaxonomyConfidence::Verified
-                } else if sources.iter().any(|(s, _)| matches!(s, TaxonomySource::Api)) {
+                } else if sources
+                    .iter()
+                    .any(|(s, _)| matches!(s, TaxonomySource::Api))
+                {
                     TaxonomyConfidence::High
-                } else if sources.iter().any(|(s, _)| matches!(s, TaxonomySource::Mapping)) {
+                } else if sources
+                    .iter()
+                    .any(|(s, _)| matches!(s, TaxonomySource::Mapping))
+                {
                     TaxonomyConfidence::Medium
                 } else {
                     TaxonomyConfidence::Low

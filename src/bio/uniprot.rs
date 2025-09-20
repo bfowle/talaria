@@ -1,6 +1,8 @@
 /// UniProt API client for fetching sequences by TaxID and proteome
 use crate::bio::sequence::Sequence;
-use crate::bio::taxonomy::{SequenceProvider, TaxonomyConfidence, TaxonomySource, TaxonomyEnrichable};
+use crate::bio::taxonomy::{
+    SequenceProvider, TaxonomyConfidence, TaxonomyEnrichable, TaxonomySource,
+};
 use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::io::Read;
@@ -28,7 +30,6 @@ impl UniProtClient {
 
     /// Fetch sequences for a specific TaxID
     pub fn fetch_by_taxid(&self, taxid: u32) -> Result<Vec<Sequence>> {
-
         // Build query URL
         let query_url = format!(
             "{}/uniprotkb/stream?query=organism_id:{}&format=fasta&size=500",
@@ -40,13 +41,14 @@ impl UniProtClient {
         pb.set_style(
             ProgressStyle::default_spinner()
                 .template("[{elapsed_precise}] {spinner:.green} {msg}")
-                .unwrap()
+                .unwrap(),
         );
         pb.set_message(format!("  Downloading sequences for TaxID {}", taxid));
         pb.enable_steady_tick(std::time::Duration::from_millis(100));
 
         // Make request
-        let response = self.client
+        let response = self
+            .client
             .get(&query_url)
             .send()
             .with_context(|| format!("Failed to fetch sequences for TaxID {}", taxid))?;
@@ -57,7 +59,8 @@ impl UniProtClient {
 
         // Read response
         let mut body = String::new();
-        response.take(100 * 1024 * 1024) // Limit to 100MB
+        response
+            .take(100 * 1024 * 1024) // Limit to 100MB
             .read_to_string(&mut body)?;
 
         pb.finish_and_clear();
@@ -124,12 +127,13 @@ impl UniProtClient {
         pb.set_style(
             ProgressStyle::default_spinner()
                 .template("[{elapsed_precise}] {spinner:.green} {msg}")
-                .unwrap()
+                .unwrap(),
         );
         pb.set_message(format!("Downloading reference proteome for {}", organism));
         pb.enable_steady_tick(std::time::Duration::from_millis(100));
 
-        let response = self.client
+        let response = self
+            .client
             .get(&query_url)
             .send()
             .with_context(|| format!("Failed to fetch reference proteome for {}", organism))?;
@@ -139,8 +143,7 @@ impl UniProtClient {
         }
 
         let mut body = String::new();
-        response.take(100 * 1024 * 1024)
-            .read_to_string(&mut body)?;
+        response.take(100 * 1024 * 1024).read_to_string(&mut body)?;
 
         pb.finish_with_message(format!("Downloaded reference proteome for {}", organism));
 
@@ -161,12 +164,13 @@ impl UniProtClient {
         pb.set_style(
             ProgressStyle::default_spinner()
                 .template("[{elapsed_precise}] {spinner:.green} {msg}")
-                .unwrap()
+                .unwrap(),
         );
         pb.set_message(format!("Downloading proteome {}", proteome_id));
         pb.enable_steady_tick(std::time::Duration::from_millis(100));
 
-        let response = self.client
+        let response = self
+            .client
             .get(&query_url)
             .send()
             .with_context(|| format!("Failed to fetch proteome {}", proteome_id))?;
@@ -176,8 +180,7 @@ impl UniProtClient {
         }
 
         let mut body = String::new();
-        response.take(100 * 1024 * 1024)
-            .read_to_string(&mut body)?;
+        response.take(100 * 1024 * 1024).read_to_string(&mut body)?;
 
         pb.finish_with_message(format!("Downloaded proteome {}", proteome_id));
 
@@ -238,7 +241,8 @@ pub fn parse_taxids(input: &str) -> Result<Vec<u32>> {
     for part in input.split(',') {
         let trimmed = part.trim();
         if !trimmed.is_empty() {
-            let taxid = trimmed.parse::<u32>()
+            let taxid = trimmed
+                .parse::<u32>()
                 .with_context(|| format!("Invalid TaxID: {}", trimmed))?;
             taxids.push(taxid);
         }
@@ -267,7 +271,8 @@ pub fn read_taxids_from_file(path: &std::path::Path) -> Result<Vec<u32>> {
             continue;
         }
 
-        let taxid = trimmed.parse::<u32>()
+        let taxid = trimmed
+            .parse::<u32>()
             .with_context(|| format!("Invalid TaxID on line {}: {}", line_num + 1, trimmed))?;
         taxids.push(taxid);
     }
@@ -307,7 +312,10 @@ mod tests {
         let sequences = client.parse_fasta(fasta).unwrap();
         assert_eq!(sequences.len(), 2);
         assert_eq!(sequences[0].id, "sp|P12345|PROT_HUMAN");
-        assert_eq!(sequences[0].description.as_ref().unwrap(), "Protein description");
+        assert_eq!(
+            sequences[0].description.as_ref().unwrap(),
+            "Protein description"
+        );
         assert_eq!(sequences[1].id, "sp|Q67890|PROT_MOUSE");
     }
 }

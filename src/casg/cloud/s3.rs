@@ -1,12 +1,11 @@
 /// AWS S3 and S3-compatible storage implementation
-
 use super::{CloudConfig, CloudObject, CloudStorage};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use aws_sdk_s3::{Client, Config};
-use aws_sdk_s3::config::Region;
 use aws_sdk_s3::config::Credentials;
+use aws_sdk_s3::config::Region;
 use aws_sdk_s3::primitives::ByteStream;
+use aws_sdk_s3::{Client, Config};
 use indicatif::ProgressBar;
 use std::path::Path;
 use tokio::fs::File;
@@ -26,14 +25,18 @@ impl S3Storage {
                 region,
                 prefix,
                 endpoint,
-            } => (bucket.clone(), region.clone(), prefix.clone(), endpoint.clone()),
+            } => (
+                bucket.clone(),
+                region.clone(),
+                prefix.clone(),
+                endpoint.clone(),
+            ),
             _ => anyhow::bail!("Invalid config for S3Storage"),
         };
 
         // Build S3 client configuration
         let sdk_config = tokio::runtime::Handle::current().block_on(async {
-            let mut config_builder = Config::builder()
-                .region(Region::new(region));
+            let mut config_builder = Config::builder().region(Region::new(region));
 
             // Use custom endpoint if provided (for S3-compatible services)
             if let Some(endpoint_url) = endpoint {
@@ -71,7 +74,11 @@ impl S3Storage {
 
     fn full_key(&self, key: &str) -> String {
         match &self.prefix {
-            Some(prefix) => format!("{}/{}", prefix.trim_end_matches('/'), key.trim_start_matches('/')),
+            Some(prefix) => format!(
+                "{}/{}",
+                prefix.trim_end_matches('/'),
+                key.trim_start_matches('/')
+            ),
             None => key.to_string(),
         }
     }
@@ -91,10 +98,7 @@ impl CloudStorage for S3Storage {
         let mut continuation_token = None;
 
         loop {
-            let mut request = self
-                .client
-                .list_objects_v2()
-                .bucket(&self.bucket);
+            let mut request = self.client.list_objects_v2().bucket(&self.bucket);
 
             if !list_prefix.is_empty() {
                 request = request.prefix(list_prefix.clone());
@@ -104,10 +108,7 @@ impl CloudStorage for S3Storage {
                 request = request.continuation_token(token);
             }
 
-            let response = request
-                .send()
-                .await
-                .context("Failed to list S3 objects")?;
+            let response = request.send().await.context("Failed to list S3 objects")?;
 
             if let Some(contents) = response.contents {
                 for object in contents {
@@ -116,7 +117,8 @@ impl CloudStorage for S3Storage {
                             key,
                             size: object.size.unwrap_or(0) as usize,
                             etag: object.e_tag,
-                            last_modified: object.last_modified
+                            last_modified: object
+                                .last_modified
                                 .map(|dt| {
                                     let secs = dt.secs();
                                     let nanos = dt.subsec_nanos();
@@ -157,7 +159,10 @@ impl CloudStorage for S3Storage {
                 if service_error.is_not_found() {
                     Ok(false)
                 } else {
-                    Err(anyhow::anyhow!("Failed to check object existence: {}", service_error))
+                    Err(anyhow::anyhow!(
+                        "Failed to check object existence: {}",
+                        service_error
+                    ))
                 }
             }
         }
@@ -179,12 +184,12 @@ impl CloudStorage for S3Storage {
             key: full_key,
             size: response.content_length.unwrap_or(0) as usize,
             etag: response.e_tag,
-            last_modified: response.last_modified
+            last_modified: response
+                .last_modified
                 .map(|dt| {
                     let secs = dt.secs();
                     let nanos = dt.subsec_nanos();
-                    chrono::DateTime::from_timestamp(secs, nanos)
-                        .unwrap_or_else(chrono::Utc::now)
+                    chrono::DateTime::from_timestamp(secs, nanos).unwrap_or_else(chrono::Utc::now)
                 })
                 .unwrap_or_else(chrono::Utc::now),
             storage_class: response.storage_class.map(|sc| sc.as_str().to_string()),

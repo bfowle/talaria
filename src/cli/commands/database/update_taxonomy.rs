@@ -23,9 +23,7 @@ pub fn run(args: UpdateTaxonomyArgs) -> Result<()> {
     println!("{} Checking for taxonomy updates...", "►".cyan().bold());
 
     // Initialize database manager
-    let mut manager = DatabaseManager::new(
-        args.db_path.map(|p| p.to_string_lossy().to_string())
-    )?;
+    let mut manager = DatabaseManager::new(args.db_path.map(|p| p.to_string_lossy().to_string()))?;
 
     // Get current version
     let current_version = manager.get_taxonomy_version()?;
@@ -44,20 +42,24 @@ pub fn run(args: UpdateTaxonomyArgs) -> Result<()> {
 
     // Run async update
     let runtime = tokio::runtime::Runtime::new()?;
-    let result = runtime.block_on(async {
-        manager.update_taxonomy().await
-    })?;
+    let result = runtime.block_on(async { manager.update_taxonomy().await })?;
 
     match result {
         TaxonomyUpdateResult::UpToDate => {
             if args.force {
-                println!("  {} Taxonomy is up-to-date, but force flag was set", "ℹ".blue());
+                println!(
+                    "  {} Taxonomy is up-to-date, but force flag was set",
+                    "ℹ".blue()
+                );
                 println!("  Force update not yet implemented");
             } else {
                 println!("{} Taxonomy is already up-to-date", "✓".green().bold());
             }
         }
-        TaxonomyUpdateResult::Updated { old_version, new_version } => {
+        TaxonomyUpdateResult::Updated {
+            old_version,
+            new_version,
+        } => {
             println!("{} Taxonomy updated successfully!", "✓".green().bold());
             if let Some(old) = old_version {
                 println!("  Previous version: {}", old.dimmed());

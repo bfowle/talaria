@@ -2,18 +2,17 @@
 ///
 /// This module provides versioning for taxonomy databases (NCBI, UniProt)
 /// using the existing VersionStore trait infrastructure.
-
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::fs;
+use std::path::{Path, PathBuf};
 
-use crate::core::version_store::{VersionStore, Version, ListOptions};
-use crate::download::DatabaseSource;
-use crate::casg::types::SHA256Hash;
 use crate::casg::taxonomy::manifest::{TaxonomyManifest, TaxonomySource as ManifestTaxonomySource};
+use crate::casg::types::SHA256Hash;
+use crate::core::version_store::{ListOptions, Version, VersionStore};
+use crate::download::DatabaseSource;
 
 /// Taxonomy-specific version store that wraps the base VersionStore
 pub struct TaxonomyVersionStore {
@@ -55,7 +54,9 @@ impl TaxonomyVersionStore {
         fs::create_dir_all(&version_path)?;
 
         // Create taxonomy manifest
-        let manifest = self.create_taxonomy_manifest(source.clone(), data_path).await?;
+        let manifest = self
+            .create_taxonomy_manifest(source.clone(), data_path)
+            .await?;
 
         // Save manifest
         let manifest_path = version_path.join("taxonomy_manifest.tal");
@@ -143,7 +144,7 @@ impl TaxonomyVersionStore {
             delnodes_root: delnodes_hash,
             accession2taxid_root: None, // Will be set when processing accession files
             idmapping_root: None,       // Will be set for UniProt sources
-            chunk_index: Vec::new(),     // Will be populated during chunking
+            chunk_index: Vec::new(),    // Will be populated during chunking
             stats: TaxonomyStats {
                 total_taxa: taxa_count,
                 species_count: 0, // Would need to parse nodes.dmp for rank info
@@ -222,11 +223,17 @@ impl TaxonomyVersionStore {
     /// Get the previous version for a taxonomy source
     async fn get_previous_version(&self, source: &TaxonomySource) -> Result<String> {
         let db_source = DatabaseSource::from_taxonomy_source(source);
-        let versions = self.base_store.list_versions(&db_source, ListOptions {
-            limit: Some(2),
-            newest_first: true,
-            ..Default::default()
-        }).await?;
+        let versions = self
+            .base_store
+            .list_versions(
+                &db_source,
+                ListOptions {
+                    limit: Some(2),
+                    newest_first: true,
+                    ..Default::default()
+                },
+            )
+            .await?;
 
         if versions.len() >= 2 {
             Ok(versions[1].id.clone())
@@ -246,13 +253,16 @@ impl TaxonomyVersionStore {
         let version_path = self.taxonomy_path.join("versions").join(version_id);
         let manifest_path = version_path.join("taxonomy_manifest.tal");
 
-        let manifest_bytes = fs::read(&manifest_path)
-            .context(format!("Failed to read taxonomy manifest for version {}", version_id))?;
+        let manifest_bytes = fs::read(&manifest_path).context(format!(
+            "Failed to read taxonomy manifest for version {}",
+            version_id
+        ))?;
 
         let manifest: TaxonomyManifest = rmp_serde::from_slice(&manifest_bytes)?;
 
         // Update cache
-        self.manifest_cache.insert(version_id.to_string(), manifest.clone());
+        self.manifest_cache
+            .insert(version_id.to_string(), manifest.clone());
 
         Ok(manifest)
     }
@@ -270,20 +280,29 @@ impl VersionStore for TaxonomyVersionStore {
 
         // Filter by metadata type = "taxonomy"
         versions.retain(|v| {
-            v.metadata.get("type").map(|t| t == "taxonomy").unwrap_or(false)
+            v.metadata
+                .get("type")
+                .map(|t| t == "taxonomy")
+                .unwrap_or(false)
         });
 
         Ok(versions)
     }
 
     async fn current_version(&self, source: &DatabaseSource) -> Result<Version> {
-        let versions = self.list_versions(source, ListOptions {
-            limit: Some(1),
-            newest_first: true,
-            ..Default::default()
-        }).await?;
+        let versions = self
+            .list_versions(
+                source,
+                ListOptions {
+                    limit: Some(1),
+                    newest_first: true,
+                    ..Default::default()
+                },
+            )
+            .await?;
 
-        versions.into_iter()
+        versions
+            .into_iter()
             .next()
             .ok_or_else(|| anyhow::anyhow!("No taxonomy versions found"))
     }
@@ -292,15 +311,14 @@ impl VersionStore for TaxonomyVersionStore {
         self.base_store.get_version(source, version_id).await
     }
 
-    async fn create_version(
-        &mut self,
-        source: &DatabaseSource,
-    ) -> Result<Version> {
+    async fn create_version(&mut self, source: &DatabaseSource) -> Result<Version> {
         // Create a new version through base store
         let mut version = self.base_store.create_version(source).await?;
 
         // Add taxonomy-specific metadata
-        version.metadata.insert("type".to_string(), "taxonomy".to_string());
+        version
+            .metadata
+            .insert("type".to_string(), "taxonomy".to_string());
 
         Ok(version)
     }
@@ -317,7 +335,9 @@ impl VersionStore for TaxonomyVersionStore {
         alias: &str,
         version_id: &str,
     ) -> Result<()> {
-        self.base_store.update_alias(source, alias, version_id).await
+        self.base_store
+            .update_alias(source, alias, version_id)
+            .await
     }
 
     async fn resolve_alias(&self, source: &DatabaseSource, alias: &str) -> Result<Version> {
@@ -337,7 +357,9 @@ impl VersionStore for TaxonomyVersionStore {
         source: &DatabaseSource,
         keep_count: usize,
     ) -> Result<Vec<String>> {
-        self.base_store.cleanup_old_versions(source, keep_count).await
+        self.base_store
+            .cleanup_old_versions(source, keep_count)
+            .await
     }
 
     async fn get_storage_usage(&self, source: &DatabaseSource) -> Result<usize> {
@@ -390,24 +412,16 @@ impl TaxonomySource {
 impl From<TaxonomySource> for ManifestTaxonomySource {
     fn from(source: TaxonomySource) -> Self {
         match source {
-            TaxonomySource::NCBI { date } => {
-                ManifestTaxonomySource::NCBI {
-                    dump_date: date,
-                    ftp_url: "https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/".to_string(),
-                }
+            TaxonomySource::NCBI { date } => ManifestTaxonomySource::NCBI {
+                dump_date: date,
+                ftp_url: "https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/".to_string(),
             },
             TaxonomySource::UniProt { release, date } => {
-                ManifestTaxonomySource::UniProt {
-                    release,
-                    date,
-                }
-            },
+                ManifestTaxonomySource::UniProt { release, date }
+            }
             TaxonomySource::Custom { name, version } => {
-                ManifestTaxonomySource::Custom {
-                    name,
-                    version,
-                }
-            },
+                ManifestTaxonomySource::Custom { name, version }
+            }
         }
     }
 }

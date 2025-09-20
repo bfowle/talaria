@@ -1,12 +1,11 @@
+use crate::casg::types::{SHA256Hash, TaxonId};
 /// Taxonomy manifest for versioned taxonomy databases
 ///
 /// This manifest tracks taxonomy database versions and their content hashes,
 /// enabling bi-temporal versioning of both sequences and taxonomic classifications
-
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use crate::casg::types::{SHA256Hash, TaxonId};
 
 /// Manifest for a specific version of taxonomy database
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,7 +98,7 @@ pub enum TaxonomyDataType {
 }
 
 /// Statistics about a taxonomy version
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TaxonomyStats {
     pub total_taxa: usize,
     pub species_count: usize,
@@ -178,14 +177,12 @@ impl TaxonomyManifest {
 
     /// Serialize to MessagePack format
     pub fn to_msgpack(&self) -> Result<Vec<u8>> {
-        rmp_serde::to_vec(self)
-            .context("Failed to serialize taxonomy manifest")
+        rmp_serde::to_vec(self).context("Failed to serialize taxonomy manifest")
     }
 
     /// Deserialize from MessagePack format
     pub fn from_msgpack(data: &[u8]) -> Result<Self> {
-        rmp_serde::from_slice(data)
-            .context("Failed to deserialize taxonomy manifest")
+        rmp_serde::from_slice(data).context("Failed to deserialize taxonomy manifest")
     }
 
     /// Add a chunk to the index
@@ -292,7 +289,10 @@ impl TaxonomyDiff {
         }
 
         if changes.is_empty() {
-            format!("No changes between {} and {}", self.old_version, self.new_version)
+            format!(
+                "No changes between {} and {}",
+                self.old_version, self.new_version
+            )
         } else {
             format!(
                 "Changes from {} to {}: {}",
@@ -304,18 +304,6 @@ impl TaxonomyDiff {
     }
 }
 
-impl Default for TaxonomyStats {
-    fn default() -> Self {
-        Self {
-            total_taxa: 0,
-            species_count: 0,
-            genus_count: 0,
-            family_count: 0,
-            deleted_count: 0,
-            merged_count: 0,
-        }
-    }
-}
 
 // SHA256Hash methods are already implemented in crate::casg::types
 

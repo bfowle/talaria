@@ -27,7 +27,11 @@ pub trait Chunker: Send + Sync {
 /// Trait for taxonomy-aware chunking
 pub trait TaxonomyAwareChunker: Chunker {
     /// Chunk sequences by taxonomy
-    fn chunk_by_taxonomy(&mut self, sequences: &[Sequence], taxonomy_map: &[(String, TaxonId)]) -> Result<Vec<ChunkMetadata>>;
+    fn chunk_by_taxonomy(
+        &mut self,
+        sequences: &[Sequence],
+        taxonomy_map: &[(String, TaxonId)],
+    ) -> Result<Vec<ChunkMetadata>>;
 
     /// Set taxonomy grouping threshold
     fn set_taxonomy_threshold(&mut self, threshold: usize);

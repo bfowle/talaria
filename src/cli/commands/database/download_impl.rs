@@ -1,15 +1,14 @@
 /// Database download implementation using content-addressed storage
-
 use crate::cli::commands::database::download::DownloadArgs;
-use crate::cli::formatter::{self, TaskList, TaskStatus, print_tip, format_bytes, format_number};
+use crate::cli::formatter::{self, format_bytes, format_number, print_tip, TaskList, TaskStatus};
 use crate::cli::output::*;
 use crate::core::database_manager::{DatabaseManager, DownloadResult};
 use crate::download::DatabaseSource;
 use crate::utils::progress::create_spinner;
 use anyhow::Result;
-use std::sync::{Arc, Mutex};
-use indicatif::ProgressBar;
 use colored::Colorize;
+use indicatif::ProgressBar;
+use std::sync::{Arc, Mutex};
 
 pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource) -> Result<()> {
     // Apply CLI flag overrides for environment variables
@@ -62,7 +61,10 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
         spinner.finish_and_clear();
 
         if !resumable_ops.is_empty() {
-            subsection_header(&format!("◆ Found {} resumable operation(s)", resumable_ops.len()));
+            subsection_header(&format!(
+                "◆ Found {} resumable operation(s)",
+                resumable_ops.len()
+            ));
             for (i, (op_id, state)) in resumable_ops.iter().enumerate() {
                 let is_last = i == resumable_ops.len() - 1;
                 tree_item(is_last, &format!("{}: {}", op_id, state.summary()), None);
@@ -93,11 +95,9 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
             if let Some(s) = spinner.take() {
                 s.finish_and_clear();
             }
-            println!("\n  {} {}", "●".yellow(), "Initial download required");
-
+            println!("\n  {} Initial download required", "●".yellow());
         } else if msg.contains("Checking for updates") {
             tl.update_task(check_task, TaskStatus::InProgress);
-
         } else if msg.contains("up to date") || msg.contains("Up to date") {
             tl.update_task(check_task, TaskStatus::Complete);
             tl.update_task(download_task, TaskStatus::Skipped);
@@ -108,7 +108,6 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
             if let Some(s) = spinner.take() {
                 s.finish_and_clear();
             }
-
         } else if msg.contains("Downloading full database") {
             tl.update_task(download_task, TaskStatus::InProgress);
             tl.pause_updates();
@@ -117,9 +116,8 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
             if let Some(s) = spinner.take() {
                 s.finish_and_clear();
             }
-            println!("\n  {} {}", "○".dimmed(), "Download");
+            println!("\n  {} Download", "○".dimmed());
             println!("{}", msg);
-
         } else if msg.contains("Reading sequences from FASTA") {
             // Clear download phase, start processing
             tl.resume_updates();
@@ -133,36 +131,39 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
 
             println!("\n  {} Process into chunks", "●".yellow());
             *spinner = Some(create_spinner("Reading sequences from FASTA file..."));
-
         } else if msg.contains("Analyzing database structure") {
             if let Some(s) = spinner.take() {
                 s.finish_and_clear();
             }
             *spinner = Some(create_spinner("Analyzing database structure..."));
-
         } else if msg.contains("Database analysis:") || msg.contains("Total sequences:") {
             // Clear spinner and show analysis results
             if let Some(s) = spinner.take() {
                 s.finish_and_clear();
             }
             println!("{}", msg);
-
         } else if msg.contains("Creating taxonomy-aware chunks") {
             *spinner = Some(create_spinner("Creating taxonomy-aware chunks..."));
-
         } else if msg.contains("Special taxa rules applied") {
             if let Some(ref s) = *spinner {
                 s.set_message("Applying special taxa rules...");
             }
-
         } else if msg.contains("Created") && msg.contains("chunks") {
             if let Some(s) = spinner.take() {
                 s.finish_and_clear();
             }
 
             // Extract chunk count for tree display
-            if let Some(num_str) = msg.split("Created ").nth(1).and_then(|s| s.split(" chunks").next()) {
-                println!("  {} Created {} chunks", "✓".green(), format_number(num_str.parse::<usize>().unwrap_or(0)));
+            if let Some(num_str) = msg
+                .split("Created ")
+                .nth(1)
+                .and_then(|s| s.split(" chunks").next())
+            {
+                println!(
+                    "  {} Created {} chunks",
+                    "✓".green(),
+                    format_number(num_str.parse::<usize>().unwrap_or(0))
+                );
             }
 
             tl.update_task(process_task, TaskStatus::Complete);
@@ -171,7 +172,6 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
 
             println!("\n  {} Store in repository", "●".yellow());
             *spinner = Some(create_spinner("Storing chunks in CASG repository..."));
-
         } else if msg.contains("All chunks stored") {
             if let Some(s) = spinner.take() {
                 s.finish_and_clear();
@@ -184,10 +184,10 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
             println!("  {} All chunks stored", "✓".green());
             println!("\n  {} Create manifest", "●".yellow());
             *spinner = Some(create_spinner("Creating and saving manifest..."));
-
         } else if msg.contains("Creating and saving manifest") {
             // Already handled above
-        } else if !msg.is_empty() && !msg.contains("[0") { // Ignore progress bar messages
+        } else if !msg.is_empty() && !msg.contains("[0") {
+            // Ignore progress bar messages
             // Pass through other messages but format them nicely
             if let Some(s) = spinner.as_ref() {
                 s.set_message(msg.to_string());
@@ -198,19 +198,13 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
     // Run the download (or dry-run check)
     let result = if args.dry_run {
         // In dry-run mode, just check what would be downloaded
-        runtime.block_on(async {
-            manager.check_for_updates(&database_source, progress).await
-        })?
+        runtime.block_on(async { manager.check_for_updates(&database_source, progress).await })?
     } else if args.force {
         // Force download even if up-to-date
-        runtime.block_on(async {
-            manager.force_download(&database_source, progress).await
-        })?
+        runtime.block_on(async { manager.force_download(&database_source, progress).await })?
     } else {
         // Normal download (idempotent)
-        runtime.block_on(async {
-            manager.download(&database_source, progress).await
-        })?
+        runtime.block_on(async { manager.download(&database_source, progress).await })?
     };
 
     // Clear any remaining spinner
@@ -257,25 +251,35 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
                 tree_item(true, "Aliases", Some(&version_info.aliases.join(", ")));
             }
         }
-        DownloadResult::Updated { chunks_added, chunks_removed } => {
+        DownloadResult::Updated {
+            chunks_added,
+            chunks_removed,
+        } => {
             println!("{}", "─".repeat(80).dimmed());
             if args.dry_run {
                 warning("Updates available - run without --dry-run to download");
             } else {
                 success("Database updated successfully!");
             }
-            let mut items = vec![
-                ("Added", format!("{} new chunks", format_number(chunks_added))),
-            ];
+            let mut items = vec![(
+                "Added",
+                format!("{} new chunks", format_number(chunks_added)),
+            )];
             if chunks_removed > 0 {
-                items.push(("Removed", format!("{} obsolete chunks", format_number(chunks_removed))));
+                items.push((
+                    "Removed",
+                    format!("{} obsolete chunks", format_number(chunks_removed)),
+                ));
             }
             items.push(("Efficiency", "Only downloaded what changed".to_string()));
             tree_section("Update Summary", items, true);
 
             if args.dry_run {
                 println!();
-                info(&format!("Run without --dry-run to download {} chunks", chunks_added));
+                info(&format!(
+                    "Run without --dry-run to download {} chunks",
+                    chunks_added
+                ));
             }
         }
         DownloadResult::InitialDownload => {
@@ -290,7 +294,11 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
                 println!();
                 subsection_header("◆ Download Summary");
                 tree_item(false, "Status", Some("Initial download complete"));
-                tree_item(false, "Storage", Some("Database chunked and stored in CASG"));
+                tree_item(
+                    false,
+                    "Storage",
+                    Some("Database chunked and stored in CASG"),
+                );
                 tree_item(true, "Updates", Some("Future updates will be incremental"));
                 println!();
                 print_tip("Set TALARIA_MANIFEST_SERVER to enable incremental updates from a manifest server");
@@ -303,11 +311,31 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
 
     println!();
     subsection_header("◆ Repository Statistics");
-    tree_item(false, "Total chunks", Some(&format_number(stats.total_chunks)));
-    tree_item(false, "Total size", Some(&format_bytes(stats.total_size as u64)));
-    tree_item(false, "Compressed chunks", Some(&format_number(stats.compressed_chunks)));
-    tree_item(false, "Deduplication ratio", Some(&format!("{:.2}x", stats.deduplication_ratio)));
-    tree_item(true, "Databases managed", Some(&format_number(stats.database_count)));
+    tree_item(
+        false,
+        "Total chunks",
+        Some(&format_number(stats.total_chunks)),
+    );
+    tree_item(
+        false,
+        "Total size",
+        Some(&format_bytes(stats.total_size as u64)),
+    );
+    tree_item(
+        false,
+        "Compressed chunks",
+        Some(&format_number(stats.compressed_chunks)),
+    );
+    tree_item(
+        false,
+        "Deduplication ratio",
+        Some(&format!("{:.2}x", stats.deduplication_ratio)),
+    );
+    tree_item(
+        true,
+        "Databases managed",
+        Some(&format_number(stats.database_count)),
+    );
 
     println!();
 

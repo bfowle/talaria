@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::casg::types::{SHA256Hash, ChunkMetadata, TemporalManifest};
+use crate::casg::types::{ChunkMetadata, SHA256Hash, TemporalManifest};
 
 /// Type of change detected
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -82,10 +82,20 @@ pub struct DiffOptions {
 #[async_trait]
 pub trait TemporalManifestDiffer: Send + Sync {
     /// Compare two manifests and return differences
-    async fn diff(&self, old: &TemporalManifest, new: &TemporalManifest, options: DiffOptions) -> Result<DiffResult>;
+    async fn diff(
+        &self,
+        old: &TemporalManifest,
+        new: &TemporalManifest,
+        options: DiffOptions,
+    ) -> Result<DiffResult>;
 
     /// Compare manifests from files
-    async fn diff_files(&self, old_path: &PathBuf, new_path: &PathBuf, options: DiffOptions) -> Result<DiffResult>;
+    async fn diff_files(
+        &self,
+        old_path: &PathBuf,
+        new_path: &PathBuf,
+        options: DiffOptions,
+    ) -> Result<DiffResult>;
 
     /// Generate a patch that can be applied to migrate from old to new
     async fn generate_patch(&self, diff: &DiffResult) -> Result<Vec<u8>>;
@@ -97,7 +107,11 @@ pub trait TemporalManifestDiffer: Send + Sync {
     async fn estimate_cost(&self, diff: &DiffResult) -> Result<MigrationCost>;
 
     /// Verify that a diff was applied correctly
-    async fn verify_diff(&self, manifest: &TemporalManifest, expected_hash: &SHA256Hash) -> Result<bool>;
+    async fn verify_diff(
+        &self,
+        manifest: &TemporalManifest,
+        expected_hash: &SHA256Hash,
+    ) -> Result<bool>;
 }
 
 /// Cost estimation for applying a diff
@@ -123,15 +137,23 @@ impl StandardTemporalManifestDiffer {
         Self
     }
 
-    fn calculate_changes(&self, old: &TemporalManifest, new: &TemporalManifest) -> Vec<ChunkChange> {
+    fn calculate_changes(
+        &self,
+        old: &TemporalManifest,
+        new: &TemporalManifest,
+    ) -> Vec<ChunkChange> {
         let mut changes = Vec::new();
 
         // Build hash maps for efficient lookup
-        let old_chunks: HashMap<SHA256Hash, &ChunkMetadata> = old.chunk_index.iter()
+        let old_chunks: HashMap<SHA256Hash, &ChunkMetadata> = old
+            .chunk_index
+            .iter()
             .map(|c| (c.hash.clone(), c))
             .collect();
 
-        let new_chunks: HashMap<SHA256Hash, &ChunkMetadata> = new.chunk_index.iter()
+        let new_chunks: HashMap<SHA256Hash, &ChunkMetadata> = new
+            .chunk_index
+            .iter()
             .map(|c| (c.hash.clone(), c))
             .collect();
 
@@ -176,11 +198,28 @@ impl StandardTemporalManifestDiffer {
         changes
     }
 
-    fn calculate_stats(&self, changes: &[ChunkChange], old: &TemporalManifest, new: &TemporalManifest) -> DiffStats {
-        let chunks_added = changes.iter().filter(|c| c.change_type == ChangeType::Added).count();
-        let chunks_removed = changes.iter().filter(|c| c.change_type == ChangeType::Removed).count();
-        let chunks_modified = changes.iter().filter(|c| c.change_type == ChangeType::Modified).count();
-        let chunks_moved = changes.iter().filter(|c| c.change_type == ChangeType::Moved).count();
+    fn calculate_stats(
+        &self,
+        changes: &[ChunkChange],
+        old: &TemporalManifest,
+        new: &TemporalManifest,
+    ) -> DiffStats {
+        let chunks_added = changes
+            .iter()
+            .filter(|c| c.change_type == ChangeType::Added)
+            .count();
+        let chunks_removed = changes
+            .iter()
+            .filter(|c| c.change_type == ChangeType::Removed)
+            .count();
+        let chunks_modified = changes
+            .iter()
+            .filter(|c| c.change_type == ChangeType::Modified)
+            .count();
+        let chunks_moved = changes
+            .iter()
+            .filter(|c| c.change_type == ChangeType::Moved)
+            .count();
 
         let total_size_delta: i64 = changes.iter().map(|c| c.size_delta).sum();
 
@@ -197,7 +236,7 @@ impl StandardTemporalManifestDiffer {
             chunks_modified,
             chunks_moved,
             total_size_delta,
-            sequences_affected: 0,  // Would need sequence mapping
+            sequences_affected: 0, // Would need sequence mapping
             change_percentage,
         }
     }
@@ -205,7 +244,12 @@ impl StandardTemporalManifestDiffer {
 
 #[async_trait]
 impl TemporalManifestDiffer for StandardTemporalManifestDiffer {
-    async fn diff(&self, old: &TemporalManifest, new: &TemporalManifest, options: DiffOptions) -> Result<DiffResult> {
+    async fn diff(
+        &self,
+        old: &TemporalManifest,
+        new: &TemporalManifest,
+        options: DiffOptions,
+    ) -> Result<DiffResult> {
         let mut changes = self.calculate_changes(old, new);
 
         // Apply filters if specified
@@ -222,7 +266,10 @@ impl TemporalManifestDiffer for StandardTemporalManifestDiffer {
         // Check for upgrade requirements
         let mut upgrade_requirements = Vec::new();
         if old.version != new.version {
-            upgrade_requirements.push(format!("TemporalManifest version upgrade from {} to {}", old.version, new.version));
+            upgrade_requirements.push(format!(
+                "TemporalManifest version upgrade from {} to {}",
+                old.version, new.version
+            ));
         }
 
         Ok(DiffResult {
@@ -232,7 +279,12 @@ impl TemporalManifestDiffer for StandardTemporalManifestDiffer {
         })
     }
 
-    async fn diff_files(&self, old_path: &PathBuf, new_path: &PathBuf, options: DiffOptions) -> Result<DiffResult> {
+    async fn diff_files(
+        &self,
+        old_path: &PathBuf,
+        new_path: &PathBuf,
+        options: DiffOptions,
+    ) -> Result<DiffResult> {
         // Load manifests from files
         let old_data = std::fs::read(old_path)?;
         let new_data = std::fs::read(new_path)?;
@@ -272,8 +324,14 @@ impl TemporalManifestDiffer for StandardTemporalManifestDiffer {
                     }
                 }
                 ChangeType::Modified | ChangeType::Moved => {
-                    if let (Some(ref old_chunk), Some(ref new_chunk)) = (&change.old_chunk, &change.new_chunk) {
-                        if let Some(chunk) = manifest.chunk_index.iter_mut().find(|c| c.hash == old_chunk.hash) {
+                    if let (Some(ref old_chunk), Some(ref new_chunk)) =
+                        (&change.old_chunk, &change.new_chunk)
+                    {
+                        if let Some(chunk) = manifest
+                            .chunk_index
+                            .iter_mut()
+                            .find(|c| c.hash == old_chunk.hash)
+                        {
                             *chunk = new_chunk.clone();
                         }
                     }
@@ -289,11 +347,11 @@ impl TemporalManifestDiffer for StandardTemporalManifestDiffer {
         let chunks_to_remove = diff.stats.chunks_removed;
 
         // Estimate download size (assume average chunk size)
-        let avg_chunk_size = 100_000;  // 100KB average
+        let avg_chunk_size = 100_000; // 100KB average
         let download_bytes = chunks_to_download * avg_chunk_size;
 
         // Estimate time (assume 10MB/s download speed)
-        let download_speed = 10_000_000;  // 10MB/s
+        let download_speed = 10_000_000; // 10MB/s
         let estimated_seconds = (download_bytes / download_speed).max(1) as u64;
 
         // Recommend full download if more than 50% changed
@@ -308,7 +366,11 @@ impl TemporalManifestDiffer for StandardTemporalManifestDiffer {
         })
     }
 
-    async fn verify_diff(&self, manifest: &TemporalManifest, expected_hash: &SHA256Hash) -> Result<bool> {
+    async fn verify_diff(
+        &self,
+        manifest: &TemporalManifest,
+        expected_hash: &SHA256Hash,
+    ) -> Result<bool> {
         // Calculate hash of manifest and compare
         let manifest_bytes = serde_json::to_vec(manifest)?;
         let actual_hash = SHA256Hash::compute(&manifest_bytes);

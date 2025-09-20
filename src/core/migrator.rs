@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use crate::download::DatabaseSource;
 use crate::casg::types::TemporalManifest;
+use crate::download::DatabaseSource;
 
 /// A migration plan describing how to migrate between versions
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,17 +158,10 @@ pub trait VersionMigrator: Send + Sync {
     ) -> Result<MigrationStrategy>;
 
     /// Estimate migration cost
-    async fn estimate_cost(
-        &self,
-        plan: &MigrationPlan,
-    ) -> Result<(u64, usize)>; // (time_seconds, bytes)
+    async fn estimate_cost(&self, plan: &MigrationPlan) -> Result<(u64, usize)>; // (time_seconds, bytes)
 
     /// Check if migration is possible
-    async fn can_migrate(
-        &self,
-        from_version: &str,
-        to_version: &str,
-    ) -> Result<bool>;
+    async fn can_migrate(&self, from_version: &str, to_version: &str) -> Result<bool>;
 
     /// List available migration paths
     async fn list_migration_paths(&self, from_version: &str) -> Result<Vec<String>>;
@@ -480,13 +473,11 @@ impl VersionMigrator for StandardVersionMigrator {
         new_manifest: &TemporalManifest,
     ) -> Result<MigrationStrategy> {
         // Calculate change percentage
-        let old_chunks: std::collections::HashSet<_> = old_manifest.chunk_index.iter()
-            .map(|c| &c.hash)
-            .collect();
+        let old_chunks: std::collections::HashSet<_> =
+            old_manifest.chunk_index.iter().map(|c| &c.hash).collect();
 
-        let new_chunks: std::collections::HashSet<_> = new_manifest.chunk_index.iter()
-            .map(|c| &c.hash)
-            .collect();
+        let new_chunks: std::collections::HashSet<_> =
+            new_manifest.chunk_index.iter().map(|c| &c.hash).collect();
 
         let unchanged = old_chunks.intersection(&new_chunks).count();
         let total = old_chunks.len().max(new_chunks.len());

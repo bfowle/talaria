@@ -1,5 +1,5 @@
-use crate::casg::{Manifest, TemporalManifest, ChunkMetadata, SHA256Hash, TaxonId};
 use crate::casg::manifest::{ManifestFormat, TALARIA_MAGIC};
+use crate::casg::{ChunkMetadata, Manifest, SHA256Hash, TaxonId, TemporalManifest};
 use chrono::Utc;
 use std::collections::HashSet;
 use std::fs;
@@ -167,11 +167,8 @@ fn test_version_chaining() {
 
     // Create a chain of versions
     for i in 0..5 {
-        let mut manifest = create_test_manifest(
-            &format!("v{}", i),
-            &format!("2024.{:02}", i + 1),
-            "2024.01"
-        );
+        let mut manifest =
+            create_test_manifest(&format!("v{}", i), &format!("2024.{:02}", i + 1), "2024.01");
         manifest.taxonomy_root = SHA256Hash::compute(b"tax");
         manifest.sequence_root = SHA256Hash::compute(&format!("seq{}", i).into_bytes());
         manifest.chunk_index = vec![];
@@ -221,17 +218,15 @@ fn test_manifest_with_discrepancies() {
     manifest.taxonomy_root = SHA256Hash::compute(b"tax");
     manifest.sequence_root = SHA256Hash::compute(b"seq");
     manifest.chunk_index = vec![];
-    manifest.discrepancies = vec![
-        TaxonomicDiscrepancy {
-            sequence_id: "NP_123456.1".to_string(),
-            header_taxon: Some(TaxonId(562)),
-            mapped_taxon: Some(TaxonId(563)),
-            inferred_taxon: Some(TaxonId(562)),
-            confidence: 0.92,
-            detection_date: Utc::now(),
-            discrepancy_type: crate::casg::types::DiscrepancyType::Conflict,
-        },
-    ];
+    manifest.discrepancies = vec![TaxonomicDiscrepancy {
+        sequence_id: "NP_123456.1".to_string(),
+        header_taxon: Some(TaxonId(562)),
+        mapped_taxon: Some(TaxonId(563)),
+        inferred_taxon: Some(TaxonId(562)),
+        confidence: 0.92,
+        detection_date: Utc::now(),
+        discrepancy_type: crate::casg::types::DiscrepancyType::Conflict,
+    }];
     manifest.etag = "v1".to_string();
     manifest.previous_version = None;
 
@@ -286,7 +281,10 @@ fn test_manifest_format_detection() {
 
     // Test .tal extension
     let tal_path = temp_dir.path().join("manifest.tal");
-    assert_eq!(ManifestFormat::from_path(&tal_path), ManifestFormat::Talaria);
+    assert_eq!(
+        ManifestFormat::from_path(&tal_path),
+        ManifestFormat::Talaria
+    );
 
     // Test .json extension
     let json_path = temp_dir.path().join("manifest.json");
@@ -294,11 +292,17 @@ fn test_manifest_format_detection() {
 
     // Test unknown extension defaults to Talaria
     let unknown_path = temp_dir.path().join("manifest.xyz");
-    assert_eq!(ManifestFormat::from_path(&unknown_path), ManifestFormat::Talaria);
+    assert_eq!(
+        ManifestFormat::from_path(&unknown_path),
+        ManifestFormat::Talaria
+    );
 
     // Test no extension defaults to Talaria
     let no_ext_path = temp_dir.path().join("manifest");
-    assert_eq!(ManifestFormat::from_path(&no_ext_path), ManifestFormat::Talaria);
+    assert_eq!(
+        ManifestFormat::from_path(&no_ext_path),
+        ManifestFormat::Talaria
+    );
 }
 
 #[test]
@@ -324,7 +328,11 @@ fn test_tal_format_size_comparison() {
     // TAL format should be significantly smaller
     assert!(tal_size < json_size);
     let reduction = 100.0 * (1.0 - (tal_size as f64 / json_size as f64));
-    assert!(reduction > 50.0, "TAL format should achieve >50% size reduction, got {}%", reduction);
+    assert!(
+        reduction > 50.0,
+        "TAL format should achieve >50% size reduction, got {}%",
+        reduction
+    );
 }
 
 #[test]
@@ -333,23 +341,27 @@ fn test_manifest_roundtrip_tal_format() {
 
     // Create a complex manifest
     let mut manifest = create_test_manifest("20240315_143022", "2024.03.15", "2024.01.15");
-    manifest.chunk_index = vec![
-        ChunkMetadata {
-            hash: SHA256Hash::compute(b"chunk1"),
-            taxon_ids: vec![TaxonId(562), TaxonId(563)],
-            sequence_count: 1000,
-            size: 52428800,
-            compressed_size: Some(18350080),
-        },
-    ];
+    manifest.chunk_index = vec![ChunkMetadata {
+        hash: SHA256Hash::compute(b"chunk1"),
+        taxon_ids: vec![TaxonId(562), TaxonId(563)],
+        sequence_count: 1000,
+        size: 52428800,
+        compressed_size: Some(18350080),
+    }];
 
     // Save as TAL format with magic header
     let manifest_path = temp_dir.path().join("manifest.tal");
     let mut data = Vec::new();
     data.extend_from_slice(TALARIA_MAGIC);
     let serialized = rmp_serde::to_vec(&manifest).unwrap();
-    println!("DEBUG: Serialized manifest size: {} bytes", serialized.len());
-    println!("DEBUG: First 100 bytes: {:?}", &serialized[..serialized.len().min(100)]);
+    println!(
+        "DEBUG: Serialized manifest size: {} bytes",
+        serialized.len()
+    );
+    println!(
+        "DEBUG: First 100 bytes: {:?}",
+        &serialized[..serialized.len().min(100)]
+    );
     data.extend_from_slice(&serialized);
     fs::write(&manifest_path, data).unwrap();
 
@@ -431,8 +443,15 @@ fn test_large_manifest_performance() {
     // Log performance metrics (not asserting on time as it varies by system)
     println!("Large manifest (10k chunks):");
     println!("  TAL size: {} bytes, time: {:?}", tal_data.len(), tal_time);
-    println!("  JSON size: {} bytes, time: {:?}", json_data.len(), json_time);
-    println!("  Size reduction: {:.1}%", 100.0 * (1.0 - tal_data.len() as f64 / json_data.len() as f64));
+    println!(
+        "  JSON size: {} bytes, time: {:?}",
+        json_data.len(),
+        json_time
+    );
+    println!(
+        "  Size reduction: {:.1}%",
+        100.0 * (1.0 - tal_data.len() as f64 / json_data.len() as f64)
+    );
 }
 
 #[test]
@@ -443,7 +462,9 @@ fn test_corrupt_magic_header_handling() {
     // Write corrupt magic header
     let mut data = Vec::new();
     data.extend_from_slice(b"BAD\x01"); // Wrong magic
-    data.extend_from_slice(&rmp_serde::to_vec(&create_test_manifest("v1", "2024.01", "2024.01")).unwrap());
+    data.extend_from_slice(
+        &rmp_serde::to_vec(&create_test_manifest("v1", "2024.01", "2024.01")).unwrap(),
+    );
     fs::write(&manifest_path, &data).unwrap();
 
     // Should fail to parse since magic is wrong but data starts with non-MessagePack bytes
@@ -451,12 +472,14 @@ fn test_corrupt_magic_header_handling() {
     // and fail, or detect wrong magic. Either way, it shouldn't succeed with wrong data.
     let result = Manifest::load_file(&manifest_path);
     // We expect this to fail since "BAD\x01" followed by MessagePack is not valid
-    assert!(result.is_err() || {
-        // If it somehow succeeds, verify it's not reading our test manifest
-        if let Ok(m) = result {
-            m.get_data().map(|d| d.version != "v1").unwrap_or(true)
-        } else {
-            false
+    assert!(
+        result.is_err() || {
+            // If it somehow succeeds, verify it's not reading our test manifest
+            if let Ok(m) = result {
+                m.get_data().map(|d| d.version != "v1").unwrap_or(true)
+            } else {
+                false
+            }
         }
-    });
+    );
 }

@@ -1,12 +1,11 @@
+use crate::cli::output::*;
+use crate::core::paths;
 /// Taxonomy prerequisites management
 ///
 /// This module ensures that required taxonomy databases are available
 /// for proper sequence annotation and accession-to-taxid mapping.
-
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
-use crate::core::paths;
-use crate::cli::output::*;
 
 /// Taxonomy database files and their descriptions
 #[derive(Debug, Clone)]
@@ -169,12 +168,17 @@ impl TaxonomyPrerequisites {
         // For now, just provide instructions
         // TODO: Implement actual download when download infrastructure is stable
 
-        let taxdump = self.files.iter()
+        let taxdump = self
+            .files
+            .iter()
             .find(|f| f.name == "taxdump.tar.gz")
             .ok_or_else(|| anyhow::anyhow!("Taxdump configuration not found"))?;
 
         warning("Auto-download not yet implemented. Please download manually:");
-        info(&format!("  wget {}", taxdump.download_url.unwrap_or("URL not available")));
+        info(&format!(
+            "  wget {}",
+            taxdump.download_url.unwrap_or("URL not available")
+        ));
         info(&format!("  mv taxdump.tar.gz {}", taxdump.path.display()));
 
         anyhow::bail!("Please download taxonomy files manually using the commands above")
@@ -208,18 +212,19 @@ pub struct TaxonomyStatus {
 #[allow(dead_code)]
 fn extract_taxdump(archive_path: &Path) -> Result<()> {
     use flate2::read::GzDecoder;
-    use tar::Archive;
     use std::fs::File;
+    use tar::Archive;
 
-    let file = File::open(archive_path)
-        .context("Failed to open taxdump archive")?;
+    let file = File::open(archive_path).context("Failed to open taxdump archive")?;
     let decoder = GzDecoder::new(file);
     let mut archive = Archive::new(decoder);
 
-    let extract_dir = archive_path.parent()
+    let extract_dir = archive_path
+        .parent()
         .ok_or_else(|| anyhow::anyhow!("Invalid archive path"))?;
 
-    archive.unpack(extract_dir)
+    archive
+        .unpack(extract_dir)
         .context("Failed to extract taxdump")?;
 
     Ok(())
@@ -242,8 +247,8 @@ pub fn should_warn_about_taxonomy() -> bool {
 
 /// Download specific taxonomy database
 pub async fn download_taxonomy_database(database: &str) -> Result<()> {
-    use crate::cli::commands::database::download::DownloadArgs;
     use crate::cli::commands::database::download;
+    use crate::cli::commands::database::download::DownloadArgs;
 
     let args = DownloadArgs {
         database: Some(format!("ncbi/{}", database)),
@@ -265,6 +270,10 @@ pub async fn download_taxonomy_database(database: &str) -> Result<()> {
         reference_proteomes: false,
         max_sequences: None,
         description: None,
+        at_time: None,
+        sequence_version: None,
+        taxonomy_version: None,
+        show_versions: false,
     };
 
     download::run(args)?;

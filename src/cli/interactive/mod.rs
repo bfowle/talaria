@@ -22,16 +22,20 @@ pub fn create_styled_table() -> Table {
 /// Get the default markdown skin for terminal rendering
 pub fn get_markdown_skin() -> MadSkin {
     let mut skin = MadSkin::default();
-    
+
     // Customize the skin for better appearance
     skin.bold.set_fg(crossterm::style::Color::Yellow);
     skin.italic.set_fg(crossterm::style::Color::Cyan);
-    skin.code_block.set_bg(crossterm::style::Color::Rgb { r: 40, g: 40, b: 40 });
+    skin.code_block.set_bg(crossterm::style::Color::Rgb {
+        r: 40,
+        g: 40,
+        b: 40,
+    });
     skin.inline_code.set_fg(crossterm::style::Color::Green);
     skin.headers[0].set_fg(crossterm::style::Color::Magenta);
     skin.headers[1].set_fg(crossterm::style::Color::Blue);
     skin.headers[2].set_fg(crossterm::style::Color::Cyan);
-    
+
     skin
 }
 

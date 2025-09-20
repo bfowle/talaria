@@ -5,7 +5,6 @@
 /// - OX= field extraction when TaxID=0
 /// - Metadata bleeding into sequence data
 /// - Various UniProt/NCBI header formats
-
 use talaria::bio::fasta::{parse_fasta_from_bytes, write_fasta};
 use talaria::bio::sequence::Sequence;
 use tempfile::NamedTempFile;
@@ -28,13 +27,21 @@ IAELSFCAPASVNKLDLHTL";
     assert_eq!(seq.taxon_id, Some(666));
 
     // Description should contain the metadata
-    assert!(seq.description.as_ref().unwrap().contains("Fatty acid oxidation"));
+    assert!(seq
+        .description
+        .as_ref()
+        .unwrap()
+        .contains("Fatty acid oxidation"));
     assert!(seq.description.as_ref().unwrap().contains("OX=666"));
 
     // Sequence should start with MIYQ, not 3SV=1MIYQ
     let seq_str = String::from_utf8(seq.sequence.clone()).unwrap();
     assert!(seq_str.starts_with("MIYQ"), "Sequence was: {}", seq_str);
-    assert!(!seq_str.contains("SV="), "SV= leaked into sequence: {}", seq_str);
+    assert!(
+        !seq_str.contains("SV="),
+        "SV= leaked into sequence: {}",
+        seq_str
+    );
 }
 
 #[test]
@@ -51,8 +58,16 @@ AQPQTTLESLDQFNQAAPEQSHQILASQEPVS";
 
     // Sequence should contain MYLT and not include SV=1
     // Note: Due to how the parsing works, sequence might be on second line
-    assert!(seq_str.contains("MYLT") || seq_str.starts_with("AQPQ"), "Sequence was: {}", seq_str);
-    assert!(!seq_str.contains("="), "= character in sequence: {}", seq_str);
+    assert!(
+        seq_str.contains("MYLT") || seq_str.starts_with("AQPQ"),
+        "Sequence was: {}",
+        seq_str
+    );
+    assert!(
+        !seq_str.contains("="),
+        "= character in sequence: {}",
+        seq_str
+    );
 
     // Should extract TaxID from OX= field
     assert_eq!(seq.taxon_id, Some(666));
@@ -195,14 +210,23 @@ fn test_roundtrip_with_wrapped_headers() {
     // Create sequences with complex metadata
     let sequences = vec![
         {
-            let mut seq = Sequence::new("tr|A0A0H6|A0A0H6_VIBCL".to_string(), b"MIYQAKTLQVKQLANG".to_vec());
-            seq.description = Some("Fatty acid oxidation OS=Vibrio cholerae OX=666 GN=fadB PE=3 SV=1".to_string());
+            let mut seq = Sequence::new(
+                "tr|A0A0H6|A0A0H6_VIBCL".to_string(),
+                b"MIYQAKTLQVKQLANG".to_vec(),
+            );
+            seq.description = Some(
+                "Fatty acid oxidation OS=Vibrio cholerae OX=666 GN=fadB PE=3 SV=1".to_string(),
+            );
             seq.taxon_id = Some(666);
             seq
         },
         {
-            let mut seq = Sequence::new("sp|Q5EK40|CHXA_VIBCL".to_string(), b"MYLTFYLEKVMKK".to_vec());
-            seq.description = Some("Cholix toxin OS=Vibrio cholerae OX=666 GN=chxA PE=1 SV=1".to_string());
+            let mut seq = Sequence::new(
+                "sp|Q5EK40|CHXA_VIBCL".to_string(),
+                b"MYLTFYLEKVMKK".to_vec(),
+            );
+            seq.description =
+                Some("Cholix toxin OS=Vibrio cholerae OX=666 GN=chxA PE=1 SV=1".to_string());
             seq.taxon_id = Some(666);
             seq
         },
@@ -221,12 +245,18 @@ fn test_roundtrip_with_wrapped_headers() {
     // Verify first sequence
     assert_eq!(parsed[0].id, "tr|A0A0H6|A0A0H6_VIBCL");
     assert_eq!(parsed[0].taxon_id, Some(666));
-    assert_eq!(String::from_utf8(parsed[0].sequence.clone()).unwrap(), "MIYQAKTLQVKQLANG");
+    assert_eq!(
+        String::from_utf8(parsed[0].sequence.clone()).unwrap(),
+        "MIYQAKTLQVKQLANG"
+    );
 
     // Verify second sequence
     assert_eq!(parsed[1].id, "sp|Q5EK40|CHXA_VIBCL");
     assert_eq!(parsed[1].taxon_id, Some(666));
-    assert_eq!(String::from_utf8(parsed[1].sequence.clone()).unwrap(), "MYLTFYLEKVMKK");
+    assert_eq!(
+        String::from_utf8(parsed[1].sequence.clone()).unwrap(),
+        "MYLTFYLEKVMKK"
+    );
 }
 
 #[test]
@@ -245,19 +275,29 @@ fn test_various_malformed_headers() {
 
     for (fasta, expected_seq) in test_cases {
         let sequences = parse_fasta_from_bytes(fasta);
-        assert!(sequences.is_ok(), "Failed to parse: {:?}", std::str::from_utf8(fasta));
+        assert!(
+            sequences.is_ok(),
+            "Failed to parse: {:?}",
+            std::str::from_utf8(fasta)
+        );
         let sequences = sequences.unwrap();
         assert_eq!(sequences.len(), 1);
 
         let seq_str = String::from_utf8(sequences[0].sequence.clone()).unwrap();
-        assert_eq!(seq_str, expected_seq, "For input: {:?}", std::str::from_utf8(fasta));
+        assert_eq!(
+            seq_str,
+            expected_seq,
+            "For input: {:?}",
+            std::str::from_utf8(fasta)
+        );
     }
 }
 
 #[test]
 fn test_header_with_equals_in_description() {
     // Test that = signs in regular description don't cause issues
-    let fasta = b">test_id ATP-binding cassette transporter A=B OS=E. coli OX=562 function=transport
+    let fasta =
+        b">test_id ATP-binding cassette transporter A=B OS=E. coli OX=562 function=transport
 MKLTFFF";
 
     let sequences = parse_fasta_from_bytes(fasta).unwrap();

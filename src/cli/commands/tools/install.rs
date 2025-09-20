@@ -1,5 +1,5 @@
-use clap::Args;
 use crate::tools::{Tool, ToolManager};
+use clap::Args;
 
 #[derive(Args)]
 pub struct InstallArgs {
@@ -33,9 +33,7 @@ pub fn run(args: InstallArgs) -> anyhow::Result<()> {
             println!("Current {} version: {}", tool, current);
             println!("Checking for updates...");
 
-            let new_version = runtime.block_on(async {
-                manager.check_for_upgrade(tool).await
-            })?;
+            let new_version = runtime.block_on(async { manager.check_for_upgrade(tool).await })?;
 
             if let Some(new_ver) = new_version {
                 println!("[NEW] New version available: {}", new_ver);
@@ -46,7 +44,10 @@ pub fn run(args: InstallArgs) -> anyhow::Result<()> {
                 return Ok(());
             }
         } else {
-            println!("[!] {} is not installed, installing latest version...", tool);
+            println!(
+                "[!] {} is not installed, installing latest version...",
+                tool
+            );
         }
     } else if !args.force && manager.is_installed(tool) {
         // Check if already installed (when not upgrading)
@@ -56,12 +57,10 @@ pub fn run(args: InstallArgs) -> anyhow::Result<()> {
             return Ok(());
         }
     }
-    
+
     match tool {
         Tool::Lambda => {
-            runtime.block_on(async {
-                manager.install_lambda(args.version.as_deref()).await
-            })?;
+            runtime.block_on(async { manager.install_lambda(args.version.as_deref()).await })?;
         }
         Tool::Blast => {
             anyhow::bail!("BLAST installation not yet implemented");
@@ -73,11 +72,11 @@ pub fn run(args: InstallArgs) -> anyhow::Result<()> {
             anyhow::bail!("MMseqs2 installation not yet implemented");
         }
     }
-    
+
     // Verify installation
     if let Some(path) = manager.get_tool_path(tool) {
         println!("\n{} installed successfully at: {:?}", tool, path);
-        
+
         // Test the tool
         if tool == Tool::Lambda {
             use crate::tools::lambda::LambdaAligner;
@@ -87,6 +86,6 @@ pub fn run(args: InstallArgs) -> anyhow::Result<()> {
             }
         }
     }
-    
+
     Ok(())
 }

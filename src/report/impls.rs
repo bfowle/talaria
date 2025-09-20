@@ -1,10 +1,9 @@
 /// Reporter trait implementations for various output formats
-
-use super::traits::{Reporter, InteractiveReporter, ReportFormat, ReportData, InteractiveOptions};
+use super::traits::{InteractiveOptions, InteractiveReporter, ReportData, ReportFormat, Reporter};
 use anyhow::Result;
-use std::path::Path;
-use std::fs;
 use serde_json;
+use std::fs;
+use std::path::Path;
 
 /// JSON format reporter
 pub struct JsonReporter {
@@ -73,7 +72,12 @@ impl MarkdownReporter {
         let mut toc = String::from("## Table of Contents\n\n");
 
         for (i, section) in data.sections.iter().enumerate() {
-            toc.push_str(&format!("{}. [{}](#section-{})\n", i + 1, section.title, i + 1));
+            toc.push_str(&format!(
+                "{}. [{}](#section-{})\n",
+                i + 1,
+                section.title,
+                i + 1
+            ));
         }
 
         toc.push('\n');
@@ -85,16 +89,36 @@ impl MarkdownReporter {
 
         let stats = &data.statistics;
         // Coverage badge
-        if let Some(crate::report::traits::StatValue::Float(coverage)) = stats.custom_stats.get("coverage") {
+        if let Some(crate::report::traits::StatValue::Float(coverage)) =
+            stats.custom_stats.get("coverage")
+        {
             let coverage_pct = coverage * 100.0;
-            let color = if coverage_pct > 90.0 { "green" } else if coverage_pct > 70.0 { "yellow" } else { "red" };
-            badges.push_str(&format!("![Coverage](https://img.shields.io/badge/coverage-{:.1}%25-{})\n", coverage_pct, color));
+            let color = if coverage_pct > 90.0 {
+                "green"
+            } else if coverage_pct > 70.0 {
+                "yellow"
+            } else {
+                "red"
+            };
+            badges.push_str(&format!(
+                "![Coverage](https://img.shields.io/badge/coverage-{:.1}%25-{})\n",
+                coverage_pct, color
+            ));
         }
 
         // Status badge
-        if let Some(crate::report::traits::StatValue::String(status_str)) = stats.custom_stats.get("status") {
-            let color = if status_str == "valid" { "green" } else { "red" };
-            badges.push_str(&format!("![Status](https://img.shields.io/badge/status-{}-{})\n", status_str, color));
+        if let Some(crate::report::traits::StatValue::String(status_str)) =
+            stats.custom_stats.get("status")
+        {
+            let color = if status_str == "valid" {
+                "green"
+            } else {
+                "red"
+            };
+            badges.push_str(&format!(
+                "![Status](https://img.shields.io/badge/status-{}-{})\n",
+                status_str, color
+            ));
         }
 
         if !badges.is_empty() {
@@ -170,7 +194,9 @@ impl Reporter for MarkdownReporter {
                 crate::report::traits::SectionContent::Mixed(contents) => {
                     for content in contents {
                         match content {
-                            crate::report::traits::SectionContent::Text(text) => output.push_str(&format!("{}\n", text)),
+                            crate::report::traits::SectionContent::Text(text) => {
+                                output.push_str(&format!("{}\n", text))
+                            }
                             _ => {} // Handle other types as needed
                         }
                     }
@@ -254,7 +280,9 @@ impl Reporter for HtmlReporter {
         let mut html = String::from("<!DOCTYPE html>\n<html>\n<head>\n");
         html.push_str(&format!("<title>{}</title>\n", data.title));
         html.push_str("<meta charset=\"UTF-8\">\n");
-        html.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n");
+        html.push_str(
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n",
+        );
 
         if self.include_css {
             html.push_str("<style>\n");
@@ -266,7 +294,10 @@ impl Reporter for HtmlReporter {
         html.push_str(&format!("<h1>{}</h1>\n", data.title));
 
         if let Some(desc) = data.metadata.get("description") {
-            html.push_str(&format!("<p class=\"description\">{}</p>\n", html_escape(desc)));
+            html.push_str(&format!(
+                "<p class=\"description\">{}</p>\n",
+                html_escape(desc)
+            ));
         }
 
         // Generate sections
@@ -294,12 +325,21 @@ impl Reporter for HtmlReporter {
                     html.push_str("</tbody>\n</table>\n");
                 }
                 crate::report::traits::SectionContent::Code(code) => {
-                    html.push_str(&format!("<pre><code class=\"language-{}\">{}</code></pre>\n",
-                        code.language, html_escape(&code.code)));
+                    html.push_str(&format!(
+                        "<pre><code class=\"language-{}\">{}</code></pre>\n",
+                        code.language,
+                        html_escape(&code.code)
+                    ));
                 }
                 crate::report::traits::SectionContent::Chart(chart) => {
-                    html.push_str(&format!("<div class=\"chart\" data-type=\"{:?}\">\n", chart.chart_type));
-                    html.push_str(&format!("<canvas id=\"chart-{}\"></canvas>\n", section.title.replace(' ', "_")));
+                    html.push_str(&format!(
+                        "<div class=\"chart\" data-type=\"{:?}\">\n",
+                        chart.chart_type
+                    ));
+                    html.push_str(&format!(
+                        "<canvas id=\"chart-{}\"></canvas>\n",
+                        section.title.replace(' ', "_")
+                    ));
                     html.push_str("</div>\n");
                 }
                 crate::report::traits::SectionContent::List(items) => {
@@ -419,7 +459,8 @@ impl InteractiveReporter for HtmlReporter {
         sortable: bool,
     ) -> Result<String> {
         let table_id = format!("table_{}", uuid::Uuid::new_v4());
-        let mut html = format!("<table id='{}' class='data-table{}'>\n",
+        let mut html = format!(
+            "<table id='{}' class='data-table{}'>\n",
             table_id,
             if sortable { " sortable" } else { "" }
         );

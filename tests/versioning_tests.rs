@@ -1,12 +1,11 @@
+use chrono::Utc;
+use talaria::utils::database_ref::parse_database_reference;
 /// Comprehensive tests for the versioning system
 ///
 /// Tests timestamp-based storage, alias management, version resolution,
 /// and integration with database commands
-
-use talaria::utils::version_detector::{DatabaseVersion, VersionManager, VersionDetector};
-use talaria::utils::database_ref::parse_database_reference;
+use talaria::utils::version_detector::{DatabaseVersion, VersionDetector, VersionManager};
 use tempfile::TempDir;
-use chrono::Utc;
 
 /// Helper to create a test version with timestamp
 fn create_test_version(source: &str, dataset: &str, upstream: Option<&str>) -> DatabaseVersion {
@@ -18,8 +17,12 @@ fn create_test_version(source: &str, dataset: &str, upstream: Option<&str>) -> D
     }
 
     // Add some test metadata
-    version.metadata.insert("sequences".to_string(), "573021".to_string());
-    version.metadata.insert("size_bytes".to_string(), "404750336".to_string());
+    version
+        .metadata
+        .insert("sequences".to_string(), "573021".to_string());
+    version
+        .metadata
+        .insert("size_bytes".to_string(), "404750336".to_string());
 
     version
 }
@@ -27,16 +30,32 @@ fn create_test_version(source: &str, dataset: &str, upstream: Option<&str>) -> D
 #[test]
 fn test_timestamp_format_validation() {
     // Valid timestamps
-    assert!(talaria::utils::version_detector::is_timestamp_format("20250915_053033"));
-    assert!(talaria::utils::version_detector::is_timestamp_format("20241231_235959"));
-    assert!(talaria::utils::version_detector::is_timestamp_format("19990101_000000"));
+    assert!(talaria::utils::version_detector::is_timestamp_format(
+        "20250915_053033"
+    ));
+    assert!(talaria::utils::version_detector::is_timestamp_format(
+        "20241231_235959"
+    ));
+    assert!(talaria::utils::version_detector::is_timestamp_format(
+        "19990101_000000"
+    ));
 
     // Invalid timestamps
-    assert!(!talaria::utils::version_detector::is_timestamp_format("2024_04")); // UniProt format
-    assert!(!talaria::utils::version_detector::is_timestamp_format("2024-09-15")); // Date format
-    assert!(!talaria::utils::version_detector::is_timestamp_format("latest")); // Alias
-    assert!(!talaria::utils::version_detector::is_timestamp_format("20250915")); // No time part
-    assert!(!talaria::utils::version_detector::is_timestamp_format("20250915_05303")); // Wrong time length
+    assert!(!talaria::utils::version_detector::is_timestamp_format(
+        "2024_04"
+    )); // UniProt format
+    assert!(!talaria::utils::version_detector::is_timestamp_format(
+        "2024-09-15"
+    )); // Date format
+    assert!(!talaria::utils::version_detector::is_timestamp_format(
+        "latest"
+    )); // Alias
+    assert!(!talaria::utils::version_detector::is_timestamp_format(
+        "20250915"
+    )); // No time part
+    assert!(!talaria::utils::version_detector::is_timestamp_format(
+        "20250915_05303"
+    )); // Wrong time length
 }
 
 #[test]
@@ -53,7 +72,10 @@ fn test_version_alias_categories() {
     version.add_custom_alias("paper-2024".to_string());
     version.add_custom_alias("production-v1".to_string());
     assert!(version.aliases.custom.contains(&"paper-2024".to_string()));
-    assert!(version.aliases.custom.contains(&"production-v1".to_string()));
+    assert!(version
+        .aliases
+        .custom
+        .contains(&"production-v1".to_string()));
 
     // Upstream aliases are already added
     assert!(version.aliases.upstream.contains(&"2024_04".to_string()));
@@ -90,7 +112,8 @@ fn test_version_resolution() {
     let manager = VersionManager::new(temp_dir.path());
 
     // Create test version structure
-    let versions_dir = temp_dir.path()
+    let versions_dir = temp_dir
+        .path()
         .join("versions")
         .join("uniprot")
         .join("swissprot");
@@ -119,16 +142,24 @@ fn test_version_resolution() {
     #[cfg(unix)]
     {
         // Should resolve all references to the same timestamp
-        let resolved = manager.resolve_version("uniprot", "swissprot", "current").unwrap();
+        let resolved = manager
+            .resolve_version("uniprot", "swissprot", "current")
+            .unwrap();
         assert_eq!(resolved, timestamp);
 
-        let resolved = manager.resolve_version("uniprot", "swissprot", "2024_04").unwrap();
+        let resolved = manager
+            .resolve_version("uniprot", "swissprot", "2024_04")
+            .unwrap();
         assert_eq!(resolved, timestamp);
 
-        let resolved = manager.resolve_version("uniprot", "swissprot", "paper-2024").unwrap();
+        let resolved = manager
+            .resolve_version("uniprot", "swissprot", "paper-2024")
+            .unwrap();
         assert_eq!(resolved, timestamp);
 
-        let resolved = manager.resolve_version("uniprot", "swissprot", timestamp).unwrap();
+        let resolved = manager
+            .resolve_version("uniprot", "swissprot", timestamp)
+            .unwrap();
         assert_eq!(resolved, timestamp);
     }
 }
@@ -163,7 +194,8 @@ fn test_version_listing_with_symlinks() {
     let manager = VersionManager::new(temp_dir.path());
 
     // Create multiple versions
-    let versions_dir = temp_dir.path()
+    let versions_dir = temp_dir
+        .path()
         .join("versions")
         .join("uniprot")
         .join("swissprot");
@@ -224,7 +256,8 @@ fn test_protected_alias_handling() {
     let manager = VersionManager::new(temp_dir.path());
 
     // Create test structure
-    let versions_dir = temp_dir.path()
+    let versions_dir = temp_dir
+        .path()
         .join("versions")
         .join("uniprot")
         .join("swissprot");
@@ -253,13 +286,17 @@ fn test_upstream_version_detection() {
 
     // Test UniProt format
     let uniprot_content = b"# Release: 2024_04\n>sp|P12345|PROT_HUMAN Some protein\nMASEQUENCE";
-    let version = detector.detect_version("uniprot", "swissprot", uniprot_content).unwrap();
+    let version = detector
+        .detect_version("uniprot", "swissprot", uniprot_content)
+        .unwrap();
     assert_eq!(version.upstream_version, Some("2024_04".to_string()));
     assert!(version.aliases.upstream.contains(&"2024_04".to_string()));
 
     // Test without detectable version
     let generic_content = b">seq1\nATGC\n>seq2\nGCTA";
-    let version = detector.detect_version("custom", "mydb", generic_content).unwrap();
+    let version = detector
+        .detect_version("custom", "mydb", generic_content)
+        .unwrap();
     assert_eq!(version.upstream_version, None);
     assert!(version.aliases.upstream.is_empty());
 }
@@ -308,23 +345,20 @@ fn test_edge_cases() {
 #[cfg(unix)]
 #[test]
 fn test_concurrent_version_operations() {
-    use std::thread;
     use std::sync::Arc;
+    use std::thread;
 
     let temp_dir = Arc::new(TempDir::new().unwrap());
     let manager = Arc::new(VersionManager::new(temp_dir.path()));
 
     // Create initial structure
-    let versions_dir = temp_dir.path()
-        .join("versions")
-        .join("test")
-        .join("db");
+    let versions_dir = temp_dir.path().join("versions").join("test").join("db");
     std::fs::create_dir_all(&versions_dir).unwrap();
 
     // Create multiple versions
-    let timestamps: Vec<String> = (0..5).map(|i| {
-        format!("2025091{}_0{}0000", 5 + i, i)
-    }).collect();
+    let timestamps: Vec<String> = (0..5)
+        .map(|i| format!("2025091{}_0{}0000", 5 + i, i))
+        .collect();
 
     for timestamp in &timestamps {
         let version_dir = versions_dir.join(timestamp);
@@ -336,16 +370,22 @@ fn test_concurrent_version_operations() {
     }
 
     // Concurrent operations
-    let handles: Vec<_> = timestamps.iter().enumerate().map(|(i, timestamp)| {
-        let manager_clone = manager.clone();
-        let timestamp_clone = timestamp.clone();
+    let handles: Vec<_> = timestamps
+        .iter()
+        .enumerate()
+        .map(|(i, timestamp)| {
+            let manager_clone = manager.clone();
+            let timestamp_clone = timestamp.clone();
 
-        thread::spawn(move || {
-            // Each thread creates a different alias
-            let alias = format!("thread-{}", i);
-            manager_clone.create_alias("test", "db", &timestamp_clone, &alias).unwrap();
+            thread::spawn(move || {
+                // Each thread creates a different alias
+                let alias = format!("thread-{}", i);
+                manager_clone
+                    .create_alias("test", "db", &timestamp_clone, &alias)
+                    .unwrap();
+            })
         })
-    }).collect();
+        .collect();
 
     // Wait for all threads
     for handle in handles {
@@ -368,7 +408,8 @@ fn test_version_metadata_persistence() {
     let _manager = VersionManager::new(temp_dir.path());
 
     // Create and save version
-    let versions_dir = temp_dir.path()
+    let versions_dir = temp_dir
+        .path()
         .join("versions")
         .join("uniprot")
         .join("trembl");
@@ -381,7 +422,9 @@ fn test_version_metadata_persistence() {
     let mut version = create_test_version("uniprot", "trembl", Some("2024_05"));
     version.timestamp = timestamp.to_string();
     version.add_custom_alias("test-alias".to_string());
-    version.metadata.insert("custom_field".to_string(), "custom_value".to_string());
+    version
+        .metadata
+        .insert("custom_field".to_string(), "custom_value".to_string());
 
     // Save
     let version_json = serde_json::to_string_pretty(&version).unwrap();
@@ -395,5 +438,8 @@ fn test_version_metadata_persistence() {
     assert_eq!(loaded.timestamp, timestamp);
     assert_eq!(loaded.upstream_version, Some("2024_05".to_string()));
     assert!(loaded.aliases.custom.contains(&"test-alias".to_string()));
-    assert_eq!(loaded.metadata.get("custom_field"), Some(&"custom_value".to_string()));
+    assert_eq!(
+        loaded.metadata.get("custom_field"),
+        Some(&"custom_value".to_string())
+    );
 }

@@ -1,10 +1,10 @@
-use talaria::core::database_manager::DatabaseManager;
+use chrono::Utc;
+use std::fs;
 use talaria::bio::sequence::Sequence;
-use talaria::casg::types::{TemporalManifest, ChunkMetadata, SHA256Hash, TaxonId};
+use talaria::casg::types::{ChunkMetadata, SHA256Hash, TaxonId, TemporalManifest};
+use talaria::core::database_manager::DatabaseManager;
 use talaria::core::paths;
 use tempfile::TempDir;
-use std::fs;
-use chrono::Utc;
 
 /// Test that reduce command validates database existence
 #[test]
@@ -108,15 +108,13 @@ fn test_casg_assembly_from_manifest() {
         source_database: Some("custom/test".to_string()),
         temporal_coordinate: None,
         chunk_merkle_tree: None,
-        chunk_index: vec![
-            ChunkMetadata {
-                hash: SHA256Hash::compute(b"test_chunk"),
-                taxon_ids: vec![TaxonId(9606)],
-                sequence_count: 1,
-                size: 100,
-                compressed_size: Some(50),
-            }
-        ],
+        chunk_index: vec![ChunkMetadata {
+            hash: SHA256Hash::compute(b"test_chunk"),
+            taxon_ids: vec![TaxonId(9606)],
+            sequence_count: 1,
+            size: 100,
+            compressed_size: Some(50),
+        }],
         discrepancies: Vec::new(),
         etag: "test".to_string(),
         previous_version: None,
@@ -130,9 +128,8 @@ fn test_casg_assembly_from_manifest() {
     fs::write(&manifest_path, manifest_json).unwrap();
 
     // Verify manifest can be loaded
-    let loaded: TemporalManifest = serde_json::from_str(
-        &fs::read_to_string(&manifest_path).unwrap()
-    ).unwrap();
+    let loaded: TemporalManifest =
+        serde_json::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
     assert_eq!(loaded.version, "20240101");
     assert_eq!(loaded.chunk_index.len(), 1);
 
@@ -209,10 +206,10 @@ fn test_reduction_references_existing_chunks() {
 /// Test that reduction creates a profile, not a separate database
 #[test]
 fn test_reduction_creates_profile_not_database() {
-    use talaria::core::database_manager::DatabaseManager;
-    use talaria::casg::CASGRepository;
-    use tempfile::TempDir;
     use std::fs;
+    use talaria::casg::CASGRepository;
+    use talaria::core::database_manager::DatabaseManager;
+    use tempfile::TempDir;
 
     let temp_dir = TempDir::new().unwrap();
     std::env::set_var("TALARIA_HOME", temp_dir.path());
@@ -261,7 +258,8 @@ fn test_reduction_creates_profile_not_database() {
     // 3. Simulate storing a reduction (without running full reduction pipeline)
     // Since we can't access the repository directly, we need to use CASGRepository directly
     // but we need to open the exact same path to share the storage
-    let casg = CASGRepository::open(&db_path).unwrap_or_else(|_| CASGRepository::init(&db_path).unwrap());
+    let casg =
+        CASGRepository::open(&db_path).unwrap_or_else(|_| CASGRepository::init(&db_path).unwrap());
 
     use talaria::casg::reduction::{ReductionManifest, ReductionParameters};
 
@@ -284,7 +282,9 @@ fn test_reduction_creates_profile_not_database() {
     );
 
     // Store the reduction manifest
-    casg.storage.store_reduction_manifest(&reduction_manifest).unwrap();
+    casg.storage
+        .store_reduction_manifest(&reduction_manifest)
+        .unwrap();
 
     // Recreate manager to pick up the changes
     let manager = DatabaseManager::new(Some(db_path.to_string_lossy().to_string())).unwrap();
@@ -300,11 +300,19 @@ fn test_reduction_creates_profile_not_database() {
     // Check that the reduction profile was created
     let profiles_dir = db_path.join("profiles");
     assert!(profiles_dir.exists(), "Profiles directory should exist");
-    assert!(profiles_dir.join("test-50-percent").exists(), "Profile file should exist");
+    assert!(
+        profiles_dir.join("test-50-percent").exists(),
+        "Profile file should exist"
+    );
 
     // 5. Verify the profile is associated with the database
-    let profiles = manager.get_reduction_profiles_for_database("custom/testdb").unwrap();
-    assert!(profiles.contains(&"test-50-percent".to_string()), "Database should have the reduction profile");
+    let profiles = manager
+        .get_reduction_profiles_for_database("custom/testdb")
+        .unwrap();
+    assert!(
+        profiles.contains(&"test-50-percent".to_string()),
+        "Database should have the reduction profile"
+    );
 
     std::env::remove_var("TALARIA_HOME");
 }
@@ -312,15 +320,21 @@ fn test_reduction_creates_profile_not_database() {
 /// Test database source mapping
 #[test]
 fn test_database_source_mapping() {
-    use talaria::download::{DatabaseSource, UniProtDatabase, NCBIDatabase};
+    use talaria::download::{DatabaseSource, NCBIDatabase, UniProtDatabase};
 
     // Test UniProt mapping
     let source = map_database_name("uniprot/swissprot");
-    assert!(matches!(source, Some(DatabaseSource::UniProt(UniProtDatabase::SwissProt))));
+    assert!(matches!(
+        source,
+        Some(DatabaseSource::UniProt(UniProtDatabase::SwissProt))
+    ));
 
     // Test NCBI mapping
     let source = map_database_name("ncbi/nr");
-    assert!(matches!(source, Some(DatabaseSource::NCBI(NCBIDatabase::NR))));
+    assert!(matches!(
+        source,
+        Some(DatabaseSource::NCBI(NCBIDatabase::NR))
+    ));
 
     // Test custom database (no mapping)
     let source = map_database_name("custom/my_db");
@@ -328,7 +342,7 @@ fn test_database_source_mapping() {
 }
 
 fn map_database_name(db_name: &str) -> Option<talaria::download::DatabaseSource> {
-    use talaria::download::{DatabaseSource, UniProtDatabase, NCBIDatabase};
+    use talaria::download::{DatabaseSource, NCBIDatabase, UniProtDatabase};
 
     match db_name {
         "uniprot/swissprot" => Some(DatabaseSource::UniProt(UniProtDatabase::SwissProt)),
@@ -363,12 +377,14 @@ mod integration_tests {
                 description: Some("Test 1".to_string()),
                 sequence: b"ACGT".to_vec(),
                 taxon_id: Some(9606),
+                taxonomy_sources: Default::default(),
             },
             Sequence {
                 id: "seq2".to_string(),
                 description: Some("Test 2".to_string()),
                 sequence: b"TGCA".to_vec(),
                 taxon_id: Some(9606),
+                taxonomy_sources: Default::default(),
             },
         ];
 
@@ -388,15 +404,13 @@ mod integration_tests {
             source_database: Some("custom/test_db".to_string()),
             temporal_coordinate: None,
             chunk_merkle_tree: None,
-            chunk_index: vec![
-                ChunkMetadata {
-                    hash: SHA256Hash::compute(b"test"),
-                    taxon_ids: vec![TaxonId(9606)],
-                    sequence_count: 2,
-                    size: 100,
-                    compressed_size: Some(50),
-                }
-            ],
+            chunk_index: vec![ChunkMetadata {
+                hash: SHA256Hash::compute(b"test"),
+                taxon_ids: vec![TaxonId(9606)],
+                sequence_count: 2,
+                size: 100,
+                compressed_size: Some(50),
+            }],
             discrepancies: Vec::new(),
             etag: "test".to_string(),
             previous_version: None,
@@ -404,8 +418,9 @@ mod integration_tests {
 
         fs::write(
             db_path.join("manifest.json"),
-            serde_json::to_string(&manifest).unwrap()
-        ).unwrap();
+            serde_json::to_string(&manifest).unwrap(),
+        )
+        .unwrap();
 
         // 3. Verify database appears in list
         let databases = manager.list_databases().unwrap();

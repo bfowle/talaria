@@ -1,14 +1,24 @@
-use anyhow::{Context, Result};
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Write, Read};
-use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use crate::bio::sequence::Sequence;
+use crate::core::memory_estimator::MemoryEstimator;
 use crate::tools::traits::{Aligner, AlignmentResult as TraitAlignmentResult};
 use crate::utils::temp_workspace::TempWorkspace;
+use anyhow::{Context, Result};
+use std::collections::HashSet;
+use std::fs::{self, File};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+
+/// Helper function to read lines from a reader, handling non-UTF-8 gracefully
+fn read_lines_lossy<R: BufRead>(reader: R) -> impl Iterator<Item = Result<String>> {
+    reader.split(b'\n').map(|line_result| {
+        line_result
+            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+            .map_err(|e| anyhow::anyhow!("IO error reading line: {}", e))
+    })
+}
 
 /// Helper function to stream output with proper carriage return handling
 /// This captures LAMBDA's progress updates that use \r for same-line updates
@@ -17,22 +27,34 @@ fn stream_output_with_progress<R: Read + Send + 'static>(
     prefix: &'static str,
     progress_counter: Arc<AtomicUsize>,
     progress_bar: Option<indicatif::ProgressBar>,
+    output_file: Option<PathBuf>,
 ) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         let lambda_verbose = std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok();
-        let mut current_line = String::new();
+        let mut current_line = Vec::new(); // Changed from String to Vec<u8>
         let mut byte = [0u8; 1];
         let mut errors = Vec::new();
+
+        // Open output file if specified
+        let mut file_handle = output_file.as_ref().and_then(|path| {
+            std::fs::File::create(path).ok()
+        });
 
         loop {
             match reader.read(&mut byte) {
                 Ok(0) => {
                     // End of stream
                     if !current_line.is_empty() {
+                        let line_str = String::from_utf8_lossy(&current_line); // Handle non-UTF-8
                         if lambda_verbose {
-                            println!("  {}: {}", prefix, current_line);
-                        } else if prefix.contains("stderr") && !current_line.is_empty() {
-                            errors.push(current_line.clone());
+                            println!("  {}: {}", prefix, line_str);
+                        } else if prefix.contains("stderr") && !line_str.trim().is_empty() {
+                            errors.push(line_str.to_string());
+                        }
+                        // Write to file if specified
+                        if let Some(ref mut file) = file_handle {
+                            use std::io::Write;
+                            let _ = writeln!(file, "{}", line_str);
                         }
                         std::io::stdout().flush().ok();
                     }
@@ -44,18 +66,105 @@ fn stream_output_with_progress<R: Read + Send + 'static>(
                     if ch == b'\r' {
                         // Carriage return - print current line and reset cursor
                         if !current_line.is_empty() {
+                            let line_str = String::from_utf8_lossy(&current_line); // Handle non-UTF-8
                             if lambda_verbose {
-                                print!("\r  {}: {}", prefix, current_line);
+                                print!("\r  {}: {}", prefix, line_str);
                                 std::io::stdout().flush().ok();
                             }
                             // Track progress for structured output
-                            if current_line.contains("Query no.") {
-                                if let Some(num) = current_line.split_whitespace()
-                                    .find_map(|s| s.parse::<usize>().ok()) {
-                                    progress_counter.store(num, Ordering::Relaxed);
-                                    // Update progress bar if available
-                                    if let Some(ref pb) = progress_bar {
-                                        pb.set_position(num as u64);
+                            // Try multiple patterns that LAMBDA might use
+                            let debug_lambda = std::env::var("TALARIA_DEBUG_LAMBDA").is_ok();
+
+                            if debug_lambda
+                                && (line_str.contains("Query")
+                                    || line_str.contains("query")
+                                    || line_str.contains("Searching")
+                                    || line_str.contains("%"))
+                            {
+                                eprintln!("[DEBUG] LAMBDA progress line: {}", line_str);
+                            }
+
+                            // Format 1: "Query no. X" or "Query #X" or "Query X/Y"
+                            if line_str.contains("Query") || line_str.contains("query") {
+                                // Try to find a number after "Query" or "query"
+                                let lower = line_str.to_lowercase();
+                                if let Some(query_pos) = lower.find("query") {
+                                    let after_query = &line_str[query_pos + 5..];
+                                    // Look for patterns like: "no. 123", "#123", "123/456", or just "123"
+                                    for word in after_query.split_whitespace() {
+                                        // Skip "no." if present
+                                        if word == "no." {
+                                            continue;
+                                        }
+                                        // Try to parse as number (removing # or other prefixes)
+                                        let cleaned =
+                                            word.trim_start_matches('#').trim_start_matches('.');
+                                        // Handle "X/Y" format
+                                        let num_part = if cleaned.contains('/') {
+                                            cleaned.split('/').next().unwrap_or(cleaned)
+                                        } else {
+                                            cleaned
+                                        };
+                                        // Try to parse the number
+                                        if let Ok(num) = num_part
+                                            .trim_matches(|c: char| !c.is_ascii_digit())
+                                            .parse::<usize>()
+                                        {
+                                            if num > 0 {
+                                                // Ensure it's a valid query number
+                                                progress_counter.store(num, Ordering::Relaxed);
+                                                if let Some(ref pb) = progress_bar {
+                                                    pb.set_position(num as u64);
+                                                }
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            // Format 2: Percentage like "50%" or "Processing: 50%"
+                            else if let Some(percent_pos) = line_str.find('%') {
+                                // Look for a number before the %
+                                let before_percent = &line_str[..percent_pos];
+                                // Try to find the last number before %
+                                for word in before_percent.split_whitespace().rev() {
+                                    if let Ok(percent) = word
+                                        .trim_matches(|c: char| !c.is_ascii_digit())
+                                        .parse::<f64>()
+                                    {
+                                        if (0.0..=100.0).contains(&percent) {
+                                            // Convert percentage to query number
+                                            if let Some(ref pb) = progress_bar {
+                                                let total = pb.length().unwrap_or(100);
+                                                let position =
+                                                    (total as f64 * percent / 100.0) as u64;
+                                                pb.set_position(position);
+                                                progress_counter
+                                                    .store(position as usize, Ordering::Relaxed);
+                                            }
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            // Format 3: "Searching X" or "Processing X"
+                            else if line_str.contains("Searching")
+                                || line_str.contains("Processing")
+                            {
+                                // Try to find a number in the line
+                                for word in line_str.split_whitespace() {
+                                    if let Ok(num) = word
+                                        .trim_matches(|c: char| !c.is_ascii_digit())
+                                        .parse::<usize>()
+                                    {
+                                        if num > 0 && num < 1000000 {
+                                            // Sanity check
+                                            progress_counter.store(num, Ordering::Relaxed);
+                                            if let Some(ref pb) = progress_bar {
+                                                pb.set_position(num as u64);
+                                            }
+                                            break;
+                                        }
                                     }
                                 }
                             }
@@ -63,21 +172,30 @@ fn stream_output_with_progress<R: Read + Send + 'static>(
                         }
                     } else if ch == b'\n' {
                         // Newline - print line and move to next
-                        if lambda_verbose {
-                            println!("  {}: {}", prefix, current_line);
-                            std::io::stdout().flush().ok();
-                        } else if prefix.contains("stderr") && !current_line.trim().is_empty() {
-                            // Store errors for later display if needed
-                            errors.push(current_line.clone());
+                        if !current_line.is_empty() {
+                            let line_str = String::from_utf8_lossy(&current_line); // Handle non-UTF-8
+                            if lambda_verbose {
+                                println!("  {}: {}", prefix, line_str);
+                                std::io::stdout().flush().ok();
+                            } else if prefix.contains("stderr") && !line_str.trim().is_empty() {
+                                // Store errors for later display if needed
+                                errors.push(line_str.to_string());
+                            }
+                            // Write to file if specified
+                            if let Some(ref mut file) = file_handle {
+                                use std::io::Write;
+                                let _ = writeln!(file, "{}", line_str);
+                            }
                         }
                         current_line.clear();
                     } else {
-                        // Regular character - add to current line
-                        current_line.push(ch as char);
+                        // Regular byte - add to current line buffer
+                        current_line.push(ch);
 
                         // For immediate feedback in verbose mode, flush if we see dots being added
                         if lambda_verbose && ch == b'.' && current_line.len() % 10 == 0 {
-                            print!("\r  {}: {}", prefix, current_line);
+                            let line_str = String::from_utf8_lossy(&current_line);
+                            print!("\r  {}: {}", prefix, line_str);
                             std::io::stdout().flush().ok();
                         }
                     }
@@ -102,10 +220,10 @@ pub struct LambdaAligner {
     acc_tax_map: Option<PathBuf>,  // Accession to taxonomy mapping file
     tax_dump_dir: Option<PathBuf>, // NCBI taxonomy dump directory
     batch_enabled: bool,
-    batch_size: usize,  // Max amino acids per batch (not sequence count)
-    preserve_on_failure: bool,  // Whether to preserve temp dir on failure
-    failed: AtomicBool,  // Track if LAMBDA failed for cleanup decision
-    workspace: Option<Arc<Mutex<TempWorkspace>>>,  // Optional workspace for organized temp files
+    batch_size: usize,         // Max amino acids per batch (not sequence count)
+    preserve_on_failure: bool, // Whether to preserve temp dir on failure
+    failed: AtomicBool,        // Track if LAMBDA failed for cleanup decision
+    workspace: Option<Arc<Mutex<TempWorkspace>>>, // Optional workspace for organized temp files
 }
 
 /// Alignment result from LAMBDA (type alias for compatibility)
@@ -132,11 +250,11 @@ impl LambdaAligner {
 
         Ok(Self {
             binary_path,
-            temp_dir,  // Will be set when workspace is provided or on first use
+            temp_dir, // Will be set when workspace is provided or on first use
             acc_tax_map,
             tax_dump_dir,
-            batch_enabled: false,  // Default: no batching
-            batch_size: 5000,      // Default batch size
+            batch_enabled: false, // Default: no batching
+            batch_size: 5000,     // Default batch size
             preserve_on_failure,
             failed: AtomicBool::new(false),
             workspace: None,
@@ -153,12 +271,13 @@ impl LambdaAligner {
         // Resolve symlink to actual directory to ensure we find files
         let taxonomy_dir = taxonomy_dir.canonicalize().unwrap_or(taxonomy_dir.clone());
 
-        let tax_dump_dir = taxonomy_dir.join("tree");  // Changed from "taxdump" to "tree"
+        let tax_dump_dir = taxonomy_dir.join("tree"); // Changed from "taxdump" to "tree"
         let mappings_dir = taxonomy_dir.join("mappings");
 
-        // Debug output if verbose mode
+        // Debug output if verbose mode or debug taxonomy
         let lambda_verbose = std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok();
-        if lambda_verbose {
+        let debug_taxonomy = std::env::var("TALARIA_DEBUG_TAXONOMY").is_ok();
+        if lambda_verbose || debug_taxonomy {
             eprintln!("LAMBDA taxonomy search:");
             eprintln!("  Base dir: {:?}", taxonomy_dir);
             eprintln!("  Tree dir: {:?}", tax_dump_dir);
@@ -168,9 +287,7 @@ impl LambdaAligner {
         }
 
         // Check if we have the required taxonomy dump files
-        if tax_dump_dir.join("nodes.dmp").exists() &&
-           tax_dump_dir.join("names.dmp").exists() {
-
+        if tax_dump_dir.join("nodes.dmp").exists() && tax_dump_dir.join("names.dmp").exists() {
             // Look for idmapping files in mappings directory
             // Skip huge UniProt idmapping files unless explicitly enabled
             let use_large_idmapping = std::env::var("TALARIA_USE_LARGE_IDMAPPING").is_ok();
@@ -202,20 +319,43 @@ impl LambdaAligner {
             } else {
                 if !use_large_idmapping && mappings_dir.join("uniprot_idmapping.dat.gz").exists() {
                     println!("  Note: Large UniProt idmapping.dat.gz found but skipped (24GB file causes LAMBDA to hang)");
-                    println!("  To use it anyway, set TALARIA_USE_LARGE_IDMAPPING=1 (not recommended)");
+                    println!(
+                        "  To use it anyway, set TALARIA_USE_LARGE_IDMAPPING=1 (not recommended)"
+                    );
                     println!("  Using prot.accession2taxid.gz is recommended");
                 } else {
                     println!("  Note: No accession2taxid mapping file found");
-                    println!("  Expected location: {:?}", mappings_dir.join("prot.accession2taxid.gz"));
+                    println!(
+                        "  Expected location: {:?}",
+                        mappings_dir.join("prot.accession2taxid.gz")
+                    );
                 }
             }
 
+            if debug_taxonomy {
+                eprintln!("  ✓ Found taxonomy database at: {:?}", tax_dump_dir);
+                eprintln!(
+                    "  ✓ Found accession mapping at: {:?}",
+                    idmap_path.as_ref().map(|p| p.display())
+                );
+            }
             return (idmap_path, Some(tax_dump_dir));
         }
 
         // No fallback needed - all taxonomy is in unified location
 
         // No taxonomy found
+        if debug_taxonomy || lambda_verbose {
+            eprintln!("  ⚠ Taxonomy database not found");
+            eprintln!(
+                "    Expected nodes.dmp at: {:?}",
+                tax_dump_dir.join("nodes.dmp")
+            );
+            eprintln!(
+                "    Expected names.dmp at: {:?}",
+                tax_dump_dir.join("names.dmp")
+            );
+        }
         (None, None)
     }
 
@@ -227,7 +367,7 @@ impl LambdaAligner {
         let file = fs::File::open(fasta_path)?;
         let reader = BufReader::new(file);
 
-        for line in reader.lines() {
+        for line in read_lines_lossy(reader) {
             let line = line?;
             if line.starts_with('>') {
                 // Parse different header formats
@@ -237,7 +377,10 @@ impl LambdaAligner {
             }
         }
 
-        println!("  Extracted {} unique accessions from FASTA", accessions.len());
+        println!(
+            "  Extracted {} unique accessions from FASTA",
+            accessions.len()
+        );
         Ok(accessions)
     }
 
@@ -261,7 +404,8 @@ impl LambdaAligner {
             // Look for ref| or gb| or similar
             for (i, part) in parts.iter().enumerate() {
                 if (*part == "ref" || *part == "gb" || *part == "emb" || *part == "dbj")
-                    && i + 1 < parts.len() {
+                    && i + 1 < parts.len()
+                {
                     // Take the next part, removing version if present
                     let acc = parts[i + 1].split('.').next().unwrap_or(parts[i + 1]);
                     return Some(acc.to_string());
@@ -283,9 +427,11 @@ impl LambdaAligner {
 
     /// Create a filtered accession2taxid mapping with only needed entries
     #[allow(dead_code)]
-    fn create_filtered_mapping(&mut self,
-                               large_mapping_file: &Path,
-                               needed_accessions: &HashSet<String>) -> Result<PathBuf> {
+    fn create_filtered_mapping(
+        &mut self,
+        large_mapping_file: &Path,
+        needed_accessions: &HashSet<String>,
+    ) -> Result<PathBuf> {
         use flate2::read::GzDecoder;
 
         let filtered_path = self.get_temp_path("filtered_acc2taxid.tsv");
@@ -301,25 +447,28 @@ impl LambdaAligner {
         println!("    Filtering for {} accessions", needed_accessions.len());
 
         let file = fs::File::open(large_mapping_file)?;
-        let reader: Box<dyn BufRead> = if large_mapping_file.extension()
-            .and_then(|s| s.to_str()) == Some("gz") {
-            Box::new(BufReader::new(GzDecoder::new(file)))
-        } else {
-            Box::new(BufReader::new(file))
-        };
+        let reader: Box<dyn BufRead> =
+            if large_mapping_file.extension().and_then(|s| s.to_str()) == Some("gz") {
+                Box::new(BufReader::new(GzDecoder::new(file)))
+            } else {
+                Box::new(BufReader::new(file))
+            };
 
         let mut output = fs::File::create(&filtered_path)?;
         let mut found_count = 0;
         let mut line_count = 0;
 
         // Process the file line by line
-        for line in reader.lines() {
+        for line in read_lines_lossy(reader) {
             let line = line?;
             line_count += 1;
 
             if line_count % 1000000 == 0 {
-                print!("\r    Processed {} million lines, found {} matches...",
-                       line_count / 1000000, found_count);
+                print!(
+                    "\r    Processed {} million lines, found {} matches...",
+                    line_count / 1000000,
+                    found_count
+                );
                 std::io::stdout().flush().ok();
             }
 
@@ -347,14 +496,20 @@ impl LambdaAligner {
             }
         }
 
-        println!("\n    Created filtered mapping with {} entries", found_count);
+        println!(
+            "\n    Created filtered mapping with {} entries",
+            found_count
+        );
 
         if found_count == 0 {
             println!("    WARNING: No matching accessions found in mapping file!");
             println!("    This might indicate incompatible accession formats.");
         } else if found_count < needed_accessions.len() / 2 {
-            println!("    Note: Only found {}/{} accessions. Some sequences may lack taxonomy.",
-                     found_count, needed_accessions.len());
+            println!(
+                "    Note: Only found {}/{} accessions. Some sequences may lack taxonomy.",
+                found_count,
+                needed_accessions.len()
+            );
         }
 
         Ok(filtered_path)
@@ -373,16 +528,23 @@ impl LambdaAligner {
     }
 
     /// Filter accession2taxid mapping to only include reference sequences
-    fn filter_accession2taxid_for_references(&mut self, acc_map: &Path, fasta_path: &Path) -> Result<PathBuf> {
-        use std::io::{BufRead, BufReader, Write};
+    fn filter_accession2taxid_for_references(
+        &mut self,
+        acc_map: &Path,
+        fasta_path: &Path,
+    ) -> Result<PathBuf> {
         use std::collections::HashSet;
+        use std::io::{BufReader, Write};
+        use indicatif::{ProgressBar, ProgressStyle};
+
+        println!("  Filtering accession2taxid mapping to reference sequences only...");
 
         // First, extract all accessions from the reference FASTA
         let mut reference_accessions = HashSet::new();
         let fasta_file = File::open(fasta_path)?;
         let reader = BufReader::new(fasta_file);
 
-        for line in reader.lines() {
+        for line in read_lines_lossy(reader) {
             let line = line?;
             if line.starts_with('>') {
                 // Extract accession from header
@@ -413,7 +575,10 @@ impl LambdaAligner {
             }
         }
 
-        println!("    Found {} unique accessions in reference FASTA", reference_accessions.len());
+        println!(
+            "    Found {} unique accessions in reference FASTA",
+            reference_accessions.len()
+        );
 
         // Now filter the accession2taxid file
         let filtered_path = self.get_temp_path("filtered.accession2taxid");
@@ -424,13 +589,43 @@ impl LambdaAligner {
         let mut kept_count = 0;
         let mut total_count = 0;
 
-        for line in reader.lines() {
+        // Create progress spinner
+        let spinner = ProgressBar::new_spinner();
+        spinner.set_style(
+            ProgressStyle::default_spinner()
+                .template("{spinner} {msg} [{elapsed_precise}]")
+                .unwrap()
+        );
+        spinner.set_message(format!("Scanning accession2taxid (0 lines, 0/{} found)", reference_accessions.len()));
+
+        let start_time = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(120); // 2 minute timeout
+
+        for line in read_lines_lossy(reader) {
             let line = line?;
             total_count += 1;
 
-            // Keep header line
+            // Update spinner every 100k lines
+            if total_count % 100_000 == 0 {
+                spinner.set_message(format!(
+                    "Scanning accession2taxid ({:.1}M lines, {}/{} found)",
+                    total_count as f64 / 1_000_000.0,
+                    kept_count,
+                    reference_accessions.len()
+                ));
+                spinner.tick();
+
+                // Check timeout
+                if start_time.elapsed() > timeout {
+                    spinner.finish_with_message(format!("Timeout: Found {} of {} accessions", kept_count, reference_accessions.len()));
+                    eprintln!("⚠ Warning: Accession filtering timed out after 2 minutes");
+                    eprintln!("  Proceeding with partial mapping ({} found)", kept_count);
+                    break;
+                }
+            }
+
+            // Skip header line - LAMBDA doesn't want headers!
             if total_count == 1 && line.starts_with("accession") {
-                writeln!(writer, "{}", line)?;
                 continue;
             }
 
@@ -448,18 +643,38 @@ impl LambdaAligner {
                         kept_count += 1;
                     }
                 }
+
+                // Early termination if we found all accessions
+                if kept_count >= reference_accessions.len() {
+                    spinner.finish_with_message(format!("Found all {} accessions!", kept_count));
+                    break;
+                }
             }
         }
 
-        println!("    Filtered mapping: {} -> {} entries", total_count, kept_count);
+        spinner.finish_and_clear();
+
+        println!(
+            "    Filtered mapping: {} lines scanned, {} entries kept",
+            total_count, kept_count
+        );
+
+        if kept_count == 0 {
+            eprintln!("⚠ Warning: No matching accessions found in mapping file!");
+            eprintln!("  This might indicate incompatible accession formats.");
+        }
         Ok(filtered_path)
     }
 
     /// Create a filtered taxonomy database from TaxIDs in FASTA headers
     /// Returns (filtered_taxdump_dir, accession2taxid_file)
-    fn create_filtered_taxdump_from_fasta(&mut self, taxdump_dir: &Path, fasta_path: &Path) -> Result<(PathBuf, PathBuf)> {
-        use std::io::{BufRead, BufReader, Write};
-        use std::collections::{HashSet, HashMap};
+    fn create_filtered_taxdump_from_fasta(
+        &mut self,
+        taxdump_dir: &Path,
+        fasta_path: &Path,
+    ) -> Result<(PathBuf, PathBuf)> {
+        use std::collections::{HashMap, HashSet};
+        use std::io::{BufReader, Write};
 
         // First, extract accessions and taxids from FASTA headers
         let mut needed_taxids = HashSet::new();
@@ -467,7 +682,7 @@ impl LambdaAligner {
         let fasta_file = File::open(fasta_path)?;
         let reader = BufReader::new(fasta_file);
 
-        for line in reader.lines() {
+        for line in read_lines_lossy(reader) {
             let line = line?;
             if line.starts_with('>') {
                 // Extract sequence ID (handle different formats)
@@ -481,9 +696,12 @@ impl LambdaAligner {
                 } else if first_word.contains('|') {
                     // Other pipe-delimited format: might be gi|12345|ref|NP_123456.1
                     // Try to find something that looks like an accession
-                    first_word.split('|').find(|part| {
-                        part.contains('_') || part.chars().any(|c| c.is_ascii_alphabetic())
-                    }).unwrap_or(first_word)
+                    first_word
+                        .split('|')
+                        .find(|part| {
+                            part.contains('_') || part.chars().any(|c| c.is_ascii_alphabetic())
+                        })
+                        .unwrap_or(first_word)
                 } else {
                     // Plain format: use as-is
                     first_word
@@ -493,7 +711,9 @@ impl LambdaAligner {
                 if let Some(pos) = line.find("TaxID=") {
                     let taxid_str = &line[pos + 6..];
                     // Extract digits after TaxID=
-                    let taxid_end = taxid_str.find(|c: char| !c.is_ascii_digit()).unwrap_or(taxid_str.len());
+                    let taxid_end = taxid_str
+                        .find(|c: char| !c.is_ascii_digit())
+                        .unwrap_or(taxid_str.len());
                     if let Ok(taxid) = taxid_str[..taxid_end].parse::<u32>() {
                         needed_taxids.insert(taxid);
                         // Store mapping for accession2taxid file
@@ -505,9 +725,15 @@ impl LambdaAligner {
 
         use crate::cli::output::*;
         if std::env::var("TALARIA_DEBUG").is_ok() {
-            info(&format!("Found {} unique TaxIDs in FASTA headers", format_number(needed_taxids.len())));
+            info(&format!(
+                "Found {} unique TaxIDs in FASTA headers",
+                format_number(needed_taxids.len())
+            ));
         }
-        info(&format!("Found {} sequence-to-taxid mappings", format_number(acc2taxid_entries.len())));
+        info(&format!(
+            "Found {} sequence-to-taxid mappings",
+            format_number(acc2taxid_entries.len())
+        ));
 
         if needed_taxids.is_empty() {
             return Err(anyhow::anyhow!("No TaxIDs found in FASTA headers"));
@@ -517,14 +743,17 @@ impl LambdaAligner {
         let acc2taxid_path = self.get_temp_path("header_based.accession2taxid");
         let mut acc_file = File::create(&acc2taxid_path)?;
 
-        // Write header
-        writeln!(acc_file, "accession\taccession.version\ttaxid\tgi")?;
+        // Don't write header - LAMBDA doesn't expect it!
+        // The NCBI format has a header, but LAMBDA's parser doesn't handle it well
 
         // Write mappings
         for (accession, taxid) in &acc2taxid_entries {
             writeln!(acc_file, "{}\t{}\t{}\t0", accession, accession, taxid)?;
         }
-        success(&format!("Created accession2taxid file with {} entries", format_number(acc2taxid_entries.len())));
+        success(&format!(
+            "Created accession2taxid file with {} entries",
+            format_number(acc2taxid_entries.len())
+        ));
 
         // Load nodes.dmp to find all ancestors
         let nodes_file = taxdump_dir.join("nodes.dmp");
@@ -533,11 +762,12 @@ impl LambdaAligner {
         let file = File::open(&nodes_file)?;
         let reader = BufReader::new(file);
 
-        for line in reader.lines() {
+        for line in read_lines_lossy(reader) {
             let line = line?;
             let parts: Vec<&str> = line.split('\t').collect();
             if parts.len() >= 3 {
-                if let (Ok(child), Ok(parent)) = (parts[0].parse::<u32>(), parts[2].parse::<u32>()) {
+                if let (Ok(child), Ok(parent)) = (parts[0].parse::<u32>(), parts[2].parse::<u32>())
+                {
                     parent_map.insert(child, parent);
                 }
             }
@@ -576,7 +806,7 @@ impl LambdaAligner {
         let reader = BufReader::new(input);
         let mut output = File::create(&filtered_nodes)?;
 
-        for line in reader.lines() {
+        for line in read_lines_lossy(reader) {
             let line = line?;
             let parts: Vec<&str> = line.split('\t').collect();
             if !parts.is_empty() {
@@ -595,7 +825,7 @@ impl LambdaAligner {
         let reader = BufReader::new(input);
         let mut output = File::create(&filtered_names)?;
 
-        for line in reader.lines() {
+        for line in read_lines_lossy(reader) {
             let line = line?;
             let parts: Vec<&str> = line.split('\t').collect();
             if !parts.is_empty() {
@@ -612,15 +842,15 @@ impl LambdaAligner {
 
     /// Create a filtered taxonomy database with only needed taxids
     fn create_filtered_taxdump(&mut self, taxdump_dir: &Path, acc_map: &Path) -> Result<PathBuf> {
-        use std::io::{BufRead, BufReader, Write};
-        use std::collections::{HashSet, HashMap};
+        use std::collections::{HashMap, HashSet};
+        use std::io::{BufReader, Write};
 
         // First, extract unique taxids from the accession2taxid mapping
         let mut needed_taxids = HashSet::new();
         let acc_file = File::open(acc_map)?;
         let reader = BufReader::new(acc_file);
 
-        for line in reader.lines() {
+        for line in read_lines_lossy(reader) {
             let line = line?;
             // Skip header
             if line.starts_with("accession") {
@@ -658,11 +888,12 @@ impl LambdaAligner {
         let mut parent_map = HashMap::new();
         let nodes_reader = BufReader::new(File::open(&nodes_file)?);
 
-        for line in nodes_reader.lines() {
+        for line in read_lines_lossy(nodes_reader) {
             let line = line?;
             let parts: Vec<&str> = line.split("\t|\t").collect();
             if parts.len() >= 2 {
-                if let (Ok(taxid), Ok(parent)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+                if let (Ok(taxid), Ok(parent)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>())
+                {
                     parent_map.insert(taxid, parent);
                 }
             }
@@ -682,15 +913,18 @@ impl LambdaAligner {
             }
         }
 
-        use crate::cli::output::{success, format_number};
-        success(&format!("With ancestors: {} total TaxIDs", format_number(all_needed_taxids.len())));
+        use crate::cli::output::{format_number, success};
+        success(&format!(
+            "With ancestors: {} total TaxIDs",
+            format_number(all_needed_taxids.len())
+        ));
 
         // Filter nodes.dmp
         let filtered_nodes = filtered_dir.join("nodes.dmp");
         let mut nodes_writer = File::create(&filtered_nodes)?;
         let nodes_reader = BufReader::new(File::open(&nodes_file)?);
 
-        for line in nodes_reader.lines() {
+        for line in read_lines_lossy(nodes_reader) {
             let line = line?;
             let parts: Vec<&str> = line.split("\t|\t").collect();
             if !parts.is_empty() {
@@ -707,7 +941,7 @@ impl LambdaAligner {
         let mut names_writer = File::create(&filtered_names)?;
         let names_reader = BufReader::new(File::open(&names_file)?);
 
-        for line in names_reader.lines() {
+        for line in read_lines_lossy(names_reader) {
             let line = line?;
             let parts: Vec<&str> = line.split("\t|\t").collect();
             if !parts.is_empty() {
@@ -732,7 +966,11 @@ impl LambdaAligner {
     }
 
     /// Set taxonomy mapping files
-    pub fn with_taxonomy(mut self, acc_tax_map: Option<PathBuf>, tax_dump_dir: Option<PathBuf>) -> Self {
+    pub fn with_taxonomy(
+        mut self,
+        acc_tax_map: Option<PathBuf>,
+        tax_dump_dir: Option<PathBuf>,
+    ) -> Self {
         self.acc_tax_map = acc_tax_map;
         self.tax_dump_dir = tax_dump_dir;
         self
@@ -763,7 +1001,8 @@ impl LambdaAligner {
             fs::create_dir_all(&self.temp_dir).ok();
         } else {
             // No workspace, use traditional temp directory
-            self.temp_dir = std::env::temp_dir().join(format!("talaria-lambda-{}", std::process::id()));
+            self.temp_dir =
+                std::env::temp_dir().join(format!("talaria-lambda-{}", std::process::id()));
             // Ensure it exists
             fs::create_dir_all(&self.temp_dir).ok();
         }
@@ -799,7 +1038,32 @@ impl LambdaAligner {
 
     /// Create a LAMBDA index from a FASTA file
     pub fn create_index(&mut self, fasta_path: &Path) -> Result<PathBuf> {
-        use crate::cli::output::{tree_section, warning, info, success};
+        use crate::cli::output::{info, success, tree_section, warning};
+
+        // First, validate the input file exists and is not empty
+        if !fasta_path.exists() {
+            return Err(anyhow::anyhow!(
+                "Input FASTA file does not exist: {:?}\n\
+                This is an internal error - the file should have been created before indexing.",
+                fasta_path
+            ));
+        }
+
+        let file_metadata = fs::metadata(fasta_path)
+            .map_err(|e| anyhow::anyhow!("Cannot read FASTA file metadata: {}", e))?;
+
+        if file_metadata.len() == 0 {
+            return Err(anyhow::anyhow!(
+                "Input FASTA file is empty (0 bytes): {:?}\n\
+                This typically means:\n\
+                - No reference sequences were selected during reduction\n\
+                - All sequences were filtered out due to length or taxonomy constraints\n\
+                - There was an error writing the FASTA file\n\n\
+                Try running with TALARIA_LOG=debug for more details.",
+                fasta_path
+            ));
+        }
+
         let index_path = self.get_temp_path("lambda_index.lba");
 
         // Clean up any existing index file to avoid conflicts
@@ -811,7 +1075,7 @@ impl LambdaAligner {
         if lambda_verbose {
             println!("Creating LAMBDA index...");
             println!("  Input file: {:?}", fasta_path);
-            println!("  Input size: {} bytes", fs::metadata(fasta_path).map(|m| m.len()).unwrap_or(0));
+            println!("  Input size: {} bytes", file_metadata.len());
         }
         std::io::stdout().flush().ok();
 
@@ -820,14 +1084,14 @@ impl LambdaAligner {
 
         let mut cmd = Command::new(&self.binary_path);
         cmd.arg("mkindexp")
-           .arg("-d")
-           .arg(fasta_path)
-           .arg("-i")
-           .arg(&index_path)
-           .arg("--verbosity")
-           .arg("2")  // Increase verbosity to see progress
-           .arg("--threads")
-           .arg(num_cpus::get().to_string());  // Use all available CPU cores
+            .arg("-d")
+            .arg(fasta_path)
+            .arg("-i")
+            .arg(&index_path)
+            .arg("--verbosity")
+            .arg("2") // Increase verbosity to see progress
+            .arg("--threads")
+            .arg(num_cpus::get().to_string()); // Use all available CPU cores
 
         // Check what taxonomy resources we have
         let has_taxdump = self.tax_dump_dir.is_some();
@@ -848,13 +1112,16 @@ impl LambdaAligner {
                     if lambda_verbose {
                         println!("  Creating filtered taxonomy database from FASTA TaxIDs...");
                     }
-                    match self.create_filtered_taxdump_from_fasta(&tax_dump_dir, fasta_path) {
+                    match self.create_filtered_taxdump_from_fasta(tax_dump_dir, fasta_path) {
                         Ok((filtered_dir, acc2taxid_file)) => {
                             cmd.arg("--tax-dump-dir").arg(&filtered_dir);
                             cmd.arg("--acc-tax-map").arg(&acc2taxid_file);
                             let taxonomy_config = vec![
                                 ("Database", format!("{:?}", filtered_dir)),
-                                ("Accession mapping", format!("{:?}", acc2taxid_file.file_name().unwrap_or_default())),
+                                (
+                                    "Accession mapping",
+                                    format!("{:?}", acc2taxid_file.file_name().unwrap_or_default()),
+                                ),
                             ];
                             tree_section("Taxonomy Configuration", taxonomy_config, false);
                         }
@@ -871,10 +1138,15 @@ impl LambdaAligner {
 
                     // Filter the accession2taxid mapping to only include reference sequences
                     let filtered_acc_map = if let Some(ref acc_map) = self.acc_tax_map.clone() {
-                        println!("  Filtering accession2taxid mapping to reference sequences only...");
-                        match self.filter_accession2taxid_for_references(&acc_map, fasta_path) {
+                        println!(
+                            "  Filtering accession2taxid mapping to reference sequences only..."
+                        );
+                        match self.filter_accession2taxid_for_references(acc_map, fasta_path) {
                             Ok(filtered) => {
-                                println!("    Filtered mapping created: {:?}", filtered.file_name().unwrap_or_default());
+                                println!(
+                                    "    Filtered mapping created: {:?}",
+                                    filtered.file_name().unwrap_or_default()
+                                );
                                 Some(filtered)
                             }
                             Err(e) => {
@@ -910,7 +1182,10 @@ impl LambdaAligner {
                         cmd.arg("--acc-tax-map").arg(&acc_map);
                         let taxonomy_items = vec![
                             ("Database", format!("{:?}", filtered_taxdump)),
-                            ("Accession mapping", format!("{:?}", acc_map.file_name().unwrap_or_default())),
+                            (
+                                "Accession mapping",
+                                format!("{:?}", acc_map.file_name().unwrap_or_default()),
+                            ),
                         ];
                         tree_section("Taxonomy Configuration", taxonomy_items, false);
                     } else {
@@ -942,8 +1217,7 @@ impl LambdaAligner {
         println!("  Executing: {:?}", cmd);
         std::io::stdout().flush().ok();
 
-        let mut child = cmd.spawn()
-            .context("Failed to start LAMBDA mkindexp")?;
+        let mut child = cmd.spawn().context("Failed to start LAMBDA mkindexp")?;
 
         let child_pid = child.id();
         println!("  LAMBDA process started (PID: {})", child_pid);
@@ -957,20 +1231,65 @@ impl LambdaAligner {
 
         // Handle stderr in a thread
         let progress_counter = Arc::new(AtomicUsize::new(0));
-        let stderr_handle = if let Some(stderr) = child.stderr.take() {
+        let stderr_file_path = if self.preserve_on_failure {
+            Some(self.get_temp_path("mkindexp_stderr.txt"))
+        } else {
+            None
+        };
+        let stderr_handle = if let Some(mut stderr) = child.stderr.take() {
+            let stderr_file = stderr_file_path.clone();
             Some(std::thread::spawn(move || {
-                let mut reader = BufReader::new(stderr);
-                let mut line = String::new();
-                while reader.read_line(&mut line).unwrap_or(0) > 0 {
-                    // Capture stderr for error reporting
-                    if let Ok(mut buffer) = stderr_buffer_clone.lock() {
-                        buffer.push_str(&line);
+                use std::io::{Read, Write};
+                let mut current_line: Vec<u8> = Vec::new();
+                let mut byte = [0u8; 1];
+
+                // Open output file if specified
+                let mut file_handle = stderr_file.as_ref().and_then(|path| {
+                    std::fs::File::create(path).ok()
+                });
+
+                loop {
+                    match stderr.read(&mut byte) {
+                        Ok(0) => {
+                            // End of stream - process any remaining line
+                            if !current_line.is_empty() {
+                                let line = String::from_utf8_lossy(&current_line);
+                                if let Ok(mut stderr_buf) = stderr_buffer_clone.lock() {
+                                    stderr_buf.push_str(&line);
+                                }
+                                if std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok() {
+                                    eprint!("LAMBDA [stderr]: {}", line);
+                                }
+                                // Write to file if specified
+                                if let Some(ref mut file) = file_handle {
+                                    let _ = writeln!(file, "{}", line);
+                                }
+                            }
+                            break;
+                        }
+                        Ok(_) => {
+                            if byte[0] == b'\n' {
+                                // Complete line - process it
+                                current_line.push(byte[0]);
+                                let line = String::from_utf8_lossy(&current_line);
+                                if let Ok(mut stderr_buf) = stderr_buffer_clone.lock() {
+                                    stderr_buf.push_str(&line);
+                                }
+                                if std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok() {
+                                    eprint!("LAMBDA [stderr]: {}", line);
+                                }
+                                // Write to file if specified
+                                if let Some(ref mut file) = file_handle {
+                                    let _ = writeln!(file, "{}", line);
+                                }
+                                current_line.clear();
+                            } else {
+                                // Accumulate bytes
+                                current_line.push(byte[0]);
+                            }
+                        }
+                        Err(_) => break,
                     }
-                    // Also print if verbose
-                    if std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok() {
-                        eprint!("LAMBDA [stderr]: {}", line);
-                    }
-                    line.clear();
                 }
             }))
         } else {
@@ -978,8 +1297,19 @@ impl LambdaAligner {
         };
 
         // Handle stdout in a thread
+        let stdout_file = if self.preserve_on_failure {
+            Some(self.get_temp_path("mkindexp_stdout.txt"))
+        } else {
+            None
+        };
         let stdout_handle = if let Some(stdout) = child.stdout.take() {
-            Some(stream_output_with_progress(stdout, "LAMBDA [stdout]", progress_counter, None))
+            Some(stream_output_with_progress(
+                stdout,
+                "LAMBDA [stdout]",
+                progress_counter,
+                None,
+                stdout_file,
+            ))
         } else {
             None
         };
@@ -1000,7 +1330,10 @@ impl LambdaAligner {
                 Ok(None) => {
                     // Still running
                     if start_time.elapsed() > timeout {
-                        eprintln!("\n⚠ LAMBDA indexing timeout after {} seconds", timeout_seconds);
+                        eprintln!(
+                            "\n⚠ LAMBDA indexing timeout after {} seconds",
+                            timeout_seconds
+                        );
                         eprintln!("  Killing LAMBDA process (PID: {})", child_pid);
                         child.kill().ok();
                         let _ = child.wait();
@@ -1024,7 +1357,8 @@ impl LambdaAligner {
 
         if !status.success() {
             // Capture stderr output for error message
-            let stderr_output = stderr_buffer.lock()
+            let stderr_output = stderr_buffer
+                .lock()
                 .map(|s| s.clone())
                 .unwrap_or_else(|_| String::new());
 
@@ -1057,8 +1391,14 @@ impl LambdaAligner {
             // Add memory estimation
             let input_size = fs::metadata(fasta_path).map(|m| m.len()).unwrap_or(0);
             let estimated_memory_mb = (input_size / 1_000_000) * 10; // Rough estimate: 10x input size
-            error_msg.push_str(&format!("\n\nInput file size: {} MB", input_size / 1_000_000));
-            error_msg.push_str(&format!("\nEstimated memory needed: ~{} MB", estimated_memory_mb));
+            error_msg.push_str(&format!(
+                "\n\nInput file size: {} MB",
+                input_size / 1_000_000
+            ));
+            error_msg.push_str(&format!(
+                "\nEstimated memory needed: ~{} MB",
+                estimated_memory_mb
+            ));
 
             // Check available memory
             #[cfg(target_os = "linux")]
@@ -1068,11 +1408,16 @@ impl LambdaAligner {
                         if let Some(kb_str) = line.split_whitespace().nth(1) {
                             if let Ok(kb) = kb_str.parse::<u64>() {
                                 let available_mb = kb / 1024;
-                                error_msg.push_str(&format!("\nAvailable memory: {} MB", available_mb));
+                                error_msg
+                                    .push_str(&format!("\nAvailable memory: {} MB", available_mb));
                                 if available_mb < estimated_memory_mb {
                                     error_msg.push_str("\n\nâš  INSUFFICIENT MEMORY: Consider:");
-                                    error_msg.push_str("\n  1. Using --batch mode with smaller batch size");
-                                    error_msg.push_str("\n  2. Reducing input size with stricter filtering");
+                                    error_msg.push_str(
+                                        "\n  1. Using --batch mode with smaller batch size",
+                                    );
+                                    error_msg.push_str(
+                                        "\n  2. Reducing input size with stricter filtering",
+                                    );
                                     error_msg.push_str("\n  3. Running on a machine with more RAM");
                                 }
                             }
@@ -1082,8 +1427,12 @@ impl LambdaAligner {
             }
 
             if !has_tax_in_sequences && has_taxdump {
-                error_msg.push_str("\n\nAdditional issue: Sequences lack TaxID tags but taxonomy was requested.");
-                error_msg.push_str("\nConsider downloading idmapping files or using sequences with TaxID tags.");
+                error_msg.push_str(
+                    "\n\nAdditional issue: Sequences lack TaxID tags but taxonomy was requested.",
+                );
+                error_msg.push_str(
+                    "\nConsider downloading idmapping files or using sequences with TaxID tags.",
+                );
             }
 
             // Add stderr output if available
@@ -1091,7 +1440,11 @@ impl LambdaAligner {
                 error_msg.push_str("\n\nLAMBDA stderr output:\n");
                 // Limit stderr output to last 20 lines to avoid huge error messages
                 let lines: Vec<&str> = stderr_output.lines().collect();
-                let start = if lines.len() > 20 { lines.len() - 20 } else { 0 };
+                let start = if lines.len() > 20 {
+                    lines.len() - 20
+                } else {
+                    0
+                };
                 for line in &lines[start..] {
                     error_msg.push_str(&format!("  {}\n", line));
                 }
@@ -1106,7 +1459,10 @@ impl LambdaAligner {
 
             // Write full error log to workspace if available
             if let Some(workspace) = &self.workspace {
-                let error_log_path = workspace.lock().unwrap().get_file_path("lambda_index_error", "log");
+                let error_log_path = workspace
+                    .lock()
+                    .unwrap()
+                    .get_file_path("lambda_index_error", "log");
                 let full_error = format!(
                     "LAMBDA mkindexp error log\n\
                     ========================\n\
@@ -1141,7 +1497,7 @@ impl LambdaAligner {
     fn count_sequences(path: &Path) -> Option<usize> {
         let file = fs::File::open(path).ok()?;
         let reader = std::io::BufReader::new(file);
-        let count = reader.lines()
+        let count = read_lines_lossy(reader)
             .filter_map(Result::ok)
             .filter(|line| line.starts_with('>'))
             .count();
@@ -1149,7 +1505,12 @@ impl LambdaAligner {
     }
 
     /// Run a LAMBDA search with given query and index
-    fn run_lambda_search(&mut self, query_path: &Path, index_path: &Path, output_path: &Path) -> Result<()> {
+    fn run_lambda_search(
+        &mut self,
+        query_path: &Path,
+        index_path: &Path,
+        output_path: &Path,
+    ) -> Result<()> {
         // Clean up any existing output file to avoid LAMBDA error
         if output_path.exists() {
             fs::remove_file(output_path).ok();
@@ -1157,18 +1518,21 @@ impl LambdaAligner {
 
         // Count query sequences to show progress
         let query_count = Self::count_sequences(query_path).unwrap_or(0);
-        println!("Running LAMBDA alignment on {} queries (this may take a few minutes)...", query_count);
+        println!(
+            "Running LAMBDA alignment on {} queries (this may take a few minutes)...",
+            query_count
+        );
 
         let mut cmd = Command::new(&self.binary_path);
         cmd.arg("searchp")
-           .arg("-q")
-           .arg(query_path)
-           .arg("-i")
-           .arg(index_path)
-           .arg("-o")
-           .arg(output_path)
-           .arg("--threads")
-           .arg(num_cpus::get().to_string());  // Use all available CPU cores
+            .arg("-q")
+            .arg(query_path)
+            .arg("-i")
+            .arg(index_path)
+            .arg("-o")
+            .arg(output_path)
+            .arg("--threads")
+            .arg(num_cpus::get().to_string()); // Use all available CPU cores
 
         // Set output columns based on whether we have taxonomy
         // std = standard BLAST columns (12 columns)
@@ -1181,14 +1545,21 @@ impl LambdaAligner {
             cmd.arg("--output-columns").arg("std slen qframe");
         }
 
-        cmd.arg("--verbosity")
-           .arg("2");  // Increase verbosity to see progress
+        cmd.arg("--verbosity").arg("2"); // Increase verbosity to see progress
 
         // Show debug info if requested
         if std::env::var("TALARIA_DEBUG").is_ok() {
             println!("  DEBUG: Running command: {:?}", cmd);
-            println!("  DEBUG: Query file: {:?} ({} bytes)", query_path, fs::metadata(query_path).map(|m| m.len()).unwrap_or(0));
-            println!("  DEBUG: Index file: {:?} ({} bytes)", index_path, fs::metadata(index_path).map(|m| m.len()).unwrap_or(0));
+            println!(
+                "  DEBUG: Query file: {:?} ({} bytes)",
+                query_path,
+                fs::metadata(query_path).map(|m| m.len()).unwrap_or(0)
+            );
+            println!(
+                "  DEBUG: Index file: {:?} ({} bytes)",
+                index_path,
+                fs::metadata(index_path).map(|m| m.len()).unwrap_or(0)
+            );
         }
 
         // Use spawn() to stream output in real-time
@@ -1199,11 +1570,13 @@ impl LambdaAligner {
         use indicatif::{ProgressBar, ProgressStyle};
 
         action("Starting LAMBDA search...");
-        let mut child = cmd.spawn()
-            .context("Failed to start LAMBDA searchp")?;
+        let mut child = cmd.spawn().context("Failed to start LAMBDA searchp")?;
 
         let pid = child.id();
-        info(&format!("LAMBDA process PID: {} (monitor with: ps aux | grep {})", pid, pid));
+        info(&format!(
+            "LAMBDA process PID: {} (monitor with: ps aux | grep {})",
+            pid, pid
+        ));
 
         // Create progress bar for query processing
         let pb = if query_count > 0 && !std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok() {
@@ -1215,6 +1588,7 @@ impl LambdaAligner {
                     .progress_chars("##-"),
             );
             progress.set_position(0);
+            progress.enable_steady_tick(std::time::Duration::from_millis(100)); // Show activity
             Some(progress)
         } else {
             None
@@ -1227,7 +1601,8 @@ impl LambdaAligner {
                 let mut peak_memory = 0u64;
                 loop {
                     // Try to read process memory info
-                    if let Ok(status) = fs::read_to_string(format!("/proc/{}/status", monitor_pid)) {
+                    if let Ok(status) = fs::read_to_string(format!("/proc/{}/status", monitor_pid))
+                    {
                         // Look for VmRSS (resident set size - actual RAM usage)
                         if let Some(line) = status.lines().find(|l| l.starts_with("VmRSS:")) {
                             if let Some(kb_str) = line.split_whitespace().nth(1) {
@@ -1235,7 +1610,8 @@ impl LambdaAligner {
                                     let mb = kb / 1024;
                                     if mb > peak_memory {
                                         peak_memory = mb;
-                                        if mb > 4000 {  // Warn if over 4GB
+                                        if mb > 4000 {
+                                            // Warn if over 4GB
                                             eprintln!("  WARNING: LAMBDA memory usage: {} MB", mb);
                                         }
                                     }
@@ -1262,16 +1638,38 @@ impl LambdaAligner {
         // Handle stderr in a thread
         let progress_counter = Arc::new(AtomicUsize::new(0));
         let pb_clone = pb.clone();
+        let stderr_file = if self.preserve_on_failure {
+            Some(self.get_temp_path("lambda_stderr.txt"))
+        } else {
+            None
+        };
         let stderr_handle = if let Some(stderr) = child.stderr.take() {
-            Some(stream_output_with_progress(stderr, "LAMBDA [stderr]", progress_counter.clone(), pb_clone))
+            Some(stream_output_with_progress(
+                stderr,
+                "LAMBDA [stderr]",
+                progress_counter.clone(),
+                pb_clone,
+                stderr_file,
+            ))
         } else {
             None
         };
 
         // Handle stdout in a thread
         let pb_clone = pb.clone();
+        let stdout_file = if self.preserve_on_failure {
+            Some(self.get_temp_path("lambda_stdout.txt"))
+        } else {
+            None
+        };
         let stdout_handle = if let Some(stdout) = child.stdout.take() {
-            Some(stream_output_with_progress(stdout, "LAMBDA [stdout]", progress_counter, pb_clone))
+            Some(stream_output_with_progress(
+                stdout,
+                "LAMBDA [stdout]",
+                progress_counter,
+                pb_clone,
+                stdout_file,
+            ))
         } else {
             None
         };
@@ -1286,11 +1684,10 @@ impl LambdaAligner {
 
         // Finish progress bar
         if let Some(progress) = pb {
-            progress.finish_and_clear();
+            progress.finish_with_message("LAMBDA search complete");
         }
 
-        let status = child.wait()
-            .context("Failed to wait for LAMBDA search")?;
+        let status = child.wait().context("Failed to wait for LAMBDA search")?;
 
         // Wait for monitor thread to finish
         if let Some(handle) = monitor_handle {
@@ -1321,9 +1718,12 @@ impl LambdaAligner {
                     use std::os::unix::process::ExitStatusExt;
                     if let Some(signal) = status.signal() {
                         match signal {
-                            9 => "LAMBDA process was killed (SIGKILL) - likely out of memory".to_string(),
+                            9 => "LAMBDA process was killed (SIGKILL) - likely out of memory"
+                                .to_string(),
                             15 => "LAMBDA process was terminated (SIGTERM)".to_string(),
-                            11 => "LAMBDA process crashed (SIGSEGV) - segmentation fault".to_string(),
+                            11 => {
+                                "LAMBDA process crashed (SIGSEGV) - segmentation fault".to_string()
+                            }
                             6 => "LAMBDA process aborted (SIGABRT)".to_string(),
                             _ => format!("LAMBDA process killed by signal {}", signal),
                         }
@@ -1359,20 +1759,27 @@ impl LambdaAligner {
                 eprintln!("\n📁 LAMBDA temp directory preserved for debugging:");
                 eprintln!("   {}", self.get_temp_dir().display());
                 eprintln!("\n   Key files:");
-                for entry in fs::read_dir(self.get_temp_dir()).unwrap_or_else(|_| fs::read_dir(".").unwrap()) {
+                for entry in
+                    fs::read_dir(self.get_temp_dir()).unwrap_or_else(|_| fs::read_dir(".").unwrap())
+                {
                     if let Ok(entry) = entry {
                         let path = entry.path();
                         if let Ok(metadata) = entry.metadata() {
                             let size = metadata.len();
-                            eprintln!("     - {} ({} bytes)",
-                                     path.file_name().unwrap_or_default().to_string_lossy(),
-                                     size);
+                            eprintln!(
+                                "     - {} ({} bytes)",
+                                path.file_name().unwrap_or_default().to_string_lossy(),
+                                size
+                            );
                         }
                     }
                 }
                 eprintln!("\n   To manually re-run LAMBDA with different settings:");
-                eprintln!("     lambda3 searchp -q {} -i {} -o output.m8 --threads 8",
-                         debug_path.display(), index_path.display());
+                eprintln!(
+                    "     lambda3 searchp -q {} -i {} -o output.m8 --threads 8",
+                    debug_path.display(),
+                    index_path.display()
+                );
                 eprintln!("\n   To clean up later:");
                 eprintln!("     rm -rf {}", self.get_temp_dir().display());
             } else {
@@ -1393,10 +1800,15 @@ impl LambdaAligner {
 
     /// Search query sequences against a reference database with batching for large datasets
     /// batch_size is now interpreted as maximum amino acids per batch (not sequence count)
-    pub fn search_batched(&mut self, query_sequences: &[Sequence], reference_sequences: &[Sequence], batch_size: usize) -> Result<Vec<AlignmentResult>> {
+    pub fn search_batched(
+        &mut self,
+        query_sequences: &[Sequence],
+        reference_sequences: &[Sequence],
+        batch_size: usize,
+    ) -> Result<Vec<AlignmentResult>> {
         // Use batch_size as max amino acids, with memory-aware defaults
         let mut max_batch_aa = if batch_size == 0 {
-            2_000_000  // Default: 2M amino acids (reduced from 5M to prevent OOM)
+            2_000_000 // Default: 2M amino acids (reduced from 5M to prevent OOM)
         } else {
             batch_size
         };
@@ -1407,9 +1819,9 @@ impl LambdaAligner {
             max_batch_aa = max_batch_aa.min(1_000_000);
         }
 
-        const WARN_LONG_SEQ: usize = 10_000;    // Warn for sequences >10K aa
+        const WARN_LONG_SEQ: usize = 10_000; // Warn for sequences >10K aa
         const EXTREME_LONG_SEQ: usize = 30_000; // Sequences requiring special handling
-        const WARN_AMBIGUOUS_RUN: usize = 10;   // Warn for runs of ambiguous residues
+        const WARN_AMBIGUOUS_RUN: usize = 10; // Warn for runs of ambiguous residues
 
         let mut all_results = Vec::new();
         let mut problematic_sequences = Vec::new();
@@ -1418,50 +1830,73 @@ impl LambdaAligner {
         // Create index once for all batches
         use crate::cli::output::*;
         action("Creating reference index...");
-        let reference_path = self.get_temp_path("reference.fasta");
+        let reference_path = self.get_temp_path("reference.fasta.gz");
         Self::write_fasta_with_taxid(&reference_path, reference_sequences)?;
         let index_path = self.create_index(&reference_path)?;
-        success(&format!("Reference index created (size: {:.1} MB)",
-            fs::metadata(&index_path).map(|m| m.len() as f64 / 1_048_576.0).unwrap_or(0.0)));
+        success(&format!(
+            "Reference index created (size: {:.1} MB)",
+            fs::metadata(&index_path)
+                .map(|m| m.len() as f64 / 1_048_576.0)
+                .unwrap_or(0.0)
+        ));
 
         // Pre-scan for problematic sequences and separate extreme ones
         for seq in query_sequences {
             // Check for very long sequences
             if seq.len() > WARN_LONG_SEQ {
-                problematic_sequences.push((seq.id.clone(), format!("{} aa (very long)", seq.len())));
+                problematic_sequences
+                    .push((seq.id.clone(), format!("{} aa (very long)", seq.len())));
 
                 // Special handling for known problem proteins
                 if seq.id.contains("TITIN") || seq.len() > EXTREME_LONG_SEQ {
                     extreme_sequences.push(seq.id.clone());
-                    problematic_sequences.push((seq.id.clone(),
-                        format!("EXTREME LENGTH ({} aa) - will process separately", seq.len())));
+                    problematic_sequences.push((
+                        seq.id.clone(),
+                        format!(
+                            "EXTREME LENGTH ({} aa) - will process separately",
+                            seq.len()
+                        ),
+                    ));
                 }
             }
 
             // Check for runs of ambiguous amino acids
-            let ambiguous_runs = seq.sequence.windows(WARN_AMBIGUOUS_RUN)
-                .filter(|window| window.iter().all(|&b| b == b'X' || b == b'B' || b == b'Z' || b == b'*'))
+            let ambiguous_runs = seq
+                .sequence
+                .windows(WARN_AMBIGUOUS_RUN)
+                .filter(|window| {
+                    window
+                        .iter()
+                        .all(|&b| b == b'X' || b == b'B' || b == b'Z' || b == b'*')
+                })
                 .count();
 
             if ambiguous_runs > 0 {
-                problematic_sequences.push((seq.id.clone(), format!("{} runs of ambiguous residues", ambiguous_runs)));
+                problematic_sequences.push((
+                    seq.id.clone(),
+                    format!("{} runs of ambiguous residues", ambiguous_runs),
+                ));
             }
         }
 
         // Warn about problematic sequences
         if !problematic_sequences.is_empty() {
-            eprintln!("\n⚠️  WARNING: Found {} problematic sequences that may cause memory issues:",
-                      problematic_sequences.len());
+            eprintln!(
+                "\n⚠️  WARNING: Found {} problematic sequences that may cause memory issues:",
+                problematic_sequences.len()
+            );
             for (i, (id, reason)) in problematic_sequences.iter().take(10).enumerate() {
-                eprintln!("    {}: {} - {}", i+1, id, reason);
+                eprintln!("    {}: {} - {}", i + 1, id, reason);
             }
             if problematic_sequences.len() > 10 {
                 eprintln!("    ... and {} more", problematic_sequences.len() - 10);
             }
 
             if !extreme_sequences.is_empty() {
-                eprintln!("\n  🔴 {} EXTREME LENGTH sequences will be processed in isolated batches:",
-                         extreme_sequences.len());
+                eprintln!(
+                    "\n  🔴 {} EXTREME LENGTH sequences will be processed in isolated batches:",
+                    extreme_sequences.len()
+                );
                 for id in extreme_sequences.iter().take(5) {
                     eprintln!("    - {}", id);
                 }
@@ -1474,7 +1909,10 @@ impl LambdaAligner {
             eprintln!("    - Set TALARIA_LOW_MEMORY=1 to reduce batch sizes");
             eprintln!("    - Use --max-align-length to skip very long sequences");
             eprintln!("    - Set TALARIA_PRESERVE_LAMBDA_ON_FAILURE=1 to debug failures");
-            eprintln!("  Current batch size: {} amino acids per batch\n", max_batch_aa);
+            eprintln!(
+                "  Current batch size: {} amino acids per batch\n",
+                max_batch_aa
+            );
         }
 
         // Process sequences with size-based batching
@@ -1504,11 +1942,19 @@ impl LambdaAligner {
                 // Process current batch before the extreme sequence
                 total_batches += 1;
                 let percent_complete = sequences_processed as f64 / total_sequences as f64 * 100.0;
-                subsection_header(&format!("Batch {} ({:.1}% complete) - {} sequences, {} aa",
-                         total_batches, percent_complete, format_number(current_batch.len()), format_number(current_batch_aa)));
+                subsection_header(&format!(
+                    "Batch {} ({:.1}% complete) - {} sequences, {} aa",
+                    total_batches,
+                    percent_complete,
+                    format_number(current_batch.len()),
+                    format_number(current_batch_aa)
+                ));
 
                 let batch_results = self.process_batch(&current_batch, &index_path, batch_idx)?;
-                success(&format!("Found {} alignments", format_number(batch_results.len())));
+                success(&format!(
+                    "Found {} alignments",
+                    format_number(batch_results.len())
+                ));
                 all_results.extend(batch_results);
                 sequences_processed += current_batch.len();
 
@@ -1518,15 +1964,24 @@ impl LambdaAligner {
             }
 
             // If adding this sequence would exceed batch size, process current batch first
-            if !is_extreme && current_batch_aa + seq_len > max_batch_aa && !current_batch.is_empty() {
+            if !is_extreme && current_batch_aa + seq_len > max_batch_aa && !current_batch.is_empty()
+            {
                 // Process current batch
                 total_batches += 1;
                 let percent_complete = sequences_processed as f64 / total_sequences as f64 * 100.0;
-                subsection_header(&format!("Batch {} ({:.1}% complete) - {} sequences, {} aa",
-                         total_batches, percent_complete, format_number(current_batch.len()), format_number(current_batch_aa)));
+                subsection_header(&format!(
+                    "Batch {} ({:.1}% complete) - {} sequences, {} aa",
+                    total_batches,
+                    percent_complete,
+                    format_number(current_batch.len()),
+                    format_number(current_batch_aa)
+                ));
 
                 let batch_results = self.process_batch(&current_batch, &index_path, batch_idx)?;
-                success(&format!("Found {} alignments", format_number(batch_results.len())));
+                success(&format!(
+                    "Found {} alignments",
+                    format_number(batch_results.len())
+                ));
                 all_results.extend(batch_results);
                 sequences_processed += current_batch.len();
 
@@ -1539,23 +1994,42 @@ impl LambdaAligner {
             // Special case: if single sequence exceeds batch size OR is extreme, process it alone
             if seq_len > max_batch_aa || is_extreme {
                 if is_extreme {
-                    eprintln!("\n  🔴 EXTREME: Processing {} ({} aa) in isolated batch", seq.id, seq_len);
+                    eprintln!(
+                        "\n  🔴 EXTREME: Processing {} ({} aa) in isolated batch",
+                        seq.id, seq_len
+                    );
                     eprintln!("     This sequence is known to cause memory issues");
-                    eprintln!("     If it fails, consider using --max-align-length {} to skip it", seq_len - 1);
+                    eprintln!(
+                        "     If it fails, consider using --max-align-length {} to skip it",
+                        seq_len - 1
+                    );
                 } else {
-                    eprintln!("\n  ⚠️  WARNING: Sequence {} ({} aa) exceeds batch size limit", seq.id, seq_len);
+                    eprintln!(
+                        "\n  ⚠️  WARNING: Sequence {} ({} aa) exceeds batch size limit",
+                        seq.id, seq_len
+                    );
                     eprintln!("     Processing in its own batch (may use significant memory)");
                 }
 
                 // If we have sequences in current batch, process them first
                 if !current_batch.is_empty() {
                     total_batches += 1;
-                    let percent_complete = sequences_processed as f64 / total_sequences as f64 * 100.0;
-                    println!("\n  Processing batch {} ({:.1}% complete) - {} sequences, {} aa...",
-                             total_batches, percent_complete, current_batch.len(), current_batch_aa);
+                    let percent_complete =
+                        sequences_processed as f64 / total_sequences as f64 * 100.0;
+                    println!(
+                        "\n  Processing batch {} ({:.1}% complete) - {} sequences, {} aa...",
+                        total_batches,
+                        percent_complete,
+                        current_batch.len(),
+                        current_batch_aa
+                    );
 
-                    let batch_results = self.process_batch(&current_batch, &index_path, batch_idx)?;
-                    success(&format!("Found {} alignments", format_number(batch_results.len())));
+                    let batch_results =
+                        self.process_batch(&current_batch, &index_path, batch_idx)?;
+                    success(&format!(
+                        "Found {} alignments",
+                        format_number(batch_results.len())
+                    ));
                     all_results.extend(batch_results);
                     sequences_processed += current_batch.len();
 
@@ -1567,11 +2041,16 @@ impl LambdaAligner {
                 // Process the large sequence alone
                 total_batches += 1;
                 let percent_complete = sequences_processed as f64 / total_sequences as f64 * 100.0;
-                println!("\n  Processing batch {} ({:.1}% complete) - 1 large sequence, {} aa...",
-                         total_batches, percent_complete, seq_len);
+                println!(
+                    "\n  Processing batch {} ({:.1}% complete) - 1 large sequence, {} aa...",
+                    total_batches, percent_complete, seq_len
+                );
 
-                let batch_results = self.process_batch(&[seq.clone()], &index_path, batch_idx)?;
-                success(&format!("Found {} alignments", format_number(batch_results.len())));
+                let batch_results = self.process_batch(std::slice::from_ref(seq), &index_path, batch_idx)?;
+                success(&format!(
+                    "Found {} alignments",
+                    format_number(batch_results.len())
+                ));
                 all_results.extend(batch_results);
                 sequences_processed += 1;
                 batch_idx += 1;
@@ -1586,8 +2065,13 @@ impl LambdaAligner {
         if !current_batch.is_empty() {
             total_batches += 1;
             let percent_complete = sequences_processed as f64 / total_sequences as f64 * 100.0;
-            println!("\n  Processing batch {} ({:.1}% complete) - {} sequences, {} aa...",
-                     total_batches, percent_complete, current_batch.len(), current_batch_aa);
+            println!(
+                "\n  Processing batch {} ({:.1}% complete) - {} sequences, {} aa...",
+                total_batches,
+                percent_complete,
+                current_batch.len(),
+                current_batch_aa
+            );
 
             let batch_results = self.process_batch(&current_batch, &index_path, batch_idx)?;
             println!("    Found {} alignments", batch_results.len());
@@ -1595,15 +2079,24 @@ impl LambdaAligner {
             sequences_processed += current_batch.len();
         }
 
-        println!("\n  Completed {} batches, processed {} sequences, found {} alignments",
-                 total_batches, sequences_processed, all_results.len());
+        println!(
+            "\n  Completed {} batches, processed {} sequences, found {} alignments",
+            total_batches,
+            sequences_processed,
+            all_results.len()
+        );
         Ok(all_results)
     }
 
     /// Helper function to process a single batch
-    fn process_batch(&mut self, batch: &[Sequence], index_path: &Path, batch_idx: usize) -> Result<Vec<AlignmentResult>> {
+    fn process_batch(
+        &mut self,
+        batch: &[Sequence],
+        index_path: &Path,
+        batch_idx: usize,
+    ) -> Result<Vec<AlignmentResult>> {
         // Clean up any existing batch files from previous runs
-        let query_path = self.get_temp_path(&format!("query_batch_{}.fasta", batch_idx));
+        let query_path = self.get_temp_path(&format!("query_batch_{}.fasta.gz", batch_idx));
         let output_path = self.get_temp_path(&format!("alignments_batch_{}.m8", batch_idx));
 
         if query_path.exists() {
@@ -1617,7 +2110,11 @@ impl LambdaAligner {
         let max_len = batch.iter().map(|s| s.len()).max().unwrap_or(0);
         let min_len = batch.iter().map(|s| s.len()).min().unwrap_or(0);
         let total_aa: usize = batch.iter().map(|s| s.len()).sum();
-        let avg_len = if !batch.is_empty() { total_aa / batch.len() } else { 0 };
+        let avg_len = if !batch.is_empty() {
+            total_aa / batch.len()
+        } else {
+            0
+        };
 
         // Show batch statistics in verbose mode only
         let lambda_verbose = std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok();
@@ -1631,7 +2128,10 @@ impl LambdaAligner {
 
         // Warn about problematic sequences in this batch
         if max_len > 10_000 {
-            eprintln!("    ⚠️  This batch contains very long sequences (max: {} aa)", max_len);
+            eprintln!(
+                "    ⚠️  This batch contains very long sequences (max: {} aa)",
+                max_len
+            );
             for seq in batch {
                 if seq.len() > 10_000 {
                     eprintln!("        {} ({} aa)", seq.id, seq.len());
@@ -1640,17 +2140,23 @@ impl LambdaAligner {
         }
 
         // Check for ambiguous content
-        let ambiguous_seqs: Vec<_> = batch.iter()
+        let ambiguous_seqs: Vec<_> = batch
+            .iter()
             .filter(|seq| {
-                let ambiguous_count = seq.sequence.iter()
+                let ambiguous_count = seq
+                    .sequence
+                    .iter()
                     .filter(|&&b| b == b'X' || b == b'B' || b == b'Z' || b == b'*')
                     .count();
-                ambiguous_count > seq.len() / 20  // More than 5% ambiguous
+                ambiguous_count > seq.len() / 20 // More than 5% ambiguous
             })
             .collect();
 
         if !ambiguous_seqs.is_empty() {
-            eprintln!("    ⚠️  {} sequences with high ambiguous content", ambiguous_seqs.len());
+            eprintln!(
+                "    ⚠️  {} sequences with high ambiguous content",
+                ambiguous_seqs.len()
+            );
         }
 
         // Write batch queries (query_path already defined above)
@@ -1667,22 +2173,149 @@ impl LambdaAligner {
         }
     }
 
+    /// Process phylogenetic clusters efficiently
+    /// This method optimizes LAMBDA alignment for clusters grouped by taxonomy
+    pub fn search_phylogenetic_clusters(
+        &mut self,
+        clusters: &[(String, Vec<Sequence>)],
+        reference_sequences: &[Sequence],
+    ) -> Result<Vec<AlignmentResult>> {
+        println!(
+            "\n🧬 Processing {} phylogenetic clusters with LAMBDA",
+            clusters.len()
+        );
+
+        let memory_estimator = MemoryEstimator::new();
+        let mut all_results = Vec::new();
+
+        // Create a single shared reference index
+        println!("  Creating shared reference index for all clusters...");
+        let reference_path = self.get_temp_path("shared_reference.fasta.gz");
+        Self::write_fasta_with_taxid(&reference_path, reference_sequences)?;
+        let index_path = self.create_index(&reference_path)?;
+
+        // Process each cluster
+        for (cluster_idx, (cluster_name, sequences)) in clusters.iter().enumerate() {
+            println!(
+                "\n  Processing cluster {}/{}: {} ({} sequences)",
+                cluster_idx + 1,
+                clusters.len(),
+                cluster_name,
+                sequences.len()
+            );
+
+            // Check if cluster fits in memory
+            if !memory_estimator.can_process_cluster(sequences) {
+                println!("    ⚠️  Large cluster detected, using batched processing");
+
+                // Calculate batch size based on memory
+                let batch_size = memory_estimator.suggest_batch_size(sequences);
+                println!("    Batch size: {} sequences", batch_size);
+
+                // Process in batches
+                for (batch_idx, batch) in sequences.chunks(batch_size).enumerate() {
+                    println!(
+                        "    Processing batch {}/{}",
+                        batch_idx + 1,
+                        sequences.len().div_ceil(batch_size)
+                    );
+
+                    let batch_results = self.run_cluster_batch(
+                        batch,
+                        &index_path,
+                        &format!("{}_{}", cluster_name, batch_idx),
+                    )?;
+
+                    all_results.extend(batch_results);
+                }
+            } else {
+                // Process entire cluster at once
+                let cluster_results =
+                    self.run_cluster_batch(sequences, &index_path, cluster_name)?;
+
+                all_results.extend(cluster_results);
+            }
+
+            // Report cluster statistics
+            let cluster_alignments = all_results.len();
+            println!(
+                "    ✓ Cluster processed: {} alignments found",
+                cluster_alignments
+            );
+        }
+
+        println!(
+            "\n✓ All clusters processed: {} total alignments",
+            all_results.len()
+        );
+        Ok(all_results)
+    }
+
+    /// Helper method to process a single cluster batch
+    fn run_cluster_batch(
+        &mut self,
+        sequences: &[Sequence],
+        index_path: &Path,
+        batch_name: &str,
+    ) -> Result<Vec<AlignmentResult>> {
+        // Write query sequences
+        let query_path = self.get_temp_path(&format!("query_{}.fasta.gz", batch_name));
+        Self::write_fasta_with_taxid(&query_path, sequences)?;
+
+        // Run LAMBDA search
+        let output_path = self.get_temp_path(&format!("alignments_{}.m8", batch_name));
+        self.run_lambda_search(&query_path, index_path, &output_path)?;
+
+        // Parse results
+        if output_path.exists() {
+            self.parse_blast_tab(&output_path)
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
     /// Search query sequences against a reference database (default behavior)
-    pub fn search(&mut self, query_sequences: &[Sequence], reference_sequences: &[Sequence]) -> Result<Vec<AlignmentResult>> {
+    pub fn search(
+        &mut self,
+        query_sequences: &[Sequence],
+        reference_sequences: &[Sequence],
+    ) -> Result<Vec<AlignmentResult>> {
         println!("Running LAMBDA query-vs-reference alignment...");
         println!("  Query sequences: {}", query_sequences.len());
         println!("  Reference sequences: {}", reference_sequences.len());
 
+        // Validate input sequences
+        if query_sequences.is_empty() {
+            return Err(anyhow::anyhow!(
+                "No query sequences provided for LAMBDA alignment. \
+                Cannot perform alignment without query sequences."
+            ));
+        }
+
+        if reference_sequences.is_empty() {
+            return Err(anyhow::anyhow!(
+                "No reference sequences provided for LAMBDA alignment. \
+                This usually means:\n\
+                - No sequences passed the initial filtering criteria\n\
+                - All sequences were filtered out by taxonomy or length constraints\n\
+                - The input database/dataset is empty or incorrectly specified\n\n\
+                Please check your input data and filtering parameters."
+            ));
+        }
+
         // Check if batching is enabled
         if self.batch_enabled {
-            println!("Batched processing enabled (batch size: {})", self.batch_size);
+            println!(
+                "Batched processing enabled (batch size: {})",
+                self.batch_size
+            );
             return self.search_batched(query_sequences, reference_sequences, self.batch_size);
         }
 
         // For small datasets, use original single-pass approach
         // Clean up any existing files from previous runs
-        let reference_path = self.get_temp_path("reference.fasta");
-        let query_path = self.get_temp_path("query.fasta");
+        let reference_path = self.get_temp_path("reference.fasta.gz");
+        let query_path = self.get_temp_path("query.fasta.gz");
         let alignments_path = self.get_temp_path("alignments.m8");
 
         // Remove old files if they exist
@@ -1714,19 +2347,25 @@ impl LambdaAligner {
     /// Run all-vs-all alignment (self-alignment) - optional behavior
     pub fn search_all_vs_all(&mut self, sequences: &[Sequence]) -> Result<Vec<AlignmentResult>> {
         use crate::cli::output::*;
-        section_header(&format!("LAMBDA All-vs-All Alignment ({} sequences)", format_number(sequences.len())));
+        section_header(&format!(
+            "LAMBDA All-vs-All Alignment ({} sequences)",
+            format_number(sequences.len())
+        ));
 
         // For large datasets, use sampling
         const MAX_SEQUENCES_FOR_FULL: usize = 5000;
         let sequences_to_use = if sequences.len() > MAX_SEQUENCES_FOR_FULL {
-            warning(&format!("Large dataset detected, sampling {} sequences...", format_number(MAX_SEQUENCES_FOR_FULL)));
+            warning(&format!(
+                "Large dataset detected, sampling {} sequences...",
+                format_number(MAX_SEQUENCES_FOR_FULL)
+            ));
             return self.run_sampled_alignment(sequences, MAX_SEQUENCES_FOR_FULL);
         } else {
             sequences
         };
 
         // Write sequences to temporary FASTA with TaxID added
-        let fasta_path = self.get_temp_path("sequences.fasta");
+        let fasta_path = self.get_temp_path("sequences.fasta.gz");
         Self::write_fasta_with_taxid(&fasta_path, sequences_to_use)?;
 
         // Create index from same sequences
@@ -1745,12 +2384,17 @@ impl LambdaAligner {
     }
 
     /// Run alignment with sampling for large datasets
-    fn run_sampled_alignment(&mut self, sequences: &[Sequence], sample_size: usize) -> Result<Vec<AlignmentResult>> {
+    fn run_sampled_alignment(
+        &mut self,
+        sequences: &[Sequence],
+        sample_size: usize,
+    ) -> Result<Vec<AlignmentResult>> {
         use rand::seq::SliceRandom;
 
         // Sample sequences
         let mut rng = rand::thread_rng();
-        let sampled: Vec<_> = sequences.choose_multiple(&mut rng, sample_size)
+        let sampled: Vec<_> = sequences
+            .choose_multiple(&mut rng, sample_size)
             .cloned()
             .collect();
 
@@ -1761,11 +2405,22 @@ impl LambdaAligner {
     /// Parse BLAST tabular format output
     fn parse_blast_tab(&self, output_path: &Path) -> Result<Vec<AlignmentResult>> {
         let file = fs::File::open(output_path)?;
-        let reader = BufReader::new(file);
+        let mut reader = BufReader::new(file);
         let mut results = Vec::new();
+        let mut line_buf = Vec::new();
 
-        for line in reader.lines() {
-            let line = line?;
+        // Read lines as bytes to handle non-UTF-8 gracefully
+        loop {
+            line_buf.clear();
+            let bytes_read = reader.read_until(b'\n', &mut line_buf)?;
+            if bytes_read == 0 {
+                break; // EOF
+            }
+
+            // Convert to string, replacing invalid UTF-8 with replacement char
+            let line = String::from_utf8_lossy(&line_buf);
+            let line = line.trim_end(); // Remove newline
+
             if line.starts_with('#') {
                 continue;
             }
@@ -1802,91 +2457,130 @@ impl LambdaAligner {
     /// Add TaxID to sequences for LAMBDA compatibility
     /// Extracts organism from description and maps to common TaxIDs
     fn add_taxid_to_sequences(sequences: &[Sequence]) -> Vec<Sequence> {
-        sequences.iter().map(|seq| {
-            let mut modified_seq = seq.clone();
+        sequences
+            .iter()
+            .map(|seq| {
+                let mut modified_seq = seq.clone();
 
-            // Check if sequence already has TaxID
-            if let Some(ref desc) = seq.description {
-                if desc.contains("TaxID=") || desc.contains("Tax=") {
-                    return modified_seq;  // Already has TaxID
+                // Check if sequence already has TaxID
+                if let Some(ref desc) = seq.description {
+                    if desc.contains("TaxID=") || desc.contains("Tax=") {
+                        return modified_seq; // Already has TaxID
+                    }
+
+                    // Try to extract organism from OS= tag or description
+                    let desc_upper = desc.to_uppercase();
+
+                    // First try to extract from OS= tag
+                    let organism = if let Some(os_start) = desc.find("OS=") {
+                        let os_text = &desc[os_start + 3..];
+                        os_text
+                            .split_whitespace()
+                            .take(2) // Take first two words (genus species)
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                            .to_uppercase()
+                    } else {
+                        desc_upper.clone()
+                    };
+
+                    // Map organism to TaxID
+                    let taxid = if organism.contains("HOMO SAPIENS") || desc_upper.contains("HUMAN")
+                    {
+                        "9606" // Human
+                    } else if organism.contains("MUS MUSCULUS") || desc_upper.contains("MOUSE") {
+                        "10090" // Mouse
+                    } else if organism.contains("RATTUS NORVEGICUS") || desc_upper.contains("RAT") {
+                        "10116" // Rat
+                    } else if organism.contains("DROSOPHILA MELANOGASTER")
+                        || desc_upper.contains("DROME")
+                    {
+                        "7227" // Fruit fly
+                    } else if organism.contains("CAENORHABDITIS ELEGANS")
+                        || desc_upper.contains("CAEEL")
+                    {
+                        "6239" // C. elegans
+                    } else if organism.contains("SACCHAROMYCES CEREVISIAE")
+                        || desc_upper.contains("YEAST")
+                    {
+                        "4932" // Baker's yeast
+                    } else if organism.contains("ESCHERICHIA COLI") || desc_upper.contains("ECOLI")
+                    {
+                        "562" // E. coli
+                    } else if organism.contains("ARABIDOPSIS THALIANA")
+                        || desc_upper.contains("ARATH")
+                    {
+                        "3702" // Arabidopsis
+                    } else if organism.contains("DANIO RERIO") || desc_upper.contains("ZEBRAFISH") {
+                        "7955" // Zebrafish
+                    } else if organism.contains("BOS TAURUS") || desc_upper.contains("BOVIN") {
+                        "9913" // Cow
+                    } else if organism.contains("SUS SCROFA") || desc_upper.contains("PIG") {
+                        "9823" // Pig
+                    } else if organism.contains("GALLUS GALLUS") || desc_upper.contains("CHICK") {
+                        "9031" // Chicken
+                    } else if organism.contains("XENOPUS") {
+                        "8355" // Xenopus
+                    } else if organism.contains("BACILLUS SUBTILIS") {
+                        "1423" // B. subtilis
+                    } else if organism.contains("STAPHYLOCOCCUS AUREUS") {
+                        "1280" // S. aureus
+                    } else if organism.contains("MYCOBACTERIUM TUBERCULOSIS") {
+                        "1773" // M. tuberculosis
+                    } else if organism.contains("PLASMODIUM FALCIPARUM") {
+                        "5833" // P. falciparum (malaria)
+                    } else {
+                        "32644" // Default: unclassified
+                    };
+
+                    // Append TaxID to description
+                    modified_seq.description = Some(format!("{} TaxID={}", desc, taxid));
+                } else {
+                    // No description, add a minimal one with TaxID
+                    modified_seq.description = Some("TaxID=32644".to_string());
                 }
 
-                // Try to extract organism from OS= tag or description
-                let desc_upper = desc.to_uppercase();
-
-                // First try to extract from OS= tag
-                let organism = if let Some(os_start) = desc.find("OS=") {
-                    let os_text = &desc[os_start + 3..];
-                    os_text.split_whitespace()
-                        .take(2)  // Take first two words (genus species)
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                        .to_uppercase()
-                } else {
-                    desc_upper.clone()
-                };
-
-                // Map organism to TaxID
-                let taxid = if organism.contains("HOMO SAPIENS") || desc_upper.contains("HUMAN") {
-                    "9606"  // Human
-                } else if organism.contains("MUS MUSCULUS") || desc_upper.contains("MOUSE") {
-                    "10090"  // Mouse
-                } else if organism.contains("RATTUS NORVEGICUS") || desc_upper.contains("RAT") {
-                    "10116"  // Rat
-                } else if organism.contains("DROSOPHILA MELANOGASTER") || desc_upper.contains("DROME") {
-                    "7227"  // Fruit fly
-                } else if organism.contains("CAENORHABDITIS ELEGANS") || desc_upper.contains("CAEEL") {
-                    "6239"  // C. elegans
-                } else if organism.contains("SACCHAROMYCES CEREVISIAE") || desc_upper.contains("YEAST") {
-                    "4932"  // Baker's yeast
-                } else if organism.contains("ESCHERICHIA COLI") || desc_upper.contains("ECOLI") {
-                    "562"  // E. coli
-                } else if organism.contains("ARABIDOPSIS THALIANA") || desc_upper.contains("ARATH") {
-                    "3702"  // Arabidopsis
-                } else if organism.contains("DANIO RERIO") || desc_upper.contains("ZEBRAFISH") {
-                    "7955"  // Zebrafish
-                } else if organism.contains("BOS TAURUS") || desc_upper.contains("BOVIN") {
-                    "9913"  // Cow
-                } else if organism.contains("SUS SCROFA") || desc_upper.contains("PIG") {
-                    "9823"  // Pig
-                } else if organism.contains("GALLUS GALLUS") || desc_upper.contains("CHICK") {
-                    "9031"  // Chicken
-                } else if organism.contains("XENOPUS") {
-                    "8355"  // Xenopus
-                } else if organism.contains("BACILLUS SUBTILIS") {
-                    "1423"  // B. subtilis
-                } else if organism.contains("STAPHYLOCOCCUS AUREUS") {
-                    "1280"  // S. aureus
-                } else if organism.contains("MYCOBACTERIUM TUBERCULOSIS") {
-                    "1773"  // M. tuberculosis
-                } else if organism.contains("PLASMODIUM FALCIPARUM") {
-                    "5833"  // P. falciparum (malaria)
-                } else {
-                    "32644"  // Default: unclassified
-                };
-
-                // Append TaxID to description
-                modified_seq.description = Some(format!("{} TaxID={}", desc, taxid));
-            } else {
-                // No description, add a minimal one with TaxID
-                modified_seq.description = Some("TaxID=32644".to_string());
-            }
-
-            modified_seq
-        }).collect()
+                modified_seq
+            })
+            .collect()
     }
 
     /// Write sequences to FASTA with TaxID added for LAMBDA
     fn write_fasta_with_taxid(path: &Path, sequences: &[Sequence]) -> Result<()> {
+        // Check if sequences array is empty
+        if sequences.is_empty() {
+            return Err(anyhow::anyhow!(
+                "Cannot write FASTA file: no sequences provided. \
+                This may indicate an issue with reference selection or filtering."
+            ));
+        }
+
         let sequences_with_taxid = Self::add_taxid_to_sequences(sequences);
+
+        // Write the FASTA file
         crate::bio::fasta::write_fasta(path, &sequences_with_taxid)
-            .map_err(|e| anyhow::anyhow!("Failed to write FASTA: {}", e))
+            .map_err(|e| anyhow::anyhow!("Failed to write FASTA: {}", e))?;
+
+        // Verify the file was written successfully and is not empty
+        let metadata = fs::metadata(path)
+            .map_err(|e| anyhow::anyhow!("Failed to verify written FASTA file: {}", e))?;
+
+        if metadata.len() == 0 {
+            return Err(anyhow::anyhow!(
+                "FASTA file was created but is empty (0 bytes). \
+                This indicates a problem with sequence serialization. \
+                Number of sequences attempted: {}",
+                sequences.len()
+            ));
+        }
+
+        Ok(())
     }
 
     /// Check if sequences in FASTA have taxonomic IDs
     fn check_sequences_have_taxonomy(&self, fasta_path: &Path) -> Result<bool> {
-        use std::io::{BufRead, BufReader};
         use std::fs::File;
+        use std::io::BufReader;
 
         let file = File::open(fasta_path)?;
         let reader = BufReader::new(file);
@@ -1894,13 +2588,16 @@ impl LambdaAligner {
         let mut headers_with_tax = 0;
 
         // Check first 100 headers
-        for line in reader.lines() {
+        for line in read_lines_lossy(reader) {
             let line = line?;
             if line.starts_with('>') {
                 checked_headers += 1;
                 // Check for various TaxID patterns
-                if line.contains("TaxID=") || line.contains("OX=") ||
-                   line.contains("taxon:") || line.contains("tax_id=") {
+                if line.contains("TaxID=")
+                    || line.contains("OX=")
+                    || line.contains("taxon:")
+                    || line.contains("tax_id=")
+                {
                     headers_with_tax += 1;
                 }
                 if checked_headers >= 100 {
@@ -1931,7 +2628,10 @@ impl Drop for LambdaAligner {
             let _ = self.cleanup();
         } else {
             // Directory preserved for debugging
-            eprintln!("\n🔍 LAMBDA temp directory preserved: {}", self.get_temp_dir().display());
+            eprintln!(
+                "\n🔍 LAMBDA temp directory preserved: {}",
+                self.get_temp_dir().display()
+            );
         }
     }
 }
@@ -1977,25 +2677,27 @@ impl AlignmentGraph {
         self.nodes.insert(from.clone());
         self.nodes.insert(to.clone());
 
-        self.edges.entry(from).or_insert_with(Vec::new).push(AlignmentEdge {
-            target: to,
-            identity,
-            length,
-        });
+        self.edges
+            .entry(from)
+            .or_default()
+            .push(AlignmentEdge {
+                target: to,
+                identity,
+                length,
+            });
     }
 
     /// Get sequences that align to a given sequence
     pub fn get_aligned_sequences(&self, seq_id: &str) -> Vec<&AlignmentEdge> {
-        self.edges.get(seq_id)
+        self.edges
+            .get(seq_id)
             .map(|v| v.iter().collect())
             .unwrap_or_default()
     }
 
     /// Calculate coverage score for a sequence (how many others it can represent)
     pub fn coverage_score(&self, seq_id: &str) -> usize {
-        self.edges.get(seq_id)
-            .map(|v| v.len())
-            .unwrap_or(0)
+        self.edges.get(seq_id).map(|v| v.len()).unwrap_or(0)
     }
 }
 
@@ -2025,25 +2727,24 @@ impl Aligner for LambdaAligner {
         self.binary_path.exists() && self.binary_path.is_file()
     }
 
-
     fn recommended_batch_size(&self) -> usize {
-        5000  // LAMBDA works well with batches of 5000 sequences
+        5000 // LAMBDA works well with batches of 5000 sequences
     }
 
     fn supports_protein(&self) -> bool {
-        true  // LAMBDA supports protein sequences
+        true // LAMBDA supports protein sequences
     }
 
     fn supports_nucleotide(&self) -> bool {
-        true  // LAMBDA supports nucleotide sequences
+        true // LAMBDA supports nucleotide sequences
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::io::Write;
+    use tempfile::TempDir;
 
     fn create_test_fasta(path: &Path, sequences: &[(&str, &str)]) -> Result<()> {
         let mut file = File::create(path)?;
@@ -2077,7 +2778,11 @@ mod tests {
         let mut names_file = File::create(dir.join("names.dmp"))?;
         writeln!(names_file, "1\t|\troot\t|\t\t|\tscientific name\t|")?;
         for taxid in taxids {
-            writeln!(names_file, "{}\t|\tOrganism_{}\t|\t\t|\tscientific name\t|", taxid, taxid)?;
+            writeln!(
+                names_file,
+                "{}\t|\tOrganism_{}\t|\t\t|\tscientific name\t|",
+                taxid, taxid
+            )?;
         }
 
         Ok(())
@@ -2090,22 +2795,30 @@ mod tests {
 
         // Create reference FASTA with specific accessions
         let ref_fasta = temp_path.join("references.fasta");
-        create_test_fasta(&ref_fasta, &[
-            ("sp|P12345|PROT1_HUMAN", "ACGT"),
-            ("sp|Q67890|PROT2_MOUSE", "TTGG"),
-            ("NP_123456.1", "AAAA"),
-        ]).unwrap();
+        create_test_fasta(
+            &ref_fasta,
+            &[
+                ("sp|P12345|PROT1_HUMAN", "ACGT"),
+                ("sp|Q67890|PROT2_MOUSE", "TTGG"),
+                ("NP_123456.1", "AAAA"),
+            ],
+        )
+        .unwrap();
 
         // Create full accession2taxid with more mappings than needed
         let full_mapping = temp_path.join("full.accession2taxid");
-        create_test_accession2taxid(&full_mapping, &[
-            ("P12345", 9606),    // Human - in reference
-            ("Q67890", 10090),   // Mouse - in reference
-            ("NP_123456.1", 9606), // Human - in reference
-            ("P99999", 9606),    // Human - NOT in reference
-            ("Q11111", 10090),   // Mouse - NOT in reference
-            ("XP_999999.1", 7227), // Fly - NOT in reference
-        ]).unwrap();
+        create_test_accession2taxid(
+            &full_mapping,
+            &[
+                ("P12345", 9606),      // Human - in reference
+                ("Q67890", 10090),     // Mouse - in reference
+                ("NP_123456.1", 9606), // Human - in reference
+                ("P99999", 9606),      // Human - NOT in reference
+                ("Q11111", 10090),     // Mouse - NOT in reference
+                ("XP_999999.1", 7227), // Fly - NOT in reference
+            ],
+        )
+        .unwrap();
 
         // Create aligner
         let mut aligner = LambdaAligner {
@@ -2121,7 +2834,9 @@ mod tests {
         };
 
         // Filter the mapping
-        let filtered_path = aligner.filter_accession2taxid_for_references(&full_mapping, &ref_fasta).unwrap();
+        let filtered_path = aligner
+            .filter_accession2taxid_for_references(&full_mapping, &ref_fasta)
+            .unwrap();
 
         // Check filtered file contents
         let contents = fs::read_to_string(&filtered_path).unwrap();
@@ -2134,7 +2849,10 @@ mod tests {
         assert!(contents.contains("NP_123456"), "Should contain NP_123456");
         assert!(!contents.contains("P99999"), "Should NOT contain P99999");
         assert!(!contents.contains("Q11111"), "Should NOT contain Q11111");
-        assert!(!contents.contains("XP_999999"), "Should NOT contain XP_999999");
+        assert!(
+            !contents.contains("XP_999999"),
+            "Should NOT contain XP_999999"
+        );
     }
 
     #[test]
@@ -2144,22 +2862,30 @@ mod tests {
 
         // Create filtered accession2taxid with specific taxids
         let filtered_mapping = temp_path.join("filtered.accession2taxid");
-        create_test_accession2taxid(&filtered_mapping, &[
-            ("P12345", 9606),   // Human
-            ("Q67890", 10090),  // Mouse
-            ("R11111", 7227),   // Fly
-        ]).unwrap();
+        create_test_accession2taxid(
+            &filtered_mapping,
+            &[
+                ("P12345", 9606),  // Human
+                ("Q67890", 10090), // Mouse
+                ("R11111", 7227),  // Fly
+            ],
+        )
+        .unwrap();
 
         // Create full taxdump with many taxids
         let full_taxdump = temp_path.join("full_taxdump");
-        create_test_taxdump(&full_taxdump, &[
-            9606,   // Human - needed
-            10090,  // Mouse - needed
-            7227,   // Fly - needed
-            559292, // Yeast - NOT needed
-            511145, // E. coli - NOT needed
-            9823,   // Pig - NOT needed
-        ]).unwrap();
+        create_test_taxdump(
+            &full_taxdump,
+            &[
+                9606,   // Human - needed
+                10090,  // Mouse - needed
+                7227,   // Fly - needed
+                559292, // Yeast - NOT needed
+                511145, // E. coli - NOT needed
+                9823,   // Pig - NOT needed
+            ],
+        )
+        .unwrap();
 
         // Create aligner
         let mut aligner = LambdaAligner {
@@ -2175,22 +2901,48 @@ mod tests {
         };
 
         // Filter the taxdump
-        let filtered_dir = aligner.create_filtered_taxdump(&full_taxdump, &filtered_mapping).unwrap();
+        let filtered_dir = aligner
+            .create_filtered_taxdump(&full_taxdump, &filtered_mapping)
+            .unwrap();
 
         // Check filtered nodes.dmp
         let nodes_contents = fs::read_to_string(filtered_dir.join("nodes.dmp")).unwrap();
-        assert!(nodes_contents.contains("9606"), "Should contain human taxid");
-        assert!(nodes_contents.contains("10090"), "Should contain mouse taxid");
+        assert!(
+            nodes_contents.contains("9606"),
+            "Should contain human taxid"
+        );
+        assert!(
+            nodes_contents.contains("10090"),
+            "Should contain mouse taxid"
+        );
         assert!(nodes_contents.contains("7227"), "Should contain fly taxid");
-        assert!(!nodes_contents.contains("559292"), "Should NOT contain yeast taxid");
-        assert!(!nodes_contents.contains("511145"), "Should NOT contain E. coli taxid");
+        assert!(
+            !nodes_contents.contains("559292"),
+            "Should NOT contain yeast taxid"
+        );
+        assert!(
+            !nodes_contents.contains("511145"),
+            "Should NOT contain E. coli taxid"
+        );
 
         // Check filtered names.dmp
         let names_contents = fs::read_to_string(filtered_dir.join("names.dmp")).unwrap();
-        assert!(names_contents.contains("9606"), "Names should contain human taxid");
-        assert!(names_contents.contains("10090"), "Names should contain mouse taxid");
-        assert!(names_contents.contains("7227"), "Names should contain fly taxid");
-        assert!(!names_contents.contains("559292"), "Names should NOT contain yeast taxid");
+        assert!(
+            names_contents.contains("9606"),
+            "Names should contain human taxid"
+        );
+        assert!(
+            names_contents.contains("10090"),
+            "Names should contain mouse taxid"
+        );
+        assert!(
+            names_contents.contains("7227"),
+            "Names should contain fly taxid"
+        );
+        assert!(
+            !names_contents.contains("559292"),
+            "Names should NOT contain yeast taxid"
+        );
     }
 
     #[test]
@@ -2198,19 +2950,26 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         // Test default settings
-        let aligner1 = LambdaAligner::new(PathBuf::from("/dummy")).unwrap_or_else(|_| LambdaAligner {
-            binary_path: PathBuf::from("/dummy"),
-            temp_dir: temp_dir.path().to_path_buf(),
-            acc_tax_map: None,
-            tax_dump_dir: None,
-            batch_enabled: false,
-            batch_size: 5000,
-            preserve_on_failure: false,
-            failed: AtomicBool::new(false),
-            workspace: None,
-        });
-        assert!(!aligner1.batch_enabled, "Batching should be disabled by default");
-        assert_eq!(aligner1.batch_size, 5000, "Default batch size should be 5000");
+        let aligner1 =
+            LambdaAligner::new(PathBuf::from("/dummy")).unwrap_or_else(|_| LambdaAligner {
+                binary_path: PathBuf::from("/dummy"),
+                temp_dir: temp_dir.path().to_path_buf(),
+                acc_tax_map: None,
+                tax_dump_dir: None,
+                batch_enabled: false,
+                batch_size: 5000,
+                preserve_on_failure: false,
+                failed: AtomicBool::new(false),
+                workspace: None,
+            });
+        assert!(
+            !aligner1.batch_enabled,
+            "Batching should be disabled by default"
+        );
+        assert_eq!(
+            aligner1.batch_size, 5000,
+            "Default batch size should be 5000"
+        );
 
         // Test with_batch_settings
         let aligner2 = aligner1.with_batch_settings(true, 10000);
@@ -2224,7 +2983,10 @@ mod tests {
         let test_cases = vec![
             ("sp|P12345|PROT_HUMAN Description", vec!["P12345"]),
             ("tr|Q67890|PROT_MOUSE", vec!["Q67890"]),
-            ("NP_123456.1 some description", vec!["NP_123456.1", "NP_123456"]),
+            (
+                "NP_123456.1 some description",
+                vec!["NP_123456.1", "NP_123456"],
+            ),
             ("XP_999999.2", vec!["XP_999999.2", "XP_999999"]),
             ("simple_accession", vec!["simple_accession"]),
         ];
@@ -2259,10 +3021,12 @@ mod tests {
                 batch_size: 5000,
                 preserve_on_failure: false,
                 failed: AtomicBool::new(false),
-            workspace: None,
+                workspace: None,
             };
 
-            let filtered_path = aligner.filter_accession2taxid_for_references(&full_mapping, &ref_fasta).unwrap();
+            let filtered_path = aligner
+                .filter_accession2taxid_for_references(&full_mapping, &ref_fasta)
+                .unwrap();
             let contents = fs::read_to_string(&filtered_path).unwrap();
 
             // Check that at least one expected accession was found
@@ -2270,8 +3034,14 @@ mod tests {
             assert!(found_any, "Should find accession from header: {}", header);
 
             // Check that non-matching accessions are not included
-            assert!(!contents.contains("NOMATCH1"), "Should not contain NOMATCH1");
-            assert!(!contents.contains("NOMATCH2"), "Should not contain NOMATCH2");
+            assert!(
+                !contents.contains("NOMATCH1"),
+                "Should not contain NOMATCH1"
+            );
+            assert!(
+                !contents.contains("NOMATCH2"),
+                "Should not contain NOMATCH2"
+            );
         }
     }
 
@@ -2282,9 +3052,13 @@ mod tests {
 
         // Create accession2taxid with leaf taxids
         let filtered_mapping = temp_path.join("filtered.accession2taxid");
-        create_test_accession2taxid(&filtered_mapping, &[
-            ("P12345", 9606),   // Human (should include ancestors)
-        ]).unwrap();
+        create_test_accession2taxid(
+            &filtered_mapping,
+            &[
+                ("P12345", 9606), // Human (should include ancestors)
+            ],
+        )
+        .unwrap();
 
         // Create taxdump with taxonomic hierarchy
         let full_taxdump = temp_path.join("full_taxdump");
@@ -2301,8 +3075,16 @@ mod tests {
         let mut names_file = File::create(full_taxdump.join("names.dmp")).unwrap();
         writeln!(names_file, "1\t|\troot\t|\t\t|\tscientific name\t|").unwrap();
         writeln!(names_file, "9605\t|\tHominidae\t|\t\t|\tscientific name\t|").unwrap();
-        writeln!(names_file, "9606\t|\tHomo sapiens\t|\t\t|\tscientific name\t|").unwrap();
-        writeln!(names_file, "10090\t|\tMus musculus\t|\t\t|\tscientific name\t|").unwrap();
+        writeln!(
+            names_file,
+            "9606\t|\tHomo sapiens\t|\t\t|\tscientific name\t|"
+        )
+        .unwrap();
+        writeln!(
+            names_file,
+            "10090\t|\tMus musculus\t|\t\t|\tscientific name\t|"
+        )
+        .unwrap();
 
         let mut aligner = LambdaAligner {
             binary_path: PathBuf::from("/dummy"),
@@ -2317,14 +3099,25 @@ mod tests {
         };
 
         // Filter the taxdump
-        let filtered_dir = aligner.create_filtered_taxdump(&full_taxdump, &filtered_mapping).unwrap();
+        let filtered_dir = aligner
+            .create_filtered_taxdump(&full_taxdump, &filtered_mapping)
+            .unwrap();
 
         // Check that ancestors are included
         let nodes_contents = fs::read_to_string(filtered_dir.join("nodes.dmp")).unwrap();
         assert!(nodes_contents.contains("1\t|"), "Should contain root");
-        assert!(nodes_contents.contains("9605\t|"), "Should contain ancestor 9605");
-        assert!(nodes_contents.contains("9606\t|"), "Should contain human 9606");
-        assert!(!nodes_contents.contains("10090\t|"), "Should NOT contain mouse 10090");
+        assert!(
+            nodes_contents.contains("9605\t|"),
+            "Should contain ancestor 9605"
+        );
+        assert!(
+            nodes_contents.contains("9606\t|"),
+            "Should contain human 9606"
+        );
+        assert!(
+            !nodes_contents.contains("10090\t|"),
+            "Should NOT contain mouse 10090"
+        );
     }
 
     #[test]
@@ -2340,7 +3133,10 @@ mod tests {
 
         // The aligner might fail if lambda3 doesn't exist, but we can still test the flag would be set
         if let Some(aligner) = aligner {
-            assert!(aligner.preserve_on_failure, "Flag should be set from env var");
+            assert!(
+                aligner.preserve_on_failure,
+                "Flag should be set from env var"
+            );
         }
     }
 
@@ -2358,7 +3154,10 @@ mod tests {
         let sequences_processed = 1;
         let percent_complete = sequences_processed as f64 / total_sequences as f64 * 100.0;
 
-        assert_eq!(percent_complete, 50.0, "Should calculate 50% for 1 of 2 sequences");
+        assert_eq!(
+            percent_complete, 50.0,
+            "Should calculate 50% for 1 of 2 sequences"
+        );
     }
 
     #[test]
@@ -2369,8 +3168,14 @@ mod tests {
 
         let extreme_threshold = 30_000;
 
-        assert!(long_seq.len() > extreme_threshold, "Long sequence should be extreme");
-        assert!(!(normal_seq.len() > extreme_threshold), "Normal sequence should not be extreme");
+        assert!(
+            long_seq.len() > extreme_threshold,
+            "Long sequence should be extreme"
+        );
+        assert!(
+            !(normal_seq.len() > extreme_threshold),
+            "Normal sequence should not be extreme"
+        );
     }
 
     #[test]
@@ -2418,8 +3223,16 @@ mod tests {
 
         // Should have 3 batches: [small1, small2], [large]
         assert_eq!(batches.len(), 2, "Should create 2 batches");
-        assert_eq!(batches[0].len(), 2, "First batch should have 2 small sequences");
-        assert_eq!(batches[1].len(), 1, "Second batch should have 1 large sequence");
+        assert_eq!(
+            batches[0].len(),
+            2,
+            "First batch should have 2 small sequences"
+        );
+        assert_eq!(
+            batches[1].len(),
+            1,
+            "Second batch should have 1 large sequence"
+        );
     }
 
     #[test]
@@ -2459,8 +3272,10 @@ mod tests {
         let expected_path = ws.get_path("lambda");
         drop(ws); // Release lock
 
-        assert_eq!(aligner.temp_dir, expected_path,
-            "Aligner should use workspace lambda directory");
+        assert_eq!(
+            aligner.temp_dir, expected_path,
+            "Aligner should use workspace lambda directory"
+        );
         assert!(aligner.workspace.is_some(), "Workspace should be set");
     }
 
@@ -2495,14 +3310,22 @@ mod tests {
 
         // get_temp_path should initialize and return a path
         let test_path = aligner.get_temp_path("test.fasta");
-        assert!(!aligner.temp_dir.as_os_str().is_empty(), "temp_dir should be initialized");
-        assert!(test_path.ends_with("test.fasta"), "Should end with filename");
-        assert!(test_path.starts_with(&aligner.temp_dir), "Should start with temp_dir");
+        assert!(
+            !aligner.temp_dir.as_os_str().is_empty(),
+            "temp_dir should be initialized"
+        );
+        assert!(
+            test_path.ends_with("test.fasta"),
+            "Should end with filename"
+        );
+        assert!(
+            test_path.starts_with(&aligner.temp_dir),
+            "Should start with temp_dir"
+        );
     }
 
     #[test]
     fn test_workspace_fallback() {
-
         // Test that aligner falls back to regular temp dir when no workspace
         let mut aligner = LambdaAligner {
             binary_path: PathBuf::from("/dummy"),
@@ -2519,16 +3342,23 @@ mod tests {
         aligner.initialize_temp_dir();
 
         // Should fall back to /tmp directory
-        assert!(aligner.temp_dir.starts_with(std::env::temp_dir()),
-            "Should fall back to system temp dir");
-        assert!(aligner.temp_dir.to_string_lossy().contains("talaria-lambda"),
-            "Should contain talaria-lambda in path");
+        assert!(
+            aligner.temp_dir.starts_with(std::env::temp_dir()),
+            "Should fall back to system temp dir"
+        );
+        assert!(
+            aligner
+                .temp_dir
+                .to_string_lossy()
+                .contains("talaria-lambda"),
+            "Should contain talaria-lambda in path"
+        );
     }
 
     #[test]
     fn test_progress_counter_updates() {
-        use std::sync::Arc;
         use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
 
         // Test that progress counter is properly updated
         let progress_counter = Arc::new(AtomicUsize::new(0));
@@ -2555,7 +3385,11 @@ mod tests {
         let max_len = sequences.iter().map(|s| s.len()).max().unwrap_or(0);
         let min_len = sequences.iter().map(|s| s.len()).min().unwrap_or(0);
         let total_aa: usize = sequences.iter().map(|s| s.len()).sum();
-        let avg_len = if !sequences.is_empty() { total_aa / sequences.len() } else { 0 };
+        let avg_len = if !sequences.is_empty() {
+            total_aa / sequences.len()
+        } else {
+            0
+        };
 
         assert_eq!(max_len, 300, "Max length should be 300");
         assert_eq!(min_len, 100, "Min length should be 100");
@@ -2571,17 +3405,27 @@ mod tests {
 
         let sequences = vec![normal_seq, ambiguous_seq];
 
-        let ambiguous_seqs: Vec<_> = sequences.iter()
+        let ambiguous_seqs: Vec<_> = sequences
+            .iter()
             .filter(|seq| {
-                let ambiguous_count = seq.sequence.iter()
+                let ambiguous_count = seq
+                    .sequence
+                    .iter()
                     .filter(|&&b| b == b'X' || b == b'B' || b == b'Z' || b == b'*')
                     .count();
-                ambiguous_count > seq.len() / 20  // More than 5% ambiguous
+                ambiguous_count > seq.len() / 20 // More than 5% ambiguous
             })
             .collect();
 
-        assert_eq!(ambiguous_seqs.len(), 1, "Should detect 1 ambiguous sequence");
-        assert_eq!(ambiguous_seqs[0].id, "ambiguous", "Should identify the correct sequence");
+        assert_eq!(
+            ambiguous_seqs.len(),
+            1,
+            "Should detect 1 ambiguous sequence"
+        );
+        assert_eq!(
+            ambiguous_seqs[0].id, "ambiguous",
+            "Should identify the correct sequence"
+        );
     }
 
     #[test]
@@ -2649,6 +3493,9 @@ mod tests {
         aligner.initialize_temp_dir();
 
         // Verify the aligner can be used mutably
-        assert!(aligner.temp_dir.to_string_lossy().contains("talaria-lambda"));
+        assert!(aligner
+            .temp_dir
+            .to_string_lossy()
+            .contains("talaria-lambda"));
     }
 }

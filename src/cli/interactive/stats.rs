@@ -4,7 +4,10 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     symbols,
-    widgets::{Axis, BarChart, Block, Borders, Chart, Dataset, Gauge, List, ListItem, Paragraph, Sparkline, Tabs},
+    widgets::{
+        Axis, BarChart, Block, Borders, Chart, Dataset, Gauge, List, ListItem, Paragraph,
+        Sparkline, Tabs,
+    },
     Frame, Terminal,
 };
 use std::io;
@@ -36,16 +39,16 @@ impl StatsViewer {
             file_path: None,
         }
     }
-    
+
     pub fn from_file(path: std::path::PathBuf) -> Self {
         let mut viewer = Self::new();
         viewer.load_file(path);
         viewer
     }
-    
+
     fn load_file(&mut self, path: std::path::PathBuf) {
         self.file_path = Some(path.clone());
-        
+
         // Try to load and parse the FASTA file
         match crate::bio::fasta::parse_fasta(&path) {
             Ok(sequences) => {
@@ -57,7 +60,7 @@ impl StatsViewer {
             }
         }
     }
-    
+
     fn calculate_stats(sequences: &[crate::bio::sequence::Sequence]) -> DatabaseStats {
         let total_sequences = sequences.len();
         let total_bases: usize = sequences.iter().map(|s| s.sequence.len()).sum();
@@ -66,17 +69,23 @@ impl StatsViewer {
         } else {
             0.0
         };
-        
+
         // Calculate GC content
-        let gc_count: usize = sequences.iter()
-            .map(|s| s.sequence.iter().filter(|&&b| b == b'G' || b == b'C' || b == b'g' || b == b'c').count())
+        let gc_count: usize = sequences
+            .iter()
+            .map(|s| {
+                s.sequence
+                    .iter()
+                    .filter(|&&b| b == b'G' || b == b'C' || b == b'g' || b == b'c')
+                    .count()
+            })
             .sum();
         let gc_content = if total_bases > 0 {
             (gc_count as f64 / total_bases as f64) * 100.0
         } else {
             0.0
         };
-        
+
         // Calculate length distribution
         let mut length_bins = vec![0u64; 5];
         for seq in sequences {
@@ -93,7 +102,7 @@ impl StatsViewer {
                 length_bins[4] += 1;
             }
         }
-        
+
         let length_distribution = vec![
             ("0-100".to_string(), length_bins[0]),
             ("100-200".to_string(), length_bins[1]),
@@ -101,7 +110,7 @@ impl StatsViewer {
             ("500-1000".to_string(), length_bins[3]),
             (">1000".to_string(), length_bins[4]),
         ];
-        
+
         // Simple redundancy estimate (percentage of duplicate sequences)
         use std::collections::HashSet;
         let unique_seqs: HashSet<_> = sequences.iter().map(|s| &s.sequence).collect();
@@ -110,7 +119,7 @@ impl StatsViewer {
         } else {
             0.0
         };
-        
+
         DatabaseStats {
             total_sequences,
             total_bases,
@@ -128,11 +137,11 @@ impl StatsViewer {
                 .collect(),
         }
     }
-    
+
     fn next_tab(&mut self) {
         self.selected_tab = (self.selected_tab + 1) % 3;
     }
-    
+
     fn previous_tab(&mut self) {
         if self.selected_tab > 0 {
             self.selected_tab -= 1;
@@ -142,25 +151,23 @@ impl StatsViewer {
     }
 }
 
-pub fn run_stats_viewer<B: Backend>(
-    _terminal: &mut Terminal<B>,
-) -> io::Result<()> {
+pub fn run_stats_viewer<B: Backend>(_terminal: &mut Terminal<B>) -> io::Result<()> {
     let backend = ratatui::backend::CrosstermBackend::new(std::io::stdout());
     let mut terminal = Terminal::new(backend)?;
-    
+
     // Ask for file path
-    use dialoguer::{Input, theme::ColorfulTheme};
+    use dialoguer::{theme::ColorfulTheme, Input};
     let file_path = Input::<String>::with_theme(&ColorfulTheme::default())
         .with_prompt("Enter FASTA file path to analyze")
         .default("example.fasta".into())
         .interact_text()
         .unwrap_or_else(|_| "example.fasta".to_string());
-    
+
     let mut viewer = StatsViewer::from_file(std::path::PathBuf::from(file_path));
-    
+
     loop {
-        terminal.draw(|f| draw_stats::<B>(f, &mut viewer))?;
-        
+        terminal.draw(|f| draw_stats(f, &mut viewer))?;
+
         if let Event::Key(key) = event::read()? {
             match key.code {
                 KeyCode::Esc | KeyCode::Char('q') => break,
@@ -170,39 +177,44 @@ pub fn run_stats_viewer<B: Backend>(
             }
         }
     }
-    
+
     Ok(())
 }
 
-fn draw_stats<B>(f: &mut Frame, viewer: &mut StatsViewer) {
+fn draw_stats(f: &mut Frame, viewer: &mut StatsViewer) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Min(0),
-        ])
+        .constraints([Constraint::Length(3), Constraint::Min(0)])
         .split(f.area());
-    
+
     // Tabs
     let tab_titles = vec!["Overview", "Distributions", "Analysis"];
     let tabs = Tabs::new(tab_titles)
-        .block(Block::default().title("Database Statistics").borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title("Database Statistics")
+                .borders(Borders::ALL),
+        )
         .style(Style::default().fg(Color::White))
-        .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+        .highlight_style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )
         .select(viewer.selected_tab);
     f.render_widget(tabs, chunks[0]);
-    
+
     // Tab content
     match viewer.selected_tab {
-        0 => draw_overview::<B>(f, chunks[1], &viewer.stats),
-        1 => draw_distributions::<B>(f, chunks[1], &viewer.stats),
-        2 => draw_analysis::<B>(f, chunks[1], &viewer.stats),
+        0 => draw_overview(f, chunks[1], &viewer.stats),
+        1 => draw_distributions(f, chunks[1], &viewer.stats),
+        2 => draw_analysis(f, chunks[1], &viewer.stats),
         _ => {}
     }
 }
 
-fn draw_overview<B>(f: &mut Frame, area: Rect, stats: &DatabaseStats) {
+fn draw_overview(f: &mut Frame, area: Rect, stats: &DatabaseStats) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -211,7 +223,7 @@ fn draw_overview<B>(f: &mut Frame, area: Rect, stats: &DatabaseStats) {
             Constraint::Min(0),
         ])
         .split(area);
-    
+
     // Key metrics
     let metrics = vec![
         format!("Total Sequences: {:>10}", stats.total_sequences),
@@ -222,13 +234,13 @@ fn draw_overview<B>(f: &mut Frame, area: Rect, stats: &DatabaseStats) {
         format!("Taxonomy Div:    {:>10.1}%", stats.taxonomy_diversity),
         format!("Compression:     {:>10.1}x", stats.compression_ratio),
     ];
-    
+
     let items: Vec<ListItem> = metrics.iter().map(|m| ListItem::new(m.as_str())).collect();
     let list = List::new(items)
         .block(Block::default().title("Key Metrics").borders(Borders::ALL))
         .style(Style::default().fg(Color::Cyan));
     f.render_widget(list, chunks[0]);
-    
+
     // Progress bars
     let gc_gauge = Gauge::default()
         .block(Block::default().title("GC Content").borders(Borders::ALL))
@@ -236,48 +248,59 @@ fn draw_overview<B>(f: &mut Frame, area: Rect, stats: &DatabaseStats) {
         .percent(stats.gc_content as u16)
         .label(format!("{}%", stats.gc_content as u16));
     f.render_widget(gc_gauge, chunks[1]);
-    
+
     // Sparkline for sequence counts
     let sparkline_data: Vec<u64> = vec![64, 32, 48, 64, 80, 96, 112, 96, 80, 64, 48, 32];
     let sparkline = Sparkline::default()
-        .block(Block::default().title("Sequence Count Trend").borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title("Sequence Count Trend")
+                .borders(Borders::ALL),
+        )
         .data(&sparkline_data)
         .style(Style::default().fg(Color::Yellow));
     f.render_widget(sparkline, chunks[2]);
 }
 
-fn draw_distributions<B>(f: &mut Frame, area: Rect, stats: &DatabaseStats) {
+fn draw_distributions(f: &mut Frame, area: Rect, stats: &DatabaseStats) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(area);
-    
+
     // Bar chart for length distribution
-    let bar_data: Vec<(&str, u64)> = stats.length_distribution
+    let bar_data: Vec<(&str, u64)> = stats
+        .length_distribution
         .iter()
         .map(|(label, value)| (label.as_str(), *value))
         .collect();
-    
+
     let barchart = BarChart::default()
-        .block(Block::default().title("Length Distribution").borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title("Length Distribution")
+                .borders(Borders::ALL),
+        )
         .data(&bar_data)
         .bar_width(7)
         .bar_gap(2)
         .bar_style(Style::default().fg(Color::Green))
         .value_style(Style::default().fg(Color::White));
     f.render_widget(barchart, chunks[0]);
-    
+
     // Line chart for composition
-    let datasets = vec![
-        Dataset::default()
-            .name("GC Composition")
-            .marker(symbols::Marker::Dot)
-            .style(Style::default().fg(Color::Cyan))
-            .data(&stats.composition_data),
-    ];
-    
+    let datasets = vec![Dataset::default()
+        .name("GC Composition")
+        .marker(symbols::Marker::Dot)
+        .style(Style::default().fg(Color::Cyan))
+        .data(&stats.composition_data)];
+
     let chart = Chart::new(datasets)
-        .block(Block::default().title("Sequence Composition").borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title("Sequence Composition")
+                .borders(Borders::ALL),
+        )
         .x_axis(
             Axis::default()
                 .title("Position")
@@ -293,7 +316,7 @@ fn draw_distributions<B>(f: &mut Frame, area: Rect, stats: &DatabaseStats) {
     f.render_widget(chart, chunks[1]);
 }
 
-fn draw_analysis<B>(f: &mut Frame, area: Rect, stats: &DatabaseStats) {
+fn draw_analysis(f: &mut Frame, area: Rect, stats: &DatabaseStats) {
     let analysis_text = format!(
         "Database Analysis Summary\n\n\
         • Redundancy Analysis:\n  \
@@ -319,9 +342,13 @@ fn draw_analysis<B>(f: &mut Frame, area: Rect, stats: &DatabaseStats) {
         stats.total_bases as f64 / 1_000_000_000.0 / stats.compression_ratio,
         stats.total_bases as f64 / 1_000_000_000.0 / stats.compression_ratio * 0.3,
     );
-    
+
     let paragraph = Paragraph::new(analysis_text)
-        .block(Block::default().title("Analysis & Recommendations").borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title("Analysis & Recommendations")
+                .borders(Borders::ALL),
+        )
         .style(Style::default().fg(Color::White))
         .wrap(ratatui::widgets::Wrap { trim: true });
     f.render_widget(paragraph, area);

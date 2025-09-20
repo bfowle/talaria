@@ -1,13 +1,13 @@
-use clap::Args;
-use crate::tools::ToolManager;
 use crate::cli::output::*;
+use crate::tools::ToolManager;
+use clap::Args;
 
 #[derive(Args)]
 pub struct ListArgs {
     /// Show all versions (not just current)
     #[arg(long)]
     pub all_versions: bool,
-    
+
     /// Output format (text, json)
     #[arg(short, long, default_value = "text")]
     pub format: String,
@@ -25,7 +25,7 @@ pub fn run(args: ListArgs) -> anyhow::Result<()> {
         info("Available tools: lambda, blast, diamond, mmseqs2");
         return Ok(());
     }
-    
+
     match args.format.as_str() {
         "json" => {
             let json = serde_json::to_string_pretty(&tools)?;
@@ -37,7 +37,7 @@ pub fn run(args: ListArgs) -> anyhow::Result<()> {
                 // Tree structure showing all versions
                 for (i, (tool, versions)) in tools.iter().enumerate() {
                     let is_last_tool = i == tools.len() - 1;
-                    tree_item(false, &tool.display_name(), None);
+                    tree_item(false, tool.display_name(), None);
 
                     for (j, version) in versions.iter().enumerate() {
                         let is_last_version = j == versions.len() - 1;
@@ -48,9 +48,15 @@ pub fn run(args: ListArgs) -> anyhow::Result<()> {
                         };
 
                         if is_last_version {
-                            tree_item_continued_last(&status, Some(&version.installed_date.format("%Y-%m-%d").to_string()));
+                            tree_item_continued_last(
+                                &status,
+                                Some(&version.installed_date.format("%Y-%m-%d").to_string()),
+                            );
                         } else {
-                            tree_item_continued(&status, Some(&version.installed_date.format("%Y-%m-%d").to_string()));
+                            tree_item_continued(
+                                &status,
+                                Some(&version.installed_date.format("%Y-%m-%d").to_string()),
+                            );
                         }
                     }
 
@@ -88,6 +94,6 @@ pub fn run(args: ListArgs) -> anyhow::Result<()> {
             }
         }
     }
-    
+
     Ok(())
 }

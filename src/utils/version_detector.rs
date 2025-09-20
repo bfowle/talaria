@@ -2,12 +2,11 @@
 ///
 /// Detects and extracts upstream version information from database files
 /// to provide meaningful version names instead of timestamps
-
 use anyhow::{Context, Result};
-use regex::Regex;
-use std::collections::HashMap;
 use chrono::{DateTime, Utc};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Represents a database version with multiple naming schemes
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,9 +55,7 @@ impl DatabaseVersion {
     pub fn new(source: &str, dataset: &str) -> Self {
         let now = Utc::now();
         // Use timestamp as primary identifier - no UUID needed for uniqueness
-        let timestamp = format!("{}",
-            now.format("%Y%m%d_%H%M%S")
-        );
+        let timestamp = format!("{}", now.format("%Y%m%d_%H%M%S"));
 
         Self {
             timestamp: timestamp.clone(),
@@ -78,8 +75,7 @@ impl DatabaseVersion {
 
     /// Get the display name for this version (prefer upstream over timestamp)
     pub fn display_name(&self) -> &str {
-        self.upstream_version.as_ref()
-            .unwrap_or(&self.timestamp)
+        self.upstream_version.as_ref().unwrap_or(&self.timestamp)
     }
 
     /// Get all aliases for this version
@@ -106,9 +102,10 @@ impl DatabaseVersion {
         }
 
         // Check all alias categories
-        if self.aliases.system.iter().any(|a| a == reference) ||
-           self.aliases.upstream.iter().any(|a| a == reference) ||
-           self.aliases.custom.iter().any(|a| a == reference) {
+        if self.aliases.system.iter().any(|a| a == reference)
+            || self.aliases.upstream.iter().any(|a| a == reference)
+            || self.aliases.custom.iter().any(|a| a == reference)
+        {
             return true;
         }
 
@@ -177,9 +174,13 @@ impl VersionDetector {
 
                 // Add metadata based on source
                 if source == "uniprot" {
-                    version.metadata.insert("release_type".to_string(), "official".to_string());
+                    version
+                        .metadata
+                        .insert("release_type".to_string(), "official".to_string());
                 } else if source == "ncbi" {
-                    version.metadata.insert("release_type".to_string(), "snapshot".to_string());
+                    version
+                        .metadata
+                        .insert("release_type".to_string(), "snapshot".to_string());
                 }
             }
         }
@@ -189,11 +190,10 @@ impl VersionDetector {
 
     /// Detect version from a manifest file
     pub fn detect_from_manifest(&self, manifest_path: &str) -> Result<DatabaseVersion> {
-        let content = std::fs::read(manifest_path)
-            .context("Failed to read manifest file")?;
+        let content = std::fs::read(manifest_path).context("Failed to read manifest file")?;
 
-        let manifest: serde_json::Value = serde_json::from_slice(&content)
-            .context("Failed to parse manifest JSON")?;
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&content).context("Failed to parse manifest JSON")?;
 
         // Extract source and dataset from manifest or path
         let source = manifest["source"].as_str().unwrap_or("unknown");
@@ -236,8 +236,7 @@ struct UniProtVersionExtractor;
 impl VersionExtractor for UniProtVersionExtractor {
     fn extract_version(&self, _dataset: &str, content: &[u8]) -> Result<String> {
         // Look for UniProt release pattern in first few KB
-        let sample = std::str::from_utf8(&content[..content.len().min(4096)])
-            .unwrap_or("");
+        let sample = std::str::from_utf8(&content[..content.len().min(4096)]).unwrap_or("");
 
         // UniProt includes release info in headers like "Release: 2024_04"
         let re = Regex::new(r"Release:\s*(\d{4}_\d{2})")?;
@@ -275,8 +274,7 @@ struct NCBIVersionExtractor;
 impl VersionExtractor for NCBIVersionExtractor {
     fn extract_version(&self, dataset: &str, content: &[u8]) -> Result<String> {
         // NCBI uses date-based versions
-        let sample = std::str::from_utf8(&content[..content.len().min(4096)])
-            .unwrap_or("");
+        let sample = std::str::from_utf8(&content[..content.len().min(4096)]).unwrap_or("");
 
         // Look for date patterns in headers
         let re = Regex::new(r"(\d{4}-\d{2}-\d{2})")?;
@@ -302,8 +300,7 @@ struct PDBVersionExtractor;
 impl VersionExtractor for PDBVersionExtractor {
     fn extract_version(&self, _dataset: &str, content: &[u8]) -> Result<String> {
         // PDB uses weekly snapshots with week numbers
-        let sample = std::str::from_utf8(&content[..content.len().min(4096)])
-            .unwrap_or("");
+        let sample = std::str::from_utf8(&content[..content.len().min(4096)]).unwrap_or("");
 
         // Look for week-based version
         let re = Regex::new(r"(\d{4}-W\d{2})")?;
@@ -329,10 +326,7 @@ impl VersionManager {
 
     /// Get the versions directory for a database
     pub fn get_versions_dir(&self, source: &str, dataset: &str) -> std::path::PathBuf {
-        self.base_path
-            .join("versions")
-            .join(source)
-            .join(dataset)
+        self.base_path.join("versions").join(source).join(dataset)
     }
 
     /// Resolve a version reference to a timestamp
@@ -361,7 +355,12 @@ impl VersionManager {
             }
         }
 
-        anyhow::bail!("Version '{}' not found for {}/{}", reference, source, dataset)
+        anyhow::bail!(
+            "Version '{}' not found for {}/{}",
+            reference,
+            source,
+            dataset
+        )
     }
 
     /// Set the current version symlink (expects timestamp)
@@ -413,7 +412,10 @@ impl VersionManager {
 
         // Check if alias is protected
         if is_protected_alias(alias) {
-            anyhow::bail!("Cannot manually create protected alias '{}'. Use appropriate commands.", alias);
+            anyhow::bail!(
+                "Cannot manually create protected alias '{}'. Use appropriate commands.",
+                alias
+            );
         }
 
         let versions_dir = self.get_versions_dir(source, dataset);
@@ -432,8 +434,7 @@ impl VersionManager {
         }
 
         // Create new symlink to the timestamp directory
-        fs::symlink(timestamp, &alias_link)
-            .context("Failed to create version alias symlink")?;
+        fs::symlink(timestamp, &alias_link).context("Failed to create version alias symlink")?;
 
         // Update version metadata to add this custom alias
         self.update_custom_alias(source, dataset, timestamp, alias, true)?;
@@ -443,12 +444,7 @@ impl VersionManager {
 
     /// Remove a custom alias
     #[cfg(unix)]
-    pub fn remove_alias(
-        &self,
-        source: &str,
-        dataset: &str,
-        alias: &str,
-    ) -> Result<()> {
+    pub fn remove_alias(&self, source: &str, dataset: &str, alias: &str) -> Result<()> {
         // Check if alias is protected
         if is_protected_alias(alias) {
             anyhow::bail!("Cannot remove protected alias '{}'", alias);
@@ -463,7 +459,8 @@ impl VersionManager {
 
         // Get the target timestamp before removing
         let target = std::fs::read_link(&alias_link)?;
-        let timestamp = target.file_name()
+        let timestamp = target
+            .file_name()
             .ok_or_else(|| anyhow::anyhow!("Invalid symlink target"))?
             .to_string_lossy();
 
@@ -506,7 +503,8 @@ impl VersionManager {
             if path.is_symlink() {
                 if let Ok(target) = std::fs::read_link(&path) {
                     if let (Some(link_name), Some(target_name)) =
-                        (path.file_name(), target.file_name()) {
+                        (path.file_name(), target.file_name())
+                    {
                         let link = link_name.to_string_lossy().to_string();
                         let target = target_name.to_string_lossy().to_string();
                         symlinks.insert(link, target);
@@ -525,7 +523,8 @@ impl VersionManager {
                 continue;
             }
 
-            let dir_name = path.file_name()
+            let dir_name = path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .ok_or_else(|| anyhow::anyhow!("Invalid directory name"))?;
 
@@ -559,8 +558,18 @@ impl VersionManager {
     }
 
     /// Update system alias in version metadata
-    fn update_system_alias(&self, source: &str, dataset: &str, timestamp: &str, alias: &str, add: bool) -> Result<()> {
-        let version_path = self.get_versions_dir(source, dataset).join(timestamp).join("version.json");
+    fn update_system_alias(
+        &self,
+        source: &str,
+        dataset: &str,
+        timestamp: &str,
+        alias: &str,
+        add: bool,
+    ) -> Result<()> {
+        let version_path = self
+            .get_versions_dir(source, dataset)
+            .join(timestamp)
+            .join("version.json");
 
         if let Ok(content) = std::fs::read(&version_path) {
             if let Ok(mut version) = serde_json::from_slice::<DatabaseVersion>(&content) {
@@ -579,8 +588,18 @@ impl VersionManager {
     }
 
     /// Update custom alias in version metadata
-    fn update_custom_alias(&self, source: &str, dataset: &str, timestamp: &str, alias: &str, add: bool) -> Result<()> {
-        let version_path = self.get_versions_dir(source, dataset).join(timestamp).join("version.json");
+    fn update_custom_alias(
+        &self,
+        source: &str,
+        dataset: &str,
+        timestamp: &str,
+        alias: &str,
+        add: bool,
+    ) -> Result<()> {
+        let version_path = self
+            .get_versions_dir(source, dataset)
+            .join(timestamp)
+            .join("version.json");
 
         if let Ok(content) = std::fs::read(&version_path) {
             if let Ok(mut version) = serde_json::from_slice::<DatabaseVersion>(&content) {

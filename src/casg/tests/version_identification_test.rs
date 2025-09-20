@@ -1,5 +1,5 @@
-use crate::casg::{SHA256Hash, TaxonId};
 use crate::bio::sequence::Sequence;
+use crate::casg::{SHA256Hash, TaxonId};
 
 /// Version identification functionality
 pub struct VersionIdentifier {
@@ -47,7 +47,8 @@ impl VersionIdentifier {
         // Check if it's a modified version of a known manifest
         let similarities = self.compute_similarities(&chunks);
         if let Some((best_match, similarity)) = similarities.first() {
-            if *similarity > 0.3 {  // Threshold for modified version detection (>30% similarity)
+            if *similarity > 0.3 {
+                // Threshold for modified version detection (>30% similarity)
                 return VersionInfo::Modified {
                     closest_version: best_match.version.clone(),
                     similarity: *similarity,
@@ -98,11 +99,15 @@ impl VersionIdentifier {
         level[0].clone()
     }
 
-    fn compute_similarities(&self, chunks: &[SHA256Hash]) -> Vec<(&crate::casg::TemporalManifest, f64)> {
+    fn compute_similarities(
+        &self,
+        chunks: &[SHA256Hash],
+    ) -> Vec<(&crate::casg::TemporalManifest, f64)> {
         let mut similarities = Vec::new();
 
         for manifest in &self.known_manifests {
-            let manifest_chunks: Vec<SHA256Hash> = manifest.chunk_index
+            let manifest_chunks: Vec<SHA256Hash> = manifest
+                .chunk_index
                 .iter()
                 .map(|c| c.hash.clone())
                 .collect();
@@ -124,7 +129,6 @@ impl VersionIdentifier {
         let intersection = set1.intersection(&set2).count();
         let union = set1.union(&set2).count();
 
-
         if union == 0 {
             0.0
         } else {
@@ -132,11 +136,16 @@ impl VersionIdentifier {
         }
     }
 
-    fn compute_differences(&self, chunks: &[SHA256Hash], manifest: &crate::casg::TemporalManifest) -> Vec<String> {
+    fn compute_differences(
+        &self,
+        chunks: &[SHA256Hash],
+        manifest: &crate::casg::TemporalManifest,
+    ) -> Vec<String> {
         use std::collections::HashSet;
 
         let current_set: HashSet<_> = chunks.iter().collect();
-        let manifest_chunks: Vec<SHA256Hash> = manifest.chunk_index
+        let manifest_chunks: Vec<SHA256Hash> = manifest
+            .chunk_index
             .iter()
             .map(|c| c.hash.clone())
             .collect();
@@ -178,8 +187,8 @@ pub enum VersionInfo {
 
 #[test]
 fn test_identify_exact_version() {
+    use crate::casg::{ChunkMetadata, TemporalManifest};
     use chrono::Utc;
-    use crate::casg::{TemporalManifest, ChunkMetadata};
 
     let sequences = vec![
         Sequence {
@@ -187,12 +196,14 @@ fn test_identify_exact_version() {
             description: None,
             sequence: b"ACGTACGT".to_vec(),
             taxon_id: Some(562),
+            taxonomy_sources: Default::default(),
         },
         Sequence {
             id: "seq2".to_string(),
             description: None,
             sequence: b"TGCATGCA".to_vec(),
             taxon_id: Some(562),
+            taxonomy_sources: Default::default(),
         },
     ];
 
@@ -213,15 +224,13 @@ fn test_identify_exact_version() {
         taxonomy_root: SHA256Hash::compute(b"tax"),
         sequence_root,
         chunk_merkle_tree: None,
-        chunk_index: vec![
-            ChunkMetadata {
-                hash: chunk_hash,
-                taxon_ids: vec![TaxonId(562)],
-                sequence_count: 2,
-                size: 100,
-                compressed_size: None,
-            },
-        ],
+        chunk_index: vec![ChunkMetadata {
+            hash: chunk_hash,
+            taxon_ids: vec![TaxonId(562)],
+            sequence_count: 2,
+            size: 100,
+            compressed_size: None,
+        }],
         discrepancies: vec![],
         etag: "test_etag".to_string(),
         previous_version: None,
@@ -236,7 +245,11 @@ fn test_identify_exact_version() {
     let version_info = identifier.identify_fasta_version(&sequences);
 
     match version_info {
-        VersionInfo::Known { version, sequence_version, .. } => {
+        VersionInfo::Known {
+            version,
+            sequence_version,
+            ..
+        } => {
             assert_eq!(version, "v1.0.0");
             assert_eq!(sequence_version, "2024.01");
         }
@@ -246,8 +259,8 @@ fn test_identify_exact_version() {
 
 #[test]
 fn test_identify_modified_version() {
+    use crate::casg::{ChunkMetadata, TemporalManifest};
     use chrono::Utc;
-    use crate::casg::{TemporalManifest, ChunkMetadata};
 
     // Create enough sequences to form multiple chunks
     let mut original_sequences = Vec::new();
@@ -257,6 +270,7 @@ fn test_identify_modified_version() {
             description: None,
             sequence: b"ACGTACGT".to_vec(),
             taxon_id: Some(562),
+            taxonomy_sources: Default::default(),
         });
     }
 
@@ -268,6 +282,7 @@ fn test_identify_modified_version() {
             description: None,
             sequence: b"ACGTACGT".to_vec(),
             taxon_id: Some(562),
+            taxonomy_sources: Default::default(),
         });
     }
     // Add modified sequences in the second chunk
@@ -277,6 +292,7 @@ fn test_identify_modified_version() {
             description: None,
             sequence: b"TTTTTTTT".to_vec(),
             taxon_id: Some(562),
+            taxonomy_sources: Default::default(),
         });
     }
 
@@ -331,7 +347,11 @@ fn test_identify_modified_version() {
     let version_info = identifier.identify_fasta_version(&modified_sequences);
 
     match version_info {
-        VersionInfo::Modified { closest_version, similarity, differences } => {
+        VersionInfo::Modified {
+            closest_version,
+            similarity,
+            differences,
+        } => {
             assert_eq!(closest_version, "v1.0.0");
             assert!(similarity < 1.0); // Not exact match
             assert!(!differences.is_empty());
@@ -343,20 +363,22 @@ fn test_identify_modified_version() {
             // This may fall below the 0.65 threshold
             panic!("Version identified as Unknown - similarity likely below 0.65 threshold");
         }
-        _ => panic!("Expected modified version detection, got: {:?}", version_info),
+        _ => panic!(
+            "Expected modified version detection, got: {:?}",
+            version_info
+        ),
     }
 }
 
 #[test]
 fn test_identify_unknown_version() {
-    let sequences = vec![
-        Sequence {
-            id: "unknown_seq".to_string(),
-            description: None,
-            sequence: b"GGGGGGGG".to_vec(),
-            taxon_id: Some(999),
-        },
-    ];
+    let sequences = vec![Sequence {
+        id: "unknown_seq".to_string(),
+        description: None,
+        sequence: b"GGGGGGGG".to_vec(),
+        taxon_id: Some(999),
+        taxonomy_sources: Default::default(),
+    }];
 
     let identifier = VersionIdentifier::new(); // No known manifests
 
@@ -367,8 +389,8 @@ fn test_identify_unknown_version() {
 
 #[test]
 fn test_multi_taxon_version_identification() {
+    use crate::casg::{ChunkMetadata, TemporalManifest};
     use chrono::Utc;
-    use crate::casg::{TemporalManifest, ChunkMetadata};
 
     let sequences = vec![
         Sequence {
@@ -376,12 +398,14 @@ fn test_multi_taxon_version_identification() {
             description: None,
             sequence: b"ACGTACGT".to_vec(),
             taxon_id: Some(562),
+            taxonomy_sources: Default::default(),
         },
         Sequence {
             id: "human_1".to_string(),
             description: None,
             sequence: b"TGCATGCA".to_vec(),
             taxon_id: Some(9606),
+            taxonomy_sources: Default::default(),
         },
     ];
 
@@ -400,15 +424,13 @@ fn test_multi_taxon_version_identification() {
         taxonomy_root: SHA256Hash::compute(b"tax2"),
         sequence_root,
         chunk_merkle_tree: None,
-        chunk_index: vec![
-            ChunkMetadata {
-                hash: chunk_hash,
-                taxon_ids: vec![TaxonId(562), TaxonId(9606)],
-                sequence_count: 2,
-                size: 100,
-                compressed_size: None,
-            },
-        ],
+        chunk_index: vec![ChunkMetadata {
+            hash: chunk_hash,
+            taxon_ids: vec![TaxonId(562), TaxonId(9606)],
+            sequence_count: 2,
+            size: 100,
+            compressed_size: None,
+        }],
         discrepancies: vec![],
         etag: "test_etag".to_string(),
         previous_version: None,

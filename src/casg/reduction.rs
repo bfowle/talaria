@@ -2,7 +2,6 @@
 ///
 /// Integrates the reduce/delta functionality with content-addressed storage,
 /// providing cryptographic verification and efficient versioning.
-
 use crate::casg::types::*;
 use crate::cli::TargetAligner;
 use anyhow::Result;
@@ -217,7 +216,8 @@ impl ReductionManifest {
 
         // Build Merkle tree for reference chunks
         if !self.reference_chunks.is_empty() {
-            let ref_chunks: Vec<ChunkMetadata> = self.reference_chunks
+            let ref_chunks: Vec<ChunkMetadata> = self
+                .reference_chunks
                 .iter()
                 .map(|c| ChunkMetadata {
                     hash: c.chunk_hash.clone(),
@@ -229,13 +229,13 @@ impl ReductionManifest {
                 .collect();
 
             let ref_dag = MerkleDAG::build_from_items(ref_chunks)?;
-            self.reference_merkle_root = ref_dag.root_hash()
-                .unwrap_or_else(|| SHA256Hash([0; 32]));
+            self.reference_merkle_root = ref_dag.root_hash().unwrap_or(SHA256Hash([0; 32]));
         }
 
         // Build Merkle tree for delta chunks
         if !self.delta_chunks.is_empty() {
-            let delta_chunks_meta: Vec<ChunkMetadata> = self.delta_chunks
+            let delta_chunks_meta: Vec<ChunkMetadata> = self
+                .delta_chunks
                 .iter()
                 .map(|c| ChunkMetadata {
                     hash: c.chunk_hash.clone(),
@@ -247,8 +247,7 @@ impl ReductionManifest {
                 .collect();
 
             let delta_dag = MerkleDAG::build_from_items(delta_chunks_meta)?;
-            self.delta_merkle_root = delta_dag.root_hash()
-                .unwrap_or_else(|| SHA256Hash([0; 32]));
+            self.delta_merkle_root = delta_dag.root_hash().unwrap_or(SHA256Hash([0; 32]));
         }
 
         // Compute combined root
@@ -267,25 +266,13 @@ impl ReductionManifest {
         original_size: u64,
         reduction_time_secs: u64,
     ) {
-        let reference_sequences = self.reference_chunks
-            .iter()
-            .map(|c| c.sequence_count)
-            .sum();
+        let reference_sequences = self.reference_chunks.iter().map(|c| c.sequence_count).sum();
 
-        let child_sequences = self.delta_chunks
-            .iter()
-            .map(|c| c.child_count)
-            .sum();
+        let child_sequences = self.delta_chunks.iter().map(|c| c.child_count).sum();
 
-        let reduced_size = self.reference_chunks
-            .iter()
-            .map(|c| c.size)
-            .sum::<usize>() as u64;
+        let reduced_size = self.reference_chunks.iter().map(|c| c.size).sum::<usize>() as u64;
 
-        let delta_size = self.delta_chunks
-            .iter()
-            .map(|c| c.size)
-            .sum::<usize>() as u64;
+        let delta_size = self.delta_chunks.iter().map(|c| c.size).sum::<usize>() as u64;
 
         let total_size_with_deltas = reduced_size + delta_size;
 
@@ -297,7 +284,8 @@ impl ReductionManifest {
 
         // Calculate deduplication ratio (how much we saved through content addressing)
         let deduplication_ratio = if total_size_with_deltas > 0 {
-            let compressed_total = self.reference_chunks
+            let compressed_total = self
+                .reference_chunks
                 .iter()
                 .map(|c| c.compressed_size.unwrap_or(c.size))
                 .sum::<usize>() as u64;
@@ -306,7 +294,8 @@ impl ReductionManifest {
             0.0
         };
 
-        let unique_taxa = self.reference_chunks
+        let unique_taxa = self
+            .reference_chunks
             .iter()
             .flat_map(|c| &c.taxon_ids)
             .collect::<std::collections::HashSet<_>>()
@@ -405,7 +394,8 @@ impl ReductionManager {
         let manifest_hash = SHA256Hash::compute(&manifest_data);
 
         // Store the manifest as a special chunk
-        self.storage.store_raw_chunk(&manifest_hash, manifest_data)?;
+        self.storage
+            .store_raw_chunk(&manifest_hash, manifest_data)?;
 
         Ok(())
     }
@@ -429,7 +419,7 @@ impl ReductionManager {
                     if let Some(profile_name) = entry.file_name().to_str() {
                         // Read the hash from the profile file
                         let hash_str = fs::read_to_string(entry.path())?;
-                        if let Ok(hash) = SHA256Hash::from_hex(&hash_str.trim()) {
+                        if let Ok(hash) = SHA256Hash::from_hex(hash_str.trim()) {
                             profiles.push((profile_name.to_string(), hash));
                         }
                     }
@@ -486,16 +476,14 @@ mod tests {
         );
 
         // Add some reference chunks
-        manifest.add_reference_chunks(vec![
-            ReferenceChunk {
-                chunk_hash: SHA256Hash::compute(b"ref1"),
-                sequence_ids: vec!["seq1".to_string()],
-                sequence_count: 1,
-                size: 1000,
-                compressed_size: Some(500),
-                taxon_ids: vec![TaxonId(9606)],
-            },
-        ]);
+        manifest.add_reference_chunks(vec![ReferenceChunk {
+            chunk_hash: SHA256Hash::compute(b"ref1"),
+            sequence_ids: vec!["seq1".to_string()],
+            sequence_count: 1,
+            size: 1000,
+            compressed_size: Some(500),
+            taxon_ids: vec![TaxonId(9606)],
+        }]);
 
         // Compute roots
         manifest.compute_merkle_roots().unwrap();

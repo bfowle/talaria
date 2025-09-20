@@ -1,10 +1,10 @@
-use talaria::casg::{
-    CASGRepository, CASGStorage, FastaAssembler, SHA256Hash, TaxonId,
-    TaxonomyAwareChunk, MerkleDAG, TemporalManifest,
-};
 use chrono::Utc;
-use tempfile::TempDir;
 use std::fs;
+use talaria::casg::{
+    CASGRepository, CASGStorage, FastaAssembler, MerkleDAG, SHA256Hash, TaxonId,
+    TaxonomyAwareChunk, TemporalManifest,
+};
+use tempfile::TempDir;
 
 // Helper to create test manifests with required fields
 fn create_test_manifest(version: &str, seq_version: &str, tax_version: &str) -> TemporalManifest {
@@ -71,11 +71,12 @@ fn test_corrupted_chunk_detection() {
 
         // The error should indicate corruption (could be decompression failure or hash mismatch)
         assert!(
-            error_msg.contains("decompress") ||
-            error_msg.contains("corrupt") ||
-            error_msg.contains("invalid") ||
-            error_msg.contains("failed"),
-            "Expected corruption error, got: {}", error_msg
+            error_msg.contains("decompress")
+                || error_msg.contains("corrupt")
+                || error_msg.contains("invalid")
+                || error_msg.contains("failed"),
+            "Expected corruption error, got: {}",
+            error_msg
         );
     } else {
         // If we can't get chunk info, skip the corruption test
@@ -155,18 +156,19 @@ fn test_version_conflict_handling() {
     let (_temp_dir, _repo) = setup_test_env();
 
     // Create two incompatible manifests
-    
-    
 
     let mut manifest_v1 = create_test_manifest("v1", "2024.01", "2024.01");
-    manifest_v1.etag = "".to_string();  // Empty etag for test
+    manifest_v1.etag = "".to_string(); // Empty etag for test
 
     let mut manifest_v2 = create_test_manifest("v2", "2025.01", "2025.01");
-    manifest_v2.etag = "".to_string();  // Empty etag for test
+    manifest_v2.etag = "".to_string(); // Empty etag for test
     manifest_v2.previous_version = Some("v1.5".to_string()); // Missing intermediate version
 
     // Version chain is broken (v1 -> missing v1.5 -> v2)
-    assert_ne!(manifest_v2.previous_version.as_ref().unwrap(), &manifest_v1.version);
+    assert_ne!(
+        manifest_v2.previous_version.as_ref().unwrap(),
+        &manifest_v1.version
+    );
 }
 
 #[test]
@@ -353,9 +355,6 @@ fn test_invalid_hash_format() {
 
 #[test]
 fn test_circular_dependency_detection() {
-    
-    
-
     // Create manifests with circular dependency
     let mut manifest_a = create_test_manifest("v1", "2024.01", "2024.01");
     manifest_a.etag = "".to_string();

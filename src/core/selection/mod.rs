@@ -1,14 +1,10 @@
 /// Reference selection module
-
 pub mod impls;
 pub mod traits;
 
 pub use traits::{
-    ReferenceSelector, AlignmentBasedSelector,
-    TraitSelectionResult, SelectionStats, AlignmentScore, RecommendedParams,
+    AlignmentBasedSelector, AlignmentScore, RecommendedParams, ReferenceSelector, SelectionStats,
+    TraitSelectionResult,
 };
 
-pub use impls::{
-    create_selector,
-    create_configured_selector,
-};
+pub use impls::{create_configured_selector, create_selector};

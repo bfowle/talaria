@@ -1,13 +1,12 @@
 /// Core types for the CASG system
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::fmt;
 
 // Custom serialization module for DateTime to handle MessagePack
 mod datetime_serde {
-    use chrono::{DateTime, Utc, TimeZone};
+    use chrono::{DateTime, TimeZone, Utc};
     use serde::{self, Deserialize, Deserializer, Serializer};
 
     pub fn serialize<S>(date: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
@@ -22,7 +21,10 @@ mod datetime_serde {
         D: Deserializer<'de>,
     {
         let timestamp = i64::deserialize(deserializer)?;
-        Ok(Utc.timestamp_opt(timestamp, 0).single().unwrap_or_else(Utc::now))
+        Ok(Utc
+            .timestamp_opt(timestamp, 0)
+            .single()
+            .unwrap_or_else(Utc::now))
     }
 }
 
@@ -84,7 +86,7 @@ pub struct SerializedMerkleTree {
     pub root_hash: MerkleHash,
     pub node_count: usize,
     #[serde(with = "serde_bytes")]
-    pub serialized_nodes: Vec<u8>,  // Compact binary representation
+    pub serialized_nodes: Vec<u8>, // Compact binary representation
 }
 
 /// Bi-temporal coordinate for versioning
@@ -124,7 +126,7 @@ impl BiTemporalCoordinate {
 }
 
 /// Taxonomic identifier
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TaxonId(pub u32);
 
 impl fmt::Display for TaxonId {
@@ -151,7 +153,7 @@ pub struct TaxonomyAwareChunk {
     pub taxon_ids: Vec<TaxonId>,
     pub sequences: Vec<SequenceRef>,
     #[serde(with = "serde_bytes")]
-    pub sequence_data: Vec<u8>,  // The actual FASTA-format sequence data
+    pub sequence_data: Vec<u8>, // The actual FASTA-format sequence data
     pub created_at: DateTime<Utc>,
     pub valid_from: DateTime<Utc>,
     pub valid_until: Option<DateTime<Utc>>,
@@ -163,9 +165,9 @@ pub struct TaxonomyAwareChunk {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaxonomicDiscrepancy {
     pub sequence_id: String,
-    pub header_taxon: Option<TaxonId>,     // What the FASTA header claims
-    pub mapped_taxon: Option<TaxonId>,     // What accession2taxid says
-    pub inferred_taxon: Option<TaxonId>,   // What we infer from similarity
+    pub header_taxon: Option<TaxonId>, // What the FASTA header claims
+    pub mapped_taxon: Option<TaxonId>, // What accession2taxid says
+    pub inferred_taxon: Option<TaxonId>, // What we infer from similarity
     pub confidence: f32,
     pub detection_date: DateTime<Utc>,
     pub discrepancy_type: DiscrepancyType,
@@ -173,11 +175,11 @@ pub struct TaxonomicDiscrepancy {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DiscrepancyType {
-    Missing,           // No taxonomy information
-    Conflict,          // Different sources disagree
-    Outdated,          // Using old taxonomy
-    Reclassified,      // Taxonomy has been updated
-    Invalid,           // Invalid taxon ID
+    Missing,      // No taxonomy information
+    Conflict,     // Different sources disagree
+    Outdated,     // Using old taxonomy
+    Reclassified, // Taxonomy has been updated
+    Invalid,      // Invalid taxon ID
 }
 
 /// Manifest for efficient update checking with Merkle tree support
@@ -203,7 +205,7 @@ pub struct TemporalManifest {
 
     /// Reference to the taxonomy manifest used
     pub taxonomy_manifest_hash: SHA256Hash,
-    pub taxonomy_dump_version: String,  // e.g., "2024-03-15"
+    pub taxonomy_dump_version: String, // e.g., "2024-03-15"
 
     /// Source database identifier
     pub source_database: Option<String>,
@@ -223,7 +225,6 @@ pub struct ChunkMetadata {
     pub size: usize,
     pub compressed_size: Option<usize>,
 }
-
 
 /// Merkle tree node
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -285,12 +286,12 @@ pub enum Position {
 /// Temporal proof linking sequences to taxonomy at a point in time
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemporalProof {
-    pub sequence_proof: MerkleProof,       // Proves sequence existed
-    pub taxonomy_proof: MerkleProof,       // Proves classification
-    pub temporal_link: CrossTimeHash,      // Links sequence to taxonomy version
+    pub sequence_proof: MerkleProof,  // Proves sequence existed
+    pub taxonomy_proof: MerkleProof,  // Proves classification
+    pub temporal_link: CrossTimeHash, // Links sequence to taxonomy version
     #[serde(with = "datetime_serde")]
     pub timestamp: DateTime<Utc>,
-    pub attestation: CryptographicSeal,    // Optional external timestamp
+    pub attestation: CryptographicSeal, // Optional external timestamp
 }
 
 /// Hash linking across time dimensions
@@ -338,11 +339,11 @@ pub struct Reclassification {
 /// Configuration for chunking strategies
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkingStrategy {
-    pub target_chunk_size: usize,           // Target size in bytes
-    pub max_chunk_size: usize,              // Maximum allowed size
-    pub min_sequences_per_chunk: usize,     // Minimum sequences
-    pub taxonomic_coherence: f32,           // 0.0 to 1.0
-    pub special_taxa: Vec<SpecialTaxon>,    // Special handling
+    pub target_chunk_size: usize,        // Target size in bytes
+    pub max_chunk_size: usize,           // Maximum allowed size
+    pub min_sequences_per_chunk: usize,  // Minimum sequences
+    pub taxonomic_coherence: f32,        // 0.0 to 1.0
+    pub special_taxa: Vec<SpecialTaxon>, // Special handling
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -354,9 +355,9 @@ pub struct SpecialTaxon {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ChunkStrategy {
-    OwnChunks,          // Always separate chunks (e.g., E. coli)
-    GroupWithSiblings,  // Group with taxonomic siblings
-    GroupAtLevel(u8),   // Group at specific taxonomic level
+    OwnChunks,         // Always separate chunks (e.g., E. coli)
+    GroupWithSiblings, // Group with taxonomic siblings
+    GroupAtLevel(u8),  // Group at specific taxonomic level
 }
 
 /// Update check result
@@ -396,21 +397,17 @@ pub enum ChunkType {
 }
 
 /// Compression format for chunks
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ChunkFormat {
     /// Legacy JSON + gzip format (for backward compatibility)
     JsonGzip,
     /// Binary MessagePack for metadata + Zstd for sequences
+    #[default]
     Binary,
     /// Binary with dictionary-based compression
     BinaryDict { dict_id: u32 },
 }
 
-impl Default for ChunkFormat {
-    fn default() -> Self {
-        ChunkFormat::Binary  // Use efficient format by default
-    }
-}
 
 impl ChunkFormat {
     /// Get the file extension for this format
@@ -434,7 +431,8 @@ impl ChunkFormat {
             && data[0] == 0x28
             && data[1] == 0xb5
             && data[2] == 0x2f
-            && data[3] == 0xfd {
+            && data[3] == 0xfd
+        {
             // Could be Binary or BinaryDict, check for dictionary
             // For now, assume Binary (dictionary detection would need more context)
             return ChunkFormat::Binary;
@@ -481,10 +479,7 @@ pub enum DeltaOperation {
         length: usize,
     },
     /// Insert new sequence data
-    Insert {
-        sequence_id: String,
-        data: Vec<u8>,
-    },
+    Insert { sequence_id: String, data: Vec<u8> },
     /// Apply modifications to reference sequence
     Modify {
         sequence_id: String,
@@ -492,9 +487,7 @@ pub enum DeltaOperation {
         operations: Vec<SeqEdit>,
     },
     /// Delete sequence (tombstone)
-    Delete {
-        sequence_id: String,
-    },
+    Delete { sequence_id: String },
 }
 
 /// Sequence edit operations

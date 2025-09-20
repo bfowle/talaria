@@ -32,7 +32,7 @@ impl NCBIDownloader {
             base_url: "https://ftp.ncbi.nlm.nih.gov".to_string(),
         }
     }
-    
+
     pub async fn download_nr(
         &self,
         output_path: &Path,
@@ -41,7 +41,7 @@ impl NCBIDownloader {
         let url = format!("{}/blast/db/FASTA/nr.gz", self.base_url);
         self.download_and_extract(&url, output_path, progress).await
     }
-    
+
     pub async fn download_nt(
         &self,
         output_path: &Path,
@@ -50,7 +50,7 @@ impl NCBIDownloader {
         let url = format!("{}/blast/db/FASTA/nt.gz", self.base_url);
         self.download_and_extract(&url, output_path, progress).await
     }
-    
+
     pub async fn download_refseq_protein(
         &self,
         output_path: &Path,
@@ -62,7 +62,7 @@ impl NCBIDownloader {
         );
         self.download_and_extract(&url, output_path, progress).await
     }
-    
+
     pub async fn download_refseq_genomic(
         &self,
         output_path: &Path,
@@ -74,7 +74,7 @@ impl NCBIDownloader {
         );
         self.download_and_extract(&url, output_path, progress).await
     }
-    
+
     pub async fn download_taxonomy(
         &self,
         output_path: &Path,
@@ -84,7 +84,8 @@ impl NCBIDownloader {
 
         progress.set_message("Downloading NCBI taxonomy database...");
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
@@ -94,8 +95,7 @@ impl NCBIDownloader {
         progress.set_total(total_size as usize);
 
         // Download to the specified output path (not extracting yet)
-        let mut file = File::create(output_path)
-            .context("Failed to create output file")?;
+        let mut file = File::create(output_path).context("Failed to create output file")?;
 
         let mut downloaded = 0u64;
         let mut stream = response.bytes_stream();
@@ -116,7 +116,7 @@ impl NCBIDownloader {
         // to the proper versioned directory
         Ok(())
     }
-    
+
     pub async fn download_prot_accession2taxid(
         &self,
         output_path: &Path,
@@ -129,7 +129,7 @@ impl NCBIDownloader {
         // Keep compressed - these files are huge
         self.download_compressed(&url, output_path, progress).await
     }
-    
+
     pub async fn download_nucl_accession2taxid(
         &self,
         output_path: &Path,
@@ -142,7 +142,7 @@ impl NCBIDownloader {
         // Keep compressed - these files are huge
         self.download_compressed(&url, output_path, progress).await
     }
-    
+
     /// Download a compressed file without extracting it, with resume support
     pub async fn download_compressed(
         &self,
@@ -150,7 +150,8 @@ impl NCBIDownloader {
         output_path: &Path,
         progress: &mut DownloadProgress,
     ) -> Result<()> {
-        self.download_compressed_with_resume(url, output_path, progress, true).await
+        self.download_compressed_with_resume(url, output_path, progress, true)
+            .await
     }
 
     pub async fn download_compressed_with_resume(
@@ -178,10 +179,7 @@ impl NCBIDownloader {
             request = request.header("Range", format!("bytes={}-", resume_from));
         }
 
-        let response = request
-            .send()
-            .await
-            .context("Failed to start download")?;
+        let response = request.send().await.context("Failed to start download")?;
 
         // Check if server supports resume
         let supports_resume = response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
@@ -191,9 +189,7 @@ impl NCBIDownloader {
             std::fs::remove_file(&temp_path).ok();
         }
 
-        let total_size = response
-            .content_length()
-            .unwrap_or(0) + resume_from;
+        let total_size = response.content_length().unwrap_or(0) + resume_from;
 
         progress.set_total(total_size as usize);
         progress.set_current(resume_from as usize);
@@ -204,8 +200,7 @@ impl NCBIDownloader {
                 .open(&temp_path)
                 .context("Failed to open temporary file for resume")?
         } else {
-            File::create(&temp_path)
-                .context("Failed to create temporary file")?
+            File::create(&temp_path).context("Failed to create temporary file")?
         };
 
         // Initialize downloaded to resume_from to track total bytes correctly
@@ -215,8 +210,7 @@ impl NCBIDownloader {
         use futures_util::StreamExt;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.context("Failed to read chunk")?;
-            file.write_all(&chunk)
-                .context("Failed to write chunk")?;
+            file.write_all(&chunk).context("Failed to write chunk")?;
 
             downloaded += chunk.len() as u64;
             progress.set_current(downloaded as usize);
@@ -238,7 +232,8 @@ impl NCBIDownloader {
         output_path: &Path,
         progress: &mut DownloadProgress,
     ) -> Result<()> {
-        self.download_and_extract_with_resume(url, output_path, progress, false).await
+        self.download_and_extract_with_resume(url, output_path, progress, false)
+            .await
     }
 
     pub async fn download_and_extract_with_resume(
@@ -249,8 +244,7 @@ impl NCBIDownloader {
         resume: bool,
     ) -> Result<()> {
         progress.set_message(&format!("Downloading from {}", url));
-        
-        
+
         let temp_path = output_path.with_extension("gz.tmp");
 
         // Check if we can resume
@@ -266,10 +260,7 @@ impl NCBIDownloader {
             request = request.header("Range", format!("bytes={}-", resume_from));
         }
 
-        let response = request
-            .send()
-            .await
-            .context("Failed to start download")?;
+        let response = request.send().await.context("Failed to start download")?;
 
         // Check if server supports resume
         let supports_resume = response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
@@ -279,9 +270,7 @@ impl NCBIDownloader {
             std::fs::remove_file(&temp_path).ok();
         }
 
-        let total_size = response
-            .content_length()
-            .unwrap_or(0) + resume_from;
+        let total_size = response.content_length().unwrap_or(0) + resume_from;
 
         progress.set_total(total_size as usize);
         progress.set_current(resume_from as usize);
@@ -292,45 +281,40 @@ impl NCBIDownloader {
                 .open(&temp_path)
                 .context("Failed to open temporary file for resume")?
         } else {
-            File::create(&temp_path)
-                .context("Failed to create temporary file")?
+            File::create(&temp_path).context("Failed to create temporary file")?
         };
 
         // Initialize downloaded to resume_from to track total bytes correctly
         let mut downloaded = resume_from;
         let mut stream = response.bytes_stream();
-        
+
         use futures_util::StreamExt;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.context("Failed to read chunk")?;
             file.write_all(&chunk).context("Failed to write chunk")?;
-            
+
             downloaded += chunk.len() as u64;
             progress.set_current(downloaded as usize);
         }
-        
+
         progress.set_message("Decompressing file...");
-        
+
         // Decompress
-        let gz_file = File::open(&temp_path)
-            .context("Failed to open compressed file")?;
+        let gz_file = File::open(&temp_path).context("Failed to open compressed file")?;
         let mut decoder = GzDecoder::new(BufReader::new(gz_file));
-        let mut output_file = File::create(output_path)
-            .context("Failed to create output file")?;
-        
-        io::copy(&mut decoder, &mut output_file)
-            .context("Failed to decompress file")?;
-        
+        let mut output_file = File::create(output_path).context("Failed to create output file")?;
+
+        io::copy(&mut decoder, &mut output_file).context("Failed to decompress file")?;
+
         // Clean up
-        std::fs::remove_file(&temp_path)
-            .context("Failed to remove temporary file")?;
-        
+        std::fs::remove_file(&temp_path).context("Failed to remove temporary file")?;
+
         progress.set_message("Download complete!");
         progress.finish();
-        
+
         Ok(())
     }
-    
+
     pub async fn get_database_info(&self, db: &NCBIDatabase) -> Result<String> {
         let info = match db {
             NCBIDatabase::NR => {
@@ -363,7 +347,7 @@ impl NCBIDownloader {
                  Maps nucleotide accessions to their taxonomic identifiers"
             }
         };
-        
+
         Ok(info.to_string())
     }
 }
@@ -405,7 +389,7 @@ impl NCBIDatabase {
             NCBIDatabase::NuclAccession2TaxId => "Nucleotide accession to taxonomy ID mapping",
         }
     }
-    
+
     pub fn typical_size(&self) -> &str {
         match self {
             NCBIDatabase::NR => "~90 GB compressed",

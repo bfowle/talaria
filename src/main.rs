@@ -6,13 +6,11 @@ use tracing_subscriber::EnvFilter;
 
 fn main() {
     // Initialize logging with TALARIA_LOG environment variable support
-    let log_level = std::env::var("TALARIA_LOG")
-        .unwrap_or_else(|_| "info".to_string());
-    
+    let log_level = std::env::var("TALARIA_LOG").unwrap_or_else(|_| "info".to_string());
+
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new(&log_level)),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&log_level)),
         )
         .init();
 
@@ -20,13 +18,12 @@ fn main() {
 
     if let Err(e) = run(cli) {
         eprintln!("{} {}", "Error:".red().bold(), e);
-        
+
         // Use appropriate exit codes based on error type
         let exit_code = match e.downcast_ref::<talaria::TalariaError>() {
             Some(talaria::TalariaError::Config(_)) => 2,
             Some(talaria::TalariaError::Io(_)) => 3,
-            Some(talaria::TalariaError::Parse(_)) | 
-            Some(talaria::TalariaError::Alignment(_)) => 4,
+            Some(talaria::TalariaError::Parse(_)) | Some(talaria::TalariaError::Alignment(_)) => 4,
             Some(talaria::TalariaError::Database(_)) => 5,
             _ => 1,
         };
@@ -41,21 +38,21 @@ fn run(cli: Cli) -> anyhow::Result<()> {
     } else {
         cli.threads
     };
-    
+
     // Set global thread count
     std::env::set_var("TALARIA_THREADS", num_threads.to_string());
-    
+
     // Initialize Rayon thread pool
     rayon::ThreadPoolBuilder::new()
         .num_threads(num_threads)
         .build_global()
         .expect("Failed to initialize thread pool");
-    
+
     // Log thread configuration
     if cli.verbose > 0 {
         eprintln!("Using {} threads", num_threads);
     }
-    
+
     match cli.command {
         Commands::Reduce(args) => talaria::cli::commands::reduce::run(args),
         Commands::Reconstruct(args) => talaria::cli::commands::reconstruct::run(args),

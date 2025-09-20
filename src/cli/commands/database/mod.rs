@@ -1,15 +1,15 @@
+pub mod add;
+pub mod check_discrepancies;
 pub mod download;
 pub mod download_impl;
+pub mod export;
+pub mod info;
 pub mod list;
 pub mod list_sequences;
-pub mod info;
-pub mod add;
-pub mod export;
 pub mod taxa_coverage;
-pub mod update_taxonomy;
 pub mod update;
+pub mod update_taxonomy;
 pub mod versions;
-pub mod check_discrepancies;
 
 use clap::{Args, Subcommand};
 
@@ -86,21 +86,24 @@ fn run_init() -> anyhow::Result<()> {
 
     let path = paths::talaria_databases_dir();
 
-    println!("{} Initializing database repository at {}...",
-             "►".cyan().bold(),
-             path.display());
+    println!(
+        "{} Initializing database repository at {}...",
+        "►".cyan().bold(),
+        path.display()
+    );
 
     if path.exists() && path.join("manifest.json").exists() {
-        println!("{} Database repository already exists",
-                 "⚠".yellow().bold());
+        println!("{} Database repository already exists", "⚠".yellow().bold());
         return Ok(());
     }
 
     std::fs::create_dir_all(&path)?;
     CASGRepository::init(&path)?;
 
-    println!("{} Database repository initialized successfully!",
-             "✓".green().bold());
+    println!(
+        "{} Database repository initialized successfully!",
+        "✓".green().bold()
+    );
     println!("  Path: {}", path.display());
 
     Ok(())
@@ -125,20 +128,33 @@ fn run_stats() -> anyhow::Result<()> {
     println!("{}", "═".repeat(60));
     println!();
     println!("{} {}", "Total chunks:".bold(), stats.total_chunks);
-    println!("{} {:.2} MB", "Total size:".bold(),
-             stats.total_size as f64 / 1_048_576.0);
-    println!("{} {}", "Compressed chunks:".bold(), stats.compressed_chunks);
-    println!("{} {:.2}x", "Deduplication ratio:".bold(), stats.deduplication_ratio);
+    println!(
+        "{} {:.2} MB",
+        "Total size:".bold(),
+        stats.total_size as f64 / 1_048_576.0
+    );
+    println!(
+        "{} {}",
+        "Compressed chunks:".bold(),
+        stats.compressed_chunks
+    );
+    println!(
+        "{} {:.2}x",
+        "Deduplication ratio:".bold(),
+        stats.deduplication_ratio
+    );
     println!("{} {}", "Databases:".bold(), stats.database_count);
 
     if !stats.databases.is_empty() {
         println!("\n{}", "Databases:".bold().underline());
         for db in &stats.databases {
-            println!("  • {} (v{}, {} chunks, {:.2} MB)",
-                     db.name,
-                     db.version,
-                     db.chunk_count,
-                     db.total_size as f64 / 1_048_576.0);
+            println!(
+                "  • {} (v{}, {} chunks, {:.2} MB)",
+                db.name,
+                db.version,
+                db.chunk_count,
+                db.total_size as f64 / 1_048_576.0
+            );
         }
     }
 

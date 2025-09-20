@@ -2,10 +2,9 @@
 ///
 /// Provides abstractions for generating reports in various formats
 /// including HTML, JSON, Markdown, and plain text.
-
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
-use serde::{Serialize, Deserialize};
 
 /// Common interface for report generators
 pub trait Reporter: Send + Sync {
@@ -43,11 +42,7 @@ pub trait InteractiveReporter: Reporter {
     ) -> Result<String>;
 
     /// Add chart to report
-    fn add_chart(
-        &mut self,
-        chart_type: ChartType,
-        data: ChartData,
-    ) -> Result<String>;
+    fn add_chart(&mut self, chart_type: ChartType, data: ChartData) -> Result<String>;
 
     /// Add interactive table
     fn add_table(
@@ -88,11 +83,7 @@ pub trait TemplateReporter: Reporter {
     fn load_template(&mut self, path: &Path) -> Result<()>;
 
     /// Register custom helper function
-    fn register_helper(
-        &mut self,
-        name: &str,
-        helper: Box<dyn TemplateHelper>,
-    ) -> Result<()>;
+    fn register_helper(&mut self, name: &str, helper: Box<dyn TemplateHelper>) -> Result<()>;
 
     /// Get available template variables
     fn available_variables(&self) -> Vec<String>;

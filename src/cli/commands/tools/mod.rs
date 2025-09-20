@@ -13,7 +13,7 @@ pub struct ToolsArgs {
 pub enum ToolsCommands {
     /// Install a bioinformatics tool
     Install(install::InstallArgs),
-    
+
     /// List installed tools
     List(list::ListArgs),
 }

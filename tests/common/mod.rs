@@ -2,11 +2,10 @@
 ///
 /// This module provides shared test setup and utilities to avoid duplicating
 /// test-specific code in the main source files.
-
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use tempfile::TempDir;
 use talaria::utils::temp_workspace::{TempWorkspace, WorkspaceConfig};
+use tempfile::TempDir;
 
 /// Test environment that manages temporary directories and cleanup
 pub struct TestEnvironment {
@@ -50,7 +49,9 @@ pub fn create_test_workspace(name: &str) -> Result<TempWorkspace, Box<dyn std::e
 }
 
 /// Create a test workspace wrapped in Arc<Mutex> for thread-safe access
-pub fn create_shared_test_workspace(name: &str) -> Result<Arc<Mutex<TempWorkspace>>, Box<dyn std::error::Error>> {
+pub fn create_shared_test_workspace(
+    name: &str,
+) -> Result<Arc<Mutex<TempWorkspace>>, Box<dyn std::error::Error>> {
     let workspace = create_test_workspace(name)?;
     Ok(Arc::new(Mutex::new(workspace)))
 }
@@ -68,7 +69,9 @@ pub fn test_workspace_config(base_dir: &Path) -> WorkspaceConfig {
 
 /// Setup a complete test environment with workspace
 #[allow(dead_code)]
-pub fn setup_test_with_workspace(test_name: &str) -> Result<(TestEnvironment, TempWorkspace), Box<dyn std::error::Error>> {
+pub fn setup_test_with_workspace(
+    test_name: &str,
+) -> Result<(TestEnvironment, TempWorkspace), Box<dyn std::error::Error>> {
     let env = TestEnvironment::new();
     let config = test_workspace_config(&env.talaria_home);
     let workspace = TempWorkspace::with_config(test_name, config)?;

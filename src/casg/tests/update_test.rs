@@ -1,7 +1,7 @@
-use crate::casg::{TemporalManifest, ChunkMetadata, SHA256Hash, TaxonId};
+use crate::casg::{ChunkMetadata, SHA256Hash, TaxonId, TemporalManifest};
+use anyhow::Result;
 use chrono::Utc;
 use std::collections::HashSet;
-use anyhow::Result;
 
 // Helper to create test manifests with required fields
 fn create_test_manifest(version: &str, seq_version: &str, tax_version: &str) -> TemporalManifest {
@@ -58,14 +58,21 @@ mod mock_server {
             self
         }
 
-        pub async fn check_for_updates(&self, etag: Option<&str>) -> Result<(bool, Option<String>)> {
+        pub async fn check_for_updates(
+            &self,
+            etag: Option<&str>,
+        ) -> Result<(bool, Option<String>)> {
             if self.should_fail {
                 return Err(anyhow::anyhow!("Network error"));
             }
 
-            if self.should_return_304 || (etag.is_some() && self.manifest.as_ref()
-                .map(|m| m.etag.as_str() == etag.unwrap())
-                .unwrap_or(false))
+            if self.should_return_304
+                || (etag.is_some()
+                    && self
+                        .manifest
+                        .as_ref()
+                        .map(|m| m.etag.as_str() == etag.unwrap())
+                        .unwrap_or(false))
             {
                 Ok((false, None)) // 304 Not Modified
             } else {
@@ -79,7 +86,8 @@ mod mock_server {
                 return Err(anyhow::anyhow!("Network error"));
             }
 
-            self.manifest.clone()
+            self.manifest
+                .clone()
                 .ok_or_else(|| anyhow::anyhow!("No manifest available"))
         }
     }
@@ -92,15 +100,13 @@ async fn test_sequence_only_update() {
     let mut old_manifest = create_test_manifest("v1", "2024.01", "2024.01");
     old_manifest.taxonomy_root = SHA256Hash::compute(b"tax_unchanged");
     old_manifest.sequence_root = SHA256Hash::compute(b"seq_old");
-    old_manifest.chunk_index = vec![
-        ChunkMetadata {
-            hash: SHA256Hash::compute(b"chunk1"),
-            taxon_ids: vec![TaxonId(562)],
-            sequence_count: 100,
-            size: 1000,
-            compressed_size: None,
-        },
-    ];
+    old_manifest.chunk_index = vec![ChunkMetadata {
+        hash: SHA256Hash::compute(b"chunk1"),
+        taxon_ids: vec![TaxonId(562)],
+        sequence_count: 100,
+        size: 1000,
+        compressed_size: None,
+    }];
     old_manifest.etag = "etag_v1".to_string();
 
     let mut new_manifest = create_test_manifest("v2", "2024.02", "2024.01");
@@ -125,8 +131,7 @@ async fn test_sequence_only_update() {
     new_manifest.etag = "etag_v2".to_string();
     new_manifest.previous_version = Some("v1".to_string());
 
-    let server = MockManifestServer::new()
-        .with_manifest(new_manifest.clone());
+    let server = MockManifestServer::new().with_manifest(new_manifest.clone());
 
     // Check for updates with old ETag
     let (has_updates, new_etag) = server.check_for_updates(Some("etag_v1")).await.unwrap();
@@ -145,29 +150,25 @@ async fn test_taxonomy_only_update() {
     let mut old_manifest = create_test_manifest("v1", "2024.01", "2024.01");
     old_manifest.taxonomy_root = SHA256Hash::compute(b"tax_old");
     old_manifest.sequence_root = SHA256Hash::compute(b"seq_unchanged");
-    old_manifest.chunk_index = vec![
-        ChunkMetadata {
-            hash: SHA256Hash::compute(b"chunk1"),
-            taxon_ids: vec![TaxonId(562)], // Will be reclassified
-            sequence_count: 100,
-            size: 1000,
-            compressed_size: None,
-        },
-    ];
+    old_manifest.chunk_index = vec![ChunkMetadata {
+        hash: SHA256Hash::compute(b"chunk1"),
+        taxon_ids: vec![TaxonId(562)], // Will be reclassified
+        sequence_count: 100,
+        size: 1000,
+        compressed_size: None,
+    }];
     old_manifest.etag = "etag_v1".to_string();
 
     let mut new_manifest = create_test_manifest("v2", "2024.01", "2024.02");
     new_manifest.taxonomy_root = SHA256Hash::compute(b"tax_new"); // Changed
     new_manifest.sequence_root = old_manifest.sequence_root.clone(); // Unchanged
-    new_manifest.chunk_index = vec![
-        ChunkMetadata {
-            hash: SHA256Hash::compute(b"chunk1"), // Same chunk
-            taxon_ids: vec![TaxonId(563)], // Reclassified taxon
-            sequence_count: 100,
-            size: 1000,
-            compressed_size: None,
-        },
-    ];
+    new_manifest.chunk_index = vec![ChunkMetadata {
+        hash: SHA256Hash::compute(b"chunk1"), // Same chunk
+        taxon_ids: vec![TaxonId(563)],        // Reclassified taxon
+        sequence_count: 100,
+        size: 1000,
+        compressed_size: None,
+    }];
     new_manifest.etag = "etag_v2".to_string();
     new_manifest.previous_version = Some("v1".to_string());
 
@@ -178,8 +179,14 @@ async fn test_taxonomy_only_update() {
     assert_ne!(old_manifest.taxonomy_version, new_manifest.taxonomy_version);
 
     // Same chunks but different taxonomy assignments
-    assert_eq!(old_manifest.chunk_index[0].hash, new_manifest.chunk_index[0].hash);
-    assert_ne!(old_manifest.chunk_index[0].taxon_ids, new_manifest.chunk_index[0].taxon_ids);
+    assert_eq!(
+        old_manifest.chunk_index[0].hash,
+        new_manifest.chunk_index[0].hash
+    );
+    assert_ne!(
+        old_manifest.chunk_index[0].taxon_ids,
+        new_manifest.chunk_index[0].taxon_ids
+    );
 }
 
 #[tokio::test]
@@ -187,29 +194,25 @@ async fn test_combined_update() {
     let mut old_manifest = create_test_manifest("v1", "2024.01", "2024.01");
     old_manifest.taxonomy_root = SHA256Hash::compute(b"tax_old");
     old_manifest.sequence_root = SHA256Hash::compute(b"seq_old");
-    old_manifest.chunk_index = vec![
-        ChunkMetadata {
-            hash: SHA256Hash::compute(b"chunk1"),
-            taxon_ids: vec![TaxonId(562)],
-            sequence_count: 100,
-            size: 1000,
-            compressed_size: None,
-        },
-    ];
+    old_manifest.chunk_index = vec![ChunkMetadata {
+        hash: SHA256Hash::compute(b"chunk1"),
+        taxon_ids: vec![TaxonId(562)],
+        sequence_count: 100,
+        size: 1000,
+        compressed_size: None,
+    }];
     old_manifest.etag = "etag_v1".to_string();
 
     let mut new_manifest = create_test_manifest("v2", "2024.02", "2024.02");
     new_manifest.taxonomy_root = SHA256Hash::compute(b"tax_new"); // Changed
     new_manifest.sequence_root = SHA256Hash::compute(b"seq_new"); // Changed
-    new_manifest.chunk_index = vec![
-        ChunkMetadata {
-            hash: SHA256Hash::compute(b"chunk2"), // All new chunks
-            taxon_ids: vec![TaxonId(563)],
-            sequence_count: 150,
-            size: 1500,
-            compressed_size: None,
-        },
-    ];
+    new_manifest.chunk_index = vec![ChunkMetadata {
+        hash: SHA256Hash::compute(b"chunk2"), // All new chunks
+        taxon_ids: vec![TaxonId(563)],
+        sequence_count: 150,
+        size: 1500,
+        compressed_size: None,
+    }];
     new_manifest.etag = "etag_v2".to_string();
     new_manifest.previous_version = Some("v1".to_string());
 
@@ -237,7 +240,10 @@ async fn test_no_updates_available() {
         .return_not_modified();
 
     // Check with current ETag - should get 304
-    let (has_updates, _) = server.check_for_updates(Some("etag_current")).await.unwrap();
+    let (has_updates, _) = server
+        .check_for_updates(Some("etag_current"))
+        .await
+        .unwrap();
     assert!(!has_updates);
 }
 
@@ -245,8 +251,7 @@ async fn test_no_updates_available() {
 async fn test_network_failure_handling() {
     use mock_server::MockManifestServer;
 
-    let server = MockManifestServer::new()
-        .simulate_failure();
+    let server = MockManifestServer::new().simulate_failure();
 
     // Should handle network errors gracefully
     let result = server.check_for_updates(None).await;
@@ -289,7 +294,11 @@ fn test_partial_update_recovery() {
 
     // Simulate that only chunk1 was downloaded successfully
     let downloaded_chunks = vec![SHA256Hash::compute(b"chunk1")];
-    let all_chunks: Vec<_> = manifest.chunk_index.iter().map(|c| c.hash.clone()).collect();
+    let all_chunks: Vec<_> = manifest
+        .chunk_index
+        .iter()
+        .map(|c| c.hash.clone())
+        .collect();
 
     let pending_chunks: Vec<_> = all_chunks
         .iter()

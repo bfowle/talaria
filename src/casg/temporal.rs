@@ -1,5 +1,4 @@
 /// Bi-temporal versioning for CASG
-
 use crate::casg::types::*;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -104,7 +103,8 @@ impl TemporalIndex {
 
         // Combine sequence and taxonomy versions
         for (timestamp, seq_version) in self.sequence_timeline.iter().rev().take(limit) {
-            let taxonomy_version = self.taxonomy_timeline
+            let taxonomy_version = self
+                .taxonomy_timeline
                 .range(..=timestamp)
                 .next_back()
                 .map(|(_, v)| v.clone());
@@ -131,7 +131,11 @@ impl TemporalIndex {
     }
 
     /// Get snapshots between two dates
-    pub fn get_snapshots_between(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> Result<Vec<DateTime<Utc>>> {
+    pub fn get_snapshots_between(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<Vec<DateTime<Utc>>> {
         let mut snapshots = Vec::new();
 
         // Get all unique timestamps from both timelines
@@ -150,7 +154,10 @@ impl TemporalIndex {
     }
 
     /// Get chunks at a specific temporal coordinate
-    pub fn get_chunks_at_time(&self, coordinate: &BiTemporalCoordinate) -> Result<Vec<ChunkMetadata>> {
+    pub fn get_chunks_at_time(
+        &self,
+        coordinate: &BiTemporalCoordinate,
+    ) -> Result<Vec<ChunkMetadata>> {
         // Get the manifest at this point in time
         let state = self.get_state_at(coordinate.sequence_time)?;
 
@@ -193,14 +200,17 @@ impl TemporalIndex {
             if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
                 if filename.starts_with("manifest_") && filename.ends_with(".json") {
                     // Parse timestamp from filename
-                    if let Some(ts_str) = filename.strip_prefix("manifest_").and_then(|s| s.strip_suffix(".json")) {
-                        if let Ok(file_ts) = DateTime::parse_from_str(
-                            &ts_str.replace('_', " "),
-                            "%Y-%m-%d %H-%M-%S"
-                        ) {
+                    if let Some(ts_str) = filename
+                        .strip_prefix("manifest_")
+                        .and_then(|s| s.strip_suffix(".json"))
+                    {
+                        if let Ok(file_ts) =
+                            DateTime::parse_from_str(&ts_str.replace('_', " "), "%Y-%m-%d %H-%M-%S")
+                        {
                             let file_ts = file_ts.with_timezone(&Utc);
                             if file_ts <= timestamp {
-                                if best_match.is_none() || best_match.as_ref().unwrap().0 < file_ts {
+                                if best_match.is_none() || best_match.as_ref().unwrap().0 < file_ts
+                                {
                                     best_match = Some((file_ts, path));
                                 }
                             }
@@ -224,7 +234,8 @@ impl TemporalIndex {
         // Search in sequence timeline
         for (timestamp, seq_version) in &self.sequence_timeline {
             if seq_version.version == version_id {
-                let taxonomy_version = self.taxonomy_timeline
+                let taxonomy_version = self
+                    .taxonomy_timeline
                     .range(..=timestamp)
                     .next_back()
                     .map(|(_, v)| v.clone());
@@ -255,13 +266,19 @@ impl TemporalIndex {
         let mut changes = Vec::new();
 
         // Find the version in sequence timeline
-        if let Some((_, seq_version)) = self.sequence_timeline.iter().find(|(_, v)| v.version == version) {
+        if let Some((_, seq_version)) = self
+            .sequence_timeline
+            .iter()
+            .find(|(_, v)| v.version == version)
+        {
             // Find previous version
             let prev_version = self.get_parent_version(version);
 
-            if let Some((_, prev)) = prev_version.as_ref().and_then(|pv|
-                self.sequence_timeline.iter().find(|(_, v)| v.version == *pv)
-            ) {
+            if let Some((_, prev)) = prev_version.as_ref().and_then(|pv| {
+                self.sequence_timeline
+                    .iter()
+                    .find(|(_, v)| v.version == *pv)
+            }) {
                 // Compare chunk counts
                 if seq_version.chunk_count != prev.chunk_count {
                     let diff = seq_version.chunk_count as i32 - prev.chunk_count as i32;
@@ -288,13 +305,24 @@ impl TemporalIndex {
                 }
             } else {
                 // This is the first version
-                changes.push(format!("Initial version with {} sequences", seq_version.sequence_count));
+                changes.push(format!(
+                    "Initial version with {} sequences",
+                    seq_version.sequence_count
+                ));
             }
         }
 
         // Check for taxonomy changes in the same timeframe
-        if let Some(cross_ref) = self.cross_references.iter().find(|cr| cr.sequence_version == version) {
-            if let Some((_, tax_version)) = self.taxonomy_timeline.iter().find(|(_, tv)| tv.version == cross_ref.taxonomy_version) {
+        if let Some(cross_ref) = self
+            .cross_references
+            .iter()
+            .find(|cr| cr.sequence_version == version)
+        {
+            if let Some((_, tax_version)) = self
+                .taxonomy_timeline
+                .iter()
+                .find(|(_, tv)| tv.version == cross_ref.taxonomy_version)
+            {
                 changes.push(format!("Using taxonomy: {}", tax_version.source));
             }
         }
@@ -305,9 +333,7 @@ impl TemporalIndex {
     fn get_parent_version(&self, version: &str) -> Option<String> {
         // Find the current version's index in the timeline
         let versions: Vec<_> = self.sequence_timeline.values().collect();
-        let current_index = versions
-            .iter()
-            .position(|v| v.version == version)?;
+        let current_index = versions.iter().position(|v| v.version == version)?;
 
         // Parent is the previous version in the timeline
         if current_index > 0 {
@@ -429,12 +455,14 @@ impl TemporalIndex {
         taxonomy_version: String,
     ) -> Result<()> {
         // Find the versions
-        let seq_v = self.sequence_timeline
+        let seq_v = self
+            .sequence_timeline
             .values()
             .find(|v| v.version == sequence_version)
             .ok_or_else(|| anyhow::anyhow!("Sequence version not found"))?;
 
-        let tax_v = self.taxonomy_timeline
+        let tax_v = self
+            .taxonomy_timeline
             .values()
             .find(|v| v.version == taxonomy_version)
             .ok_or_else(|| anyhow::anyhow!("Taxonomy version not found"))?;
@@ -479,7 +507,8 @@ impl TemporalIndex {
         let timestamp = Utc::now();
 
         // Find or create history for this sequence
-        let history = self.header_history
+        let history = self
+            .header_history
             .iter_mut()
             .find(|h| h.sequence_id == sequence_id);
 
@@ -513,23 +542,26 @@ impl TemporalIndex {
     /// Get the state at a specific point in time
     pub fn get_state_at(&self, timestamp: DateTime<Utc>) -> Result<TemporalState> {
         // Find sequence version
-        let seq_version = self.sequence_timeline
+        let seq_version = self
+            .sequence_timeline
             .range(..=timestamp)
             .next_back()
             .map(|(_, v)| v.clone());
 
         // Find taxonomy version
-        let tax_version = self.taxonomy_timeline
+        let tax_version = self
+            .taxonomy_timeline
             .range(..=timestamp)
             .next_back()
             .map(|(_, v)| v.clone());
 
         // Find applicable cross-reference
-        let cross_ref = self.cross_references
+        let cross_ref = self
+            .cross_references
             .iter()
             .find(|cr| {
-                cr.validity_start <= timestamp &&
-                cr.validity_end.map_or(true, |end| end > timestamp)
+                cr.validity_start <= timestamp
+                    && cr.validity_end.map_or(true, |end| end > timestamp)
             })
             .cloned();
 
@@ -558,7 +590,8 @@ impl TemporalIndex {
 
         Ok(TemporalQuery {
             sequence_state: state.sequence_version,
-            taxonomy_state: self.taxonomy_timeline
+            taxonomy_state: self
+                .taxonomy_timeline
                 .range(..=tax_time)
                 .next_back()
                 .map(|(_, v)| v.clone()),
@@ -606,8 +639,7 @@ impl TemporalIndex {
                     event_type: TimelineEventType::CrossReference,
                     description: format!(
                         "Linked sequences {} with taxonomy {}",
-                        cross_ref.sequence_version,
-                        cross_ref.taxonomy_version
+                        cross_ref.sequence_version, cross_ref.taxonomy_version
                     ),
                     details: serde_json::json!({
                         "sequence_version": cross_ref.sequence_version,
@@ -642,7 +674,8 @@ impl TemporalIndex {
         let temporal_link = CrossTimeHash {
             sequence_time: seq_v.timestamp,
             taxonomy_time: tax_v.timestamp,
-            combined_hash: state.cross_reference
+            combined_hash: state
+                .cross_reference
                 .map(|cr| cr.cross_hash)
                 .unwrap_or_else(|| {
                     let mut combined = Vec::new();

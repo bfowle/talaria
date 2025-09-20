@@ -3,7 +3,7 @@ pub mod progress;
 pub mod uniprot;
 
 use anyhow::Result;
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
@@ -17,7 +17,7 @@ pub fn verify_checksum(file_path: &Path, expected_checksum: &str) -> io::Result<
     let mut file = File::open(file_path)?;
     let mut hasher = Sha256::new();
     let mut buffer = [0; 8192];
-    
+
     loop {
         let bytes_read = file.read(&mut buffer)?;
         if bytes_read == 0 {
@@ -25,10 +25,10 @@ pub fn verify_checksum(file_path: &Path, expected_checksum: &str) -> io::Result<
         }
         hasher.update(&buffer[..bytes_read]);
     }
-    
+
     let result = hasher.finalize();
     let calculated = format!("{:x}", result);
-    
+
     Ok(calculated == expected_checksum)
 }
 
@@ -60,7 +60,8 @@ pub fn get_database_configs() -> Vec<DatabaseConfig> {
                 DatasetInfo {
                     name: "SwissProt".to_string(),
                     filename: "uniprot_sprot.fasta.gz".to_string(),
-                    url: "current_release/knowledgebase/complete/uniprot_sprot.fasta.gz".to_string(),
+                    url: "current_release/knowledgebase/complete/uniprot_sprot.fasta.gz"
+                        .to_string(),
                     size_mb: Some(85),
                     checksum: None,
                     description: "Manually reviewed protein sequences".to_string(),
@@ -68,7 +69,8 @@ pub fn get_database_configs() -> Vec<DatabaseConfig> {
                 DatasetInfo {
                     name: "TrEMBL".to_string(),
                     filename: "uniprot_trembl.fasta.gz".to_string(),
-                    url: "current_release/knowledgebase/complete/uniprot_trembl.fasta.gz".to_string(),
+                    url: "current_release/knowledgebase/complete/uniprot_trembl.fasta.gz"
+                        .to_string(),
                     size_mb: Some(52000),
                     checksum: None,
                     description: "Unreviewed protein sequences".to_string(),
@@ -130,13 +132,15 @@ impl DatabaseSource {
                 // Handle UniProt databases
                 if source.eq_ignore_ascii_case("uniprot") {
                     return match dataset.to_lowercase().as_str() {
-                        "swissprot" | "sprot" => Ok(DatabaseSource::UniProt(UniProtDatabase::SwissProt)),
+                        "swissprot" | "sprot" => {
+                            Ok(DatabaseSource::UniProt(UniProtDatabase::SwissProt))
+                        }
                         "trembl" => Ok(DatabaseSource::UniProt(UniProtDatabase::TrEMBL)),
                         "uniref50" => Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef50)),
                         "uniref90" => Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef90)),
                         "uniref100" => Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef100)),
                         "idmapping" => Ok(DatabaseSource::UniProt(UniProtDatabase::IdMapping)),
-                        _ => Ok(DatabaseSource::Custom(name.to_string()))
+                        _ => Ok(DatabaseSource::Custom(name.to_string())),
                     };
                 }
 
@@ -145,12 +149,20 @@ impl DatabaseSource {
                     return match dataset.to_lowercase().as_str() {
                         "nr" => Ok(DatabaseSource::NCBI(NCBIDatabase::NR)),
                         "nt" => Ok(DatabaseSource::NCBI(NCBIDatabase::NT)),
-                        "refseq-protein" | "refseq_protein" | "refseq" => Ok(DatabaseSource::NCBI(NCBIDatabase::RefSeqProtein)),
-                        "refseq-genomic" | "refseq_genomic" => Ok(DatabaseSource::NCBI(NCBIDatabase::RefSeqGenomic)),
+                        "refseq-protein" | "refseq_protein" | "refseq" => {
+                            Ok(DatabaseSource::NCBI(NCBIDatabase::RefSeqProtein))
+                        }
+                        "refseq-genomic" | "refseq_genomic" => {
+                            Ok(DatabaseSource::NCBI(NCBIDatabase::RefSeqGenomic))
+                        }
                         "taxonomy" => Ok(DatabaseSource::NCBI(NCBIDatabase::Taxonomy)),
-                        "prot-accession2taxid" | "prot_accession2taxid" => Ok(DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId)),
-                        "nucl-accession2taxid" | "nucl_accession2taxid" => Ok(DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId)),
-                        _ => Ok(DatabaseSource::Custom(name.to_string()))
+                        "prot-accession2taxid" | "prot_accession2taxid" => {
+                            Ok(DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId))
+                        }
+                        "nucl-accession2taxid" | "nucl_accession2taxid" => {
+                            Ok(DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId))
+                        }
+                        _ => Ok(DatabaseSource::Custom(name.to_string())),
                     };
                 }
             }
@@ -237,9 +249,7 @@ pub async fn download_database_with_full_options(
                         downloader.download_swissprot(output_path, progress).await
                     }
                 }
-                UniProtDatabase::TrEMBL => {
-                    downloader.download_trembl(output_path, progress).await
-                }
+                UniProtDatabase::TrEMBL => downloader.download_trembl(output_path, progress).await,
                 UniProtDatabase::UniRef50 => {
                     downloader.download_uniref50(output_path, progress).await
                 }
@@ -251,7 +261,9 @@ pub async fn download_database_with_full_options(
                 }
                 UniProtDatabase::IdMapping => {
                     if resume {
-                        downloader.download_idmapping_with_resume(output_path, progress, resume).await
+                        downloader
+                            .download_idmapping_with_resume(output_path, progress, resume)
+                            .await
                     } else {
                         downloader.download_idmapping(output_path, progress).await
                     }
@@ -264,7 +276,9 @@ pub async fn download_database_with_full_options(
                 NCBIDatabase::NR => {
                     if resume {
                         let url = format!("https://ftp.ncbi.nlm.nih.gov/blast/db/FASTA/nr.gz");
-                        downloader.download_and_extract_with_resume(&url, output_path, progress, resume).await
+                        downloader
+                            .download_and_extract_with_resume(&url, output_path, progress, resume)
+                            .await
                     } else {
                         downloader.download_nr(output_path, progress).await
                     }
@@ -272,7 +286,9 @@ pub async fn download_database_with_full_options(
                 NCBIDatabase::NT => {
                     if resume {
                         let url = format!("https://ftp.ncbi.nlm.nih.gov/blast/db/FASTA/nt.gz");
-                        downloader.download_and_extract_with_resume(&url, output_path, progress, resume).await
+                        downloader
+                            .download_and_extract_with_resume(&url, output_path, progress, resume)
+                            .await
                     } else {
                         downloader.download_nt(output_path, progress).await
                     }
@@ -280,17 +296,25 @@ pub async fn download_database_with_full_options(
                 NCBIDatabase::RefSeqProtein => {
                     if resume {
                         let url = format!("https://ftp.ncbi.nlm.nih.gov/refseq/release/complete/complete.protein.faa.gz");
-                        downloader.download_and_extract_with_resume(&url, output_path, progress, resume).await
+                        downloader
+                            .download_and_extract_with_resume(&url, output_path, progress, resume)
+                            .await
                     } else {
-                        downloader.download_refseq_protein(output_path, progress).await
+                        downloader
+                            .download_refseq_protein(output_path, progress)
+                            .await
                     }
                 }
                 NCBIDatabase::RefSeqGenomic => {
                     if resume {
                         let url = format!("https://ftp.ncbi.nlm.nih.gov/refseq/release/complete/complete.genomic.fna.gz");
-                        downloader.download_and_extract_with_resume(&url, output_path, progress, resume).await
+                        downloader
+                            .download_and_extract_with_resume(&url, output_path, progress, resume)
+                            .await
                     } else {
-                        downloader.download_refseq_genomic(output_path, progress).await
+                        downloader
+                            .download_refseq_genomic(output_path, progress)
+                            .await
                     }
                 }
                 NCBIDatabase::Taxonomy => {
@@ -305,7 +329,9 @@ pub async fn download_database_with_full_options(
                             output_path, progress, resume
                         ).await
                     } else {
-                        downloader.download_prot_accession2taxid(output_path, progress).await
+                        downloader
+                            .download_prot_accession2taxid(output_path, progress)
+                            .await
                     }
                 }
                 NCBIDatabase::NuclAccession2TaxId => {
@@ -315,7 +341,9 @@ pub async fn download_database_with_full_options(
                             output_path, progress, resume
                         ).await
                     } else {
-                        downloader.download_nucl_accession2taxid(output_path, progress).await
+                        downloader
+                            .download_nucl_accession2taxid(output_path, progress)
+                            .await
                     }
                 }
             }

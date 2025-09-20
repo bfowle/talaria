@@ -1,11 +1,10 @@
 /// CASG-specific workspace utilities
 /// CASG is the ENTIRE SYSTEM - all operations go through CASG
-
 use anyhow::{Context, Result};
+use crypto_hash::{digest, Algorithm};
 use std::fs;
-use std::path::{Path, PathBuf};
-use crypto_hash::{Algorithm, digest};
 use std::io::Write;
+use std::path::{Path, PathBuf};
 
 use crate::utils::temp_workspace::{TempWorkspace, WorkspaceConfig};
 
@@ -56,8 +55,8 @@ impl CasgWorkspaceManager {
 
     /// Content-address a file and store it in CASG
     pub fn store_content(&self, file_path: &Path) -> Result<String> {
-        let content = fs::read(file_path)
-            .with_context(|| format!("Failed to read file: {:?}", file_path))?;
+        let content =
+            fs::read(file_path).with_context(|| format!("Failed to read file: {:?}", file_path))?;
 
         // Calculate content hash
         let hash = digest(Algorithm::SHA256, &content);
@@ -80,8 +79,7 @@ impl CasgWorkspaceManager {
     /// Retrieve content by hash
     pub fn get_content(&self, hash: &str) -> Result<Vec<u8>> {
         let content_path = self.casg_root.join("content").join(hash);
-        fs::read(&content_path)
-            .with_context(|| format!("Content not found: {}", hash))
+        fs::read(&content_path).with_context(|| format!("Content not found: {}", hash))
     }
 
     /// Link content to a workspace file
@@ -97,7 +95,12 @@ impl CasgWorkspaceManager {
     }
 
     /// Cache alignment results
-    pub fn cache_alignment(&self, query_hash: &str, db_hash: &str, result: &[u8]) -> Result<String> {
+    pub fn cache_alignment(
+        &self,
+        query_hash: &str,
+        db_hash: &str,
+        result: &[u8],
+    ) -> Result<String> {
         let cache_dir = self.casg_root.join("cache").join("alignments");
         fs::create_dir_all(&cache_dir)?;
 
@@ -113,7 +116,11 @@ impl CasgWorkspaceManager {
     /// Retrieve cached alignment
     pub fn get_cached_alignment(&self, query_hash: &str, db_hash: &str) -> Result<Option<Vec<u8>>> {
         let cache_key = format!("{}_{}", query_hash, db_hash);
-        let cache_path = self.casg_root.join("cache").join("alignments").join(&cache_key);
+        let cache_path = self
+            .casg_root
+            .join("cache")
+            .join("alignments")
+            .join(&cache_key);
 
         if cache_path.exists() {
             Ok(Some(fs::read(&cache_path)?))
@@ -241,7 +248,10 @@ impl CasgStatistics {
         println!("  Preserved Workspaces: {}", self.preserved_workspaces);
         println!("  Content Objects:      {}", self.content_objects);
         println!("  Cached Alignments:    {}", self.cached_alignments);
-        println!("  Total Size:           {:.2} GB", self.total_size_bytes as f64 / 1_073_741_824.0);
+        println!(
+            "  Total Size:           {:.2} GB",
+            self.total_size_bytes as f64 / 1_073_741_824.0
+        );
     }
 }
 
@@ -272,12 +282,15 @@ impl CasgTransaction {
             path: path.clone(),
             content,
         });
-        self.rollback_operations.push(CasgOperation::DeleteFile { path });
+        self.rollback_operations
+            .push(CasgOperation::DeleteFile { path });
     }
 
     pub fn create_dir(&mut self, path: PathBuf) {
-        self.operations.push(CasgOperation::CreateDir { path: path.clone() });
-        self.rollback_operations.push(CasgOperation::DeleteDir { path });
+        self.operations
+            .push(CasgOperation::CreateDir { path: path.clone() });
+        self.rollback_operations
+            .push(CasgOperation::DeleteDir { path });
     }
 
     pub fn commit(self) -> Result<()> {

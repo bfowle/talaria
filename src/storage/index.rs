@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use crate::casg::types::{SHA256Hash, TaxonId, ChunkMetadata};
+use crate::casg::types::{ChunkMetadata, SHA256Hash, TaxonId};
 
 /// Query options for chunk searches
 #[derive(Debug, Clone, Default)]
@@ -105,7 +105,7 @@ impl ChunkIndex for InMemoryChunkIndex {
         for taxon_id in &metadata.taxon_ids {
             self.taxon_index
                 .entry(*taxon_id)
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(hash.clone());
         }
 
@@ -127,7 +127,8 @@ impl ChunkIndex for InMemoryChunkIndex {
     }
 
     async fn find_by_taxon(&self, taxon_id: TaxonId) -> Result<Vec<SHA256Hash>> {
-        Ok(self.taxon_index
+        Ok(self
+            .taxon_index
             .get(&taxon_id)
             .map(|hashes| hashes.iter().cloned().collect())
             .unwrap_or_default())
@@ -154,7 +155,10 @@ impl ChunkIndex for InMemoryChunkIndex {
         let hashes: Vec<SHA256Hash> = if let Some(taxon_ids) = query.taxon_ids {
             self.find_by_taxons(&taxon_ids).await?
         } else {
-            self.chunks.iter().map(|entry| entry.key().clone()).collect()
+            self.chunks
+                .iter()
+                .map(|entry| entry.key().clone())
+                .collect()
         };
 
         for hash in hashes {
@@ -188,9 +192,7 @@ impl ChunkIndex for InMemoryChunkIndex {
 
     async fn get_stats(&self) -> Result<IndexStats> {
         let total_chunks = self.chunks.len();
-        let total_size: usize = self.chunks.iter()
-            .map(|entry| entry.size)
-            .sum();
+        let total_size: usize = self.chunks.iter().map(|entry| entry.size).sum();
         let unique_taxons = self.taxon_index.len();
         let avg_chunk_size = if total_chunks > 0 {
             total_size / total_chunks
@@ -203,13 +205,17 @@ impl ChunkIndex for InMemoryChunkIndex {
             total_size,
             unique_taxons,
             avg_chunk_size,
-            delta_chunks: 0,  // Would need to track this separately
-            reference_chunks: total_chunks,  // Simplified for now
+            delta_chunks: 0,                // Would need to track this separately
+            reference_chunks: total_chunks, // Simplified for now
         })
     }
 
     async fn list_all(&self) -> Result<Vec<SHA256Hash>> {
-        Ok(self.chunks.iter().map(|entry| entry.key().clone()).collect())
+        Ok(self
+            .chunks
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect())
     }
 
     async fn clear(&mut self) -> Result<()> {

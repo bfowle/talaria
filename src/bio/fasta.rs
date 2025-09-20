@@ -38,7 +38,8 @@ fn parse_sequence(input: &[u8]) -> IResult<&[u8], (Vec<u8>, Option<String>)> {
 
     while !remaining.is_empty() && remaining[0] != b'>' {
         // Parse a line
-        let (rest, line) = take_till::<_, _, nom::error::Error<_>>(|c: u8| c == b'\n' || c == b'\r')(remaining)?;
+        let (rest, line) =
+            take_till::<_, _, nom::error::Error<_>>(|c: u8| c == b'\n' || c == b'\r')(remaining)?;
         let (rest, _) = opt(line_ending)(rest)?;
 
         let line_str = std::str::from_utf8(line).unwrap_or("");
@@ -47,14 +48,15 @@ fn parse_sequence(input: &[u8]) -> IResult<&[u8], (Vec<u8>, Option<String>)> {
         // Look for UniProt-style metadata patterns
         if line_num < 3 && line.len() > 0 {
             // Check if line contains metadata patterns
-            let has_metadata = line_str.contains("OX=") || line_str.contains("OS=") ||
-                               line_str.contains("GN=") || line_str.contains("PE=") ||
-                               line_str.contains("SV=");
+            let has_metadata = line_str.contains("OX=")
+                || line_str.contains("OS=")
+                || line_str.contains("GN=")
+                || line_str.contains("PE=")
+                || line_str.contains("SV=");
 
             // Check if line starts with a digit followed by space (like "3 SV=")
-            let starts_with_digit_space = line.len() >= 2 &&
-                                          line[0].is_ascii_digit() &&
-                                          line[1] == b' ';
+            let starts_with_digit_space =
+                line.len() >= 2 && line[0].is_ascii_digit() && line[1] == b' ';
 
             if has_metadata || starts_with_digit_space {
                 // This looks like metadata continuation
@@ -174,10 +176,7 @@ fn extract_taxon_id(description: &str) -> Option<u32> {
     }
 
     // Try other patterns
-    let patterns = [
-        ("taxon:", ""),
-        ("tax_id=", ""),
-    ];
+    let patterns = [("taxon:", ""), ("tax_id=", "")];
 
     for (prefix, _) in patterns {
         if let Some(pos) = description.find(prefix) {
@@ -297,7 +296,7 @@ pub fn parse_fasta_from_bytes(data: &[u8]) -> Result<Vec<Sequence>, TalariaError
 /// Parse a FASTA file into sequences (supports .gz compression)
 pub fn parse_fasta<P: AsRef<Path>>(path: P) -> Result<Vec<Sequence>, TalariaError> {
     let path = path.as_ref();
-    
+
     // Check if file is gzipped
     if path.extension().and_then(|s| s.to_str()) == Some("gz") {
         parse_fasta_gzip(path)
@@ -310,7 +309,7 @@ pub fn parse_fasta<P: AsRef<Path>>(path: P) -> Result<Vec<Sequence>, TalariaErro
 fn parse_fasta_uncompressed(path: &Path) -> Result<Vec<Sequence>, TalariaError> {
     let file = File::open(path)?;
     let mmap = unsafe { Mmap::map(&file)? };
-    
+
     parse_fasta_buffer(&mmap[..])
 }
 
@@ -320,7 +319,7 @@ fn parse_fasta_gzip(path: &Path) -> Result<Vec<Sequence>, TalariaError> {
     let mut decoder = GzDecoder::new(BufReader::new(file));
     let mut buffer = Vec::new();
     decoder.read_to_end(&mut buffer)?;
-    
+
     parse_fasta_buffer(&buffer)
 }
 
@@ -328,17 +327,17 @@ fn parse_fasta_gzip(path: &Path) -> Result<Vec<Sequence>, TalariaError> {
 fn parse_fasta_buffer(buffer: &[u8]) -> Result<Vec<Sequence>, TalariaError> {
     let mut input = buffer;
     let mut sequences = Vec::new();
-    
+
     while !input.is_empty() {
         // Skip empty lines and whitespace
         while !input.is_empty() && input[0].is_ascii_whitespace() {
             input = &input[1..];
         }
-        
+
         if input.is_empty() {
             break;
         }
-        
+
         match parse_record(input) {
             Ok((remaining, seq)) => {
                 if !seq.is_empty() {
@@ -347,11 +346,14 @@ fn parse_fasta_buffer(buffer: &[u8]) -> Result<Vec<Sequence>, TalariaError> {
                 input = remaining;
             }
             Err(e) => {
-                return Err(TalariaError::Parse(format!("Failed to parse FASTA: {:?}", e)));
+                return Err(TalariaError::Parse(format!(
+                    "Failed to parse FASTA: {:?}",
+                    e
+                )));
             }
         }
     }
-    
+
     Ok(sequences)
 }
 
@@ -359,10 +361,10 @@ fn parse_fasta_buffer(buffer: &[u8]) -> Result<Vec<Sequence>, TalariaError> {
 pub fn write_fasta<P: AsRef<Path>>(path: P, sequences: &[Sequence]) -> Result<(), TalariaError> {
     use flate2::write::GzEncoder;
     use flate2::Compression;
-    
+
     let path = path.as_ref();
     let file = File::create(path)?;
-    
+
     // Check if we should compress based on extension
     if path.extension().and_then(|s| s.to_str()) == Some("gz") {
         let encoder = GzEncoder::new(file, Compression::default());
@@ -374,49 +376,127 @@ pub fn write_fasta<P: AsRef<Path>>(path: P, sequences: &[Sequence]) -> Result<()
         write_fasta_to_writer(&mut writer, sequences)?;
         writer.flush()?;
     }
-    
+
     Ok(())
 }
 
-/// Write sequences to any writer
-fn write_fasta_to_writer<W: Write>(writer: &mut W, sequences: &[Sequence]) -> Result<(), TalariaError> {
-    for seq in sequences {
-        writeln!(writer, "{}", seq.header())?;
-        
-        // Write sequence in 80-character lines
-        for chunk in seq.sequence.chunks(80) {
-            writeln!(writer, "{}", String::from_utf8_lossy(chunk))?;
-        }
+/// Write sequences to any writer with progress tracking
+fn write_fasta_to_writer<W: Write>(
+    writer: &mut W,
+    sequences: &[Sequence],
+) -> Result<(), TalariaError> {
+    use indicatif::{ProgressBar, ProgressStyle};
+    use rayon::prelude::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    // Only show progress for large datasets
+    let show_progress = sequences.len() > 1000;
+
+    let pb = if show_progress && !std::env::var("TALARIA_SILENT").is_ok() {
+        let pb = ProgressBar::new(sequences.len() as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} sequences ({per_sec}, ETA: {eta})")
+                .unwrap()
+                .progress_chars("##-"),
+        );
+        pb.set_message("Formatting FASTA output...");
+        Some(Arc::new(pb))
+    } else {
+        None
+    };
+
+    let processed = Arc::new(AtomicUsize::new(0));
+
+    // Process sequences in parallel chunks
+    let chunk_size = 1000; // Process 1000 sequences per chunk
+    let chunks: Vec<Vec<u8>> = sequences
+        .par_chunks(chunk_size)
+        .map(|chunk_sequences| {
+            // Estimate size for this chunk
+            let chunk_estimated_size: usize = chunk_sequences
+                .iter()
+                .map(|s| {
+                    s.id.len()
+                        + s.description.as_ref().map_or(0, |d| d.len() + 1)
+                        + s.sequence.len()
+                        + (s.sequence.len() / 80)
+                        + 10 // newlines and overhead
+                })
+                .sum();
+
+            let mut chunk_buffer = Vec::with_capacity(chunk_estimated_size);
+
+            for seq in chunk_sequences.iter() {
+                // Write header
+                chunk_buffer.extend_from_slice(seq.header().as_bytes());
+                chunk_buffer.push(b'\n');
+
+                // Write sequence in 80-character lines directly as bytes
+                for seq_chunk in seq.sequence.chunks(80) {
+                    chunk_buffer.extend_from_slice(seq_chunk);
+                    chunk_buffer.push(b'\n');
+                }
+
+                // Update progress counter
+                let count = processed.fetch_add(1, Ordering::Relaxed);
+                if let Some(ref pb) = pb {
+                    if count % 100 == 0 {
+                        pb.set_position(count as u64);
+                    }
+                }
+            }
+
+            chunk_buffer
+        })
+        .collect();
+
+    if let Some(ref pb) = pb {
+        pb.set_position(sequences.len() as u64);
+        pb.finish_with_message("Writing to disk...");
     }
+
+    // Write all chunks sequentially
+    for chunk in chunks {
+        writer.write_all(&chunk)?;
+    }
+
     Ok(())
 }
 
 /// Parse FASTA in parallel chunks for large files (supports .gz compression)
-pub fn parse_fasta_parallel<P: AsRef<Path>>(path: P, chunk_size: usize) -> Result<Vec<Sequence>, TalariaError> {
+pub fn parse_fasta_parallel<P: AsRef<Path>>(
+    path: P,
+    chunk_size: usize,
+) -> Result<Vec<Sequence>, TalariaError> {
     let path = path.as_ref();
-    
+
     // For gzipped files, fall back to sequential parsing
     if path.extension().and_then(|s| s.to_str()) == Some("gz") {
         return parse_fasta(path);
     }
-    
+
     let file = File::open(path)?;
     let mmap = unsafe { Mmap::map(&file)? };
-    
+
     // Find record boundaries for parallel processing
     let mut boundaries = vec![0];
     let mut pos = 0;
-    
+
     while pos < mmap.len() {
         if pos > 0 && mmap[pos] == b'>' && (pos == 0 || mmap[pos - 1] == b'\n') {
-            if boundaries.last().map_or(true, |&last| pos - last >= chunk_size) {
+            if boundaries
+                .last()
+                .map_or(true, |&last| pos - last >= chunk_size)
+            {
                 boundaries.push(pos);
             }
         }
         pos += 1;
     }
     boundaries.push(mmap.len());
-    
+
     // Parse chunks in parallel
     let sequences: Result<Vec<Vec<Sequence>>, TalariaError> = boundaries
         .par_windows(2)
@@ -424,19 +504,19 @@ pub fn parse_fasta_parallel<P: AsRef<Path>>(path: P, chunk_size: usize) -> Resul
             let start = window[0];
             let end = window[1];
             let chunk = &mmap[start..end];
-            
+
             let mut input = chunk;
             let mut chunk_sequences = Vec::new();
-            
+
             while !input.is_empty() {
                 while !input.is_empty() && input[0].is_ascii_whitespace() {
                     input = &input[1..];
                 }
-                
+
                 if input.is_empty() {
                     break;
                 }
-                
+
                 match parse_record(input) {
                     Ok((remaining, seq)) => {
                         if !seq.is_empty() {
@@ -445,22 +525,25 @@ pub fn parse_fasta_parallel<P: AsRef<Path>>(path: P, chunk_size: usize) -> Resul
                         input = remaining;
                     }
                     Err(e) => {
-                        return Err(TalariaError::Parse(format!("Failed to parse FASTA chunk: {:?}", e)));
+                        return Err(TalariaError::Parse(format!(
+                            "Failed to parse FASTA chunk: {:?}",
+                            e
+                        )));
                     }
                 }
             }
-            
+
             Ok(chunk_sequences)
         })
         .collect();
-    
+
     Ok(sequences?.into_iter().flatten().collect())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_parse_header() {
         let input = b">sp|P12345|PROTEIN_HUMAN Description here\nACGT";
@@ -469,7 +552,7 @@ mod tests {
         assert_eq!(desc, Some("Description here"));
         assert_eq!(remaining, b"ACGT");
     }
-    
+
     #[test]
     fn test_extract_taxon_id() {
         assert_eq!(extract_taxon_id("Description OX=9606 GN=GENE"), Some(9606));
@@ -482,7 +565,10 @@ mod tests {
     fn test_extract_taxon_id_with_zero_fallback() {
         // TaxID=0 should fall back to OX= field
         assert_eq!(extract_taxon_id("TaxID=0 OX=666"), Some(666));
-        assert_eq!(extract_taxon_id("Something TaxID=0 more text OX=9606 end"), Some(9606));
+        assert_eq!(
+            extract_taxon_id("Something TaxID=0 more text OX=9606 end"),
+            Some(9606)
+        );
 
         // TaxID=0 with no OX= should return None (not 0)
         assert_eq!(extract_taxon_id("TaxID=0"), None);
@@ -499,7 +585,11 @@ mod tests {
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].id, "tr|A0A0H6|A0A0H6_VIBCL");
-        assert!(result[0].description.as_ref().unwrap().contains("Fatty acid oxidation"));
+        assert!(result[0]
+            .description
+            .as_ref()
+            .unwrap()
+            .contains("Fatty acid oxidation"));
         assert_eq!(result[0].taxon_id, Some(666));
         assert_eq!(result[0].sequence, b"MKLTF");
     }
@@ -511,7 +601,10 @@ mod tests {
         let result = parse_fasta_from_bytes(input).unwrap();
 
         assert_eq!(result.len(), 1);
-        assert_eq!(String::from_utf8(result[0].sequence.clone()).unwrap(), "ACGTACGT");
+        assert_eq!(
+            String::from_utf8(result[0].sequence.clone()).unwrap(),
+            "ACGTACGT"
+        );
         assert!(result[0].description.as_ref().unwrap().contains("SV=1"));
     }
 

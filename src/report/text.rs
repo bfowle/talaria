@@ -1,8 +1,8 @@
 use crate::core::database_diff::{ComparisonResult, SequenceChange};
 use crate::report::ReportOptions;
 use anyhow::Result;
+use comfy_table::{modifiers, presets, Attribute, Cell, Color, ContentArrangement, Table};
 use std::fmt::Write;
-use comfy_table::{Table, Cell, Attribute, ContentArrangement, Color, presets, modifiers};
 
 pub fn generate_text_report(result: &ComparisonResult, options: &ReportOptions) -> Result<String> {
     let mut output = String::new();
@@ -65,27 +65,39 @@ pub fn generate_text_report(result: &ComparisonResult, options: &ReportOptions) 
     summary_table.add_row(vec![
         Cell::new("- Removed").fg(Color::Red),
         Cell::new(format_number(result.removed.len())).fg(Color::Red),
-        Cell::new(format!("{:.1}%", result.removed.len() as f64 / total * 100.0)),
+        Cell::new(format!(
+            "{:.1}%",
+            result.removed.len() as f64 / total * 100.0
+        )),
     ]);
     summary_table.add_row(vec![
         Cell::new("~ Modified").fg(Color::Yellow),
         Cell::new(format_number(result.modified.len())).fg(Color::Yellow),
-        Cell::new(format!("{:.1}%", result.modified.len() as f64 / total * 100.0)),
+        Cell::new(format!(
+            "{:.1}%",
+            result.modified.len() as f64 / total * 100.0
+        )),
     ]);
     summary_table.add_row(vec![
         Cell::new("↻ Renamed").fg(Color::Cyan),
         Cell::new(format_number(result.renamed.len())).fg(Color::Cyan),
-        Cell::new(format!("{:.1}%", result.renamed.len() as f64 / total * 100.0)),
+        Cell::new(format!(
+            "{:.1}%",
+            result.renamed.len() as f64 / total * 100.0
+        )),
     ]);
     summary_table.add_row(vec![
         Cell::new("✓ Unchanged").fg(Color::DarkGrey),
         Cell::new(format_number(result.unchanged_count)),
-        Cell::new(format!("{:.1}%", result.unchanged_count as f64 / total * 100.0)),
+        Cell::new(format!(
+            "{:.1}%",
+            result.unchanged_count as f64 / total * 100.0
+        )),
     ]);
 
     writeln!(&mut output, "{}", summary_table)?;
     writeln!(&mut output)?;
-    
+
     // Statistics table
     writeln!(&mut output, "● Database Statistics")?;
     writeln!(&mut output, "─────────────────────")?;
@@ -123,20 +135,23 @@ pub fn generate_text_report(result: &ComparisonResult, options: &ReportOptions) 
 
     writeln!(&mut output, "{}", stats_table)?;
     writeln!(&mut output)?;
-    
+
     // Taxonomic changes
     if options.include_taxonomy {
         writeln!(&mut output, "Taxonomic Changes")?;
         writeln!(&mut output, "-----------------")?;
-        writeln!(&mut output, "Unique taxa: {} → {} ({:+})",
+        writeln!(
+            &mut output,
+            "Unique taxa: {} → {} ({:+})",
             stats.old_unique_taxa,
             stats.new_unique_taxa,
-            stats.new_unique_taxa as i64 - stats.old_unique_taxa as i64)?;
+            stats.new_unique_taxa as i64 - stats.old_unique_taxa as i64
+        )?;
         writeln!(&mut output, "- New taxa: {}", stats.added_taxa)?;
         writeln!(&mut output, "- Removed taxa: {}", stats.removed_taxa)?;
         writeln!(&mut output)?;
     }
-    
+
     // Detailed changes
     if options.include_details {
         if !result.added.is_empty() {
@@ -176,7 +191,7 @@ pub fn generate_text_report(result: &ComparisonResult, options: &ReportOptions) 
             writeln!(&mut output, "{}", added_table)?;
             writeln!(&mut output)?;
         }
-        
+
         if !result.removed.is_empty() {
             writeln!(&mut output, "➖ Removed Sequences (Top 10)")?;
             writeln!(&mut output, "────────────────────────────")?;
@@ -214,7 +229,7 @@ pub fn generate_text_report(result: &ComparisonResult, options: &ReportOptions) 
             writeln!(&mut output, "{}", removed_table)?;
             writeln!(&mut output)?;
         }
-        
+
         if !result.modified.is_empty() {
             writeln!(&mut output, "✏️  Modified Sequences (Top 10)")?;
             writeln!(&mut output, "─────────────────────────────")?;
@@ -234,7 +249,9 @@ pub fn generate_text_report(result: &ComparisonResult, options: &ReportOptions) 
 
             for mod_seq in result.modified.iter().take(10) {
                 let length_diff = mod_seq.new.length as i64 - mod_seq.old.length as i64;
-                let changes_str = mod_seq.changes.iter()
+                let changes_str = mod_seq
+                    .changes
+                    .iter()
                     .map(|c| match c {
                         SequenceChange::HeaderChanged => "Header".to_string(),
                         SequenceChange::Extended(n) => format!("Ext +{}", n),
@@ -247,10 +264,12 @@ pub fn generate_text_report(result: &ComparisonResult, options: &ReportOptions) 
                 modified_table.add_row(vec![
                     Cell::new(&mod_seq.old.id).fg(Color::Yellow),
                     Cell::new(format!("{:.1}%", mod_seq.similarity * 100.0)),
-                    Cell::new(format!("{} → {} ({:+})",
+                    Cell::new(format!(
+                        "{} → {} ({:+})",
                         format_number(mod_seq.old.length),
                         format_number(mod_seq.new.length),
-                        length_diff)),
+                        length_diff
+                    )),
                     Cell::new(changes_str),
                 ]);
             }
@@ -295,9 +314,9 @@ fn format_number(n: usize) -> String {
 /// Format a change value with color
 fn format_change(change: i64) -> Cell {
     if change > 0 {
-        Cell::new(format!("+{}", format_number(change.abs() as usize))).fg(Color::Green)
+        Cell::new(format!("+{}", format_number(change.unsigned_abs() as usize))).fg(Color::Green)
     } else if change < 0 {
-        Cell::new(format!("-{}", format_number(change.abs() as usize))).fg(Color::Red)
+        Cell::new(format!("-{}", format_number(change.unsigned_abs() as usize))).fg(Color::Red)
     } else {
         Cell::new("0").fg(Color::DarkGrey)
     }

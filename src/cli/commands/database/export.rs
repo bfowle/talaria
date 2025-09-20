@@ -1,20 +1,19 @@
+use anyhow::{Context, Result};
 /// Export command for converting CASG-stored databases to standard FASTA format
 ///
 /// This bridges the gap between our efficient CASG storage and traditional
 /// bioinformatics tools that expect FASTA files
-
 use clap::Args;
-use anyhow::{Context, Result};
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
-use std::io::{Write, BufWriter};
 
-use crate::cli::output::{success as print_success, info as print_info};
-use crate::utils::progress::create_spinner;
-use crate::utils::database_ref::{parse_database_reference, DatabaseReference};
-use crate::core::database_manager::DatabaseManager;
-use crate::core::paths;
 use crate::casg::assembler::FastaAssembler;
 use crate::casg::manifest::Manifest;
+use crate::cli::output::{info as print_info, success as print_success};
+use crate::core::database_manager::DatabaseManager;
+use crate::core::paths;
+use crate::utils::database_ref::{parse_database_reference, DatabaseReference};
+use crate::utils::progress::create_spinner;
 
 #[derive(Args)]
 pub struct ExportArgs {
@@ -81,10 +80,7 @@ pub fn run(args: ExportArgs) -> Result<()> {
     // Check if cached version exists
     if !args.force && !args.no_cache && output_path.exists() {
         if args.cached_only || !args.quiet {
-            print_success(&format!(
-                "Using cached export: {}",
-                output_path.display()
-            ));
+            print_success(&format!("Using cached export: {}", output_path.display()));
         }
 
         if args.quiet {
@@ -105,7 +101,7 @@ pub fn run(args: ExportArgs) -> Result<()> {
     let spinner = if !args.quiet {
         Some(create_spinner(&format!(
             "Exporting {} to FASTA...",
-            db_ref.to_string()
+            db_ref
         )))
     } else {
         None
@@ -136,10 +132,7 @@ pub fn run(args: ExportArgs) -> Result<()> {
     Ok(())
 }
 
-fn determine_output_path(
-    args: &ExportArgs,
-    db_ref: &DatabaseReference,
-) -> Result<PathBuf> {
+fn determine_output_path(args: &ExportArgs, db_ref: &DatabaseReference) -> Result<PathBuf> {
     if let Some(ref output) = args.output {
         return Ok(output.clone());
     }
@@ -152,8 +145,7 @@ fn determine_output_path(
         .join(db_ref.version_or_default())
         .join(db_ref.profile_or_default());
 
-    std::fs::create_dir_all(&cache_dir)
-        .context("Failed to create cache directory")?;
+    std::fs::create_dir_all(&cache_dir).context("Failed to create cache directory")?;
 
     let filename = format!(
         "export.{}{}",
@@ -181,7 +173,7 @@ fn perform_export(
 ) -> Result<ExportStats> {
     // Initialize database manager
     let base_path = paths::talaria_databases_dir();
-    let manager = DatabaseManager::new(Some(base_path.to_string_lossy().to_string()))?;
+    let _manager = DatabaseManager::new(Some(base_path.to_string_lossy().to_string()))?;
 
     // Find the manifest for the requested database
     let manifest_path = find_manifest(&base_path, db_ref)?;
@@ -192,29 +184,82 @@ fn perform_export(
 
     // Load the manifest
     let manifest = Manifest::load_file(&manifest_path)?;
-    let manifest_data = manifest.get_data()
+    let manifest_data = manifest
+        .get_data()
         .ok_or_else(|| anyhow::anyhow!("No manifest data found"))?;
 
     // Check if we need a profile-specific manifest
-    let final_manifest = if db_ref.profile.is_some() {
-        let profile = db_ref.profile_or_default();
-        find_profile_manifest(&base_path, db_ref, profile)?
-    } else {
-        manifest_path.clone()
-    };
+    let temporal_manifest_owned;
+    let final_manifest_data = if let Some(profile) = &db_ref.profile {
+        // Find and load the reduction profile
+        let profile_path = find_profile_manifest(&base_path, db_ref, profile)?;
 
-    // Load the appropriate manifest data
-    let final_manifest_obj;
-    let final_manifest_data = if final_manifest != manifest_path {
-        final_manifest_obj = Manifest::load_file(&final_manifest)?;
-        final_manifest_obj.get_data()
-            .ok_or_else(|| anyhow::anyhow!("No profile manifest data found"))?
+        if !args.quiet {
+            print_info(&format!(
+                "Using reduction profile: {}",
+                profile_path.display()
+            ));
+        }
+
+        // Load the reduction manifest (handles both .tal and .json)
+        use crate::casg::reduction::ReductionManifest;
+        let reduction_manifest = if profile_path.extension().and_then(|s| s.to_str()) == Some("tal")
+        {
+            // Load .tal format
+            let data = std::fs::read(&profile_path)?;
+            if data.len() < 4 || &data[0..4] != b"TAL\x01" {
+                anyhow::bail!("Invalid .tal file format");
+            }
+            rmp_serde::from_slice::<ReductionManifest>(&data[4..])?
+        } else {
+            // Load JSON format
+            let data = std::fs::read(&profile_path)?;
+            serde_json::from_slice::<ReductionManifest>(&data)?
+        };
+
+        // Convert reduction manifest to temporal manifest for assembly
+        // The reduction manifest contains the chunks we need
+        temporal_manifest_owned = crate::casg::types::TemporalManifest {
+            version: manifest_data.version.clone(),
+            created_at: reduction_manifest.created_at,
+            sequence_version: manifest_data.sequence_version.clone(),
+            taxonomy_version: manifest_data.taxonomy_version.clone(),
+            temporal_coordinate: manifest_data.temporal_coordinate.clone(),
+            taxonomy_root: manifest_data.taxonomy_root.clone(),
+            sequence_root: manifest_data.sequence_root.clone(),
+            chunk_merkle_tree: manifest_data.chunk_merkle_tree.clone(),
+            taxonomy_manifest_hash: manifest_data.taxonomy_manifest_hash.clone(),
+            taxonomy_dump_version: manifest_data.taxonomy_dump_version.clone(),
+            source_database: manifest_data.source_database.clone(),
+            chunk_index: {
+                let mut chunks = Vec::new();
+                // Add reference chunks
+                for chunk in &reduction_manifest.reference_chunks {
+                    chunks.push(crate::casg::types::ChunkMetadata {
+                        hash: chunk.chunk_hash.clone(),
+                        sequence_count: chunk.sequence_count,
+                        size: chunk.size,
+                        compressed_size: chunk.compressed_size,
+                        taxon_ids: chunk.taxon_ids.clone(),
+                    });
+                }
+                // Note: Delta chunks are stored separately and would need special handling
+                // for reconstruction. For simple export, we only use reference chunks.
+                chunks
+            },
+            discrepancies: manifest_data.discrepancies.clone(),
+            etag: manifest_data.etag.clone(),
+            previous_version: manifest_data.previous_version.clone(),
+        };
+
+        &temporal_manifest_owned
     } else {
         manifest_data
     };
 
-    // Create assembler
-    let assembler = FastaAssembler::new(manager.get_storage());
+    // Create assembler using the CASG storage (use open to rebuild index)
+    let casg_storage = crate::casg::storage::CASGStorage::open(&base_path)?;
+    let assembler = FastaAssembler::new(&casg_storage);
 
     // Export based on format and streaming preference
     let sequence_count = if args.stream {
@@ -247,31 +292,48 @@ fn perform_export(
     })
 }
 
-fn find_manifest(
-    base_path: &Path,
-    db_ref: &DatabaseReference,
-) -> Result<PathBuf> {
+fn find_manifest(base_path: &Path, db_ref: &DatabaseReference) -> Result<PathBuf> {
+    // Look in the versions directory structure
+    let version_path = base_path
+        .join("versions")
+        .join(&db_ref.source)
+        .join(&db_ref.dataset)
+        .join(db_ref.version_or_default());
+
+    // Try .tal first, then .json
+    let tal_manifest = version_path.join("manifest.tal");
+    if tal_manifest.exists() {
+        return Ok(tal_manifest);
+    }
+
+    let json_manifest = version_path.join("manifest.json");
+    if json_manifest.exists() {
+        return Ok(json_manifest);
+    }
+
+    // Fallback to old manifests directory for compatibility
     let manifests_dir = base_path.join("manifests");
+    if manifests_dir.exists() {
+        // Try different naming conventions
+        let candidates = vec![
+            // With version in filename
+            format!(
+                "{}-{}-{}.json",
+                db_ref.source,
+                db_ref.dataset,
+                db_ref.version_or_default()
+            ),
+            // Without version (current)
+            format!("{}-{}.json", db_ref.source, db_ref.dataset),
+            // Alternative naming
+            format!("{}_{}.json", db_ref.source, db_ref.dataset),
+        ];
 
-    // Try different naming conventions
-    let candidates = vec![
-        // With version in filename
-        format!(
-            "{}-{}-{}.json",
-            db_ref.source,
-            db_ref.dataset,
-            db_ref.version_or_default()
-        ),
-        // Without version (current)
-        format!("{}-{}.json", db_ref.source, db_ref.dataset),
-        // Alternative naming
-        format!("{}_{}.json", db_ref.source, db_ref.dataset),
-    ];
-
-    for candidate in candidates {
-        let path = manifests_dir.join(&candidate);
-        if path.exists() {
-            return Ok(path);
+        for candidate in candidates {
+            let path = manifests_dir.join(&candidate);
+            if path.exists() {
+                return Ok(path);
+            }
         }
     }
 
@@ -287,10 +349,7 @@ fn find_manifest(
         return Ok(versions_path);
     }
 
-    anyhow::bail!(
-        "No manifest found for {}",
-        db_ref.to_string()
-    )
+    anyhow::bail!("No manifest found for {}", db_ref.to_string())
 }
 
 fn find_profile_manifest(
@@ -298,36 +357,31 @@ fn find_profile_manifest(
     db_ref: &DatabaseReference,
     profile: &str,
 ) -> Result<PathBuf> {
-    // Look for profile-specific manifest
-    let profile_path = base_path
-        .join("profiles")
-        .join(&db_ref.source)
-        .join(&db_ref.dataset)
-        .join(profile)
-        .join("manifest.json");
-
-    if profile_path.exists() {
-        return Ok(profile_path);
-    }
-
-    // Check in versions directory
-    let versions_profile = base_path
+    // Look in version-specific profiles directory
+    let profiles_dir = base_path
         .join("versions")
         .join(&db_ref.source)
         .join(&db_ref.dataset)
         .join(db_ref.version_or_default())
-        .join("profiles")
-        .join(profile)
-        .join("manifest.json");
+        .join("profiles");
 
-    if versions_profile.exists() {
-        return Ok(versions_profile);
+    // Try .tal format first (preferred)
+    let tal_path = profiles_dir.join(format!("{}.tal", profile));
+    if tal_path.exists() {
+        return Ok(tal_path);
+    }
+
+    // Fall back to JSON format
+    let json_path = profiles_dir.join(format!("{}.json", profile));
+    if json_path.exists() {
+        return Ok(json_path);
     }
 
     anyhow::bail!(
-        "No manifest found for profile '{}' of {}",
+        "No profile manifest found for '{}' in database {}. Expected at: {}",
         profile,
-        db_ref.to_string()
+        db_ref.to_string(),
+        tal_path.display()
     )
 }
 
@@ -353,16 +407,15 @@ fn export_streamed(
     let mut writer = BufWriter::new(writer);
 
     // Get chunk hashes
-    let chunk_hashes: Vec<_> = manifest.chunk_index
+    let chunk_hashes: Vec<_> = manifest
+        .chunk_index
         .iter()
         .map(|c| c.hash.clone())
         .collect();
 
     // Stream assembly directly to writer
     let total_sequences = match format {
-        ExportFormat::Fasta => {
-            assembler.stream_assembly(&chunk_hashes, &mut writer)?
-        }
+        ExportFormat::Fasta => assembler.stream_assembly(&chunk_hashes, &mut writer)?,
         _ => {
             anyhow::bail!("Streaming export only supports FASTA format currently");
         }
@@ -384,7 +437,8 @@ fn export_full(
     use flate2::Compression;
 
     // Get chunk hashes
-    let chunk_hashes: Vec<_> = manifest.chunk_index
+    let chunk_hashes: Vec<_> = manifest
+        .chunk_index
         .iter()
         .map(|c| c.hash.clone())
         .collect();

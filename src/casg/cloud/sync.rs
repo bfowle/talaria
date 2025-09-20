@@ -1,13 +1,12 @@
 /// Synchronization logic for cloud storage
-
 use super::{CloudStorage, SyncDirection, SyncOptions, SyncResult};
 use anyhow::{Context, Result};
+use futures::stream::{self, StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use tokio::sync::Semaphore;
-use futures::stream::{self, StreamExt};
 
 pub async fn perform_sync(
     storage: &dyn CloudStorage,
@@ -27,18 +26,26 @@ pub async fn perform_sync(
     };
 
     // Verify access first
-    storage.verify_access().await
+    storage
+        .verify_access()
+        .await
         .context("Failed to verify cloud storage access")?;
 
     // Collect local and remote files
-    let local_files = collect_local_files(local_path, &options.exclude_patterns, &options.include_patterns)?;
+    let local_files = collect_local_files(
+        local_path,
+        &options.exclude_patterns,
+        &options.include_patterns,
+    )?;
     let remote_objects = storage.list_objects(Some(remote_prefix)).await?;
 
-    let local_set: HashSet<String> = local_files.iter()
+    let local_set: HashSet<String> = local_files
+        .iter()
         .map(|p| path_to_key(p, local_path))
         .collect();
 
-    let remote_set: HashSet<String> = remote_objects.iter()
+    let remote_set: HashSet<String> = remote_objects
+        .iter()
         .map(|o| strip_prefix(&o.key, remote_prefix))
         .collect();
 
@@ -107,7 +114,8 @@ pub async fn perform_sync(
                         .modified()?
                         .elapsed()
                         .unwrap_or_default();
-                    let local_time = chrono::Utc::now() - chrono::Duration::from_std(local_modified).unwrap();
+                    let local_time =
+                        chrono::Utc::now() - chrono::Duration::from_std(local_modified).unwrap();
 
                     if local_time > remote_obj.last_modified {
                         to_upload.push((local_file.clone(), full_key));
@@ -138,7 +146,10 @@ pub async fn perform_sync(
         println!("DRY RUN - No changes will be made");
         println!("Would upload: {} files", to_upload.len());
         println!("Would download: {} files", to_download.len());
-        println!("Would delete: {} files", to_delete_local.len() + to_delete_remote.len());
+        println!(
+            "Would delete: {} files",
+            to_delete_local.len() + to_delete_remote.len()
+        );
 
         result.uploaded = to_upload.iter().map(|(_, k)| k.clone()).collect();
         result.downloaded = to_download.iter().map(|(k, _)| k.clone()).collect();
@@ -168,7 +179,6 @@ pub async fn perform_sync(
 
             let upload_futures = to_upload.iter().map(|(local_file, key)| {
                 let sem = &semaphore;
-                let storage = storage;
                 let pb = &upload_pb;
 
                 async move {
@@ -179,15 +189,15 @@ pub async fn perform_sync(
                 }
             });
 
-            let mut upload_stream = stream::iter(upload_futures)
-                .buffer_unordered(options.parallel_transfers);
+            let mut upload_stream =
+                stream::iter(upload_futures).buffer_unordered(options.parallel_transfers);
 
             while let Some((key, upload_result)) = upload_stream.next().await {
                 match upload_result {
                     Ok(_) => {
-                        if let Ok(metadata) = std::fs::metadata(
-                            &to_upload.iter().find(|(_, k)| k == &key).unwrap().0
-                        ) {
+                        if let Ok(metadata) =
+                            std::fs::metadata(&to_upload.iter().find(|(_, k)| k == &key).unwrap().0)
+                        {
                             result.bytes_transferred += metadata.len() as usize;
                         }
                         result.uploaded.push(key);
@@ -211,7 +221,6 @@ pub async fn perform_sync(
 
             let download_futures = to_download.iter().map(|(key, local_file)| {
                 let sem = &semaphore;
-                let storage = storage;
                 let pb = &download_pb;
 
                 async move {
@@ -222,8 +231,8 @@ pub async fn perform_sync(
                 }
             });
 
-            let mut download_stream = stream::iter(download_futures)
-                .buffer_unordered(options.parallel_transfers);
+            let mut download_stream =
+                stream::iter(download_futures).buffer_unordered(options.parallel_transfers);
 
             while let Some((key, download_result)) = download_stream.next().await {
                 match download_result {
@@ -239,7 +248,8 @@ pub async fn perform_sync(
                 }
             }
 
-            download_pb.finish_with_message(format!("Downloaded {} files", result.downloaded.len()));
+            download_pb
+                .finish_with_message(format!("Downloaded {} files", result.downloaded.len()));
         }
 
         // Perform deletions
@@ -252,7 +262,9 @@ pub async fn perform_sync(
             // Delete local files
             for path in &to_delete_local {
                 if let Err(e) = std::fs::remove_file(path) {
-                    result.errors.push((path.to_string_lossy().to_string(), e.to_string()));
+                    result
+                        .errors
+                        .push((path.to_string_lossy().to_string(), e.to_string()));
                 } else {
                     result.deleted.push(path.to_string_lossy().to_string());
                 }
@@ -284,7 +296,13 @@ fn collect_local_files(
     include_patterns: &[String],
 ) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
-    collect_files_recursive(base_path, base_path, &mut files, exclude_patterns, include_patterns)?;
+    collect_files_recursive(
+        base_path,
+        base_path,
+        &mut files,
+        exclude_patterns,
+        include_patterns,
+    )?;
     Ok(files)
 }
 
@@ -353,7 +371,11 @@ fn strip_prefix(key: &str, prefix: &str) -> String {
         .to_string()
 }
 
-fn should_upload(local_file: &Path, remote_objects: &[super::CloudObject], key: &str) -> Result<bool> {
+fn should_upload(
+    local_file: &Path,
+    remote_objects: &[super::CloudObject],
+    key: &str,
+) -> Result<bool> {
     if let Some(remote) = remote_objects.iter().find(|o| o.key == key) {
         // Compare modification times and sizes
         let local_metadata = std::fs::metadata(local_file)?;

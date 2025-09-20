@@ -1,79 +1,116 @@
+use crate::casg::traits::renderable::{
+    create_timeline, timeline_marker, DiffRenderable, EvolutionRenderable, TemporalRenderable,
+};
+use crate::casg::traits::temporal::*;
+use crate::cli::output::{create_standard_table, format_number, header_cell, TreeNode};
+use chrono::Datelike;
 /// Implementations of TemporalRenderable trait for temporal query types
 ///
 /// This module provides rich visualization for temporal query results
 /// using the existing output utilities.
-
-use comfy_table::{Table, Cell};
-use chrono::Datelike;
-use crate::cli::output::{TreeNode, create_standard_table, header_cell, format_number};
-use crate::casg::traits::renderable::{TemporalRenderable, EvolutionRenderable, DiffRenderable, timeline_marker, create_timeline};
-use crate::casg::traits::temporal::*;
+use comfy_table::{Cell, Table};
 
 impl TemporalRenderable for TemporalSnapshot {
     fn render_tree(&self) -> Vec<TreeNode> {
-        vec![
-            TreeNode::new("Temporal Snapshot")
-                .add_child(
-                    TreeNode::new("Coordinate")
-                        .add_child(TreeNode::new("Sequence Time").with_value(
-                            self.coordinate.sequence_time.format("%Y-%m-%d %H:%M:%S UTC").to_string()
-                        ))
-                        .add_child(TreeNode::new("Taxonomy Time").with_value(
-                            self.coordinate.taxonomy_time.format("%Y-%m-%d %H:%M:%S UTC").to_string()
-                        ))
-                )
-                .add_child(
-                    TreeNode::new("Sequences")
-                        .add_child(TreeNode::new("Total").with_value(format_number(self.sequences.len())))
-                        .add_child(TreeNode::new("Unique Taxa").with_value(format_number(self.metadata.unique_taxa)))
-                )
-                .add_child(
-                    TreeNode::new("Versions")
-                        .add_child(TreeNode::new("Sequence Version").with_value(&self.sequence_version.version))
-                        .add_child(TreeNode::new("Taxonomy Version").with_value(&self.taxonomy_version.version))
-                        .add_child(TreeNode::new("Taxonomy Source").with_value(&self.taxonomy_version.source))
-                )
-                .add_child(
-                    TreeNode::new("Storage")
-                        .add_child(TreeNode::new("Chunks").with_value(format_number(self.metadata.total_chunks)))
-                        .add_child(TreeNode::new("Snapshot Hash").with_value(
-                            format!("{}...", &self.metadata.snapshot_hash.to_hex()[..8])
-                        ))
-                )
-        ]
+        vec![TreeNode::new("Temporal Snapshot")
+            .add_child(
+                TreeNode::new("Coordinate")
+                    .add_child(
+                        TreeNode::new("Sequence Time").with_value(
+                            self.coordinate
+                                .sequence_time
+                                .format("%Y-%m-%d %H:%M:%S UTC")
+                                .to_string(),
+                        ),
+                    )
+                    .add_child(
+                        TreeNode::new("Taxonomy Time").with_value(
+                            self.coordinate
+                                .taxonomy_time
+                                .format("%Y-%m-%d %H:%M:%S UTC")
+                                .to_string(),
+                        ),
+                    ),
+            )
+            .add_child(
+                TreeNode::new("Sequences")
+                    .add_child(
+                        TreeNode::new("Total").with_value(format_number(self.sequences.len())),
+                    )
+                    .add_child(
+                        TreeNode::new("Unique Taxa")
+                            .with_value(format_number(self.metadata.unique_taxa)),
+                    ),
+            )
+            .add_child(
+                TreeNode::new("Versions")
+                    .add_child(
+                        TreeNode::new("Sequence Version")
+                            .with_value(&self.sequence_version.version),
+                    )
+                    .add_child(
+                        TreeNode::new("Taxonomy Version")
+                            .with_value(&self.taxonomy_version.version),
+                    )
+                    .add_child(
+                        TreeNode::new("Taxonomy Source").with_value(&self.taxonomy_version.source),
+                    ),
+            )
+            .add_child(
+                TreeNode::new("Storage")
+                    .add_child(
+                        TreeNode::new("Chunks")
+                            .with_value(format_number(self.metadata.total_chunks)),
+                    )
+                    .add_child(
+                        TreeNode::new("Snapshot Hash").with_value(format!(
+                            "{}...",
+                            &self.metadata.snapshot_hash.to_hex()[..8]
+                        )),
+                    ),
+            )]
     }
 
     fn render_table(&self) -> Table {
         let mut table = create_standard_table();
 
-        table.set_header(vec![
-            header_cell("Property"),
-            header_cell("Value"),
-        ]);
+        table.set_header(vec![header_cell("Property"), header_cell("Value")]);
 
         table.add_row(vec![
             Cell::new("Sequence Time"),
-            Cell::new(&self.coordinate.sequence_time.format("%Y-%m-%d %H:%M:%S").to_string()),
+            Cell::new(
+                self
+                    .coordinate
+                    .sequence_time
+                    .format("%Y-%m-%d %H:%M:%S")
+                    .to_string(),
+            ),
         ]);
 
         table.add_row(vec![
             Cell::new("Taxonomy Time"),
-            Cell::new(&self.coordinate.taxonomy_time.format("%Y-%m-%d %H:%M:%S").to_string()),
+            Cell::new(
+                self
+                    .coordinate
+                    .taxonomy_time
+                    .format("%Y-%m-%d %H:%M:%S")
+                    .to_string(),
+            ),
         ]);
 
         table.add_row(vec![
             Cell::new("Total Sequences"),
-            Cell::new(&format_number(self.sequences.len())),
+            Cell::new(format_number(self.sequences.len())),
         ]);
 
         table.add_row(vec![
             Cell::new("Unique Taxa"),
-            Cell::new(&format_number(self.metadata.unique_taxa)),
+            Cell::new(format_number(self.metadata.unique_taxa)),
         ]);
 
         table.add_row(vec![
             Cell::new("Chunks"),
-            Cell::new(&format_number(self.metadata.total_chunks)),
+            Cell::new(format_number(self.metadata.total_chunks)),
         ]);
 
         table.add_row(vec![
@@ -83,7 +120,10 @@ impl TemporalRenderable for TemporalSnapshot {
 
         table.add_row(vec![
             Cell::new("Taxonomy Version"),
-            Cell::new(&format!("{} ({})", self.taxonomy_version.version, self.taxonomy_version.source)),
+            Cell::new(format!(
+                "{} ({})",
+                self.taxonomy_version.version, self.taxonomy_version.source
+            )),
         ]);
 
         table
@@ -109,37 +149,55 @@ impl TemporalRenderable for TemporalJoinResult {
         let mut root = TreeNode::new("Temporal Join Results")
             .add_child(
                 TreeNode::new("Query")
-                    .add_child(TreeNode::new("Reference Date").with_value(
-                        self.query.reference_date.format("%Y-%m-%d").to_string()
-                    ))
-                    .add_child(TreeNode::new("Comparison Date").with_value(
-                        self.query.comparison_date
-                            .map(|d| d.format("%Y-%m-%d").to_string())
-                            .unwrap_or_else(|| "Current".to_string())
-                    ))
+                    .add_child(
+                        TreeNode::new("Reference Date")
+                            .with_value(self.query.reference_date.format("%Y-%m-%d").to_string()),
+                    )
+                    .add_child(
+                        TreeNode::new("Comparison Date").with_value(
+                            self.query
+                                .comparison_date
+                                .map(|d| d.format("%Y-%m-%d").to_string())
+                                .unwrap_or_else(|| "Current".to_string()),
+                        ),
+                    ),
             )
             .add_child(
                 TreeNode::new("Statistics")
-                    .add_child(TreeNode::new("Total Affected").with_value(format_number(self.total_affected)))
-                    .add_child(TreeNode::new("Taxonomies Changed").with_value(format_number(self.taxonomies_changed)))
-                    .add_child(TreeNode::new("Stable Sequences").with_value(format_number(self.stable.len())))
-                    .add_child(TreeNode::new("Execution Time").with_value(format!("{} ms", self.execution_time_ms)))
+                    .add_child(
+                        TreeNode::new("Total Affected")
+                            .with_value(format_number(self.total_affected)),
+                    )
+                    .add_child(
+                        TreeNode::new("Taxonomies Changed")
+                            .with_value(format_number(self.taxonomies_changed)),
+                    )
+                    .add_child(
+                        TreeNode::new("Stable Sequences")
+                            .with_value(format_number(self.stable.len())),
+                    )
+                    .add_child(
+                        TreeNode::new("Execution Time")
+                            .with_value(format!("{} ms", self.execution_time_ms)),
+                    ),
             );
 
         // Add reclassification groups
         if !self.reclassified.is_empty() {
             let mut reclass_node = TreeNode::new("Reclassified Groups");
             for group in &self.reclassified {
-                let old_taxon = group.old_taxon
+                let old_taxon = group
+                    .old_taxon
                     .map(|t| format!("TaxID:{}", t.0))
                     .unwrap_or_else(|| "Unknown".to_string());
-                let new_taxon = group.new_taxon
+                let new_taxon = group
+                    .new_taxon
                     .map(|t| format!("TaxID:{}", t.0))
                     .unwrap_or_else(|| "Unknown".to_string());
 
                 reclass_node = reclass_node.add_child(
-                    TreeNode::new(&format!("{} → {}", old_taxon, new_taxon))
-                        .with_value(format_number(group.count))
+                    TreeNode::new(format!("{} → {}", old_taxon, new_taxon))
+                        .with_value(format_number(group.count)),
                 );
             }
             root = root.add_child(reclass_node);
@@ -161,10 +219,12 @@ impl TemporalRenderable for TemporalJoinResult {
         let total = self.total_affected as f64;
 
         for group in &self.reclassified {
-            let old_taxon = group.old_taxon
+            let old_taxon = group
+                .old_taxon
                 .map(|t| format!("TaxID:{}", t.0))
                 .unwrap_or_else(|| "Unknown".to_string());
-            let new_taxon = group.new_taxon
+            let new_taxon = group
+                .new_taxon
                 .map(|t| format!("TaxID:{}", t.0))
                 .unwrap_or_else(|| "Unknown".to_string());
             let percentage = (group.count as f64 / total * 100.0) as usize;
@@ -172,8 +232,8 @@ impl TemporalRenderable for TemporalJoinResult {
             table.add_row(vec![
                 Cell::new(&old_taxon),
                 Cell::new(&new_taxon),
-                Cell::new(&format_number(group.count)),
-                Cell::new(&format!("{}%", percentage)),
+                Cell::new(format_number(group.count)),
+                Cell::new(format!("{}%", percentage)),
             ]);
         }
 
@@ -186,14 +246,24 @@ impl TemporalRenderable for TemporalJoinResult {
         output.push_str(&format!(
             "Reference: {}    →    Comparison: {}\n",
             self.query.reference_date.format("%Y-%m-%d"),
-            self.query.comparison_date
+            self.query
+                .comparison_date
                 .map(|d| d.format("%Y-%m-%d").to_string())
                 .unwrap_or_else(|| "Current".to_string())
         ));
         output.push_str("─────────────────────────────────────────\n");
-        output.push_str(&format!("  {} sequences affected\n", format_number(self.total_affected)));
-        output.push_str(&format!("  {} taxonomies changed\n", format_number(self.taxonomies_changed)));
-        output.push_str(&format!("  {} sequences stable\n", format_number(self.stable.len())));
+        output.push_str(&format!(
+            "  {} sequences affected\n",
+            format_number(self.total_affected)
+        ));
+        output.push_str(&format!(
+            "  {} taxonomies changed\n",
+            format_number(self.taxonomies_changed)
+        ));
+        output.push_str(&format!(
+            "  {} sequences stable\n",
+            format_number(self.stable.len())
+        ));
 
         output
     }
@@ -220,7 +290,8 @@ impl EvolutionRenderable for EvolutionHistory {
         let end_year = self.events.last().unwrap().timestamp.year();
 
         // Convert events to timeline format
-        let timeline_events: Vec<(i32, &str, &str)> = self.events
+        let timeline_events: Vec<(i32, &str, &str)> = self
+            .events
             .iter()
             .map(|e| {
                 let marker = match e.event_type {
@@ -277,22 +348,18 @@ impl EvolutionRenderable for EvolutionHistory {
     fn render_evolution_stats(&self) -> Table {
         let mut table = create_standard_table();
 
-        table.set_header(vec![
-            header_cell("Event Type"),
-            header_cell("Count"),
-        ]);
+        table.set_header(vec![header_cell("Event Type"), header_cell("Count")]);
 
         // Count events by type
         let mut event_counts = std::collections::HashMap::new();
         for event in &self.events {
-            *event_counts.entry(format!("{:?}", event.event_type)).or_insert(0) += 1;
+            *event_counts
+                .entry(format!("{:?}", event.event_type))
+                .or_insert(0) += 1;
         }
 
         for (event_type, count) in event_counts {
-            table.add_row(vec![
-                Cell::new(&event_type),
-                Cell::new(&count.to_string()),
-            ]);
+            table.add_row(vec![Cell::new(&event_type), Cell::new(count.to_string())]);
         }
 
         table
@@ -312,26 +379,44 @@ impl DiffRenderable for TemporalDiff {
 
         // Sequence changes
         if !self.sequence_changes.added.is_empty() {
-            output.push_str(&format!("+{} sequences added\n", self.sequence_changes.added.len()));
+            output.push_str(&format!(
+                "+{} sequences added\n",
+                self.sequence_changes.added.len()
+            ));
         }
         if !self.sequence_changes.removed.is_empty() {
-            output.push_str(&format!("-{} sequences removed\n", self.sequence_changes.removed.len()));
+            output.push_str(&format!(
+                "-{} sequences removed\n",
+                self.sequence_changes.removed.len()
+            ));
         }
         if !self.sequence_changes.modified.is_empty() {
-            output.push_str(&format!("~{} sequences modified\n", self.sequence_changes.modified.len()));
+            output.push_str(&format!(
+                "~{} sequences modified\n",
+                self.sequence_changes.modified.len()
+            ));
         }
 
         output.push_str("\n");
 
         // Taxonomy changes
         if !self.taxonomy_changes.added_taxa.is_empty() {
-            output.push_str(&format!("+{} taxa added\n", self.taxonomy_changes.added_taxa.len()));
+            output.push_str(&format!(
+                "+{} taxa added\n",
+                self.taxonomy_changes.added_taxa.len()
+            ));
         }
         if !self.taxonomy_changes.removed_taxa.is_empty() {
-            output.push_str(&format!("-{} taxa removed\n", self.taxonomy_changes.removed_taxa.len()));
+            output.push_str(&format!(
+                "-{} taxa removed\n",
+                self.taxonomy_changes.removed_taxa.len()
+            ));
         }
         if !self.taxonomy_changes.renamed_taxa.is_empty() {
-            output.push_str(&format!("~{} taxa renamed\n", self.taxonomy_changes.renamed_taxa.len()));
+            output.push_str(&format!(
+                "~{} taxa renamed\n",
+                self.taxonomy_changes.renamed_taxa.len()
+            ));
         }
 
         output
@@ -343,10 +428,7 @@ impl DiffRenderable for TemporalDiff {
         let left_header = format!("{}", self.from.sequence_time.format("%Y-%m-%d"));
         let right_header = format!("{}", self.to.sequence_time.format("%Y-%m-%d"));
 
-        output.push_str(&format!(
-            "{:^40} │ {:^40}\n",
-            left_header, right_header
-        ));
+        output.push_str(&format!("{:^40} │ {:^40}\n", left_header, right_header));
         output.push_str(&"─".repeat(81));
         output.push('\n');
 
@@ -366,44 +448,41 @@ impl DiffRenderable for TemporalDiff {
     fn render_diff_stats(&self) -> Table {
         let mut table = create_standard_table();
 
-        table.set_header(vec![
-            header_cell("Change Type"),
-            header_cell("Count"),
-        ]);
+        table.set_header(vec![header_cell("Change Type"), header_cell("Count")]);
 
         table.add_row(vec![
             Cell::new("Sequences Added"),
-            Cell::new(&format_number(self.sequence_changes.added.len())),
+            Cell::new(format_number(self.sequence_changes.added.len())),
         ]);
 
         table.add_row(vec![
             Cell::new("Sequences Removed"),
-            Cell::new(&format_number(self.sequence_changes.removed.len())),
+            Cell::new(format_number(self.sequence_changes.removed.len())),
         ]);
 
         table.add_row(vec![
             Cell::new("Sequences Modified"),
-            Cell::new(&format_number(self.sequence_changes.modified.len())),
+            Cell::new(format_number(self.sequence_changes.modified.len())),
         ]);
 
         table.add_row(vec![
             Cell::new("Taxa Added"),
-            Cell::new(&format_number(self.taxonomy_changes.added_taxa.len())),
+            Cell::new(format_number(self.taxonomy_changes.added_taxa.len())),
         ]);
 
         table.add_row(vec![
             Cell::new("Taxa Removed"),
-            Cell::new(&format_number(self.taxonomy_changes.removed_taxa.len())),
+            Cell::new(format_number(self.taxonomy_changes.removed_taxa.len())),
         ]);
 
         table.add_row(vec![
             Cell::new("Taxa Renamed"),
-            Cell::new(&format_number(self.taxonomy_changes.renamed_taxa.len())),
+            Cell::new(format_number(self.taxonomy_changes.renamed_taxa.len())),
         ]);
 
         table.add_row(vec![
             Cell::new("Reclassifications"),
-            Cell::new(&format_number(self.reclassifications.len())),
+            Cell::new(format_number(self.reclassifications.len())),
         ]);
 
         table

@@ -1,6 +1,6 @@
-use crate::bio::taxonomy::{TaxonomyDB, ncbi};
-use crate::bio::taxonomy_stats::{TaxonomyCoverage, format_tree};
 use crate::bio::fasta;
+use crate::bio::taxonomy::{ncbi, TaxonomyDB};
+use crate::bio::taxonomy_stats::{format_tree, TaxonomyCoverage};
 use anyhow::{Context, Result};
 use clap::Args;
 use colored::*;
@@ -43,7 +43,6 @@ pub struct TaxaCoverageArgs {
 }
 
 pub fn run(args: TaxaCoverageArgs) -> Result<()> {
-
     // Load or download taxonomy database
     let taxonomy_db = load_taxonomy(&args.taxonomy)?;
 
@@ -51,9 +50,11 @@ pub fn run(args: TaxaCoverageArgs) -> Result<()> {
     let primary_path = resolve_database_input(&args.database)?;
 
     // Process primary database
-    println!("{} Analyzing taxonomic coverage for {}...",
-             "►".cyan().bold(),
-             args.database);
+    println!(
+        "{} Analyzing taxonomic coverage for {}...",
+        "►".cyan().bold(),
+        args.database
+    );
 
     let primary_coverage = if primary_path.exists() {
         analyze_database(&primary_path, &taxonomy_db)?
@@ -65,9 +66,11 @@ pub fn run(args: TaxaCoverageArgs) -> Result<()> {
 
     // Process comparison database if provided
     let comparison = if let Some(ref compare) = args.compare {
-        println!("{} Analyzing comparison database {}...",
-                 "►".cyan().bold(),
-                 compare);
+        println!(
+            "{} Analyzing comparison database {}...",
+            "►".cyan().bold(),
+            compare
+        );
 
         let compare_path = resolve_database_input(compare)?;
         if compare_path.exists() {
@@ -85,16 +88,22 @@ pub fn run(args: TaxaCoverageArgs) -> Result<()> {
         "json" => generate_json_report(&primary_coverage, comparison.as_ref()),
         "csv" => generate_csv_report(&primary_coverage, comparison.as_ref()),
         "html" => generate_html_report(&primary_coverage, comparison.as_ref(), args.max_depth),
-        _ => generate_text_report(&primary_coverage, comparison.as_ref(), &taxonomy_db, args.max_depth),
+        _ => generate_text_report(
+            &primary_coverage,
+            comparison.as_ref(),
+            &taxonomy_db,
+            args.max_depth,
+        ),
     }?;
 
     // Output report
     if let Some(output_path) = args.output {
-        std::fs::write(&output_path, report)
-            .context("Failed to write output file")?;
-        println!("{} Report saved to {}",
-                 "✓".green().bold(),
-                 output_path.display());
+        std::fs::write(&output_path, report).context("Failed to write output file")?;
+        println!(
+            "{} Report saved to {}",
+            "✓".green().bold(),
+            output_path.display()
+        );
     } else {
         println!("{}", report);
     }
@@ -111,8 +120,10 @@ fn load_taxonomy(taxonomy_path: &Option<PathBuf>) -> Result<TaxonomyDB> {
         let default_path = paths::talaria_data_dir().join("taxonomy").join("ncbi");
 
         if !default_path.exists() {
-            println!("{} Taxonomy database not found. Downloading NCBI taxonomy...",
-                     "►".yellow().bold());
+            println!(
+                "{} Taxonomy database not found. Downloading NCBI taxonomy...",
+                "►".yellow().bold()
+            );
             download_ncbi_taxonomy(&default_path)?;
         }
 
@@ -122,9 +133,11 @@ fn load_taxonomy(taxonomy_path: &Option<PathBuf>) -> Result<TaxonomyDB> {
     println!("{} Loading taxonomy database...", "►".cyan().bold());
 
     let pb = ProgressBar::new_spinner();
-    pb.set_style(ProgressStyle::default_spinner()
-        .template("{spinner:.green} {msg}")
-        .unwrap());
+    pb.set_style(
+        ProgressStyle::default_spinner()
+            .template("{spinner:.green} {msg}")
+            .unwrap(),
+    );
     pb.set_message("Parsing taxonomy files...");
 
     let names_file = taxonomy_dir.join("names.dmp");
@@ -139,31 +152,33 @@ fn load_taxonomy(taxonomy_path: &Option<PathBuf>) -> Result<TaxonomyDB> {
 }
 
 fn download_ncbi_taxonomy(target_dir: &PathBuf) -> Result<()> {
-    use std::fs;
     use flate2::read::GzDecoder;
+    use std::fs;
     use tar::Archive;
 
     fs::create_dir_all(target_dir)?;
 
     let pb = ProgressBar::new(100);
-    pb.set_style(ProgressStyle::default_bar()
-        .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} {msg}")
-        .unwrap()
-        .progress_chars("=>-"));
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} {msg}")
+            .unwrap()
+            .progress_chars("=>-"),
+    );
 
     pb.set_message("Downloading NCBI taxonomy...");
     pb.set_position(25);
 
     let url = "https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz";
-    let response = reqwest::blocking::get(url)
-        .context("Failed to download taxonomy")?;
+    let response = reqwest::blocking::get(url).context("Failed to download taxonomy")?;
 
     pb.set_position(50);
     pb.set_message("Extracting taxonomy files...");
 
     let tar_gz = GzDecoder::new(response);
     let mut archive = Archive::new(tar_gz);
-    archive.unpack(target_dir)
+    archive
+        .unpack(target_dir)
         .context("Failed to extract taxonomy")?;
 
     pb.set_position(100);
@@ -173,7 +188,8 @@ fn download_ncbi_taxonomy(target_dir: &PathBuf) -> Result<()> {
 }
 
 fn analyze_database(path: &PathBuf, taxonomy_db: &TaxonomyDB) -> Result<TaxonomyCoverage> {
-    let db_name = path.file_stem()
+    let db_name = path
+        .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("unknown")
         .to_string();
@@ -181,21 +197,27 @@ fn analyze_database(path: &PathBuf, taxonomy_db: &TaxonomyDB) -> Result<Taxonomy
     let mut coverage = TaxonomyCoverage::new(db_name);
 
     // Parse FASTA file
-    let sequences = fasta::parse_fasta(path)
-        .context("Failed to parse FASTA file")?;
+    let sequences = fasta::parse_fasta(path).context("Failed to parse FASTA file")?;
 
     let pb = ProgressBar::new(sequences.len() as u64);
-    pb.set_style(ProgressStyle::default_bar()
-        .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} {msg}")
-        .unwrap()
-        .progress_chars("=>-"));
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} {msg}")
+            .unwrap()
+            .progress_chars("=>-"),
+    );
     pb.set_message("Analyzing sequences...");
 
     // Extract taxon IDs from sequences
     for seq in &sequences {
         // Try taxon_id field first, then extract from description
-        let taxon_id = seq.taxon_id
-            .or_else(|| seq.description.as_ref().and_then(|desc| extract_taxon_id(desc)))
+        let taxon_id = seq
+            .taxon_id
+            .or_else(|| {
+                seq.description
+                    .as_ref()
+                    .and_then(|desc| extract_taxon_id(desc))
+            })
             .or_else(|| extract_taxon_from_accession(&seq.id))
             .unwrap_or(1); // Default to root if not found
 
@@ -217,7 +239,7 @@ fn extract_taxon_id(header: &str) -> Option<u32> {
         r"TaxID[=:](\d+)",
         r"tax_id[=:](\d+)",
         r"\[taxid:(\d+)\]",
-        r"OX=(\d+)",  // UniProt format
+        r"OX=(\d+)", // UniProt format
     ];
 
     for pattern in patterns {
@@ -256,29 +278,55 @@ fn generate_text_report(
 
     // Primary database statistics
     writeln!(report, "\n{} {}", "Database:".bold(), coverage.database)?;
-    writeln!(report, "{} {}", "Total sequences:".bold(), coverage.total_sequences)?;
+    writeln!(
+        report,
+        "{} {}",
+        "Total sequences:".bold(),
+        coverage.total_sequences
+    )?;
     writeln!(report, "{} {}", "Unique taxa:".bold(), coverage.unique_taxa)?;
     writeln!(report)?;
 
     // Coverage by rank
-    writeln!(report, "{}", "Coverage by Taxonomic Rank:".bold().underline())?;
-    writeln!(report, "{:<20} {:>10} {:>15} {:>10}", "Rank", "Taxa", "Sequences", "Percentage")?;
+    writeln!(
+        report,
+        "{}",
+        "Coverage by Taxonomic Rank:".bold().underline()
+    )?;
+    writeln!(
+        report,
+        "{:<20} {:>10} {:>15} {:>10}",
+        "Rank", "Taxa", "Sequences", "Percentage"
+    )?;
     writeln!(report, "{}", "-".repeat(60))?;
 
-    let important_ranks = vec!["superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species"];
+    let important_ranks = vec![
+        "superkingdom",
+        "kingdom",
+        "phylum",
+        "class",
+        "order",
+        "family",
+        "genus",
+        "species",
+    ];
 
     for rank in &important_ranks {
         if let Some(stats) = coverage.rank_coverage.get(*rank) {
-            writeln!(report, "{:<20} {:>10} {:>15} {:>10.1}%",
-                     rank,
-                     stats.unique_taxa,
-                     stats.count,
-                     stats.percentage)?;
+            writeln!(
+                report,
+                "{:<20} {:>10} {:>15} {:>10.1}%",
+                rank, stats.unique_taxa, stats.count, stats.percentage
+            )?;
         }
     }
 
     // Taxonomic tree
-    writeln!(report, "\n{}", "Taxonomic Tree (Top Taxa):".bold().underline())?;
+    writeln!(
+        report,
+        "\n{}",
+        "Taxonomic Tree (Top Taxa):".bold().underline()
+    )?;
     let tree = coverage.build_tree(taxonomy_db, Some(1));
     report.push_str(&format_tree(&tree, "", false, Some(max_depth), 0));
 
@@ -290,10 +338,31 @@ fn generate_text_report(
 
         let comp = coverage.compare(other);
 
-        writeln!(report, "\n{} {} vs {}", "Comparing:".bold(), comp.db1, comp.db2)?;
-        writeln!(report, "{} {}", "Common taxa:".bold(), comp.common_taxa_count)?;
-        writeln!(report, "{} {}", "Unique to first:".bold(), comp.unique_to_db1)?;
-        writeln!(report, "{} {}", "Unique to second:".bold(), comp.unique_to_db2)?;
+        writeln!(
+            report,
+            "\n{} {} vs {}",
+            "Comparing:".bold(),
+            comp.db1,
+            comp.db2
+        )?;
+        writeln!(
+            report,
+            "{} {}",
+            "Common taxa:".bold(),
+            comp.common_taxa_count
+        )?;
+        writeln!(
+            report,
+            "{} {}",
+            "Unique to first:".bold(),
+            comp.unique_to_db1
+        )?;
+        writeln!(
+            report,
+            "{} {}",
+            "Unique to second:".bold(),
+            comp.unique_to_db2
+        )?;
     }
 
     Ok(report)
@@ -376,7 +445,10 @@ fn export_database_to_temp(database_ref: &str) -> Result<PathBuf> {
     use crate::cli::commands::database::export::{ExportArgs, ExportFormat};
     use std::env;
 
-    println!("  Exporting {} to temporary file for analysis...", database_ref);
+    println!(
+        "  Exporting {} to temporary file for analysis...",
+        database_ref
+    );
 
     // Create a temporary file path
     let temp_dir = env::temp_dir();
@@ -410,7 +482,8 @@ fn generate_html_report(
     _max_depth: usize,
 ) -> Result<String> {
     let mut html = String::new();
-    html.push_str(r#"<!DOCTYPE html>
+    html.push_str(
+        r#"<!DOCTYPE html>
 <html>
 <head>
     <title>Taxonomic Coverage Report</title>
@@ -427,10 +500,12 @@ fn generate_html_report(
 </head>
 <body>
     <h1>Taxonomic Coverage Report</h1>
-"#);
+"#,
+    );
 
     // Database statistics
-    html.push_str(&format!(r#"
+    html.push_str(&format!(
+        r#"
     <div class="stats">
         <div class="stat-box">
             <h3>Database: {}</h3>
@@ -438,10 +513,13 @@ fn generate_html_report(
             <p>Unique Taxa: {}</p>
         </div>
     </div>
-"#, coverage.database, coverage.total_sequences, coverage.unique_taxa));
+"#,
+        coverage.database, coverage.total_sequences, coverage.unique_taxa
+    ));
 
     // Rank coverage table
-    html.push_str(r#"
+    html.push_str(
+        r#"
     <h2>Coverage by Taxonomic Rank</h2>
     <table>
         <tr>
@@ -450,17 +528,21 @@ fn generate_html_report(
             <th>Sequences</th>
             <th>Percentage</th>
         </tr>
-"#);
+"#,
+    );
 
     for (rank, stats) in &coverage.rank_coverage {
-        html.push_str(&format!(r#"
+        html.push_str(&format!(
+            r#"
         <tr>
             <td>{}</td>
             <td>{}</td>
             <td>{}</td>
             <td>{:.2}%</td>
         </tr>
-"#, rank, stats.unique_taxa, stats.count, stats.percentage));
+"#,
+            rank, stats.unique_taxa, stats.count, stats.percentage
+        ));
     }
 
     html.push_str("</table>");
@@ -468,7 +550,8 @@ fn generate_html_report(
     // Comparison if present
     if let Some(other) = comparison {
         let comp = coverage.compare(other);
-        html.push_str(&format!(r#"
+        html.push_str(&format!(
+            r#"
     <h2>Comparison: {} vs {}</h2>
     <div class="stats">
         <div class="stat-box">
@@ -477,7 +560,15 @@ fn generate_html_report(
             <p>Unique to {}: {}</p>
         </div>
     </div>
-"#, comp.db1, comp.db2, comp.common_taxa_count, comp.db1, comp.unique_to_db1, comp.db2, comp.unique_to_db2));
+"#,
+            comp.db1,
+            comp.db2,
+            comp.common_taxa_count,
+            comp.db1,
+            comp.unique_to_db1,
+            comp.db2,
+            comp.unique_to_db2
+        ));
     }
 
     html.push_str("</body></html>");

@@ -1,10 +1,11 @@
-use talaria::casg::{
-    CASGRepository, TaxonomicChunker, ChunkingStrategy, FastaAssembler, SHA256Hash, TaxonId, TemporalManifest, ChunkMetadata,
-};
 use talaria::bio::sequence::Sequence;
-use talaria::core::reducer::Reducer;
-use talaria::core::config::Config;
+use talaria::casg::{
+    CASGRepository, ChunkMetadata, ChunkingStrategy, FastaAssembler, SHA256Hash, TaxonId,
+    TaxonomicChunker, TemporalManifest,
+};
 use talaria::cli::TargetAligner;
+use talaria::core::config::Config;
+use talaria::core::reducer::Reducer;
 use tempfile::TempDir;
 
 // Helper to create test manifests with required fields
@@ -41,24 +42,28 @@ fn create_test_sequences() -> Vec<Sequence> {
             description: Some("E. coli protein 1".to_string()),
             sequence: b"MVALPRWFDKMVALPRWFDK".to_vec(),
             taxon_id: Some(562),
+            taxonomy_sources: Default::default(),
         },
         Sequence {
             id: "seq2".to_string(),
             description: Some("E. coli protein 2".to_string()),
             sequence: b"MVALPRWFDKMVALPRWFDA".to_vec(), // Similar to seq1
             taxon_id: Some(562),
+            taxonomy_sources: Default::default(),
         },
         Sequence {
             id: "seq3".to_string(),
             description: Some("Human protein 1".to_string()),
             sequence: b"MKWVTFISLLFLFSSAYS".to_vec(),
             taxon_id: Some(9606),
+            taxonomy_sources: Default::default(),
         },
         Sequence {
             id: "seq4".to_string(),
             description: Some("Human protein 2".to_string()),
             sequence: b"MKWVTFISLLFLFSSAYA".to_vec(), // Similar to seq3
             taxon_id: Some(9606),
+            taxonomy_sources: Default::default(),
         },
     ]
 }
@@ -70,7 +75,9 @@ fn test_casg_to_reduce_workflow() {
 
     // Step 1: Chunk sequences and store in CASG
     let chunker = TaxonomicChunker::new(ChunkingStrategy::default());
-    let chunks = chunker.chunk_sequences_into_taxonomy_aware(sequences.clone()).unwrap();
+    let chunks = chunker
+        .chunk_sequences_into_taxonomy_aware(sequences.clone())
+        .unwrap();
 
     for chunk in &chunks {
         repo.storage.store_taxonomy_chunk(chunk).unwrap();
@@ -107,30 +114,34 @@ fn test_incremental_update_simulation() {
     let (_temp_dir, repo) = setup_test_casg();
 
     // Step 1: Initialize with version 1
-    let v1_sequences = vec![
-        Sequence {
-            id: "seq1".to_string(),
-            description: Some("Original sequence".to_string()),
-            sequence: b"ACGTACGTACGT".to_vec(),
-            taxon_id: Some(562),
-        },
-    ];
+    let v1_sequences = vec![Sequence {
+        id: "seq1".to_string(),
+        description: Some("Original sequence".to_string()),
+        sequence: b"ACGTACGTACGT".to_vec(),
+        taxon_id: Some(562),
+        taxonomy_sources: Default::default(),
+    }];
 
     let chunker = TaxonomicChunker::new(ChunkingStrategy::default());
-    let v1_chunks = chunker.chunk_sequences_into_taxonomy_aware(v1_sequences).unwrap();
+    let v1_chunks = chunker
+        .chunk_sequences_into_taxonomy_aware(v1_sequences)
+        .unwrap();
 
     for chunk in &v1_chunks {
         repo.storage.store_taxonomy_chunk(chunk).unwrap();
     }
 
     let mut v1_manifest = create_test_manifest("v1", "2024.01", "2024.01");
-    v1_manifest.chunk_index = v1_chunks.iter().map(|c| ChunkMetadata {
-        hash: c.content_hash.clone(),
-        taxon_ids: c.taxon_ids.clone(),
-        sequence_count: c.sequences.len(),
-        size: c.size,
-        compressed_size: c.compressed_size,
-    }).collect();
+    v1_manifest.chunk_index = v1_chunks
+        .iter()
+        .map(|c| ChunkMetadata {
+            hash: c.content_hash.clone(),
+            taxon_ids: c.taxon_ids.clone(),
+            sequence_count: c.sequences.len(),
+            size: c.size,
+            compressed_size: c.compressed_size,
+        })
+        .collect();
     v1_manifest.etag = "etag_v1".to_string();
 
     // Step 2: Simulate version 2 with changes
@@ -140,20 +151,26 @@ fn test_incremental_update_simulation() {
             description: Some("Original sequence".to_string()),
             sequence: b"ACGTACGTACGT".to_vec(),
             taxon_id: Some(562),
+            taxonomy_sources: Default::default(),
         },
         Sequence {
             id: "seq2".to_string(),
             description: Some("New sequence".to_string()),
             sequence: b"TGCATGCATGCA".to_vec(),
             taxon_id: Some(562),
+            taxonomy_sources: Default::default(),
         },
     ];
 
-    let v2_chunks = chunker.chunk_sequences_into_taxonomy_aware(v2_sequences.clone()).unwrap();
+    let v2_chunks = chunker
+        .chunk_sequences_into_taxonomy_aware(v2_sequences.clone())
+        .unwrap();
 
     // Step 3: Identify which chunks are new
-    let v1_hashes: std::collections::HashSet<_> = v1_chunks.iter().map(|c| &c.content_hash).collect();
-    let _v2_hashes: std::collections::HashSet<_> = v2_chunks.iter().map(|c| &c.content_hash).collect();
+    let v1_hashes: std::collections::HashSet<_> =
+        v1_chunks.iter().map(|c| &c.content_hash).collect();
+    let _v2_hashes: std::collections::HashSet<_> =
+        v2_chunks.iter().map(|c| &c.content_hash).collect();
 
     let new_chunks: Vec<_> = v2_chunks
         .iter()
@@ -182,7 +199,9 @@ fn test_taxonomic_subset_with_reduce() {
 
     // Store all sequences in CASG
     let chunker = TaxonomicChunker::new(ChunkingStrategy::default());
-    let chunks = chunker.chunk_sequences_into_taxonomy_aware(sequences.clone()).unwrap();
+    let chunks = chunker
+        .chunk_sequences_into_taxonomy_aware(sequences.clone())
+        .unwrap();
 
     for chunk in &chunks {
         repo.storage.store_taxonomy_chunk(chunk).unwrap();
@@ -223,7 +242,9 @@ fn test_version_tracking_through_workflow() {
 
     // Create and store chunks
     let chunker = TaxonomicChunker::new(ChunkingStrategy::default());
-    let chunks = chunker.chunk_sequences_into_taxonomy_aware(sequences.clone()).unwrap();
+    let chunks = chunker
+        .chunk_sequences_into_taxonomy_aware(sequences.clone())
+        .unwrap();
 
     for chunk in &chunks {
         repo.storage.store_taxonomy_chunk(chunk).unwrap();
@@ -231,13 +252,16 @@ fn test_version_tracking_through_workflow() {
 
     // Create manifest with version info
     let mut manifest = create_test_manifest("test_v1", "2024.03", "2024.03");
-    manifest.chunk_index = chunks.iter().map(|c| ChunkMetadata {
-        hash: c.content_hash.clone(),
-        taxon_ids: c.taxon_ids.clone(),
-        sequence_count: c.sequences.len(),
-        size: c.size,
-        compressed_size: c.compressed_size,
-    }).collect();
+    manifest.chunk_index = chunks
+        .iter()
+        .map(|c| ChunkMetadata {
+            hash: c.content_hash.clone(),
+            taxon_ids: c.taxon_ids.clone(),
+            sequence_count: c.sequences.len(),
+            size: c.size,
+            compressed_size: c.compressed_size,
+        })
+        .collect();
     manifest.etag = "test_v1".to_string();
 
     // Version identifier would be used here if available
@@ -266,12 +290,15 @@ fn test_large_database_simulation() {
             description: Some(format!("Protein {}", i)),
             sequence: format!("ACGT{}", i).repeat(10).into_bytes(),
             taxon_id: Some((i % 10) as u32), // 10 different taxa
+            taxonomy_sources: Default::default(),
         });
     }
 
     // Chunk and store
     let chunker = TaxonomicChunker::new(ChunkingStrategy::default());
-    let chunks = chunker.chunk_sequences_into_taxonomy_aware(sequences.clone()).unwrap();
+    let chunks = chunker
+        .chunk_sequences_into_taxonomy_aware(sequences.clone())
+        .unwrap();
 
     for chunk in &chunks {
         repo.storage.store_taxonomy_chunk(chunk).unwrap();
@@ -303,7 +330,9 @@ fn test_streaming_assembly_to_file() {
 
     // Store sequences in CASG
     let chunker = TaxonomicChunker::new(ChunkingStrategy::default());
-    let chunks = chunker.chunk_sequences_into_taxonomy_aware(sequences.clone()).unwrap();
+    let chunks = chunker
+        .chunk_sequences_into_taxonomy_aware(sequences.clone())
+        .unwrap();
 
     for chunk in &chunks {
         repo.storage.store_taxonomy_chunk(chunk).unwrap();
@@ -315,7 +344,9 @@ fn test_streaming_assembly_to_file() {
 
     let chunk_hashes: Vec<_> = chunks.iter().map(|c| c.content_hash.clone()).collect();
     let assembler = FastaAssembler::new(&repo.storage);
-    let count = assembler.stream_assembly(&chunk_hashes, &mut writer).unwrap();
+    let count = assembler
+        .stream_assembly(&chunk_hashes, &mut writer)
+        .unwrap();
 
     assert_eq!(count, sequences.len());
 

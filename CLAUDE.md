@@ -61,6 +61,11 @@ cargo test [test_name]  # Run specific test
 ```bash
 cargo fmt           # Format code
 cargo clippy        # Run linter
+cargo audit         # Check for security vulnerabilities
+cargo machete       # Find unused dependencies
+
+# Run all quality checks at once
+./scripts/check-quality.sh
 ```
 
 ## Architecture

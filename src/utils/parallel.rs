@@ -6,7 +6,7 @@ pub fn configure_thread_pool(threads: usize) -> Result<(), rayon::ThreadPoolBuil
     } else {
         threads
     };
-    
+
     rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
         .build_global()
@@ -18,7 +18,7 @@ pub fn chunk_size_for_parallelism(total_items: usize, threads: usize) -> usize {
     } else {
         threads
     };
-    
+
     // Aim for at least 10 items per thread, but not more than 1000 per chunk
     let ideal_chunk = total_items / (threads * 10);
     ideal_chunk.clamp(10, 1000)

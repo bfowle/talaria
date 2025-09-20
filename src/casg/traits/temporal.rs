@@ -1,15 +1,14 @@
+use crate::bio::sequence::Sequence;
+use crate::casg::temporal::{SequenceVersion, TaxonomyVersion};
+use crate::casg::types::{BiTemporalCoordinate, SHA256Hash, TaxonId};
 /// Temporal query traits for bi-temporal CASG operations
 ///
 /// These traits enable powerful temporal queries like historical reproduction,
 /// retroactive analysis, and classification evolution tracking.
-
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use crate::casg::types::{BiTemporalCoordinate, SHA256Hash, TaxonId};
-use crate::casg::temporal::{SequenceVersion, TaxonomyVersion};
-use crate::bio::sequence::Sequence;
 
 /// Core trait for temporal queries
 #[async_trait]
@@ -33,10 +32,7 @@ pub trait TemporalQueryable: Send + Sync {
     ) -> Result<EvolutionHistory>;
 
     /// Perform a temporal join to find reclassified sequences
-    async fn temporal_join(
-        &self,
-        query: TemporalJoinQuery,
-    ) -> Result<TemporalJoinResult>;
+    async fn temporal_join(&self, query: TemporalJoinQuery) -> Result<TemporalJoinResult>;
 }
 
 /// Trait for retroactive analysis capabilities
@@ -96,10 +92,10 @@ pub struct TemporalDiff {
 /// Sequence changes between temporal points
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SequenceChanges {
-    pub added: Vec<String>,       // Sequence IDs
-    pub removed: Vec<String>,     // Sequence IDs
-    pub modified: Vec<String>,    // Sequence IDs
-    pub total_delta: i64,         // Net change in sequence count
+    pub added: Vec<String>,    // Sequence IDs
+    pub removed: Vec<String>,  // Sequence IDs
+    pub modified: Vec<String>, // Sequence IDs
+    pub total_delta: i64,      // Net change in sequence count
 }
 
 /// Taxonomy changes between temporal points
@@ -226,7 +222,7 @@ pub struct TemporalJoinQuery {
 pub struct TemporalJoinResult {
     pub query: TemporalJoinQuery,
     pub reclassified: Vec<ReclassifiedGroup>,
-    pub stable: Vec<String>,      // Sequence IDs that didn't change
+    pub stable: Vec<String>, // Sequence IDs that didn't change
     pub total_affected: usize,
     pub taxonomies_changed: usize,
     pub execution_time_ms: u64,

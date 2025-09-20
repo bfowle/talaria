@@ -1,14 +1,13 @@
 /// Tests for bi-temporal versioning and retroactive analysis functionality
-
 use anyhow::Result;
-use chrono::{Utc, TimeZone};
-use talaria::casg::{CASGRepository, TaxonomyEvolutionTracker};
+use chrono::{TimeZone, Utc};
+use std::path::PathBuf;
+use talaria::bio::sequence::Sequence;
 use talaria::casg::retroactive::RetroactiveAnalyzer;
 use talaria::casg::traits::temporal::*;
 use talaria::casg::types::{BiTemporalCoordinate, TaxonId};
-use talaria::bio::sequence::Sequence;
+use talaria::casg::{CASGRepository, TaxonomyEvolutionTracker};
 use tempfile::TempDir;
-use std::path::PathBuf;
 
 /// Create test sequences with taxonomic assignments
 fn create_test_sequences() -> Vec<Sequence> {
@@ -18,18 +17,21 @@ fn create_test_sequences() -> Vec<Sequence> {
             description: Some("E. coli protein".to_string()),
             sequence: b"MKVLFVTSAL".to_vec(),
             taxon_id: Some(562), // E. coli
+            taxonomy_sources: Default::default(),
         },
         Sequence {
             id: "YP_789012".to_string(),
             description: Some("Lactobacillus protein".to_string()),
             sequence: b"MSKLVFTGAR".to_vec(),
             taxon_id: Some(1578), // Lactobacillus
+            taxonomy_sources: Default::default(),
         },
         Sequence {
             id: "WP_345678".to_string(),
             description: Some("Salmonella protein".to_string()),
             sequence: b"MTNKVFTSAL".to_vec(),
             taxon_id: Some(590), // Salmonella
+            taxonomy_sources: Default::default(),
         },
     ]
 }
@@ -42,24 +44,28 @@ fn create_reclassified_sequences() -> Vec<Sequence> {
             description: Some("E. coli protein".to_string()),
             sequence: b"MKVLFVTSAL".to_vec(),
             taxon_id: Some(562), // Still E. coli
+            taxonomy_sources: Default::default(),
         },
         Sequence {
             id: "YP_789012".to_string(),
             description: Some("Lactobacillus protein".to_string()),
             sequence: b"MSKLVFTGAR".to_vec(),
             taxon_id: Some(33958), // Reclassified to Lactobacillaceae
+            taxonomy_sources: Default::default(),
         },
         Sequence {
             id: "WP_345678".to_string(),
             description: Some("Salmonella protein".to_string()),
             sequence: b"MTNKVFTSAL".to_vec(),
             taxon_id: Some(590), // Still Salmonella
+            taxonomy_sources: Default::default(),
         },
         Sequence {
             id: "ZP_456789".to_string(),
             description: Some("New protein".to_string()),
             sequence: b"MAQKVFTGAL".to_vec(),
             taxon_id: Some(562), // New E. coli sequence
+            taxonomy_sources: Default::default(),
         },
     ]
 }
@@ -90,7 +96,7 @@ async fn setup_test_repository(base_path: PathBuf) -> Result<CASGRepository> {
 async fn store_temporal_snapshot(
     repo: &mut CASGRepository,
     sequences: Vec<Sequence>,
-    coordinate: BiTemporalCoordinate
+    coordinate: BiTemporalCoordinate,
 ) -> Result<()> {
     use talaria::casg::chunker::TaxonomicChunker;
     use talaria::casg::ChunkingStrategy;
@@ -100,7 +106,7 @@ async fn store_temporal_snapshot(
 
     // Create a simple chunking strategy
     let strategy = ChunkingStrategy {
-        target_chunk_size: 1024 * 1024, // 1MB
+        target_chunk_size: 1024 * 1024,  // 1MB
         max_chunk_size: 5 * 1024 * 1024, // 5MB
         min_sequences_per_chunk: 1,
         taxonomic_coherence: 0.8,
@@ -125,12 +131,8 @@ async fn store_temporal_snapshot(
     let root_hash = talaria::casg::types::SHA256Hash::zero();
     let sequence_count = sequences.len();
 
-    repo.temporal.add_sequence_version(
-        version,
-        root_hash,
-        chunk_count,
-        sequence_count,
-    )?;
+    repo.temporal
+        .add_sequence_version(version, root_hash, chunk_count, sequence_count)?;
 
     Ok(())
 }
@@ -154,7 +156,8 @@ async fn test_historical_reproduction() -> Result<()> {
     assert_eq!(snapshot.sequences.len(), 3);
 
     // Check specific sequence
-    let ecoli_seq = snapshot.sequences
+    let ecoli_seq = snapshot
+        .sequences
         .iter()
         .find(|s| s.id == "NP_123456")
         .expect("Should find E. coli sequence");
@@ -182,7 +185,8 @@ async fn test_retroactive_analysis() -> Result<()> {
     let retroactive = analyzer.query_snapshot(query)?;
 
     // Should have 2023 sequences with 2024 taxonomy
-    let lacto_seq = retroactive.sequences
+    let lacto_seq = retroactive
+        .sequences
         .iter()
         .find(|s| s.id == "YP_789012")
         .expect("Should find Lactobacillus sequence");
@@ -238,7 +242,8 @@ async fn test_evolution_tracking() -> Result<()> {
     assert!(!history.events.is_empty());
 
     // Should have at least a reclassification event
-    let has_reclassification = history.events
+    let has_reclassification = history
+        .events
         .iter()
         .any(|e| matches!(e.event_type, EventType::Reclassified));
 
@@ -265,11 +270,20 @@ async fn test_temporal_diff() -> Result<()> {
     let diff = analyzer.query_diff(query)?;
 
     // Should detect changes
-    assert!(!diff.sequence_changes.added.is_empty(), "Should find added sequences");
-    assert!(!diff.reclassifications.is_empty(), "Should find reclassifications");
+    assert!(
+        !diff.sequence_changes.added.is_empty(),
+        "Should find added sequences"
+    );
+    assert!(
+        !diff.reclassifications.is_empty(),
+        "Should find reclassifications"
+    );
 
     // New sequence ZP_456789 should be in added
-    assert!(diff.sequence_changes.added.contains(&"ZP_456789".to_string()));
+    assert!(diff
+        .sequence_changes
+        .added
+        .contains(&"ZP_456789".to_string()));
 
     Ok(())
 }
@@ -287,7 +301,10 @@ async fn test_taxon_evolution_report() -> Result<()> {
     let report = tracker.generate_taxon_report(TaxonId(562), march_2023, sep_2024)?;
 
     // E. coli should have gained ZP_456789
-    assert!(!report.sequences_added.is_empty(), "E. coli should gain sequences");
+    assert!(
+        !report.sequences_added.is_empty(),
+        "E. coli should gain sequences"
+    );
     assert!(report.sequences_added.contains(&"ZP_456789".to_string()));
 
     // NP_123456 should be stable
@@ -313,7 +330,10 @@ async fn test_mass_reclassification_detection() -> Result<()> {
         .iter()
         .find(|e| e.old_taxon == Some(TaxonId(1578)));
 
-    assert!(lacto_reclass.is_some(), "Should detect Lactobacillus mass reclassification");
+    assert!(
+        lacto_reclass.is_some(),
+        "Should detect Lactobacillus mass reclassification"
+    );
 
     Ok(())
 }
@@ -343,7 +363,7 @@ fn test_taxon_id_display() {
 
 #[test]
 fn test_wrapped_fasta_header_parsing() {
-    use talaria::bio::fasta::{parse_fasta_from_bytes};
+    use talaria::bio::fasta::parse_fasta_from_bytes;
 
     // Test case from the cholera database with wrapped header
     let input = b">UniRef100_A0A0B2VFC3 Flagellin B n=4 Tax=Vibrio cholerae

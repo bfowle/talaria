@@ -7,7 +7,10 @@ use ratatui::{
     widgets::{Block, Borders, Gauge, List, ListItem, ListState, Paragraph, Wrap},
     Frame, Terminal,
 };
-use std::{io, sync::{Arc, Mutex}};
+use std::{
+    io,
+    sync::{Arc, Mutex},
+};
 
 pub struct ReduceWizard {
     state: WizardState,
@@ -42,7 +45,7 @@ impl ReduceWizard {
     pub fn new() -> Self {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
-        
+
         Self {
             state: WizardState::InputFile,
             input_file: String::new(),
@@ -60,7 +63,7 @@ impl ReduceWizard {
             list_state,
         }
     }
-    
+
     fn next(&mut self) {
         let i = match self.list_state.selected() {
             Some(i) => {
@@ -69,13 +72,17 @@ impl ReduceWizard {
                     WizardState::ConfigureOptions => 4,
                     _ => 0,
                 };
-                if i >= max { 0 } else { i + 1 }
+                if i >= max {
+                    0
+                } else {
+                    i + 1
+                }
             }
             None => 0,
         };
         self.list_state.select(Some(i));
     }
-    
+
     fn previous(&mut self) {
         let i = match self.list_state.selected() {
             Some(i) => {
@@ -84,18 +91,22 @@ impl ReduceWizard {
                     WizardState::ConfigureOptions => 4,
                     _ => 0,
                 };
-                if i == 0 { max } else { i - 1 }
+                if i == 0 {
+                    max
+                } else {
+                    i - 1
+                }
             }
             None => 0,
         };
         self.list_state.select(Some(i));
     }
-    
+
     fn advance(&mut self) {
         match self.state {
             WizardState::InputFile => {
                 // Use dialoguer for file input
-                use dialoguer::{Input, theme::ColorfulTheme};
+                use dialoguer::{theme::ColorfulTheme, Input};
                 match Input::<String>::with_theme(&ColorfulTheme::default())
                     .with_prompt("Enter FASTA file path")
                     .default("example.fasta".into())
@@ -142,7 +153,7 @@ impl ReduceWizard {
             _ => {}
         }
     }
-    
+
     fn toggle_option(&mut self) {
         if matches!(self.state, WizardState::ConfigureOptions) {
             let idx = self.list_state.selected().unwrap_or(0);
@@ -156,14 +167,12 @@ impl ReduceWizard {
     }
 }
 
-pub fn run_reduce_wizard<B: Backend>(
-    terminal: &mut Terminal<B>,
-) -> io::Result<()> {
+pub fn run_reduce_wizard<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
     let mut wizard = ReduceWizard::new();
-    
+
     loop {
-        terminal.draw(|f| draw_wizard::<B>(f, &mut wizard))?;
-        
+        terminal.draw(|f| draw_wizard(f, &mut wizard))?;
+
         if let Event::Key(key) = event::read()? {
             match key.code {
                 KeyCode::Esc | KeyCode::Char('q') => break,
@@ -179,43 +188,43 @@ pub fn run_reduce_wizard<B: Backend>(
                 _ => {}
             }
         }
-        
+
         // Actual processing
         if matches!(wizard.state, WizardState::Processing) {
             // Prepare for actual reduction
             let input_path = std::path::PathBuf::from(&wizard.input_file);
             let output_path = std::path::PathBuf::from(&wizard.output_file);
-            
+
             // Check if input file exists
             if !input_path.exists() {
                 wizard.message = format!("Error: Input file '{}' not found", wizard.input_file);
                 wizard.state = WizardState::Complete;
-                terminal.draw(|f| draw_wizard::<B>(f, &mut wizard))?;
+                terminal.draw(|f| draw_wizard(f, &mut wizard))?;
                 continue;
             }
-            
+
             // Show initial progress
             wizard.progress = 0.1;
             wizard.message = "Loading sequences...".to_string();
-            terminal.draw(|f| draw_wizard::<B>(f, &mut wizard))?;
-            
+            terminal.draw(|f| draw_wizard(f, &mut wizard))?;
+
             // Load sequences
             match crate::bio::fasta::parse_fasta(&input_path) {
                 Ok(sequences) => {
                     wizard.progress = 0.3;
                     wizard.message = format!("Loaded {} sequences, reducing...", sequences.len());
-                    terminal.draw(|f| draw_wizard::<B>(f, &mut wizard))?;
-                    
+                    terminal.draw(|f| draw_wizard(f, &mut wizard))?;
+
                     // Create config
                     let mut config = crate::core::config::default_config();
                     config.reduction.similarity_threshold = wizard.options.clustering_threshold;
                     // min_identity is part of similarity_threshold
                     config.reduction.taxonomy_aware = wizard.options.preserve_taxonomy;
-                    
+
                     // Run reduction with progress callback
                     let progress_clone = Arc::new(Mutex::new(0.0));
                     let message_clone = Arc::new(Mutex::new(String::new()));
-                    
+
                     let progress_callback = {
                         let progress = progress_clone.clone();
                         let message = message_clone.clone();
@@ -224,22 +233,26 @@ pub fn run_reduce_wizard<B: Backend>(
                             *message.lock().unwrap() = msg.to_string();
                         }
                     };
-                    
+
                     let mut reducer = crate::core::reducer::Reducer::new(config)
                         .with_progress_callback(progress_callback)
                         .with_silent(false);
-                    
+
                     match reducer.reduce(sequences, 0.5, wizard.aligner.clone()) {
                         Ok((references, _deltas, _)) => {
                             wizard.progress = 0.8;
-                            wizard.message = format!("Writing {} reference sequences...", references.len());
-                            terminal.draw(|f| draw_wizard::<B>(f, &mut wizard))?;
-                            
+                            wizard.message =
+                                format!("Writing {} reference sequences...", references.len());
+                            terminal.draw(|f| draw_wizard(f, &mut wizard))?;
+
                             // Write output
                             match crate::bio::fasta::write_fasta(&output_path, &references) {
                                 Ok(_) => {
                                     wizard.progress = 1.0;
-                                    wizard.message = format!("Successfully reduced to {} sequences", references.len());
+                                    wizard.message = format!(
+                                        "Successfully reduced to {} sequences",
+                                        references.len()
+                                    );
                                     wizard.state = WizardState::Complete;
                                 }
                                 Err(e) => {
@@ -259,15 +272,15 @@ pub fn run_reduce_wizard<B: Backend>(
                     wizard.state = WizardState::Complete;
                 }
             }
-            
-            terminal.draw(|f| draw_wizard::<B>(f, &mut wizard))?;
+
+            terminal.draw(|f| draw_wizard(f, &mut wizard))?;
         }
     }
-    
+
     Ok(())
 }
 
-fn draw_wizard<B>(f: &mut Frame, wizard: &mut ReduceWizard) {
+fn draw_wizard(f: &mut Frame, wizard: &mut ReduceWizard) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(2)
@@ -277,21 +290,27 @@ fn draw_wizard<B>(f: &mut Frame, wizard: &mut ReduceWizard) {
             Constraint::Length(3),
         ])
         .split(f.area());
-    
+
     // Title
     let title = Paragraph::new("FASTA Reduction Wizard")
-        .style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
+        .style(
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )
         .alignment(Alignment::Center)
         .block(Block::default().borders(Borders::ALL));
     f.render_widget(title, chunks[0]);
-    
+
     // Main content
     match wizard.state {
         WizardState::InputFile => {
-            let para = Paragraph::new("Enter input FASTA file path:\n\n(Press Enter to use example.fasta)")
-                .style(Style::default().fg(Color::White))
-                .alignment(Alignment::Center)
-                .block(Block::default().title("Input File").borders(Borders::ALL));
+            let para = Paragraph::new(
+                "Enter input FASTA file path:\n\n(Press Enter to use example.fasta)",
+            )
+            .style(Style::default().fg(Color::White))
+            .alignment(Alignment::Center)
+            .block(Block::default().title("Input File").borders(Borders::ALL));
             f.render_widget(para, chunks[1]);
         }
         WizardState::SelectAligner => {
@@ -304,7 +323,11 @@ fn draw_wizard<B>(f: &mut Frame, wizard: &mut ReduceWizard) {
                 ListItem::new("Generic - No specific optimizations"),
             ];
             let list = List::new(items)
-                .block(Block::default().title("Select Target Aligner").borders(Borders::ALL))
+                .block(
+                    Block::default()
+                        .title("Select Target Aligner")
+                        .borders(Borders::ALL),
+                )
                 .style(Style::default().fg(Color::White))
                 .highlight_style(Style::default().fg(Color::Black).bg(Color::Green))
                 .highlight_symbol("> ");
@@ -312,14 +335,42 @@ fn draw_wizard<B>(f: &mut Frame, wizard: &mut ReduceWizard) {
         }
         WizardState::ConfigureOptions => {
             let items = vec![
-                ListItem::new(format!("Clustering threshold: {:.1}", wizard.options.clustering_threshold)),
+                ListItem::new(format!(
+                    "Clustering threshold: {:.1}",
+                    wizard.options.clustering_threshold
+                )),
                 ListItem::new(format!("Min identity: {:.1}", wizard.options.min_identity)),
-                ListItem::new(format!("[{}] Preserve taxonomy", if wizard.options.preserve_taxonomy { "●" } else { " " })),
-                ListItem::new(format!("[{}] Remove redundant", if wizard.options.remove_redundant { "●" } else { " " })),
-                ListItem::new(format!("[{}] Optimize for memory", if wizard.options.optimize_for_memory { "●" } else { " " })),
+                ListItem::new(format!(
+                    "[{}] Preserve taxonomy",
+                    if wizard.options.preserve_taxonomy {
+                        "●"
+                    } else {
+                        " "
+                    }
+                )),
+                ListItem::new(format!(
+                    "[{}] Remove redundant",
+                    if wizard.options.remove_redundant {
+                        "●"
+                    } else {
+                        " "
+                    }
+                )),
+                ListItem::new(format!(
+                    "[{}] Optimize for memory",
+                    if wizard.options.optimize_for_memory {
+                        "●"
+                    } else {
+                        " "
+                    }
+                )),
             ];
             let list = List::new(items)
-                .block(Block::default().title("Configure Options (Space to toggle)").borders(Borders::ALL))
+                .block(
+                    Block::default()
+                        .title("Configure Options (Space to toggle)")
+                        .borders(Borders::ALL),
+                )
                 .style(Style::default().fg(Color::White))
                 .highlight_style(Style::default().fg(Color::Black).bg(Color::Yellow))
                 .highlight_symbol("> ");
@@ -339,7 +390,11 @@ fn draw_wizard<B>(f: &mut Frame, wizard: &mut ReduceWizard) {
                 .style(Style::default().fg(Color::Cyan))
                 .alignment(Alignment::Left)
                 .wrap(Wrap { trim: true })
-                .block(Block::default().title("Review Settings").borders(Borders::ALL));
+                .block(
+                    Block::default()
+                        .title("Review Settings")
+                        .borders(Borders::ALL),
+                );
             f.render_widget(para, chunks[1]);
         }
         WizardState::Processing => {
@@ -351,10 +406,20 @@ fn draw_wizard<B>(f: &mut Frame, wizard: &mut ReduceWizard) {
             f.render_widget(gauge, chunks[1]);
         }
         WizardState::Complete => {
-            let color = if wizard.message.contains("Error") { Color::Red } else { Color::Green };
-            let symbol = if wizard.message.contains("Error") { "■" } else { "●" };
-            let text = format!("{} {}\n\nOutput: {}\n\nPress Esc to exit", 
-                symbol, wizard.message, wizard.output_file);
+            let color = if wizard.message.contains("Error") {
+                Color::Red
+            } else {
+                Color::Green
+            };
+            let symbol = if wizard.message.contains("Error") {
+                "■"
+            } else {
+                "●"
+            };
+            let text = format!(
+                "{} {}\n\nOutput: {}\n\nPress Esc to exit",
+                symbol, wizard.message, wizard.output_file
+            );
             let para = Paragraph::new(text)
                 .style(Style::default().fg(color))
                 .alignment(Alignment::Center)
@@ -362,10 +427,12 @@ fn draw_wizard<B>(f: &mut Frame, wizard: &mut ReduceWizard) {
             f.render_widget(para, chunks[1]);
         }
     }
-    
+
     // Help text
     let help = match wizard.state {
-        WizardState::ConfigureOptions => "↑/↓: Navigate | Space: Toggle | Enter: Continue | Esc: Exit",
+        WizardState::ConfigureOptions => {
+            "↑/↓: Navigate | Space: Toggle | Enter: Continue | Esc: Exit"
+        }
         _ => "↑/↓: Navigate | Enter: Continue | Esc: Exit",
     };
     let help_widget = Paragraph::new(help)

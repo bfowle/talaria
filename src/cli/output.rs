@@ -1,8 +1,8 @@
 /// Standard output utilities for consistent command formatting
 use colored::*;
-use comfy_table::{Table, Cell, Attribute, ContentArrangement, Color as TableColor};
-use comfy_table::presets::UTF8_FULL;
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
+use comfy_table::presets::UTF8_FULL;
+use comfy_table::{Attribute, Cell, Color as TableColor, ContentArrangement, Table};
 
 /// Display a section header with optional underline
 pub fn section_header(title: &str) {
@@ -80,7 +80,13 @@ pub fn tree_section(title: &str, items: Vec<(&str, String)>, is_last: bool) {
     for (i, (label, value)) in items.iter().enumerate() {
         let is_last_item = i == items.len() - 1;
         let prefix = if is_last_item { "└─" } else { "├─" };
-        println!("{}{} {}: {}", continuation.dimmed(), prefix.dimmed(), label, value);
+        println!(
+            "{}{} {}: {}",
+            continuation.dimmed(),
+            prefix.dimmed(),
+            label,
+            value
+        );
     }
 }
 

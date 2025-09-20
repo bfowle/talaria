@@ -1,12 +1,14 @@
-use clap::{Args, Subcommand};
 use anyhow::{Context, Result};
+use clap::{Args, Subcommand};
 use colored::*;
 use std::path::PathBuf;
 
-use crate::cli::output::{tree_section, info as print_info, success as print_success, warning as print_warning};
-use crate::utils::database_ref::parse_database_reference;
-use crate::utils::version_detector::{VersionManager, VersionDetector};
+use crate::cli::output::{
+    info as print_info, success as print_success, tree_section, warning as print_warning,
+};
 use crate::core::paths;
+use crate::utils::database_ref::parse_database_reference;
+use crate::utils::version_detector::{VersionDetector, VersionManager};
 
 #[derive(Args)]
 pub struct VersionsArgs {
@@ -117,7 +119,8 @@ fn list_versions(args: ListVersionsArgs) -> Result<()> {
         return Ok(());
     }
 
-    println!("\n{} {} for {}\n",
+    println!(
+        "\n{} {} for {}\n",
         "●".cyan().bold(),
         "Available versions".bold(),
         args.database.cyan()
@@ -154,14 +157,23 @@ fn list_versions(args: ListVersionsArgs) -> Result<()> {
         let date = version.created_at.format("%Y-%m-%d %H:%M");
 
         let display_name = if args.show_timestamps {
-            format!("{} ({})", version.display_name(), version.timestamp.dimmed())
+            format!(
+                "{} ({})",
+                version.display_name(),
+                version.timestamp.dimmed()
+            )
         } else {
             version.display_name().to_string()
         };
 
         if args.verbose {
-            println!("  {} {}{}",
-                if is_current { "▶".green().bold() } else { "●".dimmed() },
+            println!(
+                "  {} {}{}",
+                if is_current {
+                    "▶".green().bold()
+                } else {
+                    "●".dimmed()
+                },
                 display_name.bold(),
                 markers_str
             );
@@ -174,10 +186,16 @@ fn list_versions(args: ListVersionsArgs) -> Result<()> {
 
             // Show all aliases by category
             if !version.aliases.upstream.is_empty() {
-                println!("    Upstream aliases: {}", version.aliases.upstream.join(", ").cyan());
+                println!(
+                    "    Upstream aliases: {}",
+                    version.aliases.upstream.join(", ").cyan()
+                );
             }
             if !version.aliases.custom.is_empty() {
-                println!("    Custom aliases:   {}", version.aliases.custom.join(", ").dimmed());
+                println!(
+                    "    Custom aliases:   {}",
+                    version.aliases.custom.join(", ").dimmed()
+                );
             }
 
             if !version.profiles.is_empty() {
@@ -192,8 +210,13 @@ fn list_versions(args: ListVersionsArgs) -> Result<()> {
             }
             println!();
         } else {
-            println!("  {} {:<30} {} - downloaded {}",
-                if is_current { "▶".green().bold() } else { "●".dimmed() },
+            println!(
+                "  {} {:<30} {} - downloaded {}",
+                if is_current {
+                    "▶".green().bold()
+                } else {
+                    "●".dimmed()
+                },
                 display_name.bold(),
                 markers_str,
                 date.to_string().dimmed()
@@ -213,17 +236,20 @@ fn set_current(args: SetCurrentArgs) -> Result<()> {
     let manager = VersionManager::new(paths::talaria_databases_dir());
 
     // Resolve version reference to timestamp
-    let timestamp = manager.resolve_version(&db_ref.source, &db_ref.dataset, &args.version)
+    let timestamp = manager
+        .resolve_version(&db_ref.source, &db_ref.dataset, &args.version)
         .context(format!("Failed to resolve version '{}'", args.version))?;
 
     // Get version info for display
     let versions = manager.list_versions(&db_ref.source, &db_ref.dataset)?;
-    let version = versions.iter()
+    let version = versions
+        .iter()
         .find(|v| v.timestamp == timestamp)
         .context("Version metadata not found")?;
 
     // Set current symlink
-    manager.set_current(&db_ref.source, &db_ref.dataset, &timestamp)
+    manager
+        .set_current(&db_ref.source, &db_ref.dataset, &timestamp)
         .context("Failed to set current version")?;
 
     print_success(&format!(
@@ -262,26 +288,33 @@ fn tag_version(args: TagVersionArgs) -> Result<()> {
     let manager = VersionManager::new(paths::talaria_databases_dir());
 
     // Resolve version reference to timestamp
-    let timestamp = manager.resolve_version(&db_ref.source, &db_ref.dataset, &args.version)
+    let timestamp = manager
+        .resolve_version(&db_ref.source, &db_ref.dataset, &args.version)
         .context(format!("Failed to resolve version '{}'", args.version))?;
 
     // Get version info for display
     let versions = manager.list_versions(&db_ref.source, &db_ref.dataset)?;
-    let version = versions.iter()
+    let version = versions
+        .iter()
         .find(|v| v.timestamp == timestamp)
         .context("Version metadata not found")?;
 
     // Check if alias already exists
-    let alias_path = manager.get_versions_dir(&db_ref.source, &db_ref.dataset)
+    let alias_path = manager
+        .get_versions_dir(&db_ref.source, &db_ref.dataset)
         .join(&args.alias);
 
     if alias_path.exists() && !args.force {
-        print_warning(&format!("Alias '{}' already exists. Use --force to overwrite.", args.alias));
+        print_warning(&format!(
+            "Alias '{}' already exists. Use --force to overwrite.",
+            args.alias
+        ));
         return Ok(());
     }
 
     // Create alias
-    manager.create_alias(&db_ref.source, &db_ref.dataset, &timestamp, &args.alias)
+    manager
+        .create_alias(&db_ref.source, &db_ref.dataset, &timestamp, &args.alias)
         .context("Failed to create alias")?;
 
     print_success(&format!(
@@ -301,16 +334,19 @@ fn show_info(args: InfoVersionArgs) -> Result<()> {
     let version_to_find = db_ref.version.as_deref().unwrap_or("current");
 
     // Resolve to timestamp first
-    let timestamp = manager.resolve_version(&db_ref.source, &db_ref.dataset, version_to_find)
+    let timestamp = manager
+        .resolve_version(&db_ref.source, &db_ref.dataset, version_to_find)
         .context(format!("Failed to resolve version '{}'", version_to_find))?;
 
     // Get the full version info
     let versions = manager.list_versions(&db_ref.source, &db_ref.dataset)?;
-    let version = versions.iter()
+    let version = versions
+        .iter()
         .find(|v| v.timestamp == timestamp)
         .context("Version metadata not found")?;
 
-    println!("\n{} {} {}",
+    println!(
+        "\n{} {} {}",
         "●".cyan().bold(),
         "Version Information for".bold(),
         args.database.cyan()
@@ -324,7 +360,10 @@ fn show_info(args: InfoVersionArgs) -> Result<()> {
         info.push(("Upstream Version", upstream.clone()));
     }
 
-    info.push(("Downloaded", version.created_at.format("%Y-%m-%d %H:%M:%S").to_string()));
+    info.push((
+        "Downloaded",
+        version.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+    ));
 
     // Show aliases by category
     let all_aliases = version.all_aliases();
@@ -339,7 +378,8 @@ fn show_info(args: InfoVersionArgs) -> Result<()> {
     tree_section("Details", info, false);
 
     if !version.metadata.is_empty() {
-        let metadata: Vec<(&str, String)> = version.metadata
+        let metadata: Vec<(&str, String)> = version
+            .metadata
             .iter()
             .map(|(k, v)| (k.as_str(), v.clone()))
             .collect();
@@ -347,11 +387,13 @@ fn show_info(args: InfoVersionArgs) -> Result<()> {
     }
 
     // Check for manifest file
-    let version_dir = manager.get_versions_dir(&db_ref.source, &db_ref.dataset)
+    let version_dir = manager
+        .get_versions_dir(&db_ref.source, &db_ref.dataset)
         .join(&version.timestamp);
 
     if version_dir.join("manifest.json").exists() {
-        println!("\n{} Manifest found at: {}",
+        println!(
+            "\n{} Manifest found at: {}",
             "✓".green().bold(),
             version_dir.join("manifest.json").display()
         );
@@ -361,7 +403,8 @@ fn show_info(args: InfoVersionArgs) -> Result<()> {
     let profiles_dir = version_dir.join("profiles");
     if profiles_dir.exists() {
         let profile_count = std::fs::read_dir(profiles_dir)?.count();
-        println!("{} {} reduction profiles available",
+        println!(
+            "{} {} reduction profiles available",
             "✓".green().bold(),
             profile_count
         );
@@ -375,8 +418,7 @@ fn import_version(args: ImportVersionArgs) -> Result<()> {
     let detector = VersionDetector::new();
 
     // Try to detect version from file
-    let content = std::fs::read(&args.path)
-        .context("Failed to read file")?;
+    let content = std::fs::read(&args.path).context("Failed to read file")?;
 
     let mut version = if args.path.extension().map_or(false, |e| e == "json") {
         // Try as manifest
@@ -404,7 +446,8 @@ fn import_version(args: ImportVersionArgs) -> Result<()> {
 
     // Save version info
     let manager = VersionManager::new(paths::talaria_databases_dir());
-    let version_dir = manager.get_versions_dir(&db_ref.source, &db_ref.dataset)
+    let version_dir = manager
+        .get_versions_dir(&db_ref.source, &db_ref.dataset)
         .join(&version.timestamp);
 
     std::fs::create_dir_all(&version_dir)?;

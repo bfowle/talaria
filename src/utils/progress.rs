@@ -1,5 +1,4 @@
 /// Progress bar utilities
-
 use indicatif::{ProgressBar, ProgressStyle};
 
 pub fn create_progress_bar(total: u64, message: &str) -> ProgressBar {

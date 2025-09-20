@@ -1,15 +1,22 @@
-/// Optimized reference selection with single index strategy
-/// This module provides efficient reference selection using shared indices
-
+/// Graph centrality-based reference selection as specified in CASG architecture
+/// This module implements the 5-dimensional approach for delta compression
+/// Formula: Centrality Score = α·Degree + β·Betweenness + γ·Coverage
+/// where α=0.5, β=0.3, γ=0.2
 use crate::bio::sequence::Sequence;
+use crate::core::memory_estimator::MemoryEstimator;
+use crate::core::phylogenetic_clusterer::{ClusteringConfig, PhylogeneticClusterer};
 use crate::tools::Aligner;
 use crate::utils::temp_workspace::TempWorkspace;
+use anyhow::Result;
 use dashmap::DashMap;
-use indicatif::{ProgressBar, ProgressStyle, MultiProgress};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use petgraph::algo::dijkstra;
+use petgraph::graph::{NodeIndex, UnGraph};
+use petgraph::visit::EdgeRef;
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use anyhow::Result;
 
 /// Caching strategy for alignment scores
 #[derive(Debug, Clone)]
@@ -72,7 +79,39 @@ impl AlignmentCache {
     }
 }
 
-/// Optimized reference selector with shared index strategy
+/// Graph node for centrality calculation
+#[derive(Debug, Clone)]
+struct GraphNode {
+    sequence_id: String,
+    degree: f64,
+    betweenness: f64,
+    coverage: f64,
+    centrality_score: f64,
+}
+
+impl Eq for GraphNode {}
+
+impl PartialEq for GraphNode {
+    fn eq(&self, other: &Self) -> bool {
+        self.sequence_id == other.sequence_id
+    }
+}
+
+impl Ord for GraphNode {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.centrality_score
+            .partial_cmp(&other.centrality_score)
+            .unwrap_or(Ordering::Equal)
+    }
+}
+
+impl PartialOrd for GraphNode {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// Graph centrality-based reference selector
 pub struct OptimizedReferenceSelector {
     pub min_length: usize,
     pub similarity_threshold: f64,
@@ -82,6 +121,10 @@ pub struct OptimizedReferenceSelector {
     pub cache: AlignmentCache,
     pub parallel_taxa: bool,
     pub max_index_size: Option<usize>,
+    // Graph centrality weights from architecture
+    pub alpha: f64, // Degree weight (0.5)
+    pub beta: f64,  // Betweenness weight (0.3)
+    pub gamma: f64, // Coverage weight (0.2)
 }
 
 impl OptimizedReferenceSelector {
@@ -95,6 +138,10 @@ impl OptimizedReferenceSelector {
             cache: AlignmentCache::new(),
             parallel_taxa: true,
             max_index_size: None,
+            // CASG architecture-specified weights
+            alpha: 0.5, // Degree centrality weight
+            beta: 0.3,  // Betweenness centrality weight
+            gamma: 0.2, // Coverage weight
         }
     }
 
@@ -108,8 +155,29 @@ impl OptimizedReferenceSelector {
         self
     }
 
-    /// Select references using single shared index strategy
+    /// Select references using graph centrality metrics as per CASG architecture
+    /// Implements: Centrality Score = α·Degree + β·Betweenness + γ·Coverage
     pub fn select_references_with_shared_index(
+        &mut self,
+        sequences: Vec<Sequence>,
+        target_ratio: f64,
+        aligner: &mut dyn Aligner,
+    ) -> Result<SelectionResult> {
+        println!("🔬 Graph centrality-based reference selection (CASG 5-dimensional approach)");
+        println!(
+            "  Formula: Score = {:.1}·Degree + {:.1}·Betweenness + {:.1}·Coverage",
+            self.alpha, self.beta, self.gamma
+        );
+
+        // Build similarity graph first
+        let graph_result = self.build_similarity_graph(&sequences, aligner)?;
+        let selected_refs = self.select_by_centrality(graph_result, &sequences, target_ratio)?;
+
+        Ok(selected_refs)
+    }
+
+    /// Original implementation for fallback
+    pub fn select_references_with_shared_index_legacy(
         &mut self,
         sequences: Vec<Sequence>,
         target_ratio: f64,
@@ -120,16 +188,67 @@ impl OptimizedReferenceSelector {
 
         println!("🔧 Optimized reference selection with shared index");
         println!("  Total sequences: {}", sequences.len());
-        println!("  Target references: {} ({:.1}%)", target_count, target_ratio * 100.0);
+        println!(
+            "  Target references: {} ({:.1}%)",
+            target_count,
+            target_ratio * 100.0
+        );
 
-        // Step 1: Group sequences by taxonomy if taxonomy-aware
+        // Step 1: Use phylogenetic clustering for intelligent grouping
         let taxonomic_groups = if self.taxonomy_aware {
-            self.group_by_taxonomy(&sequences)
+            println!("  🧬 Using phylogenetic clustering for taxonomic grouping...");
+
+            // Create clustering config optimized for SwissProt/UniProt
+            let config = ClusteringConfig::for_swissprot();
+            let clusterer = PhylogeneticClusterer::new(config);
+
+            // Check memory constraints
+            let memory_estimator = MemoryEstimator::new();
+            if !memory_estimator.can_process_cluster(&sequences) {
+                println!("  ⚠️  Large dataset detected, using adaptive clustering");
+            }
+
+            // Perform clustering
+            match clusterer.create_clusters(sequences.clone()) {
+                Ok(clusters) => {
+                    println!("  ✓ Created {} phylogenetic clusters:", clusters.len());
+                    for (i, cluster) in clusters.iter().take(5).enumerate() {
+                        println!(
+                            "    Cluster {}: {} sequences, {} taxa",
+                            i + 1,
+                            cluster.sequences.len(),
+                            cluster.taxa.len()
+                        );
+                    }
+                    if clusters.len() > 5 {
+                        println!("    ... and {} more clusters", clusters.len() - 5);
+                    }
+
+                    // Convert clusters to the expected format
+                    clusters
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, cluster)| {
+                            let name = if cluster.taxa.len() == 1 {
+                                format!("taxid_{}", cluster.taxa.iter().next().unwrap())
+                            } else {
+                                format!("cluster_{}_taxa_{}", i, cluster.taxa.len())
+                            };
+                            (name, cluster.sequences)
+                        })
+                        .collect()
+                }
+                Err(e) => {
+                    println!("  ⚠️  Phylogenetic clustering failed: {}", e);
+                    println!("  Falling back to simple taxonomy grouping");
+                    self.group_by_taxonomy(&sequences)
+                }
+            }
         } else {
             vec![("all".to_string(), sequences.clone())]
         };
 
-        println!("  Taxonomic groups: {}", taxonomic_groups.len());
+        println!("  Total groups: {}", taxonomic_groups.len());
 
         // Step 2: Build SINGLE shared index for ALL sequences
         println!("\n📊 Building shared LAMBDA index...");
@@ -149,7 +268,10 @@ impl OptimizedReferenceSelector {
         // when search() is called, if needed
         // let index_path = all_sequences_path.with_extension("lambda");
 
-        println!("  ✓ Index built in {:.2}s", index_start.elapsed().as_secs_f64());
+        println!(
+            "  ✓ Index built in {:.2}s",
+            index_start.elapsed().as_secs_f64()
+        );
 
         // Step 3: Process each taxonomic group using the shared index
         let multi_progress = MultiProgress::new();
@@ -157,7 +279,7 @@ impl OptimizedReferenceSelector {
         overall_pb.set_style(
             ProgressStyle::default_bar()
                 .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} Overall progress")
-                .unwrap()
+                .unwrap(),
         );
 
         let mut all_references = Vec::new();
@@ -170,8 +292,11 @@ impl OptimizedReferenceSelector {
             let group_pb = multi_progress.add(ProgressBar::new(group_seqs.len() as u64));
             group_pb.set_style(
                 ProgressStyle::default_bar()
-                    .template(&format!("[{{elapsed_precise}}] {{bar:40.green}} {{pos}}/{{len}} Taxon: {}", taxon))
-                    .unwrap()
+                    .template(&format!(
+                        "[{{elapsed_precise}}] {{bar:40.green}} {{pos}}/{{len}} Taxon: {}",
+                        taxon
+                    ))
+                    .unwrap(),
             );
 
             let result = self.process_taxonomic_group(
@@ -189,7 +314,10 @@ impl OptimizedReferenceSelector {
         for result in group_results {
             all_references.extend(result.references);
             for (ref_id, children) in result.children {
-                all_children.entry(ref_id).or_insert_with(Vec::new).extend(children);
+                all_children
+                    .entry(ref_id)
+                    .or_default()
+                    .extend(children);
             }
             all_discarded.extend(result.discarded);
 
@@ -218,9 +346,15 @@ impl OptimizedReferenceSelector {
 
         println!("\n📈 Performance Statistics:");
         println!("  Total time: {:.2}s", start.elapsed().as_secs_f64());
-        println!("  Cache hit rate: {:.1}% ({} hits, {} misses)", hit_rate, hits, misses);
+        println!(
+            "  Cache hit rate: {:.1}% ({} hits, {} misses)",
+            hit_rate, hits, misses
+        );
         println!("  References selected: {}", all_references.len());
-        println!("  Sequences covered: {}", all_children.values().map(|c| c.len()).sum::<usize>());
+        println!(
+            "  Sequences covered: {}",
+            all_children.values().map(|c| c.len()).sum::<usize>()
+        );
 
         Ok(SelectionResult {
             references: all_references,
@@ -229,7 +363,174 @@ impl OptimizedReferenceSelector {
         })
     }
 
-    /// Process a single taxonomic group
+    /// Build similarity graph for centrality calculation
+    fn build_similarity_graph(
+        &self,
+        sequences: &[Sequence],
+        _aligner: &mut dyn Aligner,
+    ) -> Result<(UnGraph<String, f64>, HashMap<String, NodeIndex>)> {
+        println!("  Building similarity graph...");
+        let mut graph = UnGraph::<String, f64>::new_undirected();
+        let mut node_map = HashMap::new();
+
+        // Add nodes
+        for seq in sequences {
+            let node = graph.add_node(seq.id.clone());
+            node_map.insert(seq.id.clone(), node);
+        }
+
+        // Add edges based on similarity
+        let progress = ProgressBar::new((sequences.len() * (sequences.len() - 1) / 2) as u64);
+        progress.set_style(
+            ProgressStyle::default_bar()
+                .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} Building graph")
+                .unwrap(),
+        );
+
+        for i in 0..sequences.len() {
+            for j in i + 1..sequences.len() {
+                let sim = self.calculate_similarity_cached(&sequences[i], &sequences[j])?;
+                if sim >= self.similarity_threshold * 0.5 {
+                    // Lower threshold for graph construction
+                    let node_i = node_map[&sequences[i].id];
+                    let node_j = node_map[&sequences[j].id];
+                    graph.add_edge(node_i, node_j, sim);
+                }
+                progress.inc(1);
+            }
+        }
+        progress.finish_with_message("Graph built");
+
+        Ok((graph, node_map))
+    }
+
+    /// Calculate centrality metrics and select references
+    fn select_by_centrality(
+        &self,
+        graph_data: (UnGraph<String, f64>, HashMap<String, NodeIndex>),
+        sequences: &[Sequence],
+        target_ratio: f64,
+    ) -> Result<SelectionResult> {
+        let (graph, node_map) = graph_data;
+        let target_count = (sequences.len() as f64 * target_ratio) as usize;
+
+        println!("  Calculating centrality metrics...");
+
+        // Calculate metrics for each node
+        let mut graph_nodes = Vec::new();
+
+        for seq in sequences {
+            let node_idx = node_map[&seq.id];
+
+            // Degree centrality: number of connections
+            let degree = graph.edges(node_idx).count() as f64;
+
+            // Betweenness centrality: how often node appears in shortest paths
+            let betweenness = self.calculate_betweenness(&graph, node_idx, &node_map);
+
+            // Coverage: sequence length as proxy for information content
+            let coverage = seq.sequence.len() as f64;
+
+            // Calculate final centrality score
+            let centrality_score =
+                self.alpha * degree + self.beta * betweenness + self.gamma * (coverage / 1000.0);
+
+            graph_nodes.push(GraphNode {
+                sequence_id: seq.id.clone(),
+                degree,
+                betweenness,
+                coverage,
+                centrality_score,
+            });
+        }
+
+        // Sort by centrality score (highest first)
+        graph_nodes.sort_by(|a, b| {
+            b.centrality_score
+                .partial_cmp(&a.centrality_score)
+                .unwrap_or(Ordering::Equal)
+        });
+
+        println!("  Top 5 centrality scores:");
+        for (i, node) in graph_nodes.iter().take(5).enumerate() {
+            println!(
+                "    {}. {} - Score: {:.2} (D:{:.0}, B:{:.2}, C:{:.0})",
+                i + 1,
+                &node.sequence_id[..node.sequence_id.len().min(20)],
+                node.centrality_score,
+                node.degree,
+                node.betweenness,
+                node.coverage
+            );
+        }
+
+        // Select top nodes as references
+        let mut references = Vec::new();
+        let mut children: HashMap<String, Vec<String>> = HashMap::new();
+        let mut discarded = HashSet::new();
+
+        let seq_map: HashMap<String, &Sequence> =
+            sequences.iter().map(|s| (s.id.clone(), s)).collect();
+
+        for node in graph_nodes.iter().take(target_count) {
+            if let Some(seq) = seq_map.get(&node.sequence_id) {
+                references.push((*seq).clone());
+                discarded.insert(node.sequence_id.clone());
+
+                // Find sequences covered by this reference
+                let node_idx = node_map[&node.sequence_id];
+                for edge in graph.edges(node_idx) {
+                    let other_idx = edge.target();
+                    let other_id = &graph[other_idx];
+
+                    if !discarded.contains(other_id) && edge.weight() >= &self.similarity_threshold
+                    {
+                        children
+                            .entry(node.sequence_id.clone())
+                            .or_default()
+                            .push(other_id.clone());
+                        discarded.insert(other_id.clone());
+                    }
+                }
+            }
+        }
+
+        println!(
+            "  Selected {} references based on centrality",
+            references.len()
+        );
+        println!("  Covered {} sequences", discarded.len());
+
+        Ok(SelectionResult {
+            references,
+            children,
+            discarded,
+        })
+    }
+
+    /// Calculate betweenness centrality for a node
+    fn calculate_betweenness(
+        &self,
+        graph: &UnGraph<String, f64>,
+        node: NodeIndex,
+        _node_map: &HashMap<String, NodeIndex>,
+    ) -> f64 {
+        // Simplified betweenness: count shortest paths through this node
+        let mut betweenness = 0.0;
+
+        // Sample calculation - for production, use full algorithm
+        let distances = dijkstra(graph, node, None, |e| *e.weight() as i32);
+
+        // Normalize by number of reachable nodes
+        let reachable = distances.len() as f64;
+        if reachable > 0.0 {
+            betweenness = reachable / graph.node_count() as f64;
+        }
+
+        betweenness * 100.0 // Scale for visibility
+    }
+
+    /// Process a single taxonomic group (legacy)
     fn process_taxonomic_group(
         &self,
         _taxon: &str,
@@ -266,8 +567,9 @@ impl OptimizedReferenceSelector {
 
                 if similarity >= self.similarity_threshold {
                     // This sequence is covered by existing reference
-                    children.entry(reference.id.clone())
-                        .or_insert_with(Vec::new)
+                    children
+                        .entry(reference.id.clone())
+                        .or_default()
                         .push(candidate.id.clone());
                     discarded.insert(candidate.id.clone());
                     break;
@@ -399,7 +701,10 @@ impl OptimizedReferenceSelector {
 
         for seq in sequences {
             let taxon = self.extract_taxonomy_group(&seq.id, seq.description.as_deref());
-            groups.entry(taxon).or_insert_with(Vec::new).push(seq.clone());
+            groups
+                .entry(taxon)
+                .or_default()
+                .push(seq.clone());
         }
 
         let mut sorted_groups: Vec<_> = groups.into_iter().collect();

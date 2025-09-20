@@ -5,14 +5,13 @@
 /// - Bi-temporal context preservation through add/reduce cycle
 /// - Chunk's taxon_id is authoritative over description
 /// - Complete workflow with malformed FASTA
-
 use std::fs;
 use std::path::PathBuf;
-use tempfile::TempDir;
-use talaria::cli::commands::database::add::{AddArgs, run as add_database};
-use talaria::bio::sequence::Sequence;
 use talaria::bio::fasta::write_fasta;
+use talaria::bio::sequence::Sequence;
+use talaria::cli::commands::database::add::{run as add_database, AddArgs};
 use talaria::core::database_manager::DatabaseManager;
+use tempfile::TempDir;
 
 /// Test environment for database operations
 struct DatabaseTestEnv {
@@ -56,8 +55,9 @@ impl DatabaseTestEnv {
             "accession\tversion\ttaxid\n\
              A0A0H6DB96\t1\t666\n\
              P12345\t1\t9606\n\
-             Q5EK40\t1\t666\n"
-        ).unwrap();
+             Q5EK40\t1\t666\n",
+        )
+        .unwrap();
     }
 }
 
@@ -109,7 +109,8 @@ fn test_add_database_without_taxonomy_mapping() {
     assert!(db_path.join("manifest.tal").exists());
 
     // Load and verify sequences have correct taxonomy from headers
-    let _manager = DatabaseManager::new(Some(env.databases_dir.to_string_lossy().to_string())).unwrap();
+    let _manager =
+        DatabaseManager::new(Some(env.databases_dir.to_string_lossy().to_string())).unwrap();
     // TODO: Fix assembler API usage
     // let assembler = FastaAssembler::new(manager.get_storage().clone());
     // let sequences = assembler.assemble_database("custom", "test", None, None).unwrap();
@@ -129,7 +130,10 @@ fn test_add_database_with_taxonomy_mapping() {
     let sequences = vec![
         {
             // UniProt format - A0A0H6DB96 should map to 666
-            let mut seq = Sequence::new("tr|A0A0H6DB96|A0A0H6DB96_VIBCL".to_string(), b"MKLTFFF".to_vec());
+            let mut seq = Sequence::new(
+                "tr|A0A0H6DB96|A0A0H6DB96_VIBCL".to_string(),
+                b"MKLTFFF".to_vec(),
+            );
             seq.description = Some("Protein TaxID=0".to_string()); // Wrong TaxID in header
             seq
         },
@@ -160,7 +164,8 @@ fn test_add_database_with_taxonomy_mapping() {
     assert!(result.is_ok());
 
     // Load and verify sequences use mapped taxonomy
-    let _manager = DatabaseManager::new(Some(env.databases_dir.to_string_lossy().to_string())).unwrap();
+    let _manager =
+        DatabaseManager::new(Some(env.databases_dir.to_string_lossy().to_string())).unwrap();
     // TODO: Fix assembler API usage
     // let assembler = FastaAssembler::new(manager.get_storage().clone());
     // let sequences = assembler.assemble_database("custom", "mapped", None, None).unwrap();
@@ -200,10 +205,15 @@ AQPQTTLESLDQFNQAAPEQSHQILASQEPVS";
     };
 
     let result = add_database(args);
-    assert!(result.is_ok(), "Failed to add malformed database: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Failed to add malformed database: {:?}",
+        result
+    );
 
     // Load and verify sequences were parsed correctly
-    let _manager = DatabaseManager::new(Some(env.databases_dir.to_string_lossy().to_string())).unwrap();
+    let _manager =
+        DatabaseManager::new(Some(env.databases_dir.to_string_lossy().to_string())).unwrap();
     // TODO: Fix assembler API usage
     // let assembler = FastaAssembler::new(manager.get_storage().clone());
     // let sequences = assembler.assemble_database("custom", "cholera", None, None).unwrap();
@@ -228,13 +238,14 @@ fn test_bi_temporal_context_preservation() {
     env.create_taxonomy_mapping();
 
     // Create sequences with conflicting taxonomy information
-    let sequences = vec![
-        {
-            let mut seq = Sequence::new("tr|A0A0H6DB96|A0A0H6DB96_VIBCL".to_string(), b"MKLTFFF".to_vec());
-            seq.description = Some("Protein TaxID=999 OX=888".to_string()); // Conflicts with mapping
-            seq
-        },
-    ];
+    let sequences = vec![{
+        let mut seq = Sequence::new(
+            "tr|A0A0H6DB96|A0A0H6DB96_VIBCL".to_string(),
+            b"MKLTFFF".to_vec(),
+        );
+        seq.description = Some("Protein TaxID=999 OX=888".to_string()); // Conflicts with mapping
+        seq
+    }];
 
     let fasta_path = env.create_test_fasta("bitemporal_test", sequences);
 
@@ -254,7 +265,8 @@ fn test_bi_temporal_context_preservation() {
     add_database(args).unwrap();
 
     // Load sequences - chunk's taxon_id should be authoritative
-    let _manager = DatabaseManager::new(Some(env.databases_dir.to_string_lossy().to_string())).unwrap();
+    let _manager =
+        DatabaseManager::new(Some(env.databases_dir.to_string_lossy().to_string())).unwrap();
     // TODO: Fix assembler API usage
     // let assembler = FastaAssembler::new(manager.get_storage().clone());
     // let sequences = assembler.assemble_database("custom", "bitemporal", None, None).unwrap();
@@ -275,9 +287,7 @@ fn test_replace_existing_database() {
     let env = DatabaseTestEnv::new();
 
     // Create and add initial database
-    let sequences1 = vec![
-        Sequence::new("seq1".to_string(), b"AAAA".to_vec()),
-    ];
+    let sequences1 = vec![Sequence::new("seq1".to_string(), b"AAAA".to_vec())];
     let fasta_path1 = env.create_test_fasta("initial", sequences1);
 
     let args1 = AddArgs {
@@ -295,9 +305,7 @@ fn test_replace_existing_database() {
     add_database(args1).unwrap();
 
     // Try to add again without replace flag - should fail
-    let sequences2 = vec![
-        Sequence::new("seq2".to_string(), b"TTTT".to_vec()),
-    ];
+    let sequences2 = vec![Sequence::new("seq2".to_string(), b"TTTT".to_vec())];
     let fasta_path2 = env.create_test_fasta("replacement", sequences2.clone());
 
     let args2 = AddArgs {
@@ -331,7 +339,8 @@ fn test_replace_existing_database() {
     add_database(args3).unwrap();
 
     // Verify new database replaced the old one
-    let _manager = DatabaseManager::new(Some(env.databases_dir.to_string_lossy().to_string())).unwrap();
+    let _manager =
+        DatabaseManager::new(Some(env.databases_dir.to_string_lossy().to_string())).unwrap();
     // TODO: Fix assembler API usage
     // let assembler = FastaAssembler::new(manager.get_storage().clone());
     // let sequences = assembler.assemble_database("custom", "replace", None, None).unwrap();
@@ -344,14 +353,12 @@ fn test_header_generation_preserves_chunk_taxonomy() {
     let env = DatabaseTestEnv::new();
 
     // Create sequence with description containing wrong TaxID
-    let sequences = vec![
-        {
-            let mut seq = Sequence::new("test_id".to_string(), b"MKLTFFF".to_vec());
-            seq.description = Some("Protein TaxID=0 OX=666".to_string());
-            seq.taxon_id = Some(666); // This simulates chunk's authoritative value
-            seq
-        },
-    ];
+    let sequences = vec![{
+        let mut seq = Sequence::new("test_id".to_string(), b"MKLTFFF".to_vec());
+        seq.description = Some("Protein TaxID=0 OX=666".to_string());
+        seq.taxon_id = Some(666); // This simulates chunk's authoritative value
+        seq
+    }];
 
     let fasta_path = env.create_test_fasta("header_test", sequences);
 
@@ -370,7 +377,8 @@ fn test_header_generation_preserves_chunk_taxonomy() {
 
     add_database(args).unwrap();
 
-    let _manager = DatabaseManager::new(Some(env.databases_dir.to_string_lossy().to_string())).unwrap();
+    let _manager =
+        DatabaseManager::new(Some(env.databases_dir.to_string_lossy().to_string())).unwrap();
     // TODO: Fix assembler API usage
     // let assembler = FastaAssembler::new(manager.get_storage().clone());
     // let sequences = assembler.assemble_database("custom", "header", None, None).unwrap();

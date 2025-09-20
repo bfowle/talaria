@@ -1,6 +1,6 @@
 use crate::bio::taxonomy::TaxonomyDB;
-use std::collections::{HashMap, BTreeMap};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap};
 
 /// Statistics for taxonomic coverage analysis
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,7 +69,7 @@ impl TaxonomyCoverage {
                     let rank = taxon_info.rank.clone();
                     rank_counts
                         .entry(rank)
-                        .or_insert_with(HashMap::new)
+                        .or_default()
                         .entry(ancestor_id)
                         .and_modify(|e| *e += count)
                         .or_insert(count);
@@ -213,7 +213,13 @@ pub struct CoverageComparison {
 }
 
 /// Format a taxon node as an ASCII tree
-pub fn format_tree(node: &TaxonNode, prefix: &str, is_last: bool, max_depth: Option<usize>, current_depth: usize) -> String {
+pub fn format_tree(
+    node: &TaxonNode,
+    prefix: &str,
+    is_last: bool,
+    max_depth: Option<usize>,
+    current_depth: usize,
+) -> String {
     let mut result = String::new();
 
     // Add the branch characters
@@ -229,17 +235,18 @@ pub fn format_tree(node: &TaxonNode, prefix: &str, is_last: bool, max_depth: Opt
     // Add node information
     result.push_str(&format!(
         "{} [{}] ({} seqs, {} total)\n",
-        node.name,
-        node.rank,
-        node.sequence_count,
-        node.cumulative_count
+        node.name, node.rank, node.sequence_count, node.cumulative_count
     ));
 
     // Check depth limit
     if let Some(max) = max_depth {
         if current_depth >= max {
             if !node.children.is_empty() {
-                result.push_str(&format!("{}    ... ({} children)\n", prefix, node.children.len()));
+                result.push_str(&format!(
+                    "{}    ... ({} children)\n",
+                    prefix,
+                    node.children.len()
+                ));
             }
             return result;
         }

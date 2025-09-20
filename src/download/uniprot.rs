@@ -38,15 +38,16 @@ impl UniProtDownloader {
             base_url: "https://ftp.ebi.ac.uk/pub/databases/uniprot".to_string(),
         }
     }
-    
+
     pub async fn download_swissprot(
         &self,
         output_path: &Path,
         progress: &mut DownloadProgress,
     ) -> Result<()> {
-        self.download_swissprot_with_options(output_path, progress, false).await
+        self.download_swissprot_with_options(output_path, progress, false)
+            .await
     }
-    
+
     pub async fn download_swissprot_with_options(
         &self,
         output_path: &Path,
@@ -57,10 +58,11 @@ impl UniProtDownloader {
             "{}/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz",
             self.base_url
         );
-        
-        self.download_and_extract_with_verification(&url, output_path, progress, skip_verify).await
+
+        self.download_and_extract_with_verification(&url, output_path, progress, skip_verify)
+            .await
     }
-    
+
     pub async fn download_trembl(
         &self,
         output_path: &Path,
@@ -70,10 +72,10 @@ impl UniProtDownloader {
             "{}/current_release/knowledgebase/complete/uniprot_trembl.fasta.gz",
             self.base_url
         );
-        
+
         self.download_and_extract(&url, output_path, progress).await
     }
-    
+
     pub async fn download_uniref50(
         &self,
         output_path: &Path,
@@ -83,10 +85,10 @@ impl UniProtDownloader {
             "{}/current_release/uniref/uniref50/uniref50.fasta.gz",
             self.base_url
         );
-        
+
         self.download_and_extract(&url, output_path, progress).await
     }
-    
+
     pub async fn download_uniref90(
         &self,
         output_path: &Path,
@@ -96,10 +98,10 @@ impl UniProtDownloader {
             "{}/current_release/uniref/uniref90/uniref90.fasta.gz",
             self.base_url
         );
-        
+
         self.download_and_extract(&url, output_path, progress).await
     }
-    
+
     pub async fn download_uniref100(
         &self,
         output_path: &Path,
@@ -118,7 +120,8 @@ impl UniProtDownloader {
         output_path: &Path,
         progress: &mut DownloadProgress,
     ) -> Result<()> {
-        self.download_idmapping_with_resume(output_path, progress, true).await
+        self.download_idmapping_with_resume(output_path, progress, true)
+            .await
     }
 
     pub async fn download_idmapping_with_resume(
@@ -133,7 +136,8 @@ impl UniProtDownloader {
         );
 
         // Use the compressed download method that supports resume
-        self.download_compressed_with_resume(&url, output_path, progress, resume).await
+        self.download_compressed_with_resume(&url, output_path, progress, resume)
+            .await
     }
 
     /// Download a compressed file without extracting it, with resume support
@@ -162,10 +166,7 @@ impl UniProtDownloader {
             request = request.header("Range", format!("bytes={}-", resume_from));
         }
 
-        let response = request
-            .send()
-            .await
-            .context("Failed to start download")?;
+        let response = request.send().await.context("Failed to start download")?;
 
         // Check if server supports resume
         let supports_resume = response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
@@ -175,9 +176,7 @@ impl UniProtDownloader {
             std::fs::remove_file(&temp_path).ok();
         }
 
-        let total_size = response
-            .content_length()
-            .unwrap_or(0) + resume_from;
+        let total_size = response.content_length().unwrap_or(0) + resume_from;
 
         progress.set_total(total_size as usize);
         progress.set_current(resume_from as usize);
@@ -188,8 +187,7 @@ impl UniProtDownloader {
                 .open(&temp_path)
                 .context("Failed to open temporary file for resume")?
         } else {
-            File::create(&temp_path)
-                .context("Failed to create temporary file")?
+            File::create(&temp_path).context("Failed to create temporary file")?
         };
 
         // Initialize downloaded to resume_from to track total bytes correctly
@@ -203,9 +201,9 @@ impl UniProtDownloader {
             // Add retry logic for chunk reading
             let chunk = match chunk_result {
                 Ok(chunk) => {
-                    consecutive_errors = 0;  // Reset error counter on success
+                    consecutive_errors = 0; // Reset error counter on success
                     chunk
-                },
+                }
                 Err(e) => {
                     consecutive_errors += 1;
                     let bytes_so_far = downloaded - resume_from;
@@ -215,8 +213,12 @@ impl UniProtDownloader {
                         0
                     };
 
-                    eprintln!("Warning: Failed to read chunk at {}% ({} MB downloaded): {}",
-                             percent, bytes_so_far / (1024 * 1024), e);
+                    eprintln!(
+                        "Warning: Failed to read chunk at {}% ({} MB downloaded): {}",
+                        percent,
+                        bytes_so_far / (1024 * 1024),
+                        e
+                    );
 
                     if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
                         // Too many consecutive errors, fail and allow resume
@@ -225,25 +227,28 @@ impl UniProtDownloader {
                         return Err(anyhow::anyhow!(
                             "Download interrupted after {} consecutive errors at {} bytes. \n\
                              The download can be resumed by running the command again.",
-                            consecutive_errors, downloaded
+                            consecutive_errors,
+                            downloaded
                         ));
                     }
 
                     // Try to continue with next chunk
-                    eprintln!("Attempting to continue download (error {}/{})",
-                             consecutive_errors, MAX_CONSECUTIVE_ERRORS);
+                    eprintln!(
+                        "Attempting to continue download (error {}/{})",
+                        consecutive_errors, MAX_CONSECUTIVE_ERRORS
+                    );
                     continue;
                 }
             };
 
-            file.write_all(&chunk)
-                .context("Failed to write chunk")?;
+            file.write_all(&chunk).context("Failed to write chunk")?;
 
             downloaded += chunk.len() as u64;
             progress.set_current(downloaded as usize);
 
             // Periodically flush to disk for large files
-            if downloaded % (100 * 1024 * 1024) == 0 {  // Every 100MB
+            if downloaded % (100 * 1024 * 1024) == 0 {
+                // Every 100MB
                 file.flush()?;
             }
         }
@@ -267,9 +272,10 @@ impl UniProtDownloader {
         output_path: &Path,
         progress: &mut DownloadProgress,
     ) -> Result<()> {
-        self.download_and_extract_with_verification(url, output_path, progress, true).await
+        self.download_and_extract_with_verification(url, output_path, progress, true)
+            .await
     }
-    
+
     async fn download_and_extract_with_verification(
         &self,
         url: &str,
@@ -277,9 +283,10 @@ impl UniProtDownloader {
         progress: &mut DownloadProgress,
         skip_verify: bool,
     ) -> Result<()> {
-        self.download_and_extract_with_options(url, output_path, progress, skip_verify, false).await
+        self.download_and_extract_with_options(url, output_path, progress, skip_verify, false)
+            .await
     }
-    
+
     pub async fn download_and_extract_with_options(
         &self,
         url: &str,
@@ -289,27 +296,24 @@ impl UniProtDownloader {
         resume: bool,
     ) -> Result<()> {
         progress.set_message(&format!("Downloading from {}", url));
-        
+
         let temp_path = output_path.with_extension("gz.tmp");
-        
+
         // Check if we can resume
         let mut resume_from = 0u64;
         if resume && temp_path.exists() {
             resume_from = std::fs::metadata(&temp_path)?.len();
             progress.set_message(&format!("Resuming download from {} bytes", resume_from));
         }
-        
+
         // Build request with range header for resume
         let mut request = self.client.get(url);
         if resume_from > 0 {
             request = request.header("Range", format!("bytes={}-", resume_from));
         }
-        
-        let response = request
-            .send()
-            .await
-            .context("Failed to start download")?;
-        
+
+        let response = request.send().await.context("Failed to start download")?;
+
         // Check if server supports resume
         let supports_resume = response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
         if resume_from > 0 && !supports_resume {
@@ -317,22 +321,19 @@ impl UniProtDownloader {
             resume_from = 0;
             std::fs::remove_file(&temp_path).ok();
         }
-        
-        let total_size = response
-            .content_length()
-            .unwrap_or(0) + resume_from;
-        
+
+        let total_size = response.content_length().unwrap_or(0) + resume_from;
+
         progress.set_total(total_size as usize);
         progress.set_current(resume_from as usize);
-        
+
         let mut file = if resume_from > 0 && supports_resume {
             std::fs::OpenOptions::new()
                 .append(true)
                 .open(&temp_path)
                 .context("Failed to open temporary file for resume")?
         } else {
-            File::create(&temp_path)
-                .context("Failed to create temporary file")?
+            File::create(&temp_path).context("Failed to create temporary file")?
         };
 
         // Initialize downloaded to resume_from to track total bytes correctly
@@ -346,9 +347,9 @@ impl UniProtDownloader {
             // Add retry logic for chunk reading
             let chunk = match chunk_result {
                 Ok(chunk) => {
-                    consecutive_errors = 0;  // Reset error counter on success
+                    consecutive_errors = 0; // Reset error counter on success
                     chunk
-                },
+                }
                 Err(e) => {
                     consecutive_errors += 1;
                     let bytes_so_far = downloaded - resume_from;
@@ -358,8 +359,12 @@ impl UniProtDownloader {
                         0
                     };
 
-                    eprintln!("Warning: Failed to read chunk at {}% ({} MB downloaded): {}",
-                             percent, bytes_so_far / (1024 * 1024), e);
+                    eprintln!(
+                        "Warning: Failed to read chunk at {}% ({} MB downloaded): {}",
+                        percent,
+                        bytes_so_far / (1024 * 1024),
+                        e
+                    );
 
                     if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
                         // Too many consecutive errors, fail and allow resume
@@ -368,25 +373,28 @@ impl UniProtDownloader {
                         return Err(anyhow::anyhow!(
                             "Download interrupted after {} consecutive errors at {} bytes. \n\
                              The download can be resumed by running the command again.",
-                            consecutive_errors, downloaded
+                            consecutive_errors,
+                            downloaded
                         ));
                     }
 
                     // Try to continue with next chunk
-                    eprintln!("Attempting to continue download (error {}/{})",
-                             consecutive_errors, MAX_CONSECUTIVE_ERRORS);
+                    eprintln!(
+                        "Attempting to continue download (error {}/{})",
+                        consecutive_errors, MAX_CONSECUTIVE_ERRORS
+                    );
                     continue;
                 }
             };
 
-            file.write_all(&chunk)
-                .context("Failed to write chunk")?;
+            file.write_all(&chunk).context("Failed to write chunk")?;
 
             downloaded += chunk.len() as u64;
             progress.set_current(downloaded as usize);
 
             // Periodically flush to disk for large files
-            if downloaded % (100 * 1024 * 1024) == 0 {  // Every 100MB
+            if downloaded % (100 * 1024 * 1024) == 0 {
+                // Every 100MB
                 file.flush()?;
             }
         }
@@ -395,25 +403,21 @@ impl UniProtDownloader {
         file.flush()?;
 
         progress.set_message("Decompressing file...");
-        
+
         // Decompress the file
-        let gz_file = File::open(&temp_path)
-            .context("Failed to open compressed file")?;
+        let gz_file = File::open(&temp_path).context("Failed to open compressed file")?;
         let mut decoder = GzDecoder::new(BufReader::new(gz_file));
-        let mut output_file = File::create(output_path)
-            .context("Failed to create output file")?;
-        
-        io::copy(&mut decoder, &mut output_file)
-            .context("Failed to decompress file")?;
-        
+        let mut output_file = File::create(output_path).context("Failed to create output file")?;
+
+        io::copy(&mut decoder, &mut output_file).context("Failed to decompress file")?;
+
         // Clean up temporary file
-        std::fs::remove_file(&temp_path)
-            .context("Failed to remove temporary file")?;
-        
+        std::fs::remove_file(&temp_path).context("Failed to remove temporary file")?;
+
         // Verify checksum if not skipped
         if !skip_verify {
             progress.set_message("Verifying checksum...");
-            
+
             // Try to download checksum file
             let checksum_url = format!("{}.md5", url);
             if let Ok(checksum_response) = self.client.get(&checksum_url).send().await {
@@ -431,54 +435,52 @@ impl UniProtDownloader {
                 }
             }
         }
-        
+
         progress.set_message("Download complete!");
         progress.finish();
-        
+
         Ok(())
     }
-    
-    pub async fn verify_checksum(
-        &self,
-        file_path: &Path,
-        expected_checksum: &str,
-    ) -> Result<bool> {
-        let mut file = File::open(file_path)
-            .context("Failed to open file for checksum")?;
-        
+
+    pub async fn verify_checksum(&self, file_path: &Path, expected_checksum: &str) -> Result<bool> {
+        let mut file = File::open(file_path).context("Failed to open file for checksum")?;
+
         let mut hasher = Sha256::new();
         let mut buffer = [0; 8192];
-        
+
         loop {
-            let bytes_read = file.read(&mut buffer)
+            let bytes_read = file
+                .read(&mut buffer)
                 .context("Failed to read file for checksum")?;
-            
+
             if bytes_read == 0 {
                 break;
             }
-            
+
             hasher.update(&buffer[..bytes_read]);
         }
-        
+
         let result = hasher.finalize();
         let calculated = format!("{:x}", result);
-        
+
         Ok(calculated == expected_checksum)
     }
-    
+
     pub async fn get_latest_release_info(&self) -> Result<String> {
         let url = format!("{}/current_release/relnotes.txt", self.base_url);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
             .context("Failed to fetch release notes")?;
-        
-        let text = response.text()
+
+        let text = response
+            .text()
             .await
             .context("Failed to read release notes")?;
-        
+
         // Extract first few lines with release info
         let lines: Vec<&str> = text.lines().take(10).collect();
         Ok(lines.join("\n"))
@@ -519,7 +521,7 @@ impl UniProtDatabase {
             UniProtDatabase::IdMapping => "UniProt accession to taxonomy mapping",
         }
     }
-    
+
     pub fn typical_size(&self) -> &str {
         match self {
             UniProtDatabase::SwissProt => "~100 MB compressed",

@@ -5,20 +5,19 @@
 /// - Retroactive analysis (apply modern taxonomy to past sequences)
 /// - Classification evolution tracking
 /// - Temporal joins for finding reclassified sequences
-
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
 
+use crate::bio::fasta::parse_fasta_from_bytes;
+use crate::bio::sequence::Sequence;
 use crate::casg::storage::CASGStorage;
-use crate::casg::temporal::{TemporalIndex, SequenceVersion, TaxonomyVersion};
 use crate::casg::taxonomy::TaxonomyManager;
+use crate::casg::temporal::{SequenceVersion, TaxonomyVersion, TemporalIndex};
 use crate::casg::traits::temporal::*;
 use crate::casg::types::{BiTemporalCoordinate, SHA256Hash, TaxonId};
 use crate::casg::CASGRepository;
-use crate::bio::sequence::Sequence;
-use crate::bio::fasta::parse_fasta_from_bytes;
 
 /// Core engine for retroactive temporal analysis
 pub struct RetroactiveAnalyzer {
@@ -82,8 +81,7 @@ impl RetroactiveAnalyzer {
         for chunk_meta in &chunks {
             // Apply taxon filter if provided
             if let Some(ref filter) = query.taxon_filter {
-                let has_match = chunk_meta.taxon_ids.iter()
-                    .any(|t| filter.contains(t));
+                let has_match = chunk_meta.taxon_ids.iter().any(|t| filter.contains(t));
                 if !has_match {
                     continue;
                 }
@@ -176,12 +174,14 @@ impl RetroactiveAnalyzer {
         let mut stable = Vec::new();
         let mut taxonomies_changed = 0;
 
-        let ref_map: HashMap<String, Option<TaxonId>> = ref_snapshot.sequences
+        let ref_map: HashMap<String, Option<TaxonId>> = ref_snapshot
+            .sequences
             .iter()
             .map(|s| (s.id.clone(), s.taxon_id.map(TaxonId)))
             .collect();
 
-        let comp_map: HashMap<String, Option<TaxonId>> = comp_snapshot.sequences
+        let comp_map: HashMap<String, Option<TaxonId>> = comp_snapshot
+            .sequences
             .iter()
             .map(|s| (s.id.clone(), s.taxon_id.map(TaxonId)))
             .collect();
@@ -190,8 +190,10 @@ impl RetroactiveAnalyzer {
             if let Some(comp_taxon) = comp_map.get(id) {
                 if ref_taxon != comp_taxon {
                     // Track reclassification
-                    if let Some(group) = reclassified.iter_mut()
-                        .find(|g| g.old_taxon == *ref_taxon && g.new_taxon == *comp_taxon) {
+                    if let Some(group) = reclassified
+                        .iter_mut()
+                        .find(|g| g.old_taxon == *ref_taxon && g.new_taxon == *comp_taxon)
+                    {
                         group.count += 1;
                         group.sequences.push(id.clone());
                     } else {
@@ -239,15 +241,13 @@ impl RetroactiveAnalyzer {
             taxon_filter: query.taxon_filter,
         })?;
 
-        let from_ids: HashSet<String> = from_snapshot.sequences
+        let from_ids: HashSet<String> = from_snapshot
+            .sequences
             .iter()
             .map(|s| s.id.clone())
             .collect();
 
-        let to_ids: HashSet<String> = to_snapshot.sequences
-            .iter()
-            .map(|s| s.id.clone())
-            .collect();
+        let to_ids: HashSet<String> = to_snapshot.sequences.iter().map(|s| s.id.clone()).collect();
 
         let added: Vec<String> = to_ids.difference(&from_ids).cloned().collect();
         let removed: Vec<String> = from_ids.difference(&to_ids).cloned().collect();
@@ -288,7 +288,6 @@ impl RetroactiveAnalyzer {
         })
     }
 
-
     /// Historical reproduction: Get exact state at a specific date
     pub async fn historical_reproduction(
         &self,
@@ -300,7 +299,9 @@ impl RetroactiveAnalyzer {
 
         // Apply taxon filter if specified
         if let Some(taxon) = taxon_filter {
-            snapshot.sequences.retain(|seq| seq.taxon_id == Some(taxon.0));
+            snapshot
+                .sequences
+                .retain(|seq| seq.taxon_id == Some(taxon.0));
         }
 
         Ok(snapshot)
@@ -461,10 +462,12 @@ impl TemporalQueryable for RetroactiveAnalyzer {
         // Get temporal state
         let state = self.temporal_index.get_state_at(coord.sequence_time)?;
 
-        let sequence_version = state.sequence_version
+        let sequence_version = state
+            .sequence_version
             .ok_or_else(|| anyhow::anyhow!("No sequence version at {}", coord.sequence_time))?;
 
-        let taxonomy_version = state.taxonomy_version
+        let taxonomy_version = state
+            .taxonomy_version
             .ok_or_else(|| anyhow::anyhow!("No taxonomy version at {}", coord.taxonomy_time))?;
 
         // Load sequences from storage
@@ -561,7 +564,9 @@ impl TemporalQueryable for RetroactiveAnalyzer {
         let start_time = std::time::Instant::now();
 
         // Get sequences at reference date
-        let ref_snapshot = self.query_at(BiTemporalCoordinate::at(query.reference_date)).await?;
+        let ref_snapshot = self
+            .query_at(BiTemporalCoordinate::at(query.reference_date))
+            .await?;
 
         // Get sequences at comparison date (or current)
         let comp_date = query.comparison_date.unwrap_or_else(Utc::now);
@@ -572,7 +577,8 @@ impl TemporalQueryable for RetroactiveAnalyzer {
         let comp_classifications = self.build_classification_map(&comp_snapshot);
 
         // Find reclassified sequences
-        let mut reclassified_groups: HashMap<(Option<TaxonId>, Option<TaxonId>), Vec<String>> = HashMap::new();
+        let mut reclassified_groups: HashMap<(Option<TaxonId>, Option<TaxonId>), Vec<String>> =
+            HashMap::new();
         let mut stable = Vec::new();
 
         for (seq_id, ref_taxon) in &ref_classifications {
@@ -580,7 +586,10 @@ impl TemporalQueryable for RetroactiveAnalyzer {
 
             if comp_taxon != Some(ref_taxon) {
                 let key = (Some(*ref_taxon), comp_taxon.copied());
-                reclassified_groups.entry(key).or_default().push(seq_id.clone());
+                reclassified_groups
+                    .entry(key)
+                    .or_default()
+                    .push(seq_id.clone());
             } else {
                 stable.push(seq_id.clone());
             }
@@ -645,7 +654,7 @@ impl RetroactiveAnalyzable for RetroactiveAnalyzer {
             total_sequences: sequences.sequences.len(),
             reclassified_count: reclassifications.len(),
             conflict_count: conflicts.len(),
-            new_taxa_discovered: 0, // Would calculate from taxonomy diff
+            new_taxa_discovered: 0,   // Would calculate from taxonomy diff
             obsolete_taxa_removed: 0, // Would calculate from taxonomy diff
         };
 
@@ -658,7 +667,10 @@ impl RetroactiveAnalyzable for RetroactiveAnalyzer {
         })
     }
 
-    async fn find_conflicts(&self, coord: BiTemporalCoordinate) -> Result<Vec<ClassificationConflict>> {
+    async fn find_conflicts(
+        &self,
+        coord: BiTemporalCoordinate,
+    ) -> Result<Vec<ClassificationConflict>> {
         let snapshot = self.query_at(coord).await?;
         let mut conflicts = Vec::new();
 
@@ -706,15 +718,22 @@ impl RetroactiveAnalyzer {
         Ok(Vec::new())
     }
 
-
-    fn compute_snapshot_hash(&self, seq_version: &SequenceVersion, tax_version: &TaxonomyVersion) -> SHA256Hash {
+    fn compute_snapshot_hash(
+        &self,
+        seq_version: &SequenceVersion,
+        tax_version: &TaxonomyVersion,
+    ) -> SHA256Hash {
         let mut data = Vec::new();
         data.extend(seq_version.root_hash.as_bytes());
         data.extend(tax_version.root_hash.as_bytes());
         SHA256Hash::compute(&data)
     }
 
-    fn analyze_sequence_changes(&self, from: &TemporalSnapshot, to: &TemporalSnapshot) -> Result<SequenceChanges> {
+    fn analyze_sequence_changes(
+        &self,
+        from: &TemporalSnapshot,
+        to: &TemporalSnapshot,
+    ) -> Result<SequenceChanges> {
         let from_ids: HashSet<_> = from.sequences.iter().map(|s| s.id.clone()).collect();
         let to_ids: HashSet<_> = to.sequences.iter().map(|s| s.id.clone()).collect();
 
@@ -747,9 +766,15 @@ impl RetroactiveAnalyzer {
         })
     }
 
-    fn event_affects_entity(&self, event: &crate::casg::temporal::TimelineEvent, entity_id: &str) -> Result<bool> {
+    fn event_affects_entity(
+        &self,
+        event: &crate::casg::temporal::TimelineEvent,
+        entity_id: &str,
+    ) -> Result<bool> {
         // Check if the event affects the entity
-        Ok(event.details.get("entity_id")
+        Ok(event
+            .details
+            .get("entity_id")
             .and_then(|v| v.as_str())
             .map(|id| id == entity_id)
             .unwrap_or(false))
@@ -773,7 +798,11 @@ impl RetroactiveAnalyzer {
             .collect()
     }
 
-    fn map_to_new_taxonomy(&self, old_taxon: TaxonId, _taxonomy: &TaxonomyVersion) -> Result<Option<TaxonId>> {
+    fn map_to_new_taxonomy(
+        &self,
+        old_taxon: TaxonId,
+        _taxonomy: &TaxonomyVersion,
+    ) -> Result<Option<TaxonId>> {
         // This would map old taxon to new taxonomy
         // For now, return unchanged
         Ok(Some(old_taxon))

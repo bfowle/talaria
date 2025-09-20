@@ -1,13 +1,12 @@
-/// Taxonomy management for CASG
-
-pub mod evolution;
 pub mod discrepancy;
+/// Taxonomy management for CASG
+pub mod evolution;
 pub mod extractor;
 pub mod manifest;
 pub mod version_store;
 
-use crate::casg::types::*;
 use crate::casg::storage::CASGStorage;
+use crate::casg::types::*;
 use crate::core::paths;
 use crate::utils::progress::{create_progress_bar, create_spinner};
 use anyhow::Result;
@@ -139,17 +138,20 @@ impl TaxonomyManager {
             let parent_id = TaxonId(parts[1].parse()?);
             let rank = parts[2].to_string();
 
-            nodes.insert(taxon_id.clone(), TaxonomyNode {
-                taxon_id: taxon_id.clone(),
-                parent_id: if parent_id == taxon_id {
-                    None
-                } else {
-                    Some(parent_id.clone())
+            nodes.insert(
+                taxon_id,
+                TaxonomyNode {
+                    taxon_id,
+                    parent_id: if parent_id == taxon_id {
+                        None
+                    } else {
+                        Some(parent_id)
+                    },
+                    name: String::new(), // Will be filled from names.dmp
+                    rank,
+                    children: Vec::new(),
                 },
-                name: String::new(), // Will be filled from names.dmp
-                rank,
-                children: Vec::new(),
-            });
+            );
 
             if parent_id != taxon_id {
                 parent_map.insert(taxon_id, parent_id);
@@ -194,7 +196,8 @@ impl TaxonomyManager {
         build_progress.finish_with_message("Taxonomy tree built");
 
         // Find root (taxon ID 1 is typically the root)
-        let root = nodes.get(&TaxonId(1))
+        let root = nodes
+            .get(&TaxonId(1))
             .ok_or_else(|| anyhow::anyhow!("Root taxon not found"))?
             .clone();
 
@@ -220,7 +223,10 @@ impl TaxonomyManager {
         };
 
         if !idmapping_path.exists() {
-            return Err(anyhow::anyhow!("UniProt ID mapping file not found: {}", idmapping_path.display()));
+            return Err(anyhow::anyhow!(
+                "UniProt ID mapping file not found: {}",
+                idmapping_path.display()
+            ));
         }
 
         let idmapping_file = &idmapping_path;
@@ -252,7 +258,8 @@ impl TaxonomyManager {
         let taxon_id = self.find_taxon_by_name(taxon_name)?;
 
         // Get direct chunks
-        let mut chunks = self.taxon_to_chunks
+        let mut chunks = self
+            .taxon_to_chunks
             .get(&taxon_id)
             .cloned()
             .unwrap_or_default();
@@ -275,13 +282,15 @@ impl TaxonomyManager {
     }
 
     fn find_taxon_by_name(&self, name: &str) -> Result<TaxonId> {
-        let tree = self.taxonomy_tree.as_ref()
+        let tree = self
+            .taxonomy_tree
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No taxonomy loaded"))?;
 
         // Try exact match
         for (taxon_id, node) in &tree.id_to_node {
             if node.name.eq_ignore_ascii_case(name) {
-                return Ok(taxon_id.clone());
+                return Ok(*taxon_id);
             }
         }
 
@@ -295,7 +304,7 @@ impl TaxonomyManager {
                 // Try partial match
                 for (taxon_id, node) in &tree.id_to_node {
                     if node.name.to_lowercase().contains(&normalized) {
-                        return Ok(taxon_id.clone());
+                        return Ok(*taxon_id);
                     }
                 }
                 Err(anyhow::anyhow!("Taxon not found: {}", name))
@@ -304,17 +313,19 @@ impl TaxonomyManager {
     }
 
     fn get_descendant_taxa(&self, taxon_id: &TaxonId) -> Result<Vec<TaxonId>> {
-        let tree = self.taxonomy_tree.as_ref()
+        let tree = self
+            .taxonomy_tree
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No taxonomy loaded"))?;
 
         let mut descendants = Vec::new();
-        let mut to_visit = vec![taxon_id.clone()];
+        let mut to_visit = vec![*taxon_id];
 
         while let Some(current) = to_visit.pop() {
             if let Some(node) = tree.id_to_node.get(&current) {
                 for child in &node.children {
-                    descendants.push(child.clone());
-                    to_visit.push(child.clone());
+                    descendants.push(*child);
+                    to_visit.push(*child);
                 }
             }
         }
@@ -334,8 +345,9 @@ impl TaxonomyManager {
     /// Get parent of a taxon
     pub fn get_parent(&self, taxon_id: TaxonId) -> Option<TaxonId> {
         if let Some(tree) = &self.taxonomy_tree {
-            tree.id_to_node.get(&taxon_id)
-                .and_then(|node| node.parent_id.clone())
+            tree.id_to_node
+                .get(&taxon_id)
+                .and_then(|node| node.parent_id)
         } else {
             None
         }
@@ -349,7 +361,7 @@ impl TaxonomyManager {
                 if node.rank == rank {
                     return Some(current);
                 }
-                current = node.parent_id.clone()?;
+                current = node.parent_id?;
             }
         }
         None
@@ -369,7 +381,7 @@ impl TaxonomyManager {
     pub fn update_chunk_mapping(&mut self, chunk: &TaxonomyAwareChunk) {
         for taxon_id in &chunk.taxon_ids {
             self.taxon_to_chunks
-                .entry(taxon_id.clone())
+                .entry(*taxon_id)
                 .or_default()
                 .push(chunk.content_hash.clone());
         }
@@ -384,8 +396,14 @@ impl TaxonomyManager {
         use evolution::TaxonomyEvolution;
 
         // First check if we have the versions in our history
-        let old_found = self.version_history.iter().any(|v| v.version == old_version);
-        let new_found = self.version_history.iter().any(|v| v.version == new_version);
+        let old_found = self
+            .version_history
+            .iter()
+            .any(|v| v.version == old_version);
+        let new_found = self
+            .version_history
+            .iter()
+            .any(|v| v.version == new_version);
 
         if !old_found || !new_found {
             // Fall back to loading from disk
@@ -404,16 +422,18 @@ impl TaxonomyManager {
 
     /// Get lineage for a taxon
     pub fn get_lineage(&self, taxon_id: &TaxonId) -> Result<Vec<TaxonomyNode>> {
-        let tree = self.taxonomy_tree.as_ref()
+        let tree = self
+            .taxonomy_tree
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No taxonomy loaded"))?;
 
         let mut lineage = Vec::new();
-        let mut current_id = Some(taxon_id.clone());
+        let mut current_id = Some(*taxon_id);
 
         while let Some(id) = current_id {
             if let Some(node) = tree.id_to_node.get(&id) {
                 lineage.push(node.clone());
-                current_id = node.parent_id.clone();
+                current_id = node.parent_id;
             } else {
                 break;
             }
@@ -450,10 +470,14 @@ impl TaxonomyManager {
         let content = fs::read_to_string(path)?;
         let mappings: serde_json::Value = serde_json::from_str(&content)?;
 
-        if let Some(acc_map) = mappings.get("accession_to_taxon").and_then(|v| v.as_object()) {
+        if let Some(acc_map) = mappings
+            .get("accession_to_taxon")
+            .and_then(|v| v.as_object())
+        {
             for (acc, taxon_value) in acc_map {
                 if let Some(taxon_id) = taxon_value.as_u64() {
-                    self.accession_to_taxon.insert(acc.clone(), TaxonId(taxon_id as u32));
+                    self.accession_to_taxon
+                        .insert(acc.clone(), TaxonId(taxon_id as u32));
                 }
             }
         }
@@ -477,15 +501,15 @@ impl TaxonomyManager {
         }
 
         // Convert our taxonomy tree to the Merkle tree format
-        let tree = self.taxonomy_tree.as_ref()
+        let tree = self
+            .taxonomy_tree
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No taxonomy loaded"))?;
 
         // Convert the root node recursively
         let merkle_root = self.convert_to_merkle_node(&tree.root)?;
 
-        let merkle_tree = crate::casg::merkle::TaxonomyTree {
-            root: merkle_root,
-        };
+        let merkle_tree = crate::casg::merkle::TaxonomyTree { root: merkle_root };
 
         // Build DAG and get root hash
         let dag = MerkleDAG::build_taxonomy_dag(merkle_tree)?;
@@ -495,8 +519,13 @@ impl TaxonomyManager {
     }
 
     /// Convert internal taxonomy node to Merkle tree node
-    fn convert_to_merkle_node(&self, node: &TaxonomyNode) -> Result<crate::casg::merkle::TaxonomyNode> {
-        let tree = self.taxonomy_tree.as_ref()
+    fn convert_to_merkle_node(
+        &self,
+        node: &TaxonomyNode,
+    ) -> Result<crate::casg::merkle::TaxonomyNode> {
+        let tree = self
+            .taxonomy_tree
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No taxonomy loaded"))?;
 
         // Recursively convert children
@@ -532,7 +561,9 @@ impl TaxonomyManager {
             let history_file = self.base_path.join("evolution/history.json");
             if history_file.exists() {
                 let content = fs::read_to_string(&history_file)?;
-                if let Ok(snapshots) = serde_json::from_str::<Vec<evolution::TaxonomySnapshot>>(&content) {
+                if let Ok(snapshots) =
+                    serde_json::from_str::<Vec<evolution::TaxonomySnapshot>>(&content)
+                {
                     for snapshot in snapshots {
                         self.version_history.push(TaxonomyVersion {
                             version: snapshot.version,

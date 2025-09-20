@@ -1,3 +1,5 @@
+use flate2::write::GzEncoder;
+use flate2::Compression;
 /// Tests for taxonomy mapping integration with accession2taxid files
 ///
 /// These tests ensure proper loading and usage of:
@@ -5,17 +7,14 @@
 /// - UniProt idmapping.dat.gz files
 /// - Simple accession2taxid.txt format
 /// - Integration with TaxonomicChunker
-
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
-use tempfile::TempDir;
-use flate2::write::GzEncoder;
-use flate2::Compression;
+use talaria::bio::sequence::Sequence;
 use talaria::casg::chunker::TaxonomicChunker;
 use talaria::casg::types::{ChunkingStrategy, TaxonId};
-use talaria::bio::sequence::Sequence;
+use tempfile::TempDir;
 
 /// Create a test environment with taxonomy files
 struct TaxonomyTestEnv {
@@ -94,7 +93,7 @@ fn test_load_ncbi_prot_accession2taxid() {
     let test_mappings = vec![
         ("NP_123456".to_string(), 9606),  // Human
         ("YP_789012".to_string(), 562),   // E. coli
-        ("XP_345678".to_string(), 10090),  // Mouse
+        ("XP_345678".to_string(), 10090), // Mouse
     ];
     env.create_ncbi_prot_accession2taxid(&test_mappings);
 
@@ -118,9 +117,9 @@ fn test_load_uniprot_idmapping() {
 
     // Create test mappings
     let test_mappings = vec![
-        ("P12345".to_string(), 9606),   // Human protein
-        ("Q67890".to_string(), 10090),  // Mouse protein
-        ("A0A0H6".to_string(), 666),    // Vibrio cholerae
+        ("P12345".to_string(), 9606),  // Human protein
+        ("Q67890".to_string(), 10090), // Mouse protein
+        ("A0A0H6".to_string(), 666),   // Vibrio cholerae
     ];
     env.create_uniprot_idmapping(&test_mappings);
 
@@ -147,10 +146,7 @@ fn test_load_simple_accession2taxid() {
     let env = TaxonomyTestEnv::new();
 
     // Create simple mapping file
-    let test_mappings = vec![
-        ("ACC001".to_string(), 1234),
-        ("ACC002".to_string(), 5678),
-    ];
+    let test_mappings = vec![("ACC001".to_string(), 1234), ("ACC002".to_string(), 5678)];
     env.create_simple_accession2taxid(&test_mappings);
 
     std::env::set_var("TALARIA_DATABASES_DIR", env.taxonomy_dir.parent().unwrap());
@@ -186,7 +182,10 @@ fn test_chunker_with_taxonomy_mappings() {
     // Create test sequences
     let sequences = vec![
         // UniProt format - should extract A0A0H6DB96 and map to 666
-        Sequence::new("tr|A0A0H6DB96|A0A0H6DB96_VIBCL".to_string(), b"MKLTF".to_vec()),
+        Sequence::new(
+            "tr|A0A0H6DB96|A0A0H6DB96_VIBCL".to_string(),
+            b"MKLTF".to_vec(),
+        ),
         // Simple accession - should map P12345 to 9606
         Sequence::new("P12345".to_string(), b"ACGTACGT".to_vec()),
         // Unknown accession - should return TaxonId(0)
@@ -194,7 +193,9 @@ fn test_chunker_with_taxonomy_mappings() {
     ];
 
     // Chunk sequences to test taxonomy resolution
-    let chunks = chunker.chunk_sequences_into_taxonomy_aware(sequences).unwrap();
+    let chunks = chunker
+        .chunk_sequences_into_taxonomy_aware(sequences)
+        .unwrap();
 
     // Check that sequences were grouped by taxonomy
     let mut found_taxons = HashSet::new();
@@ -205,10 +206,9 @@ fn test_chunker_with_taxonomy_mappings() {
     }
 
     // Should have found the mapped taxonomies
-    assert!(found_taxons.contains(&666));  // From A0A0H6DB96 mapping
+    assert!(found_taxons.contains(&666)); // From A0A0H6DB96 mapping
     assert!(found_taxons.contains(&9606)); // From P12345 mapping
-    assert!(found_taxons.contains(&0));    // Unknown sequences
-
+    assert!(found_taxons.contains(&0)); // Unknown sequences
 
     std::env::remove_var("TALARIA_DATABASES_DIR");
 }
@@ -229,7 +229,9 @@ fn test_accession_extraction_from_headers() {
         // Test by creating sequences and chunking them
         let seq = Sequence::new(id.to_string(), b"MKLTF".to_vec());
         let chunker = TaxonomicChunker::new(ChunkingStrategy::default());
-        let chunks = chunker.chunk_sequences_into_taxonomy_aware(vec![seq]).unwrap();
+        let chunks = chunker
+            .chunk_sequences_into_taxonomy_aware(vec![seq])
+            .unwrap();
 
         // The chunker should handle accession extraction internally
         assert!(!chunks.is_empty(), "No chunks created for ID: {}", id);
@@ -242,7 +244,7 @@ fn test_mapping_priority() {
 
     // Create mappings with specific TaxID
     let test_mappings = vec![
-        ("A0A0H6".to_string(), 999),  // Different from header
+        ("A0A0H6".to_string(), 999), // Different from header
     ];
     env.create_ncbi_prot_accession2taxid(&test_mappings);
 
@@ -257,12 +259,17 @@ fn test_mapping_priority() {
     seq.description = Some("Protein TaxID=666".to_string());
 
     // Loaded mapping should take priority over header TaxID
-    let chunks = chunker.chunk_sequences_into_taxonomy_aware(vec![seq]).unwrap();
+    let chunks = chunker
+        .chunk_sequences_into_taxonomy_aware(vec![seq])
+        .unwrap();
 
     // Check that the mapped taxonomy (999) was used, not header (666)
     assert!(!chunks.is_empty());
     let chunk_taxons: Vec<u32> = chunks[0].taxon_ids.iter().map(|t| t.0).collect();
-    assert!(chunk_taxons.contains(&999), "Should use mapped TaxID 999, not header 666");
+    assert!(
+        chunk_taxons.contains(&999),
+        "Should use mapped TaxID 999, not header 666"
+    );
 
     std::env::remove_var("TALARIA_DATABASES_DIR");
 }
@@ -297,7 +304,9 @@ fn test_chunking_with_taxonomy_groups() {
     ];
 
     // Chunk sequences - should group by taxonomy
-    let chunks = chunker.chunk_sequences_into_taxonomy_aware(sequences).unwrap();
+    let chunks = chunker
+        .chunk_sequences_into_taxonomy_aware(sequences)
+        .unwrap();
 
     // Verify chunks are grouped by taxonomy
     let mut taxon_groups = HashMap::new();
@@ -308,8 +317,8 @@ fn test_chunking_with_taxonomy_groups() {
     }
 
     // Should have 3 different taxonomic groups
-    assert!(taxon_groups.contains_key(&9606));  // Human
-    assert!(taxon_groups.contains_key(&562));   // E. coli
+    assert!(taxon_groups.contains_key(&9606)); // Human
+    assert!(taxon_groups.contains_key(&562)); // E. coli
     assert!(taxon_groups.contains_key(&10090)); // Mouse
 
     std::env::remove_var("TALARIA_DATABASES_DIR");
@@ -321,7 +330,10 @@ fn test_missing_taxonomy_files_warning() {
     let empty_taxonomy_dir = temp_dir.path().join("databases").join("taxonomy");
     fs::create_dir_all(&empty_taxonomy_dir).unwrap();
 
-    std::env::set_var("TALARIA_DATABASES_DIR", empty_taxonomy_dir.parent().unwrap());
+    std::env::set_var(
+        "TALARIA_DATABASES_DIR",
+        empty_taxonomy_dir.parent().unwrap(),
+    );
 
     // Should return empty mappings when no files exist
     let mappings = load_test_mappings(&empty_taxonomy_dir).unwrap();
@@ -332,9 +344,9 @@ fn test_missing_taxonomy_files_warning() {
 
 // Helper function to load taxonomy mappings (simulates database add logic)
 fn load_test_mappings(taxonomy_dir: &PathBuf) -> anyhow::Result<HashMap<String, TaxonId>> {
+    use flate2::read::GzDecoder;
     use std::fs::File;
     use std::io::{BufRead, BufReader};
-    use flate2::read::GzDecoder;
 
     let mut mapping = HashMap::new();
 
@@ -346,8 +358,12 @@ fn load_test_mappings(taxonomy_dir: &PathBuf) -> anyhow::Result<HashMap<String, 
         let reader = BufReader::new(decoder);
 
         for (idx, line) in reader.lines().enumerate() {
-            if idx == 0 { continue; } // Skip header
-            if idx > 1000000 { break; } // Limit for testing
+            if idx == 0 {
+                continue;
+            } // Skip header
+            if idx > 1000000 {
+                break;
+            } // Limit for testing
 
             let line = line?;
             let parts: Vec<&str> = line.split('\t').collect();
@@ -372,7 +388,9 @@ fn load_test_mappings(taxonomy_dir: &PathBuf) -> anyhow::Result<HashMap<String, 
         let reader = BufReader::new(decoder);
 
         for (idx, line) in reader.lines().enumerate() {
-            if idx > 1000000 { break; }
+            if idx > 1000000 {
+                break;
+            }
 
             let line = line?;
             let parts: Vec<&str> = line.split('\t').collect();

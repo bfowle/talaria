@@ -2,11 +2,10 @@
 ///
 /// This module bridges the gap between the reducer's delta encoder and CASG's
 /// content-addressed storage, converting delta records into CASG delta chunks.
-
 use crate::bio::sequence::Sequence;
-use crate::casg::types::*;
-use crate::casg::delta::{DeltaGenerator as DeltaGeneratorTrait};
+use crate::casg::delta::DeltaGenerator as DeltaGeneratorTrait;
 pub use crate::casg::delta::DeltaGeneratorConfig;
+use crate::casg::types::*;
 use crate::core::delta_encoder::{DeltaEncoder, DeltaRecord};
 use anyhow::Result;
 use chrono::Utc;
@@ -37,10 +36,8 @@ impl DeltaGenerator {
         reference_chunk_hash: SHA256Hash,
     ) -> Result<Vec<DeltaChunk>> {
         // Build reference map
-        let _ref_map: HashMap<String, &Sequence> = references
-            .iter()
-            .map(|s| (s.id.clone(), s))
-            .collect();
+        let _ref_map: HashMap<String, &Sequence> =
+            references.iter().map(|s| (s.id.clone(), s)).collect();
 
         // Generate delta records for each sequence
         let mut delta_records = Vec::new();
@@ -145,14 +142,12 @@ impl DeltaGenerator {
             let record_size = self.estimate_record_size(&record);
 
             // Check if adding this record would exceed limits
-            if !current_batch.is_empty() &&
-               (current_size + record_size > self.config.max_chunk_size ||
-                current_batch.len() >= self.config.target_sequences_per_chunk) {
+            if !current_batch.is_empty()
+                && (current_size + record_size > self.config.max_chunk_size
+                    || current_batch.len() >= self.config.target_sequences_per_chunk)
+            {
                 // Create chunk from current batch
-                chunks.push(self.create_delta_chunk(
-                    current_batch,
-                    reference_chunk_hash.clone(),
-                )?);
+                chunks.push(self.create_delta_chunk(current_batch, reference_chunk_hash.clone())?);
                 current_batch = Vec::new();
                 current_size = 0;
             }
@@ -163,10 +158,7 @@ impl DeltaGenerator {
 
         // Don't forget the last batch
         if !current_batch.is_empty() {
-            chunks.push(self.create_delta_chunk(
-                current_batch,
-                reference_chunk_hash,
-            )?);
+            chunks.push(self.create_delta_chunk(current_batch, reference_chunk_hash)?);
         }
 
         Ok(chunks)
@@ -186,7 +178,11 @@ impl DeltaGenerator {
 
         // Calculate statistics
         let total_ops: usize = delta_records.iter().map(|r| r.deltas.len()).sum();
-        let _max_ops = delta_records.iter().map(|r| r.deltas.len()).max().unwrap_or(0);
+        let _max_ops = delta_records
+            .iter()
+            .map(|r| r.deltas.len())
+            .max()
+            .unwrap_or(0);
         let _avg_ops = if !delta_records.is_empty() {
             total_ops as f32 / delta_records.len() as f32
         } else {
@@ -196,7 +192,7 @@ impl DeltaGenerator {
         // Convert to CASG delta operations
         let mut delta_operations = Vec::new();
         for record in &delta_records {
-            delta_operations.push(self.convert_to_casg_operation(&record)?);
+            delta_operations.push(self.convert_to_casg_operation(record)?);
         }
 
         // Calculate sizes
@@ -236,7 +232,7 @@ impl DeltaGenerator {
             .enumerate()
             .map(|(i, record)| SequenceRef {
                 chunk_hash: SHA256Hash::zero(), // Will be set when chunk is stored
-                offset: i * 1000, // Approximate offset
+                offset: i * 1000,               // Approximate offset
                 length: record.deltas.iter().map(|d| d.substitution.len()).sum(),
                 sequence_id: record.child_id.clone(),
             })
@@ -299,11 +295,13 @@ impl DeltaGenerator {
     fn estimate_record_size(&self, record: &DeltaRecord) -> usize {
         // Simple estimation based on components
         let id_size = record.child_id.len() + record.reference_id.len();
-        let delta_size: usize = record.deltas
+        let delta_size: usize = record
+            .deltas
             .iter()
             .map(|d| 8 + d.substitution.len()) // positions + data
             .sum();
-        let header_size = record.header_change
+        let header_size = record
+            .header_change
             .as_ref()
             .map(|h| h.new_description.as_ref().map(|d| d.len()).unwrap_or(0))
             .unwrap_or(0);
@@ -319,10 +317,8 @@ impl DeltaGenerator {
         old_chunk_hash: SHA256Hash,
     ) -> Result<Vec<DeltaChunk>> {
         // Map old sequences by ID for quick lookup
-        let old_map: HashMap<String, &Sequence> = old_sequences
-            .iter()
-            .map(|s| (s.id.clone(), s))
-            .collect();
+        let old_map: HashMap<String, &Sequence> =
+            old_sequences.iter().map(|s| (s.id.clone(), s)).collect();
 
         let mut delta_records = Vec::new();
         let mut new_inserts = Vec::new();
@@ -364,10 +360,7 @@ impl DeltaGenerator {
                 .collect();
 
             // Create insertion chunk
-            let insert_chunk = self.create_operation_chunk(
-                insert_ops,
-                old_chunk_hash.clone(),
-            )?;
+            let insert_chunk = self.create_operation_chunk(insert_ops, old_chunk_hash.clone())?;
             chunks.push(insert_chunk);
         }
 
@@ -375,16 +368,11 @@ impl DeltaGenerator {
         if !deletions.is_empty() {
             let delete_ops: Vec<DeltaOperation> = deletions
                 .into_iter()
-                .map(|id| DeltaOperation::Delete {
-                    sequence_id: id,
-                })
+                .map(|id| DeltaOperation::Delete { sequence_id: id })
                 .collect();
 
             // Create deletion chunk
-            let delete_chunk = self.create_operation_chunk(
-                delete_ops,
-                old_chunk_hash.clone(),
-            )?;
+            let delete_chunk = self.create_operation_chunk(delete_ops, old_chunk_hash.clone())?;
             chunks.push(delete_chunk);
         }
 
@@ -443,7 +431,6 @@ impl DeltaGeneratorTrait for DeltaGenerator {
     }
 }
 
-
 // Implement BatchDeltaGenerator for parallel processing
 // impl crate::casg::delta::traits::BatchDeltaGenerator for DeltaGenerator {
 //     fn generate_parallel(
@@ -454,7 +441,7 @@ impl DeltaGeneratorTrait for DeltaGenerator {
 //         _num_threads: usize,
 //     ) -> Result<Vec<DeltaChunk>> {
 //         use rayon::prelude::*;
-// 
+//
 //         // Split sequences into batches
 //         let batch_size = self.optimal_batch_size();
 //         let chunks: Vec<Vec<DeltaChunk>> = sequences
@@ -465,16 +452,16 @@ impl DeltaGeneratorTrait for DeltaGenerator {
 //                     .unwrap_or_default()
 //             })
 //             .collect();
-// 
+//
 //         // Merge all chunks
 //         self.merge_chunks(chunks.into_iter().flatten().collect())
 //     }
-// 
+//
 //     fn optimal_batch_size(&self) -> usize {
 //         // Balance between parallelism and chunk efficiency
 //         self.config.target_sequences_per_chunk
 //     }
-// 
+//
 //     fn merge_chunks(
 //         &self,
 //         chunks: Vec<DeltaChunk>,
@@ -483,12 +470,12 @@ impl DeltaGeneratorTrait for DeltaGenerator {
 //         Ok(chunks)
 //     }
 // }
-// 
-// 
+//
+//
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
-// 
+//
 //     #[test]
 //     fn test_delta_generator_creation() {
 //         let config = DeltaGeneratorConfig::default();
@@ -496,43 +483,41 @@ impl DeltaGeneratorTrait for DeltaGenerator {
 //         assert!(generator.reference_cache.is_empty());
 //     }
 
-    #[test]
-    fn test_similarity_calculation() {
-        let generator = DeltaGenerator::new(DeltaGeneratorConfig::default());
+#[test]
+fn test_similarity_calculation() {
+    let generator = DeltaGenerator::new(DeltaGeneratorConfig::default());
 
-        let seq1 = Sequence::new("seq1".to_string(), b"ACGTACGT".to_vec());
-        let seq2 = Sequence::new("seq2".to_string(), b"ACGTACGT".to_vec());
+    let seq1 = Sequence::new("seq1".to_string(), b"ACGTACGT".to_vec());
+    let seq2 = Sequence::new("seq2".to_string(), b"ACGTACGT".to_vec());
 
-        let similarity = generator.calculate_similarity(&seq1, &seq2);
-        assert_eq!(similarity, 1.0);
+    let similarity = generator.calculate_similarity(&seq1, &seq2);
+    assert_eq!(similarity, 1.0);
 
-        let seq3 = Sequence::new("seq3".to_string(), b"TTTTACGT".to_vec());
-        let similarity2 = generator.calculate_similarity(&seq1, &seq3);
-        assert!(similarity2 > 0.5 && similarity2 < 1.0);
-    }
+    let seq3 = Sequence::new("seq3".to_string(), b"TTTTACGT".to_vec());
+    let similarity2 = generator.calculate_similarity(&seq1, &seq3);
+    assert!(similarity2 > 0.5 && similarity2 < 1.0);
+}
 
-    #[test]
-    fn test_incremental_update_detection() {
-        let mut generator = DeltaGenerator::new(DeltaGeneratorConfig::default());
+#[test]
+fn test_incremental_update_detection() {
+    let mut generator = DeltaGenerator::new(DeltaGeneratorConfig::default());
 
-        let old_sequences = vec![
-            Sequence::new("seq1".to_string(), b"ACGTACGT".to_vec()),
-            Sequence::new("seq2".to_string(), b"TTTTGGGG".to_vec()),
-        ];
+    let old_sequences = vec![
+        Sequence::new("seq1".to_string(), b"ACGTACGT".to_vec()),
+        Sequence::new("seq2".to_string(), b"TTTTGGGG".to_vec()),
+    ];
 
-        let new_sequences = vec![
-            Sequence::new("seq1".to_string(), b"ACGTACGT".to_vec()), // Unchanged
-            Sequence::new("seq2".to_string(), b"TTTTAAAA".to_vec()), // Modified
-            Sequence::new("seq3".to_string(), b"CCCCCCCC".to_vec()), // New
-        ];
+    let new_sequences = vec![
+        Sequence::new("seq1".to_string(), b"ACGTACGT".to_vec()), // Unchanged
+        Sequence::new("seq2".to_string(), b"TTTTAAAA".to_vec()), // Modified
+        Sequence::new("seq3".to_string(), b"CCCCCCCC".to_vec()), // New
+    ];
 
-        let old_hash = SHA256Hash::compute(b"old_chunk");
-        let chunks = generator.generate_incremental_update(
-            &old_sequences,
-            &new_sequences,
-            old_hash,
-        ).unwrap();
+    let old_hash = SHA256Hash::compute(b"old_chunk");
+    let chunks = generator
+        .generate_incremental_update(&old_sequences, &new_sequences, old_hash)
+        .unwrap();
 
-        // Should have chunks for modifications and insertions
-        assert!(!chunks.is_empty());
-    }
+    // Should have chunks for modifications and insertions
+    assert!(!chunks.is_empty());
+}

@@ -1,7 +1,6 @@
 /// Regression tests for specific bugs found in production
 ///
 /// These tests ensure that previously fixed bugs don't reoccur
-
 use std::fs;
 use std::path::Path;
 use talaria::bio::fasta::{parse_fasta, write_fasta};
@@ -30,7 +29,11 @@ fn test_cholera_database_regression() {
     // Check first sequence (wrapped header with TaxID=0, OX=666)
     let seq1 = &sequences[0];
     assert_eq!(seq1.id, "tr|A0A0H6DB96|A0A0H6DB96_VIBCL");
-    assert_eq!(seq1.taxon_id, Some(666), "Should use OX=666 instead of TaxID=0");
+    assert_eq!(
+        seq1.taxon_id,
+        Some(666),
+        "Should use OX=666 instead of TaxID=0"
+    );
 
     // Verify sequence doesn't contain metadata
     let seq1_str = String::from_utf8(seq1.sequence.clone()).unwrap();
@@ -39,12 +42,17 @@ fn test_cholera_database_regression() {
     assert!(!seq1_str.contains("3"), "Line number leaked into sequence");
 
     // Check sequence with SV=1 bleeding into sequence
-    let cholix = sequences.iter()
+    let cholix = sequences
+        .iter()
         .find(|s| s.id.contains("Q5EK40"))
         .expect("Cholix sequence not found");
 
     let cholix_seq = String::from_utf8(cholix.sequence.clone()).unwrap();
-    assert!(cholix_seq.starts_with("MYLT"), "Cholix sequence was: {}", cholix_seq);
+    assert!(
+        cholix_seq.starts_with("MYLT"),
+        "Cholix sequence was: {}",
+        cholix_seq
+    );
     assert!(!cholix_seq.contains("="), "= character in sequence");
 }
 
@@ -84,17 +92,26 @@ MKLTFYLEKVMKK";
     let desc = seq.description.as_ref().expect("No description found");
 
     // Check that key metadata is present (might be combined differently)
-    assert!(desc.contains("Fatty acid oxidation") || desc.contains("OS=Vibrio cholerae"),
-            "Description missing expected content: {}", desc);
+    assert!(
+        desc.contains("Fatty acid oxidation") || desc.contains("OS=Vibrio cholerae"),
+        "Description missing expected content: {}",
+        desc
+    );
     assert!(desc.contains("OX=666"), "Missing OX field in: {}", desc);
-    assert!(desc.contains("GN=fadB") || desc.contains("PE=3"),
-            "Missing gene/PE info in: {}", desc);
+    assert!(
+        desc.contains("GN=fadB") || desc.contains("PE=3"),
+        "Missing gene/PE info in: {}",
+        desc
+    );
 
     // Should extract TaxID from OX field
     assert_eq!(seq.taxon_id, Some(666));
 
     // Sequence should be clean
-    assert_eq!(String::from_utf8(seq.sequence.clone()).unwrap(), "MKLTFYLEKVMKK");
+    assert_eq!(
+        String::from_utf8(seq.sequence.clone()).unwrap(),
+        "MKLTFYLEKVMKK"
+    );
 }
 
 /// Regression test for authoritative chunk TaxID
@@ -112,8 +129,16 @@ fn test_authoritative_taxid_regression() {
     assert!(header.contains("TaxID=666"), "Header was: {}", header);
 
     // Should NOT contain conflicting TaxIDs
-    assert!(!header.contains("TaxID=999"), "Found TaxID=999 in: {}", header);
-    assert!(!header.contains("TaxID=888"), "Found TaxID=888 in: {}", header);
+    assert!(
+        !header.contains("TaxID=999"),
+        "Found TaxID=999 in: {}",
+        header
+    );
+    assert!(
+        !header.contains("TaxID=888"),
+        "Found TaxID=888 in: {}",
+        header
+    );
 
     // Should preserve OX field
     assert!(header.contains("OX=888"), "Missing OX field in: {}", header);
@@ -190,35 +215,44 @@ fn test_various_formats_regression() {
     let sequences = parse_fasta(fixture_path).expect("Failed to parse various formats");
 
     // UniProt format
-    let uniprot = sequences.iter()
+    let uniprot = sequences
+        .iter()
         .find(|s| s.id == "sp|P31946|1433B_HUMAN")
         .expect("UniProt sequence not found");
     assert_eq!(uniprot.taxon_id, Some(9606));
 
     // NCBI format with taxon: field
-    let ncbi = sequences.iter()
+    let ncbi = sequences
+        .iter()
         .find(|s| s.id.contains("gi|123456"))
         .expect("NCBI sequence not found");
     assert_eq!(ncbi.taxon_id, Some(562));
 
     // No taxonomy info
-    let no_tax = sequences.iter()
+    let no_tax = sequences
+        .iter()
         .find(|s| s.id == "tr|A0A0H6|A0A0H6_VIBCL")
         .expect("No-tax sequence not found");
     assert_eq!(no_tax.taxon_id, None);
 
     // TaxID=0 with OX fallback
-    let fallback = sequences.iter()
+    let fallback = sequences
+        .iter()
         .find(|s| s.id == "SIMPLE_ID")
         .expect("Fallback sequence not found");
     assert_eq!(fallback.taxon_id, Some(789)); // From OX=789, not TaxID=0
 
     // Wrapped header
-    let wrapped = sequences.iter()
+    let wrapped = sequences
+        .iter()
         .find(|s| s.id == "test_wrapped")
         .expect("Wrapped sequence not found");
     assert_eq!(wrapped.taxon_id, Some(12345));
-    assert!(wrapped.description.as_ref().unwrap().contains("Multi-line description"));
+    assert!(wrapped
+        .description
+        .as_ref()
+        .unwrap()
+        .contains("Multi-line description"));
 }
 
 /// Helper to parse FASTA from bytes (re-exported for tests)

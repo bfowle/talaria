@@ -1,5 +1,6 @@
-use crate::core::config::{Config, load_config, save_config, default_config};
+use crate::core::config::{default_config, load_config, save_config, Config};
 use crossterm::event::{self, Event, KeyCode};
+use dirs;
 use ratatui::{
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -9,7 +10,6 @@ use ratatui::{
     Frame, Terminal,
 };
 use std::{io, path::PathBuf};
-use dirs;
 
 pub struct ConfigEditor {
     config: Config,
@@ -25,11 +25,10 @@ impl ConfigEditor {
     pub fn new() -> Self {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
-        
+
         // Try to load existing config or use default
-        let default_path = dirs::config_dir()
-            .map(|p| p.join("talaria").join("config.toml"));
-        
+        let default_path = dirs::config_dir().map(|p| p.join("talaria").join("config.toml"));
+
         let (config, path) = if let Some(ref p) = default_path {
             if p.exists() {
                 match load_config(p) {
@@ -42,7 +41,7 @@ impl ConfigEditor {
         } else {
             (default_config(), None)
         };
-        
+
         Self {
             config,
             config_path: path,
@@ -53,11 +52,11 @@ impl ConfigEditor {
             temp_value: String::new(),
         }
     }
-    
+
     fn get_field_count(&self) -> usize {
         12 // Total number of editable fields
     }
-    
+
     fn get_field_name(&self, index: usize) -> &str {
         match index {
             0 => "Target Ratio",
@@ -75,25 +74,40 @@ impl ConfigEditor {
             _ => "Unknown",
         }
     }
-    
+
     fn get_field_value(&self, index: usize) -> String {
         match index {
             0 => format!("{:.2}", self.config.reduction.target_ratio),
             1 => self.config.reduction.min_sequence_length.to_string(),
             2 => self.config.reduction.max_delta_distance.to_string(),
             3 => format!("{:.2}", self.config.reduction.similarity_threshold),
-            4 => if self.config.reduction.taxonomy_aware { "[✓]" } else { "[ ]" }.to_string(),
+            4 => if self.config.reduction.taxonomy_aware {
+                "[✓]"
+            } else {
+                "[ ]"
+            }
+            .to_string(),
             5 => self.config.alignment.gap_penalty.to_string(),
             6 => self.config.alignment.gap_extension.to_string(),
             7 => self.config.alignment.algorithm.clone(),
             8 => self.config.output.format.clone(),
-            9 => if self.config.output.include_metadata { "[✓]" } else { "[ ]" }.to_string(),
-            10 => if self.config.output.compress_output { "[✓]" } else { "[ ]" }.to_string(),
+            9 => if self.config.output.include_metadata {
+                "[✓]"
+            } else {
+                "[ ]"
+            }
+            .to_string(),
+            10 => if self.config.output.compress_output {
+                "[✓]"
+            } else {
+                "[ ]"
+            }
+            .to_string(),
             11 => self.config.performance.chunk_size.to_string(),
             _ => String::new(),
         }
     }
-    
+
     fn set_field_value(&mut self, index: usize, value: &str) -> Result<(), String> {
         match index {
             0 => {
@@ -149,7 +163,7 @@ impl ConfigEditor {
         }
         Ok(())
     }
-    
+
     fn toggle_boolean(&mut self) {
         match self.selected_field {
             4 => self.config.reduction.taxonomy_aware = !self.config.reduction.taxonomy_aware,
@@ -158,18 +172,18 @@ impl ConfigEditor {
             _ => {}
         }
     }
-    
+
     fn is_boolean_field(&self, index: usize) -> bool {
         matches!(index, 4 | 9 | 10)
     }
-    
+
     fn save_config(&mut self) {
         if let Some(ref path) = self.config_path {
             // Create directory if it doesn't exist
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent).ok();
             }
-            
+
             match save_config(path, &self.config) {
                 Ok(_) => {
                     self.message = format!("Configuration saved to {}", path.display());
@@ -182,18 +196,21 @@ impl ConfigEditor {
             self.message = "No config path set".to_string();
         }
     }
-    
+
     fn load_config(&mut self) {
-        use dialoguer::{Input, theme::ColorfulTheme};
-        
+        use dialoguer::{theme::ColorfulTheme, Input};
+
         let path_str: String = Input::with_theme(&ColorfulTheme::default())
             .with_prompt("Enter config file path")
-            .default(self.config_path.as_ref()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|| "config.toml".to_string()))
+            .default(
+                self.config_path
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "config.toml".to_string()),
+            )
             .interact_text()
             .unwrap_or_else(|_| "config.toml".to_string());
-        
+
         let path = PathBuf::from(path_str);
         match load_config(&path) {
             Ok(config) => {
@@ -206,21 +223,19 @@ impl ConfigEditor {
             }
         }
     }
-    
+
     fn reset_to_default(&mut self) {
         self.config = default_config();
         self.message = "Reset to default configuration".to_string();
     }
 }
 
-pub fn run_config_editor<B: Backend>(
-    terminal: &mut Terminal<B>,
-) -> io::Result<()> {
+pub fn run_config_editor<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
     let mut editor = ConfigEditor::new();
-    
+
     loop {
         terminal.draw(|f| draw_editor(f, &mut editor))?;
-        
+
         if let Event::Key(key) = event::read()? {
             if editor.editing {
                 match key.code {
@@ -296,7 +311,7 @@ pub fn run_config_editor<B: Backend>(
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -310,32 +325,39 @@ fn draw_editor(f: &mut Frame, editor: &mut ConfigEditor) {
             Constraint::Length(3),
         ])
         .split(f.area());
-    
+
     // Title
     let title_text = if let Some(ref path) = editor.config_path {
         format!("Talaria Configuration Editor - {}", path.display())
     } else {
         "Talaria Configuration Editor - (no file)".to_string()
     };
-    
+
     let title = Paragraph::new(title_text)
-        .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+        .style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
         .alignment(Alignment::Center)
         .block(Block::default().borders(Borders::ALL));
     f.render_widget(title, chunks[0]);
-    
+
     // Configuration fields
     if editor.editing {
         // Show edit dialog
         let edit_block = Block::default()
-            .title(format!(" Editing: {} ", editor.get_field_name(editor.selected_field)))
+            .title(format!(
+                " Editing: {} ",
+                editor.get_field_name(editor.selected_field)
+            ))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Yellow));
-        
+
         let input = Paragraph::new(editor.temp_value.as_str())
             .style(Style::default().fg(Color::White))
             .block(edit_block);
-        
+
         // Center the edit dialog
         let area = centered_rect(60, 20, chunks[1]);
         f.render_widget(input, area);
@@ -346,46 +368,54 @@ fn draw_editor(f: &mut Frame, editor: &mut ConfigEditor) {
                 let name = editor.get_field_name(i);
                 let value = editor.get_field_value(i);
                 let style = if i == editor.selected_field {
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(Color::White)
                 };
-                
+
                 let content = if i == editor.selected_field {
                     format!("▶ {:<25} {}", name, value)
                 } else {
                     format!("  {:<25} {}", name, value)
                 };
-                
+
                 ListItem::new(content).style(style)
             })
             .collect();
-        
+
         // Section headers could be added here later
         // let sections = vec![
         //     ListItem::new("── Reduction Settings ──").style(Style::default().fg(Color::Cyan)),
         // ];
-        
+
         let list = List::new(items)
-            .block(Block::default().title(" Configuration ").borders(Borders::ALL))
+            .block(
+                Block::default()
+                    .title(" Configuration ")
+                    .borders(Borders::ALL),
+            )
             .style(Style::default().fg(Color::White));
         f.render_stateful_widget(list, chunks[1], &mut editor.list_state);
     }
-    
+
     // Status/Help bar
     let help_text = if editor.editing {
         "Enter: Save | Esc: Cancel"
     } else {
         "↑/↓: Navigate | Enter/Space: Edit/Toggle | s: Save | l: Load | r: Reset | q: Quit"
     };
-    
+
     let status = Paragraph::new(vec![
-        Line::from(vec![
-            Span::styled(editor.message.as_str(), Style::default().fg(Color::Green)),
-        ]),
-        Line::from(vec![
-            Span::styled(help_text, Style::default().fg(Color::DarkGray)),
-        ]),
+        Line::from(vec![Span::styled(
+            editor.message.as_str(),
+            Style::default().fg(Color::Green),
+        )]),
+        Line::from(vec![Span::styled(
+            help_text,
+            Style::default().fg(Color::DarkGray),
+        )]),
     ])
     .block(Block::default().borders(Borders::ALL))
     .alignment(Alignment::Center);

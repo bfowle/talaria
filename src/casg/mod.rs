@@ -1,51 +1,58 @@
+pub mod assembler;
+pub mod chunk_index;
+pub mod chunker;
+pub mod cloud;
+pub mod compression;
+pub mod delta;
+pub mod delta_generator;
+pub mod delta_reconstructor;
+pub mod differ;
+pub mod evolution_tracker;
+pub mod format;
 /// Content-Addressed Sequence Graph (CASG) System
 ///
 /// A modern approach to sequence database management using content-addressing,
 /// Merkle DAGs, and taxonomy-aware chunking for efficient storage and verification.
-
 pub mod manifest;
-pub mod storage;
 pub mod merkle;
-pub mod chunker;
-pub mod assembler;
-pub mod verifier;
+pub mod processing_state;
+pub mod reduction;
+pub mod retroactive;
+pub mod storage;
 pub mod taxonomy;
 pub mod taxonomy_manifest;
 pub mod temporal;
-pub mod types;
-pub mod reduction;
-pub mod delta;
-pub mod delta_generator;
-pub mod delta_reconstructor;
-pub mod processing_state;
-pub mod cloud;
-pub mod format;
-pub mod validator;
-pub mod differ;
-pub mod compression;
-pub mod traits;
-pub mod retroactive;
 pub mod temporal_renderable;
-pub mod evolution_tracker;
-pub mod chunk_index;
+pub mod traits;
+pub mod types;
+pub mod validator;
+pub mod verifier;
 
-pub use types::*;
-pub use chunk_index::{ChunkIndexBuilder, ChunkQuery, ChunkAccessTracker, ChunkRelationships, IndexStatistics, OptimizationSuggestion, DefaultChunkIndex};
-pub use manifest::Manifest;
-pub use storage::CASGStorage;
-pub use merkle::{MerkleDAG, MerkleVerifiable};
-pub use chunker::{TaxonomicChunker, Chunker, TaxonomyAwareChunker};
-pub use differ::{TemporalManifestDiffer, StandardTemporalManifestDiffer, DiffResult, DiffOptions, ChangeType};
-pub use validator::{TemporalManifestValidator, StandardTemporalManifestValidator, ValidationResult, ValidationOptions};
-pub use format::{ManifestFormat, TalariaFormat, JsonFormat, MessagePackFormat, FormatDetector};
 pub use assembler::FastaAssembler;
-pub use verifier::{CASGVerifier, VerificationResult};
-pub use taxonomy::TaxonomyManager;
+pub use chunk_index::{
+    ChunkAccessTracker, ChunkIndexBuilder, ChunkQuery, ChunkRelationships, DefaultChunkIndex,
+    IndexStatistics, OptimizationSuggestion,
+};
+pub use chunker::{Chunker, TaxonomicChunker, TaxonomyAwareChunker};
+pub use differ::{
+    ChangeType, DiffOptions, DiffResult, StandardTemporalManifestDiffer, TemporalManifestDiffer,
+};
+pub use evolution_tracker::{MassReclassification, TaxonEvolutionReport, TaxonomyEvolutionTracker};
+pub use format::{FormatDetector, JsonFormat, ManifestFormat, MessagePackFormat, TalariaFormat};
+pub use manifest::Manifest;
+pub use merkle::{MerkleDAG, MerkleVerifiable};
+pub use processing_state::{OperationType, ProcessingState, ProcessingStateManager, SourceInfo};
+pub use storage::CASGStorage;
 pub use taxonomy::discrepancy::DiscrepancyDetector;
+pub use taxonomy::TaxonomyManager;
 pub use taxonomy_manifest::{TaxonomyManifest, TaxonomySource};
 pub use temporal::TemporalIndex;
-pub use processing_state::{ProcessingState, ProcessingStateManager, OperationType, SourceInfo};
-pub use evolution_tracker::{TaxonomyEvolutionTracker, MassReclassification, TaxonEvolutionReport};
+pub use types::*;
+pub use validator::{
+    StandardTemporalManifestValidator, TemporalManifestValidator, ValidationOptions,
+    ValidationResult,
+};
+pub use verifier::{CASGVerifier, VerificationResult};
 
 #[cfg(test)]
 mod tests;
@@ -85,7 +92,8 @@ impl CASGRepository {
         let storage = CASGStorage::open(base_path)?;
 
         // Try to load manifest, but create new if it doesn't exist
-        let manifest = Manifest::load(base_path).unwrap_or_else(|_| Manifest::new_with_path(base_path));
+        let manifest =
+            Manifest::load(base_path).unwrap_or_else(|_| Manifest::new_with_path(base_path));
 
         // Try to load taxonomy, but create new if it doesn't exist
         let taxonomy = TaxonomyManager::load(base_path).unwrap_or_else(|_| {
@@ -144,7 +152,10 @@ impl CASGRepository {
     }
 
     /// Load sequences from multiple chunks
-    pub fn load_sequences_from_chunks(&self, chunks: &[ChunkMetadata]) -> Result<Vec<crate::bio::sequence::Sequence>> {
+    pub fn load_sequences_from_chunks(
+        &self,
+        chunks: &[ChunkMetadata],
+    ) -> Result<Vec<crate::bio::sequence::Sequence>> {
         let mut sequences = Vec::new();
 
         for chunk_meta in chunks {
@@ -158,7 +169,9 @@ impl CASGRepository {
 
     /// Verify integrity of the repository
     pub fn verify(&self) -> Result<VerificationResult> {
-        let manifest_data = self.manifest.get_data()
+        let manifest_data = self
+            .manifest
+            .get_data()
             .ok_or_else(|| anyhow::anyhow!("No manifest loaded"))?;
         let verifier = CASGVerifier::new(&self.storage, manifest_data);
         verifier.verify_all()
@@ -171,7 +184,9 @@ impl CASGRepository {
 
     /// Get taxonomy root for manifest
     pub fn get_taxonomy_root(&self) -> Result<MerkleHash> {
-        let manifest_data = self.manifest.get_data()
+        let manifest_data = self
+            .manifest
+            .get_data()
             .ok_or_else(|| anyhow::anyhow!("No manifest loaded"))?;
 
         // Calculate Merkle root from taxonomy version hashes in chunks
@@ -194,7 +209,9 @@ impl CASGRepository {
 
     /// Get sequence root for manifest
     pub fn get_sequence_root(&self) -> Result<MerkleHash> {
-        let manifest_data = self.manifest.get_data()
+        let manifest_data = self
+            .manifest
+            .get_data()
             .ok_or_else(|| anyhow::anyhow!("No manifest loaded"))?;
 
         // Calculate Merkle root from content hashes of all chunks
@@ -204,7 +221,8 @@ impl CASGRepository {
         }
 
         // Collect content hashes from all chunks (already sorted in manifest)
-        let sequence_hashes: Vec<SHA256Hash> = manifest_data.chunk_index
+        let sequence_hashes: Vec<SHA256Hash> = manifest_data
+            .chunk_index
             .iter()
             .map(|chunk| chunk.hash.clone())
             .collect();
@@ -260,4 +278,3 @@ pub enum SyncResult {
         bytes_transferred: usize,
     },
 }
-

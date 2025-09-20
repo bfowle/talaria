@@ -1,12 +1,11 @@
+use crate::casg::SHA256Hash;
 /// Cloud storage abstraction for CASG synchronization
 ///
 /// Provides a unified interface for syncing CASG repositories with various cloud storage providers
-
 use anyhow::Result;
 use async_trait::async_trait;
-use std::path::{Path, PathBuf};
-use crate::casg::SHA256Hash;
 use indicatif::ProgressBar;
+use std::path::{Path, PathBuf};
 
 pub mod s3;
 pub mod sync;
@@ -45,8 +44,8 @@ pub struct CloudObject {
 /// Sync direction for cloud operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyncDirection {
-    Upload,    // Local to cloud
-    Download,  // Cloud to local
+    Upload,   // Local to cloud
+    Download, // Cloud to local
     Bidirectional,
 }
 
@@ -123,7 +122,8 @@ pub trait CloudStorage: Send + Sync {
     async fn delete_batch(&self, keys: &[String]) -> Result<Vec<Result<()>>>;
 
     /// Get a pre-signed URL for temporary access
-    async fn get_presigned_url(&self, key: &str, expires_in: std::time::Duration) -> Result<String>;
+    async fn get_presigned_url(&self, key: &str, expires_in: std::time::Duration)
+        -> Result<String>;
 
     /// Check if the storage is accessible
     async fn verify_access(&self) -> Result<()>;
@@ -132,9 +132,7 @@ pub trait CloudStorage: Send + Sync {
 /// Factory for creating cloud storage providers
 pub fn create_storage(config: &CloudConfig) -> Result<Box<dyn CloudStorage>> {
     match config {
-        CloudConfig::S3 { .. } => {
-            Ok(Box::new(s3::S3Storage::new(config)?))
-        }
+        CloudConfig::S3 { .. } => Ok(Box::new(s3::S3Storage::new(config)?)),
         CloudConfig::GoogleCloud { .. } => {
             anyhow::bail!("Google Cloud Storage not yet implemented")
         }
@@ -152,11 +150,7 @@ pub struct CloudSyncManager {
 }
 
 impl CloudSyncManager {
-    pub fn new(
-        storage: Box<dyn CloudStorage>,
-        local_path: PathBuf,
-        remote_prefix: String,
-    ) -> Self {
+    pub fn new(storage: Box<dyn CloudStorage>, local_path: PathBuf, remote_prefix: String) -> Self {
         Self {
             storage,
             local_path,
@@ -171,7 +165,8 @@ impl CloudSyncManager {
             &self.local_path,
             &self.remote_prefix,
             options,
-        ).await
+        )
+        .await
     }
 
     /// Sync a specific chunk
@@ -186,12 +181,16 @@ impl CloudSyncManager {
         match direction {
             SyncDirection::Upload => {
                 if local_chunk_path.exists() {
-                    self.storage.upload(&local_chunk_path, &chunk_key, None).await?;
+                    self.storage
+                        .upload(&local_chunk_path, &chunk_key, None)
+                        .await?;
                 }
             }
             SyncDirection::Download => {
                 if !local_chunk_path.exists() {
-                    self.storage.download(&chunk_key, &local_chunk_path, None).await?;
+                    self.storage
+                        .download(&chunk_key, &local_chunk_path, None)
+                        .await?;
                 }
             }
             SyncDirection::Bidirectional => {
@@ -206,17 +205,25 @@ impl CloudSyncManager {
                         let local_time: chrono::DateTime<chrono::Utc> = local_modified.into();
 
                         if local_time > cloud_modified {
-                            self.storage.upload(&local_chunk_path, &chunk_key, None).await?;
+                            self.storage
+                                .upload(&local_chunk_path, &chunk_key, None)
+                                .await?;
                         } else if cloud_modified > local_time {
-                            self.storage.download(&chunk_key, &local_chunk_path, None).await?;
+                            self.storage
+                                .download(&chunk_key, &local_chunk_path, None)
+                                .await?;
                         }
                     } else {
                         // Cloud doesn't have it, upload
-                        self.storage.upload(&local_chunk_path, &chunk_key, None).await?;
+                        self.storage
+                            .upload(&local_chunk_path, &chunk_key, None)
+                            .await?;
                     }
                 } else if self.storage.exists(&chunk_key).await? {
                     // Local doesn't have it, download
-                    self.storage.download(&chunk_key, &local_chunk_path, None).await?;
+                    self.storage
+                        .download(&chunk_key, &local_chunk_path, None)
+                        .await?;
                 }
             }
         }
@@ -230,11 +237,12 @@ impl CloudSyncManager {
         let cloud_objects = self.storage.list_objects(Some(&self.remote_prefix)).await?;
 
         // Extract cloud chunk hashes
-        let cloud_chunk_hashes: std::collections::HashSet<String> = cloud_objects.iter()
+        let cloud_chunk_hashes: std::collections::HashSet<String> = cloud_objects
+            .iter()
             .filter(|o| o.key.contains("/chunks/"))
             .filter_map(|o| {
                 // Extract hash from path like "prefix/chunks/ab/cd/abcd..."
-                o.key.split('/').last().map(|s| s.to_string())
+                o.key.split('/').next_back().map(|s| s.to_string())
             })
             .collect();
 
@@ -244,12 +252,14 @@ impl CloudSyncManager {
         let local_chunk_hashes = self.get_local_chunk_hashes()?;
 
         // Calculate pending uploads (local chunks not in cloud)
-        let pending_uploads = local_chunk_hashes.iter()
+        let pending_uploads = local_chunk_hashes
+            .iter()
             .filter(|hash| !cloud_chunk_hashes.contains(*hash))
             .count();
 
         // Calculate pending downloads (cloud chunks not local)
-        let pending_downloads = cloud_chunk_hashes.iter()
+        let pending_downloads = cloud_chunk_hashes
+            .iter()
             .filter(|hash| !local_chunk_hashes.contains(hash.as_str()))
             .count();
 

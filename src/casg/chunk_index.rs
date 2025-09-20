@@ -1,38 +1,40 @@
+use crate::casg::{ChunkMetadata, Manifest, SHA256Hash};
 /// Chunk indexing traits and implementations for CASG
 use anyhow::Result;
 use std::collections::HashMap;
 use std::path::Path;
-use crate::casg::{SHA256Hash, Manifest, ChunkMetadata};
 
 /// Trait for building and maintaining chunk indices
 pub trait ChunkIndexBuilder {
     /// Build index from a manifest
     fn index_manifest(&mut self, manifest: &Manifest) -> Result<()>;
-    
+
     /// Build index from a directory of manifests
     fn index_directory(&mut self, path: &Path) -> Result<()>;
-    
+
     /// Persist the index to storage
     fn save(&self, path: &Path) -> Result<()>;
-    
+
     /// Load index from storage
-    fn load(path: &Path) -> Result<Self> where Self: Sized;
+    fn load(path: &Path) -> Result<Self>
+    where
+        Self: Sized;
 }
 
 /// Trait for querying chunk indices
 pub trait ChunkQuery {
     /// Find chunks by hash
     fn find_by_hash(&self, hash: &SHA256Hash) -> Option<&ChunkMetadata>;
-    
+
     /// Find chunks by taxonomy ID
     fn find_by_taxid(&self, taxid: u32) -> Vec<&ChunkMetadata>;
-    
+
     /// Find chunks by accession
     fn find_by_accession(&self, accession: &str) -> Option<&ChunkMetadata>;
-    
+
     /// Get all chunks for a database
     fn find_by_database(&self, database: &str) -> Vec<&ChunkMetadata>;
-    
+
     /// Get statistics about the index
     fn statistics(&self) -> IndexStatistics;
 }
@@ -41,16 +43,16 @@ pub trait ChunkQuery {
 pub trait ChunkAccessTracker {
     /// Record an access to a chunk
     fn record_access(&mut self, hash: &SHA256Hash);
-    
+
     /// Get access frequency for a chunk
     fn get_access_frequency(&self, hash: &SHA256Hash) -> usize;
-    
+
     /// Get hot chunks (frequently accessed)
     fn get_hot_chunks(&self, threshold: usize) -> Vec<SHA256Hash>;
-    
+
     /// Get cold chunks (rarely accessed)
     fn get_cold_chunks(&self, threshold: usize) -> Vec<SHA256Hash>;
-    
+
     /// Suggest optimizations based on access patterns
     fn suggest_optimizations(&self) -> Vec<OptimizationSuggestion>;
 }
@@ -59,13 +61,13 @@ pub trait ChunkAccessTracker {
 pub trait ChunkRelationships {
     /// Find chunks that are phylogenetically related
     fn find_related_by_taxonomy(&self, hash: &SHA256Hash, distance: u32) -> Vec<SHA256Hash>;
-    
+
     /// Find chunks that share sequences
     fn find_overlapping(&self, hash: &SHA256Hash) -> Vec<SHA256Hash>;
-    
+
     /// Find chunks that could be merged (too small)
     fn find_merge_candidates(&self, min_size: u64) -> Vec<Vec<SHA256Hash>>;
-    
+
     /// Find chunks that should be split (too large)
     fn find_split_candidates(&self, max_size: u64) -> Vec<SHA256Hash>;
 }
@@ -144,47 +146,42 @@ impl ChunkQuery for DefaultChunkIndex {
     fn find_by_hash(&self, hash: &SHA256Hash) -> Option<&ChunkMetadata> {
         self.by_hash.get(hash)
     }
-    
+
     fn find_by_taxid(&self, taxid: u32) -> Vec<&ChunkMetadata> {
         self.by_taxid
             .get(&taxid)
-            .map(|hashes| {
-                hashes.iter()
-                    .filter_map(|h| self.by_hash.get(h))
-                    .collect()
-            })
+            .map(|hashes| hashes.iter().filter_map(|h| self.by_hash.get(h)).collect())
             .unwrap_or_default()
     }
-    
+
     fn find_by_accession(&self, accession: &str) -> Option<&ChunkMetadata> {
         self.by_accession
             .get(accession)
             .and_then(|hash| self.by_hash.get(hash))
     }
-    
+
     fn find_by_database(&self, database: &str) -> Vec<&ChunkMetadata> {
         self.by_database
             .get(database)
-            .map(|hashes| {
-                hashes.iter()
-                    .filter_map(|h| self.by_hash.get(h))
-                    .collect()
-            })
+            .map(|hashes| hashes.iter().filter_map(|h| self.by_hash.get(h)).collect())
             .unwrap_or_default()
     }
-    
+
     fn statistics(&self) -> IndexStatistics {
         let total_chunks = self.by_hash.len();
         let total_size: u64 = self.by_hash.values().map(|c| c.size as u64).sum();
-        let total_compressed: u64 = self.by_hash.values()
-            .map(|c| c.compressed_size.unwrap_or(c.size) as u64).sum();
+        let total_compressed: u64 = self
+            .by_hash
+            .values()
+            .map(|c| c.compressed_size.unwrap_or(c.size) as u64)
+            .sum();
         let total_sequences: usize = self.by_hash.values().map(|c| c.sequence_count).sum();
-        
+
         let mut small = 0;
         let mut medium = 0;
         let mut large = 0;
         let mut xlarge = 0;
-        
+
         for chunk in self.by_hash.values() {
             let size_mb = chunk.size / 1_048_576;
             match size_mb {
@@ -194,7 +191,7 @@ impl ChunkQuery for DefaultChunkIndex {
                 _ => xlarge += 1,
             }
         }
-        
+
         IndexStatistics {
             total_chunks,
             total_sequences,
@@ -226,11 +223,11 @@ impl ChunkAccessTracker for DefaultChunkIndex {
     fn record_access(&mut self, hash: &SHA256Hash) {
         *self.access_counts.entry(hash.clone()).or_insert(0) += 1;
     }
-    
+
     fn get_access_frequency(&self, hash: &SHA256Hash) -> usize {
         self.access_counts.get(hash).copied().unwrap_or(0)
     }
-    
+
     fn get_hot_chunks(&self, threshold: usize) -> Vec<SHA256Hash> {
         self.access_counts
             .iter()
@@ -238,7 +235,7 @@ impl ChunkAccessTracker for DefaultChunkIndex {
             .map(|(hash, _)| hash.clone())
             .collect()
     }
-    
+
     fn get_cold_chunks(&self, threshold: usize) -> Vec<SHA256Hash> {
         self.access_counts
             .iter()
@@ -246,10 +243,10 @@ impl ChunkAccessTracker for DefaultChunkIndex {
             .map(|(hash, _)| hash.clone())
             .collect()
     }
-    
+
     fn suggest_optimizations(&self) -> Vec<OptimizationSuggestion> {
         let mut suggestions = Vec::new();
-        
+
         // Find chunks that should be in hot storage
         let hot_chunks = self.get_hot_chunks(100);
         if !hot_chunks.is_empty() {
@@ -258,17 +255,18 @@ impl ChunkAccessTracker for DefaultChunkIndex {
                 access_frequency: 100,
             });
         }
-        
+
         // Find oversized chunks
         for (hash, metadata) in &self.by_hash {
-            if metadata.size > 100_000_000 { // 100MB
+            if metadata.size > 100_000_000 {
+                // 100MB
                 suggestions.push(OptimizationSuggestion::SplitChunk {
                     chunk: hash.clone(),
                     reason: "Chunk exceeds 100MB".to_string(),
                     suggested_parts: (metadata.size / 50_000_000) as usize + 1,
                 });
             }
-            
+
             // Check compression efficiency
             if let Some(compressed) = metadata.compressed_size {
                 let ratio = metadata.size as f32 / compressed as f32;
@@ -281,7 +279,7 @@ impl ChunkAccessTracker for DefaultChunkIndex {
                 }
             }
         }
-        
+
         suggestions
     }
 }

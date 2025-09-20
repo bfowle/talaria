@@ -1,10 +1,7 @@
 /// Processing pipeline implementation for sequence processing
-
 use super::traits::{
-    SequenceProcessor, BatchProcessor, ProcessingPipeline,
-    ProcessingResult, ProcessorConfig, SequenceType,
-    FilterProcessor, TransformProcessor,
-    FilterCriteria, TransformOperation,
+    BatchProcessor, FilterCriteria, FilterProcessor, ProcessingPipeline, ProcessingResult,
+    ProcessorConfig, SequenceProcessor, SequenceType, TransformOperation, TransformProcessor,
 };
 use crate::bio::sequence::Sequence;
 use anyhow::Result;
@@ -110,7 +107,11 @@ impl ProcessingPipeline for StandardProcessingPipeline {
         SequenceProcessor::process(self, sequences)
     }
 
-    fn process_batch(&self, sequences: &mut [Sequence], batch_size: usize) -> Result<ProcessingResult> {
+    fn process_batch(
+        &self,
+        sequences: &mut [Sequence],
+        batch_size: usize,
+    ) -> Result<ProcessingResult> {
         let start = Instant::now();
         let mut total_result = ProcessingResult::default();
 

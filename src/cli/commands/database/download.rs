@@ -15,7 +15,10 @@ pub struct DownloadArgs {
     pub taxonomy: bool,
 
     /// Download complete taxonomy dataset (all components)
-    #[arg(long, help = "Download all taxonomy components (taxdump + all mappings)")]
+    #[arg(
+        long,
+        help = "Download all taxonomy components (taxdump + all mappings)"
+    )]
     pub complete: bool,
 
     /// Resume incomplete download
@@ -59,7 +62,6 @@ pub struct DownloadArgs {
     pub force: bool,
 
     // Fetch-specific options for creating custom databases
-
     /// Comma-separated list of TaxIDs to fetch (for custom databases)
     #[arg(long, value_name = "TAXIDS", conflicts_with = "taxid_list")]
     pub taxids: Option<String>,
@@ -79,6 +81,24 @@ pub struct DownloadArgs {
     /// Description of the custom database
     #[arg(long)]
     pub description: Option<String>,
+
+    // Bi-temporal versioning options
+    /// Download database at specific point in time (ISO 8601 format)
+    /// Example: --at-time "2024-01-15T10:00:00Z"
+    #[arg(long, value_name = "TIMESTAMP")]
+    pub at_time: Option<String>,
+
+    /// Download specific sequence version (hash or timestamp)
+    #[arg(long, value_name = "VERSION")]
+    pub sequence_version: Option<String>,
+
+    /// Download specific taxonomy version (hash or timestamp)
+    #[arg(long, value_name = "VERSION")]
+    pub taxonomy_version: Option<String>,
+
+    /// Show available versions for the database
+    #[arg(long)]
+    pub show_versions: bool,
 }
 
 pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
@@ -100,8 +120,8 @@ pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
         let (source, dataset) = parse_database_ref(args.database.as_ref().unwrap())?;
 
         // Print header and CASG info
-        use crate::cli::output::section_header;
         use crate::cli::formatter::info_box;
+        use crate::cli::output::section_header;
         use colored::Colorize;
 
         // Format the display name nicely
@@ -128,16 +148,22 @@ pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
         };
 
         println!();
-        section_header(&format!("▶ Database Download: {}: {}", source_name, dataset_name));
+        section_header(&format!(
+            "▶ Database Download: {}: {}",
+            source_name, dataset_name
+        ));
         println!("{}", "═".repeat(80).dimmed());
         println!();
 
-        info_box("Content-Addressed Storage (CASG)", &[
-            "Automatic deduplication",
-            "Incremental updates",
-            "Cryptographic verification",
-            "Bandwidth-efficient downloads"
-        ]);
+        info_box(
+            "Content-Addressed Storage (CASG)",
+            &[
+                "Automatic deduplication",
+                "Incremental updates",
+                "Cryptographic verification",
+                "Bandwidth-efficient downloads",
+            ],
+        );
         println!();
 
         // Handle custom databases (with taxids) vs regular databases
@@ -145,8 +171,8 @@ pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
             run_custom_download(args, dataset)
         } else {
             // Use CASG for regular database downloads
-            use crate::download::DatabaseSource;
             use super::download_impl::run_database_download;
+            use crate::download::DatabaseSource;
 
             let database_source = DatabaseSource::from_string(&format!("{}/{}", source, dataset))?;
             run_database_download(args, database_source)
@@ -155,13 +181,16 @@ pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
 }
 
 fn run_complete_taxonomy_download(args: DownloadArgs) -> anyhow::Result<()> {
-    use crate::download::DatabaseSource;
     use super::download_impl::run_database_download;
+    use crate::download::DatabaseSource;
     use colored::Colorize;
 
     println!();
     println!("{}  Complete Taxonomy Download", "▶".cyan().bold());
-    println!("{}  This will download all taxonomy components:", "ℹ".blue());
+    println!(
+        "{}  This will download all taxonomy components:",
+        "ℹ".blue()
+    );
     println!("    • NCBI Taxonomy (taxdump)");
     println!("    • Protein Accession to TaxID mapping");
     println!("    • Nucleotide Accession to TaxID mapping");
@@ -188,9 +217,9 @@ fn run_complete_taxonomy_download(args: DownloadArgs) -> anyhow::Result<()> {
                     database: Some(source_str.to_string()),
                     output: args.output.clone(),
                     taxonomy: args.taxonomy,
-                    complete: false,  // Don't recurse
+                    complete: false, // Don't recurse
                     resume: args.resume,
-                    interactive: false,  // Force non-interactive for batch
+                    interactive: false, // Force non-interactive for batch
                     skip_verify: args.skip_verify,
                     list_datasets: false,
                     json: args.json,
@@ -204,6 +233,10 @@ fn run_complete_taxonomy_download(args: DownloadArgs) -> anyhow::Result<()> {
                     reference_proteomes: false,
                     max_sequences: None,
                     description: None,
+                    at_time: args.at_time.clone(),
+                    sequence_version: args.sequence_version.clone(),
+                    taxonomy_version: args.taxonomy_version.clone(),
+                    show_versions: args.show_versions,
                 };
 
                 match run_database_download(component_args, database_source) {
@@ -218,7 +251,12 @@ fn run_complete_taxonomy_download(args: DownloadArgs) -> anyhow::Result<()> {
                 }
             }
             Err(e) => {
-                println!("{}  Failed to parse {}: {}", "✗".red().bold(), source_str, e);
+                println!(
+                    "{}  Failed to parse {}: {}",
+                    "✗".red().bold(),
+                    source_str,
+                    e
+                );
                 failed.push((name, e));
             }
         }
@@ -228,9 +266,15 @@ fn run_complete_taxonomy_download(args: DownloadArgs) -> anyhow::Result<()> {
     // Summary
     println!("{}", "═".repeat(60).dimmed());
     println!("{}  Complete Taxonomy Download Summary", "◆".cyan().bold());
-    println!("    • {} components downloaded successfully", success_count.to_string().green());
+    println!(
+        "    • {} components downloaded successfully",
+        success_count.to_string().green()
+    );
     if !failed.is_empty() {
-        println!("    • {} components failed:", failed.len().to_string().red());
+        println!(
+            "    • {} components failed:",
+            failed.len().to_string().red()
+        );
         for (name, err) in &failed {
             println!("      - {}: {}", name, err);
         }
@@ -245,9 +289,9 @@ fn run_complete_taxonomy_download(args: DownloadArgs) -> anyhow::Result<()> {
 }
 
 fn list_available_datasets() {
-    use comfy_table::{Table, Cell, Attribute, ContentArrangement, Color};
-    use comfy_table::presets::UTF8_FULL;
     use comfy_table::modifiers::UTF8_ROUND_CORNERS;
+    use comfy_table::presets::UTF8_FULL;
+    use comfy_table::{Attribute, Cell, Color, ContentArrangement, Table};
 
     let mut table = Table::new();
     table
@@ -256,10 +300,18 @@ fn list_available_datasets() {
         .set_content_arrangement(ContentArrangement::Dynamic);
 
     table.set_header(vec![
-        Cell::new("Database").add_attribute(Attribute::Bold).fg(Color::Green),
-        Cell::new("Dataset").add_attribute(Attribute::Bold).fg(Color::Green),
-        Cell::new("Description").add_attribute(Attribute::Bold).fg(Color::Green),
-        Cell::new("Typical Size").add_attribute(Attribute::Bold).fg(Color::Green),
+        Cell::new("Database")
+            .add_attribute(Attribute::Bold)
+            .fg(Color::Green),
+        Cell::new("Dataset")
+            .add_attribute(Attribute::Bold)
+            .fg(Color::Green),
+        Cell::new("Description")
+            .add_attribute(Attribute::Bold)
+            .fg(Color::Green),
+        Cell::new("Typical Size")
+            .add_attribute(Attribute::Bold)
+            .fg(Color::Green),
     ]);
 
     // UniProt datasets
@@ -346,25 +398,33 @@ fn list_available_datasets() {
 
     // Not yet implemented databases
     table.add_row(vec![
-        Cell::new("pdb").add_attribute(Attribute::Bold).fg(Color::DarkGrey),
+        Cell::new("pdb")
+            .add_attribute(Attribute::Bold)
+            .fg(Color::DarkGrey),
         Cell::new("(not implemented)").fg(Color::DarkGrey),
         Cell::new("Protein structure sequences").fg(Color::DarkGrey),
         Cell::new("").fg(Color::DarkGrey),
     ]);
     table.add_row(vec![
-        Cell::new("pfam").add_attribute(Attribute::Bold).fg(Color::DarkGrey),
+        Cell::new("pfam")
+            .add_attribute(Attribute::Bold)
+            .fg(Color::DarkGrey),
         Cell::new("(not implemented)").fg(Color::DarkGrey),
         Cell::new("Protein families").fg(Color::DarkGrey),
         Cell::new("").fg(Color::DarkGrey),
     ]);
     table.add_row(vec![
-        Cell::new("silva").add_attribute(Attribute::Bold).fg(Color::DarkGrey),
+        Cell::new("silva")
+            .add_attribute(Attribute::Bold)
+            .fg(Color::DarkGrey),
         Cell::new("(not implemented)").fg(Color::DarkGrey),
         Cell::new("Ribosomal RNA sequences").fg(Color::DarkGrey),
         Cell::new("").fg(Color::DarkGrey),
     ]);
     table.add_row(vec![
-        Cell::new("kegg").add_attribute(Attribute::Bold).fg(Color::DarkGrey),
+        Cell::new("kegg")
+            .add_attribute(Attribute::Bold)
+            .fg(Color::DarkGrey),
         Cell::new("(not implemented)").fg(Color::DarkGrey),
         Cell::new("Metabolic pathways").fg(Color::DarkGrey),
         Cell::new("").fg(Color::DarkGrey),
@@ -377,17 +437,18 @@ fn list_available_datasets() {
 }
 
 fn run_custom_download(args: DownloadArgs, db_name: String) -> anyhow::Result<()> {
-    use crate::bio::uniprot::CustomDatabaseProvider;
     use crate::bio::taxonomy::SequenceProvider;
+    use crate::bio::uniprot::CustomDatabaseProvider;
+    use crate::cli::output::{info, section_header, success};
     use crate::core::database_manager::DatabaseManager;
     use crate::download::DatabaseSource;
-    use crate::cli::output::{success, info, section_header};
 
     // Parse TaxIDs
     let taxids = if let Some(taxid_list_path) = &args.taxid_list {
         // Read from file
         let content = std::fs::read_to_string(taxid_list_path)?;
-        content.lines()
+        content
+            .lines()
             .filter_map(|line| {
                 let trimmed = line.trim();
                 if !trimmed.is_empty() && !trimmed.starts_with('#') {
@@ -399,7 +460,8 @@ fn run_custom_download(args: DownloadArgs, db_name: String) -> anyhow::Result<()
             .collect::<Vec<_>>()
     } else if let Some(taxids_str) = &args.taxids {
         // Parse comma-separated list
-        taxids_str.split(',')
+        taxids_str
+            .split(',')
             .filter_map(|s| s.trim().parse::<u32>().ok())
             .collect()
     } else {
@@ -428,16 +490,19 @@ fn run_custom_download(args: DownloadArgs, db_name: String) -> anyhow::Result<()
     info("Processing into CASG chunks...");
     manager.chunk_sequences_direct(sequences, &database_source)?;
 
-    success(&format!("Successfully created custom database: custom/{}", db_name));
+    success(&format!(
+        "Successfully created custom database: custom/{}",
+        db_name
+    ));
     Ok(())
 }
 
 fn run_interactive_download(args: DownloadArgs) -> anyhow::Result<()> {
-    use dialoguer::{Select, theme::ColorfulTheme};
     use crate::cli::interactive::print_header;
-    
+    use dialoguer::{theme::ColorfulTheme, Select};
+
     print_header("Database Download Manager");
-    
+
     let databases = vec![
         "UniProt - Protein sequences",
         "NCBI - Comprehensive sequence databases",
@@ -446,32 +511,40 @@ fn run_interactive_download(args: DownloadArgs) -> anyhow::Result<()> {
         "Silva - Ribosomal RNA sequences",
         "KEGG - Metabolic pathways",
     ];
-    
+
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Select database source")
         .items(&databases)
         .default(0)
         .interact()?;
-    
+
     match selection {
         0 => download_uniprot_interactive(&args.output)?,
         1 => download_ncbi_interactive(&args.output)?,
         _ => anyhow::bail!("Database not yet implemented"),
     }
-    
+
     Ok(())
 }
 
 fn download_uniprot_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
-    use dialoguer::{Select, Confirm, theme::ColorfulTheme};
     use crate::cli::interactive::{show_info, show_success};
+    use dialoguer::{theme::ColorfulTheme, Confirm, Select};
 
     let datasets = vec![
-        ("swissprot", "SwissProt", "Manually reviewed sequences (~570K, ~200MB)"),
+        (
+            "swissprot",
+            "SwissProt",
+            "Manually reviewed sequences (~570K, ~200MB)",
+        ),
         ("trembl", "TrEMBL", "Unreviewed sequences (~250M, ~100GB)"),
         ("uniref90", "UniRef90", "Clustered at 90% identity (~100M)"),
         ("uniref50", "UniRef50", "Clustered at 50% identity (~50M)"),
-        ("uniref100", "UniRef100", "Clustered at 100% identity (~300M)"),
+        (
+            "uniref100",
+            "UniRef100",
+            "Clustered at 100% identity (~300M)",
+        ),
     ];
 
     let items: Vec<String> = datasets
@@ -518,11 +591,15 @@ fn download_uniprot_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
         reference_proteomes: false,
         max_sequences: None,
         description: None,
+        at_time: None,
+        sequence_version: None,
+        taxonomy_version: None,
+        show_versions: false,
     };
 
     // Print header and CASG info
-    use crate::cli::output::section_header;
     use crate::cli::formatter::info_box;
+    use crate::cli::output::section_header;
     use colored::Colorize;
 
     println!();
@@ -530,17 +607,20 @@ fn download_uniprot_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
     println!("{}", "═".repeat(80).dimmed());
     println!();
 
-    info_box("Content-Addressed Storage (CASG)", &[
-        "Automatic deduplication",
-        "Incremental updates",
-        "Cryptographic verification",
-        "Bandwidth-efficient downloads"
-    ]);
+    info_box(
+        "Content-Addressed Storage (CASG)",
+        &[
+            "Automatic deduplication",
+            "Incremental updates",
+            "Cryptographic verification",
+            "Bandwidth-efficient downloads",
+        ],
+    );
     println!();
 
     // Use the unified CASG download
-    use crate::download::DatabaseSource;
     use super::download_impl::run_database_download;
+    use crate::download::DatabaseSource;
 
     let database_source = DatabaseSource::from_string(&format!("uniprot/{}", dataset_id))?;
     run_database_download(args, database_source)?;
@@ -551,17 +631,33 @@ fn download_uniprot_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
 }
 
 fn download_ncbi_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
-    use dialoguer::{Select, theme::ColorfulTheme};
     use crate::cli::interactive::{show_info, show_success};
+    use dialoguer::{theme::ColorfulTheme, Select};
 
     let datasets = vec![
         ("nr", "NR", "Non-redundant protein sequences (~90GB)"),
         ("nt", "NT", "Nucleotide sequences (~70GB)"),
-        ("refseq-protein", "RefSeq Proteins", "RefSeq protein database (~30GB)"),
-        ("refseq-genomic", "RefSeq Genomes", "RefSeq complete genomes (~150GB)"),
+        (
+            "refseq-protein",
+            "RefSeq Proteins",
+            "RefSeq protein database (~30GB)",
+        ),
+        (
+            "refseq-genomic",
+            "RefSeq Genomes",
+            "RefSeq complete genomes (~150GB)",
+        ),
         ("taxonomy", "Taxonomy", "NCBI taxonomy dump (~50MB)"),
-        ("prot-accession2taxid", "Protein Accession2TaxId", "Protein accession mappings (~15GB)"),
-        ("nucl-accession2taxid", "Nucleotide Accession2TaxId", "Nucleotide accession mappings (~8GB)"),
+        (
+            "prot-accession2taxid",
+            "Protein Accession2TaxId",
+            "Protein accession mappings (~15GB)",
+        ),
+        (
+            "nucl-accession2taxid",
+            "Nucleotide Accession2TaxId",
+            "Nucleotide accession mappings (~8GB)",
+        ),
     ];
 
     let items: Vec<String> = datasets
@@ -603,11 +699,15 @@ fn download_ncbi_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
         reference_proteomes: false,
         max_sequences: None,
         description: None,
+        at_time: None,
+        sequence_version: None,
+        taxonomy_version: None,
+        show_versions: false,
     };
 
     // Print header and CASG info
-    use crate::cli::output::section_header;
     use crate::cli::formatter::info_box;
+    use crate::cli::output::section_header;
     use colored::Colorize;
 
     println!();
@@ -615,17 +715,20 @@ fn download_ncbi_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
     println!("{}", "═".repeat(80).dimmed());
     println!();
 
-    info_box("Content-Addressed Storage (CASG)", &[
-        "Automatic deduplication",
-        "Incremental updates",
-        "Cryptographic verification",
-        "Bandwidth-efficient downloads"
-    ]);
+    info_box(
+        "Content-Addressed Storage (CASG)",
+        &[
+            "Automatic deduplication",
+            "Incremental updates",
+            "Cryptographic verification",
+            "Bandwidth-efficient downloads",
+        ],
+    );
     println!();
 
     // Use the unified CASG download
-    use crate::download::DatabaseSource;
     use super::download_impl::run_database_download;
+    use crate::download::DatabaseSource;
 
     let database_source = DatabaseSource::from_string(&format!("ncbi/{}", dataset_id))?;
     run_database_download(args, database_source)?;

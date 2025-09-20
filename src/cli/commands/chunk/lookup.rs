@@ -1,14 +1,14 @@
+use crate::casg::SHA256Hash;
+use crate::cli::output::*;
 use anyhow::{Context, Result};
 use clap::Args;
 use std::path::PathBuf;
-use crate::casg::SHA256Hash;
-use crate::cli::output::*;
 
 /// Trait for different lookup strategies
 pub trait ChunkLookupStrategy {
     /// Perform the lookup and return matching chunk hashes
     fn lookup(&self, index: &ChunkIndex) -> Result<Vec<ChunkMatch>>;
-    
+
     /// Get a description of this lookup strategy for display
     fn description(&self) -> String;
 }
@@ -17,10 +17,10 @@ pub trait ChunkLookupStrategy {
 pub trait ChunkDisplay {
     /// Display chunk information in human-readable format
     fn display(&self, detailed: bool);
-    
+
     /// Export as JSON
     fn to_json(&self) -> serde_json::Value;
-    
+
     /// Export as CSV row
     fn to_csv_row(&self) -> Vec<String>;
 }
@@ -30,43 +30,43 @@ pub struct LookupArgs {
     /// Chunk hash (SHA256) to look up
     #[arg(long, value_name = "HASH")]
     pub hash: Option<String>,
-    
+
     /// Taxonomy ID to search for
     #[arg(long, value_name = "TAXID")]
     pub taxid: Option<u32>,
-    
+
     /// Accession number to search for
     #[arg(long, value_name = "ACCESSION")]
     pub accession: Option<String>,
-    
+
     /// Organism name to search for
     #[arg(long, value_name = "NAME")]
     pub organism: Option<String>,
-    
+
     /// Database to search in (e.g., "uniprot/swissprot")
     #[arg(long, value_name = "DATABASE")]
     pub database: Option<String>,
-    
+
     /// Minimum number of sequences in chunk
     #[arg(long)]
     pub min_sequences: Option<usize>,
-    
+
     /// Maximum chunk size in MB
     #[arg(long)]
     pub max_size: Option<u64>,
-    
+
     /// Output format (text, json, csv)
     #[arg(long, default_value = "text")]
     pub format: OutputFormat,
-    
+
     /// Show detailed information
     #[arg(long)]
     pub detailed: bool,
-    
+
     /// Show statistics about all chunks
     #[arg(long)]
     pub stats: bool,
-    
+
     /// Export matching chunks as manifest
     #[arg(long)]
     pub export_manifest: Option<PathBuf>,
@@ -137,7 +137,7 @@ impl ChunkLookupStrategy for HashLookup {
             Ok(vec![])
         }
     }
-    
+
     fn description(&self) -> String {
         format!("Looking up chunk by hash: {}", self.0)
     }
@@ -146,16 +146,18 @@ impl ChunkLookupStrategy for HashLookup {
 impl ChunkLookupStrategy for TaxidLookup {
     fn lookup(&self, index: &ChunkIndex) -> Result<Vec<ChunkMatch>> {
         let mut matches = Vec::new();
-        
+
         if let Some(hashes) = index.by_taxid.get(&self.0) {
             for hash in hashes {
                 if let Some(chunk) = index.by_hash.get(hash) {
                     // Calculate relevance based on how much of the chunk is this taxid
-                    let taxid_percentage = chunk.taxonomy.iter()
+                    let taxid_percentage = chunk
+                        .taxonomy
+                        .iter()
                         .find(|t| t.taxid == self.0)
                         .map(|t| t.percentage)
                         .unwrap_or(0.0);
-                    
+
                     matches.push(ChunkMatch {
                         chunk: chunk.clone(),
                         match_reason: format!("Contains TaxID {}", self.0),
@@ -164,12 +166,12 @@ impl ChunkLookupStrategy for TaxidLookup {
                 }
             }
         }
-        
+
         // Sort by relevance
         matches.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap());
         Ok(matches)
     }
-    
+
     fn description(&self) -> String {
         format!("Looking up chunks containing TaxID {}", self.0)
     }
@@ -254,10 +256,29 @@ impl ChunkDisplay for ChunkInfo {
         tree_item(false, "Hash", Some(&self.hash.to_string()));
         tree_item(false, "Database", Some(&self.database));
         tree_item(false, "Version", Some(&self.version));
-        tree_item(false, "Sequences", Some(&format_number(self.sequence_count)));
-        tree_item(false, "Size", Some(&format!("{:.1} MB", self.size as f64 / 1_048_576.0)));
-        tree_item(false, "Compressed", Some(&format!("{:.1} MB", self.compressed_size as f64 / 1_048_576.0)));
-        tree_item(false, "Compression Ratio", Some(&format!("{:.2}x", self.compression_ratio)));
+        tree_item(
+            false,
+            "Sequences",
+            Some(&format_number(self.sequence_count)),
+        );
+        tree_item(
+            false,
+            "Size",
+            Some(&format!("{:.1} MB", self.size as f64 / 1_048_576.0)),
+        );
+        tree_item(
+            false,
+            "Compressed",
+            Some(&format!(
+                "{:.1} MB",
+                self.compressed_size as f64 / 1_048_576.0
+            )),
+        );
+        tree_item(
+            false,
+            "Compression Ratio",
+            Some(&format!("{:.2}x", self.compression_ratio)),
+        );
 
         if detailed {
             subsection_header("Taxonomic Distribution");
@@ -265,26 +286,29 @@ impl ChunkDisplay for ChunkInfo {
                 tree_item(
                     false,
                     &format!("{} (TaxID: {})", tax.name, tax.taxid),
-                    Some(&format!("{} sequences ({:.1}%)", tax.count, tax.percentage))
+                    Some(&format!("{} sequences ({:.1}%)", tax.count, tax.percentage)),
                 );
             }
-            
+
             if !self.reference_sequences.is_empty() {
                 subsection_header("Representative Sequences");
                 for (i, seq) in self.reference_sequences.iter().take(5).enumerate() {
                     tree_item(i == self.reference_sequences.len() - 1, seq, None);
                 }
                 if self.reference_sequences.len() > 5 {
-                    info(&format!("... and {} more", self.reference_sequences.len() - 5));
+                    info(&format!(
+                        "... and {} more",
+                        self.reference_sequences.len() - 5
+                    ));
                 }
             }
         }
     }
-    
+
     fn to_json(&self) -> serde_json::Value {
         serde_json::to_value(self).unwrap()
     }
-    
+
     fn to_csv_row(&self) -> Vec<String> {
         vec![
             self.hash.to_string(),
@@ -302,9 +326,13 @@ impl ChunkDisplay for ChunkMatch {
     fn display(&self, detailed: bool) {
         self.chunk.display(detailed);
         tree_item(false, "Match Reason", Some(&self.match_reason));
-        tree_item(false, "Relevance", Some(&format!("{:.0}%", self.relevance_score * 100.0)));
+        tree_item(
+            false,
+            "Relevance",
+            Some(&format!("{:.0}%", self.relevance_score * 100.0)),
+        );
     }
-    
+
     fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "chunk": self.chunk.to_json(),
@@ -312,7 +340,7 @@ impl ChunkDisplay for ChunkMatch {
             "relevance_score": self.relevance_score,
         })
     }
-    
+
     fn to_csv_row(&self) -> Vec<String> {
         let mut row = self.chunk.to_csv_row();
         row.push(self.match_reason.clone());
@@ -340,17 +368,16 @@ pub fn run(args: LookupArgs) -> Result<()> {
     } else {
         build_chunk_index()?
     };
-    
+
     // Show statistics if requested
     if args.stats {
         show_chunk_statistics(&index);
         return Ok(());
     }
-    
+
     // Determine lookup strategy based on arguments
     let strategy: Box<dyn ChunkLookupStrategy> = if let Some(hash_str) = &args.hash {
-        let hash = SHA256Hash::from_hex(hash_str)
-            .context("Invalid SHA256 hash")?;
+        let hash = SHA256Hash::from_hex(hash_str).context("Invalid SHA256 hash")?;
         Box::new(HashLookup(hash))
     } else if let Some(taxid) = args.taxid {
         Box::new(TaxidLookup(taxid))
@@ -358,34 +385,34 @@ pub fn run(args: LookupArgs) -> Result<()> {
         Box::new(AccessionLookup(accession.clone()))
     } else if let Some(organism) = &args.organism {
         Box::new(OrganismLookup(organism.clone()))
-    } else if database_filter.is_some() {
-        Box::new(DatabaseLookup(database_filter.unwrap()))
+    } else if let Some(db_filter) = database_filter {
+        Box::new(DatabaseLookup(db_filter))
     } else {
         anyhow::bail!("Please specify a lookup criterion (--hash, --taxid, --accession, --organism, or --database)");
     };
-    
+
     // Perform lookup
     info(&strategy.description());
     let mut matches = strategy.lookup(&index)?;
-    
+
     // Apply filters
     if let Some(min_seq) = args.min_sequences {
         matches.retain(|m| m.chunk.sequence_count >= min_seq);
     }
-    
+
     if let Some(max_size) = args.max_size {
         let max_bytes = max_size * 1_048_576;
         matches.retain(|m| m.chunk.size <= max_bytes);
     }
-    
+
     // Display results
     if matches.is_empty() {
         warning("No matching chunks found");
         return Ok(());
     }
-    
+
     success(&format!("Found {} matching chunk(s)", matches.len()));
-    
+
     match args.format {
         OutputFormat::Text => {
             for (i, m) in matches.iter().enumerate() {
@@ -415,25 +442,30 @@ pub fn run(args: LookupArgs) -> Result<()> {
             }
         }
     }
-    
+
     // Export manifest if requested
     if let Some(manifest_path) = args.export_manifest {
         export_chunk_manifest(&matches, &manifest_path)?;
         success(&format!("Exported manifest to {}", manifest_path.display()));
     }
-    
+
     Ok(())
 }
 
-fn build_chunk_index_for_version(database: Option<&str>, version: Option<&str>) -> Result<ChunkIndex> {
-    use crate::core::paths;
+fn build_chunk_index_for_version(
+    database: Option<&str>,
+    version: Option<&str>,
+) -> Result<ChunkIndex> {
     use crate::casg::Manifest;
+    use crate::core::paths;
     use glob::glob;
 
     let databases_dir = paths::talaria_databases_dir();
-    action(&format!("Building chunk index for {}@{}...",
+    action(&format!(
+        "Building chunk index for {}@{}...",
         database.unwrap_or("*"),
-        version.unwrap_or("*")));
+        version.unwrap_or("*")
+    ));
 
     let mut index = ChunkIndex {
         by_hash: std::collections::HashMap::new(),
@@ -448,18 +480,36 @@ fn build_chunk_index_for_version(database: Option<&str>, version: Option<&str>) 
         let parts: Vec<&str> = db.split('/').collect();
         if parts.len() == 2 {
             vec![
-                format!("{}/versions/{}/{}/{}/manifest.tal",
-                    databases_dir.display(), parts[0], parts[1], ver),
-                format!("{}/versions/{}/{}/{}/manifest.json",
-                    databases_dir.display(), parts[0], parts[1], ver),
+                format!(
+                    "{}/versions/{}/{}/{}/manifest.tal",
+                    databases_dir.display(),
+                    parts[0],
+                    parts[1],
+                    ver
+                ),
+                format!(
+                    "{}/versions/{}/{}/{}/manifest.json",
+                    databases_dir.display(),
+                    parts[0],
+                    parts[1],
+                    ver
+                ),
             ]
         } else {
             // Try to find it in any provider
             vec![
-                format!("{}/versions/*/{}/{}/manifest.tal",
-                    databases_dir.display(), db, ver),
-                format!("{}/versions/*/{}/{}/manifest.json",
-                    databases_dir.display(), db, ver),
+                format!(
+                    "{}/versions/*/{}/{}/manifest.tal",
+                    databases_dir.display(),
+                    db,
+                    ver
+                ),
+                format!(
+                    "{}/versions/*/{}/{}/manifest.json",
+                    databases_dir.display(),
+                    db,
+                    ver
+                ),
             ]
         }
     } else {
@@ -469,10 +519,9 @@ fn build_chunk_index_for_version(database: Option<&str>, version: Option<&str>) 
 
     for pattern in &patterns {
         if let Ok(paths) = glob(pattern) {
-            for entry in paths {
-                if let Ok(path) = entry {
-                    // Try to load the manifest
-                    match Manifest::load_file(&path) {
+            for path in paths.flatten() {
+                // Try to load the manifest
+                match Manifest::load_file(&path) {
                         Ok(manifest) => {
                             // Get database name from path
                             let database_name = extract_database_name(&path);
@@ -488,8 +537,13 @@ fn build_chunk_index_for_version(database: Option<&str>, version: Option<&str>) 
                                         taxonomy: extract_taxonomy_info(chunk_meta),
                                         sequence_count: chunk_meta.sequence_count,
                                         size: chunk_meta.size as u64,
-                                        compressed_size: chunk_meta.compressed_size.unwrap_or(chunk_meta.size) as u64,
-                                        compression_ratio: if let Some(compressed) = chunk_meta.compressed_size {
+                                        compressed_size: chunk_meta
+                                            .compressed_size
+                                            .unwrap_or(chunk_meta.size)
+                                            as u64,
+                                        compression_ratio: if let Some(compressed) =
+                                            chunk_meta.compressed_size
+                                        {
                                             chunk_meta.size as f32 / compressed as f32
                                         } else {
                                             1.0
@@ -503,16 +557,18 @@ fn build_chunk_index_for_version(database: Option<&str>, version: Option<&str>) 
                                     index.by_hash.insert(hash.clone(), chunk_info.clone());
 
                                     // Index by database
-                                    index.by_database
+                                    index
+                                        .by_database
                                         .entry(database_name.clone())
-                                        .or_insert_with(std::collections::HashSet::new)
+                                        .or_default()
                                         .insert(hash.clone());
 
                                     // Index by taxonomy
                                     for tax_info in &chunk_info.taxonomy {
-                                        index.by_taxid
+                                        index
+                                            .by_taxid
                                             .entry(tax_info.taxid)
-                                            .or_insert_with(Vec::new)
+                                            .or_default()
                                             .push(hash.clone());
                                     }
 
@@ -525,7 +581,6 @@ fn build_chunk_index_for_version(database: Option<&str>, version: Option<&str>) 
                             continue;
                         }
                     }
-                }
             }
         }
     }
@@ -534,8 +589,8 @@ fn build_chunk_index_for_version(database: Option<&str>, version: Option<&str>) 
 }
 
 fn build_chunk_index() -> Result<ChunkIndex> {
-    use crate::core::paths;
     use crate::casg::Manifest;
+    use crate::core::paths;
     use glob::glob;
 
     let databases_dir = paths::talaria_databases_dir();
@@ -550,18 +605,23 @@ fn build_chunk_index() -> Result<ChunkIndex> {
 
     // Find manifest files only in current versions
     // Pattern for versioned databases: versions/{provider}/{db}/current/manifest.*
-    let pattern1 = format!("{}/versions/*/*/current/manifest.tal", databases_dir.display());
-    let pattern2 = format!("{}/versions/*/*/current/manifest.json", databases_dir.display());
+    let pattern1 = format!(
+        "{}/versions/*/*/current/manifest.tal",
+        databases_dir.display()
+    );
+    let pattern2 = format!(
+        "{}/versions/*/*/current/manifest.json",
+        databases_dir.display()
+    );
     // Also check taxonomy directory (no versioning)
     let pattern3 = format!("{}/taxonomy/*/manifest.tal", databases_dir.display());
     let pattern4 = format!("{}/taxonomy/*/manifest.json", databases_dir.display());
 
     for pattern in &[pattern1, pattern2, pattern3, pattern4] {
         if let Ok(paths) = glob(pattern) {
-            for entry in paths {
-                if let Ok(path) = entry {
-                    // Try to load the manifest
-                    match Manifest::load_file(&path) {
+            for path in paths.flatten() {
+                // Try to load the manifest
+                match Manifest::load_file(&path) {
                         Ok(manifest) => {
                             // Get database name from path
                             let database_name = extract_database_name(&path);
@@ -577,8 +637,13 @@ fn build_chunk_index() -> Result<ChunkIndex> {
                                         taxonomy: extract_taxonomy_info(chunk_meta),
                                         sequence_count: chunk_meta.sequence_count,
                                         size: chunk_meta.size as u64,
-                                        compressed_size: chunk_meta.compressed_size.unwrap_or(chunk_meta.size) as u64,
-                                        compression_ratio: if let Some(compressed) = chunk_meta.compressed_size {
+                                        compressed_size: chunk_meta
+                                            .compressed_size
+                                            .unwrap_or(chunk_meta.size)
+                                            as u64,
+                                        compression_ratio: if let Some(compressed) =
+                                            chunk_meta.compressed_size
+                                        {
                                             chunk_meta.size as f32 / compressed as f32
                                         } else {
                                             1.0
@@ -592,16 +657,18 @@ fn build_chunk_index() -> Result<ChunkIndex> {
                                     index.by_hash.insert(hash.clone(), chunk_info.clone());
 
                                     // Index by database (use HashSet to avoid duplicates)
-                                    index.by_database
+                                    index
+                                        .by_database
                                         .entry(database_name.clone())
-                                        .or_insert_with(std::collections::HashSet::new)
+                                        .or_default()
                                         .insert(hash.clone());
 
                                     // Index by taxonomy
                                     for tax_info in &chunk_info.taxonomy {
-                                        index.by_taxid
+                                        index
+                                            .by_taxid
                                             .entry(tax_info.taxid)
-                                            .or_insert_with(Vec::new)
+                                            .or_default()
                                             .push(hash.clone());
                                     }
 
@@ -614,7 +681,6 @@ fn build_chunk_index() -> Result<ChunkIndex> {
                             continue;
                         }
                     }
-                }
             }
         }
     }
@@ -633,9 +699,10 @@ fn extract_database_name(path: &std::path::Path) -> String {
                 if let Some(db_type) = components[i + 1].as_os_str().to_str() {
                     if db_type == "versions" && i + 3 < components.len() {
                         // databases/versions/{provider}/{database}
-                        if let (Some(provider), Some(db_name)) =
-                            (components[i + 2].as_os_str().to_str(),
-                             components[i + 3].as_os_str().to_str()) {
+                        if let (Some(provider), Some(db_name)) = (
+                            components[i + 2].as_os_str().to_str(),
+                            components[i + 3].as_os_str().to_str(),
+                        ) {
                             return format!("{}/{}", provider, db_name);
                         }
                     } else if db_type == "taxonomy" {
@@ -679,7 +746,7 @@ fn extract_taxonomy_info(chunk_meta: &crate::casg::ChunkMetadata) -> Vec<Taxonom
 
 fn show_chunk_statistics(index: &ChunkIndex) {
     section_header("Chunk Repository Statistics");
-    
+
     let total_chunks = index.by_hash.len();
     let total_size: u64 = index.by_hash.values().map(|c| c.size).sum();
     let total_compressed: u64 = index.by_hash.values().map(|c| c.compressed_size).sum();
@@ -688,12 +755,27 @@ fn show_chunk_statistics(index: &ChunkIndex) {
     } else {
         0.0
     };
-    
+
     tree_item(false, "Total chunks", Some(&format_number(total_chunks)));
-    tree_item(false, "Total size", Some(&format!("{:.1} GB", total_size as f64 / 1_073_741_824.0)));
-    tree_item(false, "Compressed size", Some(&format!("{:.1} GB", total_compressed as f64 / 1_073_741_824.0)));
-    tree_item(false, "Average compression", Some(&format!("{:.2}x", avg_compression)));
-    
+    tree_item(
+        false,
+        "Total size",
+        Some(&format!("{:.1} GB", total_size as f64 / 1_073_741_824.0)),
+    );
+    tree_item(
+        false,
+        "Compressed size",
+        Some(&format!(
+            "{:.1} GB",
+            total_compressed as f64 / 1_073_741_824.0
+        )),
+    );
+    tree_item(
+        false,
+        "Average compression",
+        Some(&format!("{:.2}x", avg_compression)),
+    );
+
     // Group by database
     subsection_header("Chunks by Database");
     for (db, chunks) in &index.by_database {
@@ -703,16 +785,14 @@ fn show_chunk_statistics(index: &ChunkIndex) {
 
 fn export_chunk_manifest(matches: &[ChunkMatch], path: &PathBuf) -> Result<()> {
     // Create a minimal manifest listing just these chunks
-    let chunk_hashes: Vec<String> = matches.iter()
-        .map(|m| m.chunk.hash.to_string())
-        .collect();
-    
+    let chunk_hashes: Vec<String> = matches.iter().map(|m| m.chunk.hash.to_string()).collect();
+
     let manifest = serde_json::json!({
         "version": "1.0",
         "chunks": chunk_hashes,
         "created_at": chrono::Utc::now().to_rfc3339(),
     });
-    
+
     std::fs::write(path, serde_json::to_string_pretty(&manifest)?)?;
     Ok(())
 }

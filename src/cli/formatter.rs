@@ -1,8 +1,7 @@
 /// Beautiful CLI output formatting module
 /// Provides consistent, modern CLI output styling similar to Claude Code and other modern tools
-
 use colored::*;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle, ProgressDrawTarget};
+use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -127,7 +126,10 @@ impl TaskList {
             task.status = status;
 
             // Clear spinner if task is complete or failed
-            if matches!(status, TaskStatus::Complete | TaskStatus::Failed | TaskStatus::Skipped) {
+            if matches!(
+                status,
+                TaskStatus::Complete | TaskStatus::Failed | TaskStatus::Skipped
+            ) {
                 if let Some(ref spinner) = self.current_spinner {
                     spinner.finish_and_clear();
                 }
@@ -172,7 +174,7 @@ impl TaskList {
             ProgressStyle::default_spinner()
                 .template("{spinner:.cyan} {msg}")
                 .unwrap()
-                .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+                .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
         );
         spinner.set_message(message.to_string());
         spinner.enable_steady_tick(Duration::from_millis(100));
@@ -235,7 +237,8 @@ impl TaskList {
             };
 
             if let Some(ref msg) = task.message {
-                println!("  {} {} - {}",
+                println!(
+                    "  {} {} - {}",
                     task.status.colored_symbol(),
                     desc,
                     msg.dimmed()
@@ -300,7 +303,11 @@ pub fn info_box(title: &str, items: &[&str]) {
 
 /// Print a warning message
 pub fn print_warning(message: &str) {
-    println!("\n{} {}", "⚠".yellow(), format!("Warning: {}", message).yellow());
+    println!(
+        "\n{} {}",
+        "⚠".yellow(),
+        format!("Warning: {}", message).yellow()
+    );
 }
 
 /// Print an error message
@@ -354,9 +361,9 @@ pub fn create_spinner_style() -> ProgressStyle {
 
 /// Print a statistics table using comfy_table
 pub fn print_stats_table(title: &str, stats: Vec<(&str, String)>) {
-    use comfy_table::{Table, Cell, Attribute, ContentArrangement, Color as TableColor};
-    use comfy_table::presets::UTF8_FULL;
     use comfy_table::modifiers::UTF8_ROUND_CORNERS;
+    use comfy_table::presets::UTF8_FULL;
+    use comfy_table::{Attribute, Cell, Color as TableColor, ContentArrangement, Table};
 
     let mut table = Table::new();
     table
@@ -366,7 +373,9 @@ pub fn print_stats_table(title: &str, stats: Vec<(&str, String)>) {
 
     // Add title as header
     table.set_header(vec![
-        Cell::new(title).add_attribute(Attribute::Bold).fg(TableColor::Cyan),
+        Cell::new(title)
+            .add_attribute(Attribute::Bold)
+            .fg(TableColor::Cyan),
         Cell::new("").add_attribute(Attribute::Bold),
     ]);
 
@@ -396,7 +405,8 @@ pub fn format_bytes(bytes: u64) -> String {
 
 /// Check if colors should be disabled
 pub fn colors_enabled() -> bool {
-    std::env::var("NO_COLOR").is_err() && std::env::var("CLICOLOR").unwrap_or_else(|_| "1".to_string()) != "0"
+    std::env::var("NO_COLOR").is_err()
+        && std::env::var("CLICOLOR").unwrap_or_else(|_| "1".to_string()) != "0"
 }
 
 /// Print a structured section with proper formatting

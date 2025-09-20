@@ -1,12 +1,11 @@
+use crate::casg::processing_state::{OperationType, ProcessingState, SourceInfo};
+use crate::casg::reduction::ReductionManifest;
+use crate::casg::types::*;
 /// Storage trait hierarchy for Talaria
 ///
 /// Provides abstractions for different storage backends including
 /// local filesystem, cloud storage, and content-addressed storage.
-
 use anyhow::Result;
-use crate::casg::types::*;
-use crate::casg::reduction::ReductionManifest;
-use crate::casg::processing_state::{ProcessingState, OperationType, SourceInfo};
 
 /// Basic chunk storage operations
 pub trait ChunkStorage: Send + Sync {
@@ -47,7 +46,10 @@ pub trait DeltaStorage: ChunkStorage {
     fn get_deltas_for_reference(&self, reference_hash: &SHA256Hash) -> Result<Vec<SHA256Hash>>;
 
     /// Find delta chunks for a reference
-    fn find_delta_chunks_for_reference(&self, reference_hash: &SHA256Hash) -> Result<Vec<SHA256Hash>>;
+    fn find_delta_chunks_for_reference(
+        &self,
+        reference_hash: &SHA256Hash,
+    ) -> Result<Vec<SHA256Hash>>;
 
     /// Get chunk type for a hash
     fn get_chunk_type(&self, hash: &SHA256Hash) -> Result<ChunkType>;

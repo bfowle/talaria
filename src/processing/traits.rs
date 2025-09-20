@@ -1,10 +1,9 @@
+use crate::bio::sequence::Sequence;
 /// Trait definitions for sequence processing pipelines
 ///
 /// Provides abstractions for various sequence processing operations
 /// including filtering, transformation, and enrichment.
-
 use anyhow::Result;
-use crate::bio::sequence::Sequence;
 use std::collections::HashMap;
 
 /// Common interface for sequence processors
@@ -99,7 +98,11 @@ pub trait ProcessingPipeline: Send + Sync {
     fn process(&self, sequences: &mut [Sequence]) -> Result<ProcessingResult>;
 
     /// Process sequences in batches
-    fn process_batch(&self, sequences: &mut [Sequence], batch_size: usize) -> Result<ProcessingResult>;
+    fn process_batch(
+        &self,
+        sequences: &mut [Sequence],
+        batch_size: usize,
+    ) -> Result<ProcessingResult>;
 
     /// Get all processors
     fn get_processors(&self) -> &[Box<dyn SequenceProcessor>];
@@ -222,13 +225,11 @@ impl std::fmt::Debug for TransformOperation {
 
 impl PartialEq for TransformOperation {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (TransformOperation::Uppercase, TransformOperation::Uppercase) => true,
-            (TransformOperation::Lowercase, TransformOperation::Lowercase) => true,
-            (TransformOperation::Reverse, TransformOperation::Reverse) => true,
-            (TransformOperation::Complement, TransformOperation::Complement) => true,
-            _ => false,
-        }
+        matches!((self, other),
+            (TransformOperation::Uppercase, TransformOperation::Uppercase)
+            | (TransformOperation::Lowercase, TransformOperation::Lowercase)
+            | (TransformOperation::Reverse, TransformOperation::Reverse)
+            | (TransformOperation::Complement, TransformOperation::Complement))
     }
 }
 
@@ -253,7 +254,10 @@ pub struct TransformResult {
 
 #[derive(Debug, Clone)]
 pub enum TransformChange {
-    SequenceModified { old_length: usize, new_length: usize },
+    SequenceModified {
+        old_length: usize,
+        new_length: usize,
+    },
     HeaderModified(String),
     MetadataAdded(String, String),
 }

@@ -1,9 +1,9 @@
 use clap::Args;
-use std::path::PathBuf;
+use flate2::read::GzDecoder;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use flate2::read::GzDecoder;
+use std::path::PathBuf;
 // use crate::cli::output::*;  // TODO: Remove if not needed
 
 /// Magic bytes for Talaria manifest format
@@ -51,13 +51,16 @@ pub struct AddArgs {
 }
 
 pub fn run(args: AddArgs) -> anyhow::Result<()> {
-    use crate::core::database_manager::DatabaseManager;
-    use crate::casg::chunker::TaxonomicChunker;
-    use crate::casg::types::{ChunkingStrategy, ChunkMetadata, TemporalManifest, SHA256Hash, BiTemporalCoordinate, SerializedMerkleTree};
-    use crate::casg::merkle::MerkleDAG;
     use crate::bio::fasta::parse_fasta;
-    use crate::utils::progress::create_progress_bar;
+    use crate::casg::chunker::TaxonomicChunker;
+    use crate::casg::merkle::MerkleDAG;
+    use crate::casg::types::{
+        BiTemporalCoordinate, ChunkMetadata, ChunkingStrategy, SHA256Hash, SerializedMerkleTree,
+        TemporalManifest,
+    };
     use crate::cli::output::*;
+    use crate::core::database_manager::DatabaseManager;
+    use crate::utils::progress::create_progress_bar;
     use chrono::Utc;
 
     // Validate input file
@@ -66,11 +69,16 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     }
 
     // Determine database name
-    let db_name = args.name.clone().or_else(|| {
-        args.input.file_stem()
-            .and_then(|s| s.to_str())
-            .map(|s| s.to_string())
-    }).ok_or_else(|| anyhow::anyhow!("Could not determine database name"))?;
+    let db_name = args
+        .name
+        .clone()
+        .or_else(|| {
+            args.input
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_string())
+        })
+        .ok_or_else(|| anyhow::anyhow!("Could not determine database name"))?;
 
     let dataset = args.dataset.clone().unwrap_or_else(|| db_name.clone());
 
@@ -81,9 +89,10 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     let manager = DatabaseManager::new(Some(base_path.to_string_lossy().to_string()))?;
 
     // Generate version timestamp (UTC for consistency)
-    let version = args.version.clone().unwrap_or_else(|| {
-        crate::core::paths::generate_utc_timestamp()
-    });
+    let version = args
+        .version
+        .clone()
+        .unwrap_or_else(|| crate::core::paths::generate_utc_timestamp());
 
     // Check if database already exists
     let db_base = base_path.join("versions").join(&args.source).join(&dataset);
@@ -106,7 +115,11 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     action(&format!("Reading FASTA file: {:?}", args.input));
     let sequences = parse_fasta(&args.input)?;
     let sequence_count = sequences.len();
-    tree_item(false, "Sequences read", Some(&format_number(sequence_count)));
+    tree_item(
+        false,
+        "Sequences read",
+        Some(&format_number(sequence_count)),
+    );
 
     // Create chunker with default strategy (same as database download)
     // This ensures consistency across all database operations
@@ -128,9 +141,17 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     let taxonomy_map = load_taxonomy_mappings()?;
     if !taxonomy_map.is_empty() {
         chunker.load_taxonomy_mapping(taxonomy_map.clone());
-        tree_item(false, "Accession mappings loaded", Some(&format_number(taxonomy_map.len())));
+        tree_item(
+            false,
+            "Accession mappings loaded",
+            Some(&format_number(taxonomy_map.len())),
+        );
     } else {
-        tree_item(false, "No accession mappings found", Some("Will use TaxID from headers"));
+        tree_item(
+            false,
+            "No accession mappings found",
+            Some("Will use TaxID from headers"),
+        );
     }
 
     // Chunk the sequences
@@ -148,7 +169,7 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
         // Store chunk
         let hash = manager.get_storage().store_chunk(
             &serde_json::to_vec(&chunk)?,
-            true // compress
+            true, // compress
         )?;
 
         // Create chunk metadata
@@ -164,13 +185,17 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
 
     // Create manifest
     let _description = args.description.unwrap_or_else(|| {
-        format!("Custom database imported from {:?}", args.input.file_name().unwrap_or_default())
+        format!(
+            "Custom database imported from {:?}",
+            args.input.file_name().unwrap_or_default()
+        )
     });
 
     // Build Merkle tree from chunks
     let chunk_merkle_tree = if !chunk_infos.is_empty() {
         let dag = MerkleDAG::build_from_items(chunk_infos.clone())?;
-        let root_hash = dag.root_hash()
+        let root_hash = dag
+            .root_hash()
             .ok_or_else(|| anyhow::anyhow!("Failed to get Merkle root"))?;
 
         // Serialize the Merkle tree
@@ -234,7 +259,10 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
         std::fs::write(&current_link, &version)?;
     }
 
-    success(&format!("Successfully added custom database: {}/{}", args.source, dataset));
+    success(&format!(
+        "Successfully added custom database: {}/{}",
+        args.source, dataset
+    ));
 
     // Build tree of database details
     let details = vec![
@@ -266,7 +294,10 @@ fn load_taxonomy_mappings() -> anyhow::Result<HashMap<String, crate::casg::types
     let ncbi_file = mappings_dir.join("prot.accession2taxid.gz");
     if ncbi_file.exists() {
         use crate::cli::output::info;
-        info(&format!("Loading NCBI accession2taxid from: {}", ncbi_file.display()));
+        info(&format!(
+            "Loading NCBI accession2taxid from: {}",
+            ncbi_file.display()
+        ));
         mapping.extend(load_ncbi_accession2taxid(&ncbi_file)?);
         if !mapping.is_empty() {
             return Ok(mapping);
@@ -277,7 +308,10 @@ fn load_taxonomy_mappings() -> anyhow::Result<HashMap<String, crate::casg::types
     let uniprot_file = mappings_dir.join("uniprot_idmapping.dat.gz");
     if uniprot_file.exists() {
         use crate::cli::output::info;
-        info(&format!("Loading UniProt idmapping from: {}", uniprot_file.display()));
+        info(&format!(
+            "Loading UniProt idmapping from: {}",
+            uniprot_file.display()
+        ));
         mapping.extend(load_uniprot_idmapping(&uniprot_file)?);
     }
 
@@ -285,11 +319,15 @@ fn load_taxonomy_mappings() -> anyhow::Result<HashMap<String, crate::casg::types
     let simple_file = paths::talaria_taxonomy_current_dir().join("accession2taxid.txt");
     if simple_file.exists() {
         use crate::cli::output::info;
-        info(&format!("Loading custom accession2taxid from: {}", simple_file.display()));
+        info(&format!(
+            "Loading custom accession2taxid from: {}",
+            simple_file.display()
+        ));
         let file = File::open(&simple_file)?;
         let reader = BufReader::new(file);
 
-        for line in reader.lines().skip(1) { // Skip header
+        for line in reader.lines().skip(1) {
+            // Skip header
             let line = line?;
             let parts: Vec<&str> = line.split('\t').collect();
             if parts.len() >= 3 {
@@ -305,7 +343,9 @@ fn load_taxonomy_mappings() -> anyhow::Result<HashMap<String, crate::casg::types
 }
 
 /// Load NCBI prot.accession2taxid format
-fn load_ncbi_accession2taxid(path: &PathBuf) -> anyhow::Result<HashMap<String, crate::casg::types::TaxonId>> {
+fn load_ncbi_accession2taxid(
+    path: &PathBuf,
+) -> anyhow::Result<HashMap<String, crate::casg::types::TaxonId>> {
     use crate::casg::types::TaxonId;
 
     let mut mapping = HashMap::new();
@@ -315,8 +355,12 @@ fn load_ncbi_accession2taxid(path: &PathBuf) -> anyhow::Result<HashMap<String, c
 
     // Format: accession<tab>accession.version<tab>taxid<tab>gi
     for (idx, line) in reader.lines().enumerate() {
-        if idx == 0 { continue; } // Skip header
-        if idx > 1000000 { break; } // Limit for performance
+        if idx == 0 {
+            continue;
+        } // Skip header
+        if idx > 1000000 {
+            break;
+        } // Limit for performance
 
         let line = line?;
         let parts: Vec<&str> = line.split('\t').collect();
@@ -332,7 +376,9 @@ fn load_ncbi_accession2taxid(path: &PathBuf) -> anyhow::Result<HashMap<String, c
 }
 
 /// Load UniProt idmapping format
-fn load_uniprot_idmapping(path: &PathBuf) -> anyhow::Result<HashMap<String, crate::casg::types::TaxonId>> {
+fn load_uniprot_idmapping(
+    path: &PathBuf,
+) -> anyhow::Result<HashMap<String, crate::casg::types::TaxonId>> {
     use crate::casg::types::TaxonId;
 
     let mut mapping = HashMap::new();
@@ -343,7 +389,9 @@ fn load_uniprot_idmapping(path: &PathBuf) -> anyhow::Result<HashMap<String, crat
     // Format: UniProtKB-AC<tab>ID-type<tab>ID-value
     // We're looking for NCBI-taxon entries
     for (idx, line) in reader.lines().enumerate() {
-        if idx > 1000000 { break; } // Limit for performance
+        if idx > 1000000 {
+            break;
+        } // Limit for performance
 
         let line = line?;
         let parts: Vec<&str> = line.split('\t').collect();

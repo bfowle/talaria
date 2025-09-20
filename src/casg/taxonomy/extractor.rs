@@ -1,12 +1,11 @@
 /// Taxonomy version extraction implementations
 ///
 /// Provides version extractors for NCBI and UniProt taxonomy databases
-
 use anyhow::{Context, Result};
-use chrono::{DateTime, Utc, NaiveDate};
+use chrono::{DateTime, NaiveDate, Utc};
 use regex::Regex;
-use std::io::{BufRead, BufReader};
 use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 /// Trait for taxonomy-specific version extraction
@@ -18,7 +17,11 @@ pub trait TaxonomyVersionExtractor: Send + Sync {
     fn extract_etag(&self, headers: &str) -> Option<String>;
 
     /// Detect if files have changed since a given version
-    fn has_changed_since(&self, current_path: &Path, previous_version: &TaxonomyVersionInfo) -> Result<bool>;
+    fn has_changed_since(
+        &self,
+        current_path: &Path,
+        previous_version: &TaxonomyVersionInfo,
+    ) -> Result<bool>;
 }
 
 /// Taxonomy version information
@@ -52,7 +55,10 @@ impl TaxonomyVersionExtractor for NCBITaxonomyExtractor {
                     if let Some(date) = extract_date_from_string(&line) {
                         return Ok(TaxonomyVersionInfo {
                             version: date.format("%Y-%m-%d").to_string(),
-                            date: DateTime::from_naive_utc_and_offset(date.and_hms_opt(0, 0, 0).unwrap(), Utc),
+                            date: DateTime::from_naive_utc_and_offset(
+                                date.and_hms_opt(0, 0, 0).unwrap(),
+                                Utc,
+                            ),
                             etag: None,
                             checksum: compute_file_checksum(&readme_path).ok(),
                             source_type: "ncbi".to_string(),
@@ -107,7 +113,11 @@ impl TaxonomyVersionExtractor for NCBITaxonomyExtractor {
         None
     }
 
-    fn has_changed_since(&self, current_path: &Path, previous_version: &TaxonomyVersionInfo) -> Result<bool> {
+    fn has_changed_since(
+        &self,
+        current_path: &Path,
+        previous_version: &TaxonomyVersionInfo,
+    ) -> Result<bool> {
         // Compare checksums if available
         if let Some(prev_checksum) = &previous_version.checksum {
             let nodes_path = current_path.join("nodes.dmp");
@@ -185,7 +195,11 @@ impl TaxonomyVersionExtractor for UniProtTaxonomyExtractor {
         None
     }
 
-    fn has_changed_since(&self, current_path: &Path, previous_version: &TaxonomyVersionInfo) -> Result<bool> {
+    fn has_changed_since(
+        &self,
+        current_path: &Path,
+        previous_version: &TaxonomyVersionInfo,
+    ) -> Result<bool> {
         let current_version = self.extract_version(current_path)?;
 
         // Compare versions directly for UniProt (YYYY_MM format)
@@ -209,9 +223,7 @@ impl TaxonomyVersionExtractor for CustomTaxonomyExtractor {
         let version_file = taxonomy_path.join("VERSION");
 
         if version_file.exists() {
-            let version = std::fs::read_to_string(&version_file)?
-                .trim()
-                .to_string();
+            let version = std::fs::read_to_string(&version_file)?.trim().to_string();
 
             // Try to parse date from version
             let date = if let Some(parsed_date) = extract_date_from_string(&version) {
@@ -255,7 +267,11 @@ impl TaxonomyVersionExtractor for CustomTaxonomyExtractor {
         None
     }
 
-    fn has_changed_since(&self, current_path: &Path, previous_version: &TaxonomyVersionInfo) -> Result<bool> {
+    fn has_changed_since(
+        &self,
+        current_path: &Path,
+        previous_version: &TaxonomyVersionInfo,
+    ) -> Result<bool> {
         let current_version = self.extract_version(current_path)?;
         Ok(current_version.date > previous_version.date)
     }
@@ -318,21 +334,22 @@ fn parse_uniprot_release_date(version: &str) -> Result<DateTime<Utc>> {
         anyhow::bail!("Invalid UniProt version format: {}", version);
     }
 
-    let year: i32 = parts[0].parse()
-        .context("Failed to parse year")?;
-    let month: u32 = parts[1].parse()
-        .context("Failed to parse month")?;
+    let year: i32 = parts[0].parse().context("Failed to parse year")?;
+    let month: u32 = parts[1].parse().context("Failed to parse month")?;
 
     // UniProt releases are typically on the first Wednesday of the month
-    let date = NaiveDate::from_ymd_opt(year, month, 1)
-        .ok_or_else(|| anyhow::anyhow!("Invalid date"))?;
+    let date =
+        NaiveDate::from_ymd_opt(year, month, 1).ok_or_else(|| anyhow::anyhow!("Invalid date"))?;
 
-    Ok(DateTime::from_naive_utc_and_offset(date.and_hms_opt(0, 0, 0).unwrap(), Utc))
+    Ok(DateTime::from_naive_utc_and_offset(
+        date.and_hms_opt(0, 0, 0).unwrap(),
+        Utc,
+    ))
 }
 
 /// Compute SHA256 checksum of a file
 fn compute_file_checksum(path: &Path) -> Result<String> {
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     use std::io::Read;
 
     let mut file = File::open(path)?;
@@ -364,8 +381,8 @@ pub fn create_taxonomy_extractor(source: &str) -> Box<dyn TaxonomyVersionExtract
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::io::Write;
+    use tempfile::TempDir;
 
     #[test]
     fn test_ncbi_version_extraction() {

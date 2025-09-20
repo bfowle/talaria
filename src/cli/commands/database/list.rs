@@ -1,7 +1,7 @@
-use clap::Args;
-use std::path::PathBuf;
 use crate::cli::output::*;
+use clap::Args;
 use colored::*;
+use std::path::PathBuf;
 
 #[derive(Args)]
 pub struct ListArgs {
@@ -143,7 +143,10 @@ pub fn run(args: ListArgs) -> anyhow::Result<()> {
         ("Total chunks", format_number(stats.total_chunks)),
         ("Total size", format_size(stats.total_size, BINARY)),
         ("Compressed chunks", format_number(stats.compressed_chunks)),
-        ("Deduplication ratio", format!("{:.2}x", stats.deduplication_ratio)),
+        (
+            "Deduplication ratio",
+            format!("{:.2}x", stats.deduplication_ratio),
+        ),
     ];
 
     for (i, (label, value)) in stats_items.iter().enumerate() {

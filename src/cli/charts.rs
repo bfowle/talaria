@@ -1,6 +1,5 @@
 /// ASCII chart visualization for terminal output
 /// Provides simple but effective visualizations for reduction statistics
-
 use colored::*;
 use std::collections::HashMap;
 
@@ -44,15 +43,10 @@ impl AsciiBarChart {
         }
 
         // Find max value for scaling
-        let max_value = self.data.iter()
-            .map(|(_, v)| *v)
-            .fold(0.0, f64::max);
+        let max_value = self.data.iter().map(|(_, v)| *v).fold(0.0, f64::max);
 
         // Find max label length for alignment
-        let max_label_len = self.data.iter()
-            .map(|(l, _)| l.len())
-            .max()
-            .unwrap_or(10);
+        let max_label_len = self.data.iter().map(|(l, _)| l.len()).max().unwrap_or(10);
 
         // Render each bar
         for (label, value) in &self.data {
@@ -138,7 +132,9 @@ impl AsciiLineChart {
         for (i, (_, value)) in self.data.iter().enumerate() {
             let x = (i as f64 * x_step) as usize;
             let y = if value_range > 0.0 {
-                self.height - 1 - (((*value - min_value) / value_range) * (self.height - 1) as f64) as usize
+                self.height
+                    - 1
+                    - (((*value - min_value) / value_range) * (self.height - 1) as f64) as usize
             } else {
                 self.height / 2
             };
@@ -152,13 +148,18 @@ impl AsciiLineChart {
                 let prev_value = self.data[i - 1].1;
                 let prev_x = ((i - 1) as f64 * x_step) as usize;
                 let prev_y = if value_range > 0.0 {
-                    self.height - 1 - (((prev_value - min_value) / value_range) * (self.height - 1) as f64) as usize
+                    self.height
+                        - 1
+                        - (((prev_value - min_value) / value_range) * (self.height - 1) as f64)
+                            as usize
                 } else {
                     self.height / 2
                 };
 
                 // Simple line drawing
-                let steps = (x as i32 - prev_x as i32).abs().max((y as i32 - prev_y as i32).abs()) as usize;
+                let steps = (x as i32 - prev_x as i32)
+                    .abs()
+                    .max((y as i32 - prev_y as i32).abs()) as usize;
                 for step in 1..steps {
                     let t = step as f64 / steps as f64;
                     let inter_x = (prev_x as f64 + t * (x as f64 - prev_x as f64)) as usize;
@@ -244,7 +245,9 @@ impl AsciiPieChart {
 
         // Calculate percentages
         let total: f64 = self.data.iter().map(|(_, v)| v).sum();
-        let percentages: Vec<_> = self.data.iter()
+        let percentages: Vec<_> = self
+            .data
+            .iter()
             .map(|(label, value)| (label.clone(), (value / total) * 100.0))
             .collect();
 
@@ -413,8 +416,7 @@ pub fn create_taxonomy_distribution_chart(taxonomy_counts: &HashMap<String, usiz
 
 /// Create a sequence length distribution histogram
 pub fn create_length_histogram(lengths: &[usize]) -> String {
-    let mut histogram = AsciiHistogram::new("== Sequence Length Distribution ==")
-        .with_bins(10);
+    let mut histogram = AsciiHistogram::new("== Sequence Length Distribution ==").with_bins(10);
 
     for &length in lengths {
         histogram.add_value(length as f64);

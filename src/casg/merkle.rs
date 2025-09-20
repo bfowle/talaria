@@ -1,9 +1,8 @@
 /// Merkle DAG implementation for cryptographic verification
-
 use crate::casg::types::*;
 use anyhow::Result;
-use sha2::{Sha256, Digest};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 /// Trait for types that can participate in Merkle tree construction
 pub trait MerkleVerifiable {
@@ -87,11 +86,13 @@ impl MerkleDAG {
     pub fn generate_proof(&self, leaf_data: &[u8]) -> Result<MerkleProof> {
         let leaf_hash = SHA256Hash::compute(leaf_data);
 
-        let root = self.root.as_ref()
+        let root = self
+            .root
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Empty Merkle tree"))?;
 
         let mut path = Vec::new();
-        if self.find_path(&root, &leaf_hash, &mut path) {
+        if self.find_path(root, &leaf_hash, &mut path) {
             Ok(MerkleProof {
                 leaf_hash,
                 root_hash: root.hash.clone(),
@@ -103,12 +104,7 @@ impl MerkleDAG {
     }
 
     /// Recursively find path to a leaf
-    fn find_path(
-        &self,
-        node: &MerkleNode,
-        target: &MerkleHash,
-        path: &mut Vec<ProofStep>
-    ) -> bool {
+    fn find_path(&self, node: &MerkleNode, target: &MerkleHash, path: &mut Vec<ProofStep>) -> bool {
         // Check if this is the target leaf
         if node.data.is_some() && node.hash == *target {
             return true;
@@ -188,7 +184,8 @@ impl MerkleDAG {
         hasher.update(node.rank.as_bytes());
 
         // Include children hashes
-        let child_nodes: Result<Vec<_>> = node.children
+        let child_nodes: Result<Vec<_>> = node
+            .children
             .iter()
             .map(Self::build_taxonomy_node)
             .collect();
@@ -261,11 +258,13 @@ impl MerkleDAG {
 
 impl ProofProvider for MerkleDAG {
     fn generate_proof(&self, target: &SHA256Hash) -> Result<MerkleProof> {
-        let root = self.root.as_ref()
+        let root = self
+            .root
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Empty Merkle tree"))?;
 
         let mut path = Vec::new();
-        if self.find_path(&root, target, &mut path) {
+        if self.find_path(root, target, &mut path) {
             Ok(MerkleProof {
                 leaf_hash: target.clone(),
                 root_hash: root.hash.clone(),
@@ -401,10 +400,18 @@ mod tests {
     #[test]
     fn test_merkle_tree_construction() {
         let chunks = vec![
-            TestChunk { data: b"chunk1".to_vec() },
-            TestChunk { data: b"chunk2".to_vec() },
-            TestChunk { data: b"chunk3".to_vec() },
-            TestChunk { data: b"chunk4".to_vec() },
+            TestChunk {
+                data: b"chunk1".to_vec(),
+            },
+            TestChunk {
+                data: b"chunk2".to_vec(),
+            },
+            TestChunk {
+                data: b"chunk3".to_vec(),
+            },
+            TestChunk {
+                data: b"chunk4".to_vec(),
+            },
         ];
 
         let dag = MerkleDAG::build_from_items(chunks).unwrap();
@@ -413,17 +420,11 @@ mod tests {
 
     #[test]
     fn test_merkle_proof_generation_and_verification() {
-        let chunks = vec![
-            b"chunk1".to_vec(),
-            b"chunk2".to_vec(),
-            b"chunk3".to_vec(),
-        ];
+        let chunks = vec![b"chunk1".to_vec(), b"chunk2".to_vec(), b"chunk3".to_vec()];
 
         // Create test chunks as MerkleVerifiable items
-        let test_chunks: Vec<TestChunk> = chunks
-            .into_iter()
-            .map(|data| TestChunk { data })
-            .collect();
+        let test_chunks: Vec<TestChunk> =
+            chunks.into_iter().map(|data| TestChunk { data }).collect();
 
         let dag = MerkleDAG::build_from_items(test_chunks).unwrap();
         let proof = dag.generate_proof(&b"chunk1".to_vec()).unwrap();
@@ -433,16 +434,11 @@ mod tests {
 
     #[test]
     fn test_invalid_proof_fails() {
-        let chunks = vec![
-            b"chunk1".to_vec(),
-            b"chunk2".to_vec(),
-        ];
+        let chunks = vec![b"chunk1".to_vec(), b"chunk2".to_vec()];
 
         // Create test chunks as MerkleVerifiable items
-        let test_chunks: Vec<TestChunk> = chunks
-            .into_iter()
-            .map(|data| TestChunk { data })
-            .collect();
+        let test_chunks: Vec<TestChunk> =
+            chunks.into_iter().map(|data| TestChunk { data }).collect();
 
         let dag = MerkleDAG::build_from_items(test_chunks).unwrap();
         let mut proof = dag.generate_proof(&b"chunk1".to_vec()).unwrap();

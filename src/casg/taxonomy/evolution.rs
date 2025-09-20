@@ -1,5 +1,4 @@
 /// Track taxonomy evolution and changes over time
-
 use crate::casg::types::*;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -51,11 +50,7 @@ impl TaxonomyEvolution {
     }
 
     /// Add a new taxonomy version
-    pub fn add_version(
-        &mut self,
-        version: String,
-        taxonomy_data: &TaxonomyData,
-    ) -> Result<()> {
+    pub fn add_version(&mut self, version: String, taxonomy_data: &TaxonomyData) -> Result<()> {
         let changes = if let Some(last) = self.versions.last() {
             Some(self.compute_changes_from_data(&last.version, &version, taxonomy_data)?)
         } else {
@@ -82,11 +77,7 @@ impl TaxonomyEvolution {
     }
 
     /// Compute changes between two versions
-    pub fn compute_changes(
-        &self,
-        old_version: &str,
-        new_version: &str,
-    ) -> Result<TaxonomyChanges> {
+    pub fn compute_changes(&self, old_version: &str, new_version: &str) -> Result<TaxonomyChanges> {
         let _old_data = self.load_version(old_version)?;
         let new_data = self.load_version(new_version)?;
 
@@ -120,7 +111,7 @@ impl TaxonomyEvolution {
         // Find new taxa
         for taxon_id in new_data.taxa.keys() {
             if !old_data.taxa.contains_key(taxon_id) {
-                new_taxa.push(taxon_id.clone());
+                new_taxa.push(*taxon_id);
             }
         }
 
@@ -129,9 +120,9 @@ impl TaxonomyEvolution {
             if !new_data.taxa.contains_key(taxon_id) {
                 // Check if it was merged
                 if let Some(merge_target) = new_data.merges.get(taxon_id) {
-                    merged_taxa.push((taxon_id.clone(), merge_target.clone()));
+                    merged_taxa.push((*taxon_id, *merge_target));
                 } else {
-                    deprecated_taxa.push(taxon_id.clone());
+                    deprecated_taxa.push(*taxon_id);
                 }
             }
         }
@@ -141,9 +132,9 @@ impl TaxonomyEvolution {
             if let Some(old_info) = old_data.taxa.get(taxon_id) {
                 if old_info.parent_id != new_info.parent_id {
                     reclassifications.push(Reclassification {
-                        taxon_id: taxon_id.clone(),
-                        old_parent: old_info.parent_id.clone().unwrap_or(TaxonId(0)),
-                        new_parent: new_info.parent_id.clone().unwrap_or(TaxonId(0)),
+                        taxon_id: *taxon_id,
+                        old_parent: old_info.parent_id.unwrap_or(TaxonId(0)),
+                        new_parent: new_info.parent_id.unwrap_or(TaxonId(0)),
                         reason: self.infer_reclassification_reason(old_info, new_info),
                     });
                 }
@@ -193,18 +184,18 @@ impl TaxonomyEvolution {
                     version: snapshot.version.clone(),
                     date: snapshot.date,
                     info: TaxonInfo {
-                        taxon_id: taxon_id.clone(),
+                        taxon_id: *taxon_id,
                         parent_id: None,
                         name: format!("Merged into {}", merge_target),
                         rank: "merged".to_string(),
                     },
-                    status: TaxonStatus::Merged(merge_target.clone()),
+                    status: TaxonStatus::Merged(*merge_target),
                 });
             }
         }
 
         Ok(TaxonEvolution {
-            taxon_id: taxon_id.clone(),
+            taxon_id: *taxon_id,
             history,
         })
     }
@@ -223,10 +214,9 @@ impl TaxonomyEvolution {
                         event_type: EventType::Reclassification,
                         description: format!(
                             "Taxon {} reclassified: {}",
-                            reclassification.taxon_id,
-                            reclassification.reason
+                            reclassification.taxon_id, reclassification.reason
                         ),
-                        affected_taxa: vec![reclassification.taxon_id.clone()],
+                        affected_taxa: vec![reclassification.taxon_id],
                     });
                 }
 

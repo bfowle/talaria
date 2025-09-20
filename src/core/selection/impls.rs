@@ -1,11 +1,10 @@
-/// Trait implementations for reference selection strategies
-
-use crate::core::reference_selector::{ReferenceSelectorImpl, SelectionAlgorithm};
-use crate::bio::sequence::Sequence;
 use super::traits::{
-    ReferenceSelector as ReferenceSelectorTrait, AlignmentBasedSelector,
-    TraitSelectionResult, SelectionStats, AlignmentScore, RecommendedParams,
+    AlignmentBasedSelector, AlignmentScore, RecommendedParams,
+    ReferenceSelector as ReferenceSelectorTrait, SelectionStats, TraitSelectionResult,
 };
+use crate::bio::sequence::Sequence;
+/// Trait implementations for reference selection strategies
+use crate::core::reference_selector::{ReferenceSelectorImpl, SelectionAlgorithm};
 use anyhow::Result;
 use std::collections::HashSet;
 
@@ -75,14 +74,11 @@ impl ReferenceSelectorTrait for ReferenceSelectorImpl {
 // Additional methods for ReferenceSelector
 #[allow(dead_code)]
 impl ReferenceSelectorImpl {
-    fn calculate_coverage(
-        &self,
-        references: &[Sequence],
-        all_sequences: &[Sequence],
-    ) -> f64 {
+    fn calculate_coverage(&self, references: &[Sequence], all_sequences: &[Sequence]) -> f64 {
         // Calculate how many sequences are covered by the references
         let ref_ids: HashSet<_> = references.iter().map(|r| &r.id).collect();
-        let covered = all_sequences.iter()
+        let covered = all_sequences
+            .iter()
             .filter(|s| ref_ids.contains(&s.id))
             .count();
 
@@ -94,6 +90,7 @@ impl ReferenceSelectorImpl {
             SelectionAlgorithm::SinglePass => "single-pass",
             SelectionAlgorithm::SimilarityMatrix => "similarity-matrix",
             SelectionAlgorithm::Hybrid => "hybrid",
+            SelectionAlgorithm::GraphCentrality => "graph-centrality",
         }
     }
 
@@ -112,6 +109,12 @@ impl ReferenceSelectorImpl {
             SelectionAlgorithm::Hybrid => {
                 // Between single-pass and matrix
                 num_sequences * num_sequences * 4 + num_sequences * 200
+            }
+            SelectionAlgorithm::GraphCentrality => {
+                // Graph-based with O(n²) for edges + centrality calculations
+                let graph_size = num_sequences * num_sequences * 16; // Edge weights + graph structure
+                let seq_size = num_sequences * 200;
+                graph_size + seq_size
             }
         }
     }
@@ -164,7 +167,7 @@ impl AlignmentBasedSelector for ReferenceSelectorImpl {
 
         // For now, return empty - would need actual alignment implementation
         for i in 0..sequences.len() {
-            for j in i+1..sequences.len() {
+            for j in i + 1..sequences.len() {
                 scores.push(AlignmentScore {
                     seq1_id: sequences[i].id.clone(),
                     seq2_id: sequences[j].id.clone(),
@@ -185,8 +188,7 @@ impl AlignmentBasedSelector for ReferenceSelectorImpl {
 
 /// Factory function to create selector based on algorithm choice
 pub fn create_selector(algorithm: SelectionAlgorithm) -> ReferenceSelectorImpl {
-    ReferenceSelectorImpl::new()
-        .with_selection_algorithm(algorithm)
+    ReferenceSelectorImpl::new().with_selection_algorithm(algorithm)
 }
 
 /// Create a selector with full configuration
@@ -209,7 +211,8 @@ mod tests {
 
     #[test]
     fn test_trait_implementation() {
-        let selector: Box<dyn ReferenceSelectorTrait> = Box::new(create_selector(SelectionAlgorithm::SinglePass));
+        let selector: Box<dyn ReferenceSelectorTrait> =
+            Box::new(create_selector(SelectionAlgorithm::SinglePass));
 
         let sequences = vec![
             Sequence::new("seq1".to_string(), vec![65; 100]),
@@ -252,9 +255,7 @@ mod tests {
             Box::new(create_selector(SelectionAlgorithm::SimilarityMatrix)),
         ];
 
-        let sequences = vec![
-            Sequence::new("test".to_string(), vec![65; 100]),
-        ];
+        let sequences = vec![Sequence::new("test".to_string(), vec![65; 100])];
 
         for selector in selectors {
             let result = selector.select_references(sequences.clone(), 0.5);

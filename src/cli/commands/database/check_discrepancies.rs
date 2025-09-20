@@ -3,7 +3,7 @@ use colored::Colorize;
 use std::collections::HashMap;
 
 use crate::casg::taxonomy::discrepancy::DiscrepancyDetector;
-use crate::casg::types::{TaxonId, TaxonomicDiscrepancy, DiscrepancyType};
+use crate::casg::types::{DiscrepancyType, TaxonId, TaxonomicDiscrepancy};
 use crate::core::database_manager::DatabaseManager;
 use crate::utils::progress::create_spinner;
 
@@ -71,7 +71,8 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
 
     // Filter by type if requested
     let filtered_discrepancies: Vec<_> = if let Some(ref filter_type) = args.discrepancy_type {
-        all_discrepancies.into_iter()
+        all_discrepancies
+            .into_iter()
             .filter(|d| matches_type(d, filter_type))
             .collect()
     } else {
@@ -88,17 +89,21 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
     // Display summary
     println!("{} {} chunks analyzed", "►".cyan().bold(), chunk_count);
     println!("{} {} sequences checked", "►".cyan().bold(), sequence_count);
-    println!("{} {} discrepancies found",
-             if filtered_discrepancies.is_empty() { "✓".green() } else { "⚠".yellow() }.bold(),
-             filtered_discrepancies.len());
+    println!(
+        "{} {} discrepancies found",
+        if filtered_discrepancies.is_empty() {
+            "✓".green()
+        } else {
+            "⚠".yellow()
+        }
+        .bold(),
+        filtered_discrepancies.len()
+    );
 
     if !filtered_discrepancies.is_empty() {
         println!("\n{}", "Discrepancy Summary:".bold().underline());
         for (type_name, discs) in &by_type {
-            println!("  {} {}: {}",
-                     "•".cyan(),
-                     type_name.bold(),
-                     discs.len());
+            println!("  {} {}: {}", "•".cyan(), type_name.bold(), discs.len());
         }
 
         if args.verbose {
@@ -118,9 +123,11 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
     if let Some(json_path) = args.json_output {
         let json = serde_json::to_string_pretty(&filtered_discrepancies)?;
         std::fs::write(&json_path, json)?;
-        println!("\n{} Results exported to: {}",
-                 "✓".green().bold(),
-                 json_path.cyan());
+        println!(
+            "\n{} Results exported to: {}",
+            "✓".green().bold(),
+            json_path.cyan()
+        );
     }
 
     Ok(())
@@ -143,7 +150,10 @@ fn format_discrepancy_type(disc_type: &DiscrepancyType) -> String {
 
 fn print_discrepancy(disc: &TaxonomicDiscrepancy, index: usize) {
     println!("\n  {}. {}", index, disc.sequence_id.bold());
-    println!("     Type: {}", format_discrepancy_type(&disc.discrepancy_type).yellow());
+    println!(
+        "     Type: {}",
+        format_discrepancy_type(&disc.discrepancy_type).yellow()
+    );
     println!("     Confidence: {:.2}%", disc.confidence * 100.0);
 
     if let Some(header_taxon) = &disc.header_taxon {
@@ -158,7 +168,10 @@ fn print_discrepancy(disc: &TaxonomicDiscrepancy, index: usize) {
         println!("     Inferred as: {}", format_taxon(inferred_taxon));
     }
 
-    println!("     Detected: {}", disc.detection_date.format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "     Detected: {}",
+        disc.detection_date.format("%Y-%m-%d %H:%M:%S")
+    );
 }
 
 fn format_taxon(taxon: &TaxonId) -> String {

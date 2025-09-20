@@ -1,10 +1,10 @@
+use std::path::Path;
 /// Integration tests for the trait system
 use talaria::casg::format::*;
 use talaria::casg::types::ChunkMetadata;
 use talaria::core::{resolver::*, version_store::*};
 use talaria::storage::index::*;
 use tempfile::TempDir;
-use std::path::Path;
 
 #[cfg(test)]
 mod manifest_format_tests {
@@ -76,8 +76,12 @@ mod manifest_format_tests {
 
         // TAL format should be significantly smaller
         assert!(tal_size < json_size);
-        println!("TAL: {} bytes, JSON: {} bytes, Ratio: {:.2}%",
-                 tal_size, json_size, (tal_size as f64 / json_size as f64) * 100.0);
+        println!(
+            "TAL: {} bytes, JSON: {} bytes, Ratio: {:.2}%",
+            tal_size,
+            json_size,
+            (tal_size as f64 / json_size as f64) * 100.0
+        );
     }
 }
 
@@ -85,7 +89,6 @@ mod manifest_format_tests {
 mod version_store_tests {
     use super::*;
     use talaria::download::{DatabaseSource, UniProtDatabase};
-    
 
     #[tokio::test]
     async fn test_filesystem_version_store() {
@@ -99,7 +102,10 @@ mod version_store_tests {
         assert_eq!(version.id.len(), 15); // Timestamp format
 
         // List versions
-        let versions = store.list_versions(&source, ListOptions::default()).await.unwrap();
+        let versions = store
+            .list_versions(&source, ListOptions::default())
+            .await
+            .unwrap();
         assert_eq!(versions.len(), 1);
 
         // Test version exists
@@ -116,7 +122,10 @@ mod version_store_tests {
         let version = store.create_version(&source).await.unwrap();
 
         // Set alias
-        store.update_alias(&source, "current", &version.id).await.unwrap();
+        store
+            .update_alias(&source, "current", &version.id)
+            .await
+            .unwrap();
 
         // Resolve alias
         let resolved = store.resolve_alias(&source, "current").await.unwrap();
@@ -131,7 +140,6 @@ mod version_store_tests {
 #[cfg(test)]
 mod database_resolver_tests {
     use super::*;
-    
 
     #[test]
     fn test_database_reference_parsing() {
@@ -165,7 +173,10 @@ mod database_resolver_tests {
             profile: Some("bacteria-only".to_string()),
         };
 
-        assert_eq!(reference.to_string(), "uniprot/trembl@20250915_053033:bacteria-only");
+        assert_eq!(
+            reference.to_string(),
+            "uniprot/trembl@20250915_053033:bacteria-only"
+        );
     }
 
     #[test]
@@ -181,7 +192,9 @@ mod database_resolver_tests {
         };
 
         let paths = resolver.resolve_paths(&reference).unwrap();
-        assert!(paths.version_dir.ends_with("versions/uniprot/swissprot/20250915_053033"));
+        assert!(paths
+            .version_dir
+            .ends_with("versions/uniprot/swissprot/20250915_053033"));
         assert!(paths.manifest_path.ends_with("manifest.tal"));
         assert!(paths.chunks_dir.ends_with("chunks"));
     }
@@ -245,7 +258,10 @@ mod chunk_index_tests {
         let mut index = InMemoryChunkIndex::new();
 
         let metadata = ChunkMetadata {
-            hash: SHA256Hash::from_hex("a123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").unwrap(),
+            hash: SHA256Hash::from_hex(
+                "a123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            )
+            .unwrap(),
             taxon_ids: vec![TaxonId(9606)],
             sequence_count: 100,
             size: 1024 * 1024,
@@ -280,7 +296,11 @@ mod chunk_index_tests {
                 taxon_ids: vec![TaxonId(if i < 3 { 9606 } else { 562 })],
                 sequence_count: 100,
                 size: (i + 1) * 1024 * 1024,
-                compressed_size: if i % 2 == 0 { Some((i + 1) * 512 * 1024) } else { None },
+                compressed_size: if i % 2 == 0 {
+                    Some((i + 1) * 512 * 1024)
+                } else {
+                    None
+                },
             };
             index.add_chunk(metadata).await.unwrap();
         }
@@ -330,7 +350,10 @@ mod integration_workflow_tests {
         println!("Created version: {}", version.id);
 
         // Set it as current
-        version_store.update_alias(&source, "current", &version.id).await.unwrap();
+        version_store
+            .update_alias(&source, "current", &version.id)
+            .await
+            .unwrap();
 
         // Resolve database reference
         let reference = resolver.from_source(&source);
@@ -346,15 +369,24 @@ mod integration_workflow_tests {
         assert!(paths.version_dir.exists());
 
         // List versions
-        let versions = version_store.list_versions(&source, ListOptions {
-            newest_first: true,
-            ..Default::default()
-        }).await.unwrap();
+        let versions = version_store
+            .list_versions(
+                &source,
+                ListOptions {
+                    newest_first: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
         assert_eq!(versions.len(), 1);
         assert_eq!(versions[0].id, version.id);
 
         // Resolve current alias
-        let current = version_store.resolve_alias(&source, "current").await.unwrap();
+        let current = version_store
+            .resolve_alias(&source, "current")
+            .await
+            .unwrap();
         assert_eq!(current.id, version.id);
     }
 

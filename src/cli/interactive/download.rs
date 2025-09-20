@@ -1,4 +1,4 @@
-use crate::download::{DatabaseSource, UniProtDatabase, DownloadProgress};
+use crate::download::{DatabaseSource, DownloadProgress, UniProtDatabase};
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::{
     backend::Backend,
@@ -7,7 +7,11 @@ use ratatui::{
     widgets::{Block, Borders, Gauge, List, ListItem, ListState, Paragraph, Wrap},
     Frame, Terminal,
 };
-use std::{io, path::PathBuf, sync::{Arc, Mutex}};
+use std::{
+    io,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 pub struct DownloadWizard {
     state: WizardState,
@@ -33,7 +37,7 @@ impl DownloadWizard {
     pub fn new() -> Self {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
-        
+
         Self {
             state: WizardState::SelectSource,
             selected_source: None,
@@ -45,7 +49,7 @@ impl DownloadWizard {
             download_size: 0,
         }
     }
-    
+
     fn next(&mut self) {
         let i = match self.list_state.selected() {
             Some(i) => {
@@ -54,13 +58,17 @@ impl DownloadWizard {
                     WizardState::SelectDatabase => 4,
                     _ => 0,
                 };
-                if i >= max { 0 } else { i + 1 }
+                if i >= max {
+                    0
+                } else {
+                    i + 1
+                }
             }
             None => 0,
         };
         self.list_state.select(Some(i));
     }
-    
+
     fn previous(&mut self) {
         let i = match self.list_state.selected() {
             Some(i) => {
@@ -69,13 +77,17 @@ impl DownloadWizard {
                     WizardState::SelectDatabase => 4,
                     _ => 0,
                 };
-                if i == 0 { max } else { i - 1 }
+                if i == 0 {
+                    max
+                } else {
+                    i - 1
+                }
             }
             None => 0,
         };
         self.list_state.select(Some(i));
     }
-    
+
     fn select(&mut self) {
         match self.state {
             WizardState::SelectSource => {
@@ -87,7 +99,7 @@ impl DownloadWizard {
             }
             WizardState::SelectDatabase => {
                 let db_idx = self.list_state.selected().unwrap_or(0);
-                
+
                 // Set the actual database based on selection
                 self.selected_source = Some(match db_idx {
                     0 => DatabaseSource::UniProt(UniProtDatabase::SwissProt),
@@ -97,7 +109,7 @@ impl DownloadWizard {
                     4 => DatabaseSource::UniProt(UniProtDatabase::UniRef100),
                     _ => DatabaseSource::UniProt(UniProtDatabase::SwissProt),
                 });
-                
+
                 // Get estimated size
                 self.download_size = match &self.selected_source {
                     Some(DatabaseSource::UniProt(UniProtDatabase::SwissProt)) => 200_000_000,
@@ -107,12 +119,17 @@ impl DownloadWizard {
                     Some(DatabaseSource::UniProt(UniProtDatabase::UniRef100)) => 80_000_000_000,
                     _ => 0,
                 };
-                
+
                 let size_str = format_size(self.download_size);
                 self.state = WizardState::Confirm;
-                self.message = format!("Ready to download {} (~{}). Press Enter to start or Esc to cancel.", 
-                    self.selected_source.as_ref().map(|s| format!("{}", s)).unwrap_or("Unknown".to_string()),
-                    size_str);
+                self.message = format!(
+                    "Ready to download {} (~{}). Press Enter to start or Esc to cancel.",
+                    self.selected_source
+                        .as_ref()
+                        .map(|s| format!("{}", s))
+                        .unwrap_or("Unknown".to_string()),
+                    size_str
+                );
             }
             WizardState::Confirm => {
                 self.state = WizardState::Downloading;
@@ -123,14 +140,12 @@ impl DownloadWizard {
     }
 }
 
-pub fn run_download_wizard<B: Backend>(
-    terminal: &mut Terminal<B>,
-) -> io::Result<()> {
+pub fn run_download_wizard<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
     let mut wizard = DownloadWizard::new();
-    
+
     loop {
-        terminal.draw(|f| draw_wizard::<B>(f, &mut wizard))?;
-        
+        terminal.draw(|f| draw_wizard(f, &mut wizard))?;
+
         if let Event::Key(key) = event::read()? {
             match key.code {
                 KeyCode::Esc | KeyCode::Char('q') => break,
@@ -145,12 +160,12 @@ pub fn run_download_wizard<B: Backend>(
                 _ => {}
             }
         }
-        
+
         // Perform actual download
         if matches!(wizard.state, WizardState::Downloading) {
             // Create output directory if it doesn't exist
             std::fs::create_dir_all(&wizard.output_dir).ok();
-            
+
             if let Some(source) = wizard.selected_source.clone() {
                 // Determine output filename
                 let output_file = match &source {
@@ -158,21 +173,21 @@ pub fn run_download_wizard<B: Backend>(
                     DatabaseSource::NCBI(db) => wizard.output_dir.join(format!("{}.fasta", db)),
                     DatabaseSource::Custom(path) => PathBuf::from(path),
                 };
-                
+
                 wizard.message = format!("Downloading to {}...", output_file.display());
-                terminal.draw(|f| draw_wizard::<B>(f, &mut wizard))?;
-                
+                terminal.draw(|f| draw_wizard(f, &mut wizard))?;
+
                 // Create async runtime for download
                 let runtime = tokio::runtime::Runtime::new().unwrap();
-                
+
                 // Clone for the async block
                 let source_clone = source.clone();
                 let progress_clone = wizard.progress.clone();
-                
+
                 // Run async download
                 let result = runtime.block_on(async {
                     let mut progress = DownloadProgress::new();
-                    
+
                     // Set up progress callback
                     let progress_arc = progress_clone.clone();
                     progress.set_callback(Box::new(move |current, total| {
@@ -181,14 +196,16 @@ pub fn run_download_wizard<B: Backend>(
                             *progress_arc.lock().unwrap() = pct;
                         }
                     }));
-                    
-                    crate::download::download_database(source_clone, &output_file, &mut progress).await
+
+                    crate::download::download_database(source_clone, &output_file, &mut progress)
+                        .await
                 });
-                
+
                 match result {
                     Ok(_) => {
                         wizard.state = WizardState::Complete;
-                        wizard.message = format!("Successfully downloaded to {}", output_file.display());
+                        wizard.message =
+                            format!("Successfully downloaded to {}", output_file.display());
                     }
                     Err(e) => {
                         wizard.state = WizardState::Complete;
@@ -201,7 +218,7 @@ pub fn run_download_wizard<B: Backend>(
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -209,16 +226,16 @@ fn format_size(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     let mut size = bytes as f64;
     let mut unit_idx = 0;
-    
+
     while size >= 1024.0 && unit_idx < UNITS.len() - 1 {
         size /= 1024.0;
         unit_idx += 1;
     }
-    
+
     format!("{:.1} {}", size, UNITS[unit_idx])
 }
 
-fn draw_wizard<B>(f: &mut Frame, wizard: &mut DownloadWizard) {
+fn draw_wizard(f: &mut Frame, wizard: &mut DownloadWizard) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(2)
@@ -228,14 +245,18 @@ fn draw_wizard<B>(f: &mut Frame, wizard: &mut DownloadWizard) {
             Constraint::Length(3),
         ])
         .split(f.area());
-    
+
     // Title
     let title = Paragraph::new("Database Download Wizard")
-        .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+        .style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
         .alignment(Alignment::Center)
         .block(Block::default().borders(Borders::ALL));
     f.render_widget(title, chunks[0]);
-    
+
     // Main content
     match wizard.state {
         WizardState::SelectSource => {
@@ -245,7 +266,11 @@ fn draw_wizard<B>(f: &mut Frame, wizard: &mut DownloadWizard) {
                 ListItem::new("Custom - Local file"),
             ];
             let list = List::new(items)
-                .block(Block::default().title("Select Source").borders(Borders::ALL))
+                .block(
+                    Block::default()
+                        .title("Select Source")
+                        .borders(Borders::ALL),
+                )
                 .style(Style::default().fg(Color::White))
                 .highlight_style(Style::default().fg(Color::Black).bg(Color::Cyan))
                 .highlight_symbol("> ");
@@ -269,7 +294,11 @@ fn draw_wizard<B>(f: &mut Frame, wizard: &mut DownloadWizard) {
                 _ => vec![ListItem::new("Select file...")],
             };
             let list = List::new(items)
-                .block(Block::default().title("Select Database").borders(Borders::ALL))
+                .block(
+                    Block::default()
+                        .title("Select Database")
+                        .borders(Borders::ALL),
+                )
                 .style(Style::default().fg(Color::White))
                 .highlight_style(Style::default().fg(Color::Black).bg(Color::Green))
                 .highlight_symbol("> ");
@@ -285,25 +314,26 @@ fn draw_wizard<B>(f: &mut Frame, wizard: &mut DownloadWizard) {
         }
         WizardState::Downloading => {
             let progress_val = *wizard.progress.lock().unwrap();
-            
+
             let content = vec![
                 wizard.message.clone(),
                 format!("\n\nProgress: {:.1}%", progress_val),
-            ].join("");
-            
+            ]
+            .join("");
+
             let para = Paragraph::new(content)
                 .style(Style::default().fg(Color::Cyan))
                 .alignment(Alignment::Center)
                 .wrap(Wrap { trim: true })
                 .block(Block::default().title("Downloading").borders(Borders::ALL));
             f.render_widget(para, chunks[1]);
-            
+
             // Also show a progress gauge
             let gauge_area = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
                 .split(chunks[1]);
-            
+
             let gauge = Gauge::default()
                 .block(Block::default().borders(Borders::NONE))
                 .gauge_style(Style::default().fg(Color::Green))
@@ -324,7 +354,7 @@ fn draw_wizard<B>(f: &mut Frame, wizard: &mut DownloadWizard) {
             f.render_widget(para, chunks[1]);
         }
     }
-    
+
     // Help text
     let help = Paragraph::new("↑/↓: Navigate | Enter: Select | Esc: Exit")
         .style(Style::default().fg(Color::DarkGray))

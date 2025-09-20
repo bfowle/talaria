@@ -1,14 +1,13 @@
+use crate::casg::traits::temporal::*;
+use crate::casg::types::{BiTemporalCoordinate, TaxonId};
+use crate::casg::CASGRepository;
 /// Tracks evolution of taxonomic classifications over time
 ///
 /// Provides detailed tracking of how taxonomic assignments change,
 /// including merges, splits, reclassifications, and deletions.
-
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use std::collections::{HashMap, HashSet, BTreeMap};
-use crate::casg::types::{TaxonId, BiTemporalCoordinate};
-use crate::casg::traits::temporal::*;
-use crate::casg::CASGRepository;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// Tracks detailed evolution of taxonomic classifications
 pub struct TaxonomyEvolutionTracker {
@@ -20,7 +19,7 @@ pub struct TaxonomyEvolutionTracker {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]  // Fields are preserved for future use
+#[allow(dead_code)] // Fields are preserved for future use
 struct ReclassificationEvent {
     date: DateTime<Utc>,
     sequence_id: String,
@@ -39,7 +38,12 @@ impl TaxonomyEvolutionTracker {
     }
 
     /// Track evolution of a specific entity (sequence or taxon)
-    pub fn track_entity(&mut self, entity_id: &str, from: DateTime<Utc>, to: DateTime<Utc>) -> Result<EvolutionHistory> {
+    pub fn track_entity(
+        &mut self,
+        entity_id: &str,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<EvolutionHistory> {
         // Check cache first
         let cache_key = format!("{}_{}_{}", entity_id, from.timestamp(), to.timestamp());
         if let Some(cached) = self.evolution_cache.get(&cache_key) {
@@ -62,16 +66,26 @@ impl TaxonomyEvolutionTracker {
                     events.push(EvolutionEvent {
                         timestamp: snapshot_date,
                         event_type: EventType::Created,
-                        description: format!("First appeared with TaxID {}",
-                            sequence.taxon_id.map(|t| t.to_string()).unwrap_or_else(|| "unknown".to_string())),
+                        description: format!(
+                            "First appeared with TaxID {}",
+                            sequence
+                                .taxon_id
+                                .map(|t| t.to_string())
+                                .unwrap_or_else(|| "unknown".to_string())
+                        ),
                         metadata: serde_json::json!({}),
                     });
                     current_taxon = sequence.taxon_id;
                     first_seen = false;
                 } else if current_taxon != sequence.taxon_id {
                     // Taxonomic reclassification
-                    let old = current_taxon.map(|t| t.to_string()).unwrap_or_else(|| "unknown".to_string());
-                    let new = sequence.taxon_id.map(|t| t.to_string()).unwrap_or_else(|| "unknown".to_string());
+                    let old = current_taxon
+                        .map(|t| t.to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    let new = sequence
+                        .taxon_id
+                        .map(|t| t.to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
 
                     events.push(EvolutionEvent {
                         timestamp: snapshot_date,
@@ -86,7 +100,7 @@ impl TaxonomyEvolutionTracker {
                     // Track reclassification event
                     self.reclassification_index
                         .entry(snapshot_date)
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(ReclassificationEvent {
                             date: snapshot_date,
                             sequence_id: entity_id.to_string(),
@@ -127,7 +141,7 @@ impl TaxonomyEvolutionTracker {
         &mut self,
         event_type: EventType,
         from: DateTime<Utc>,
-        to: DateTime<Utc>
+        to: DateTime<Utc>,
     ) -> Result<Vec<String>> {
         let mut affected_entities = HashSet::new();
 
@@ -135,7 +149,7 @@ impl TaxonomyEvolutionTracker {
         let snapshots = self.get_snapshots_in_range(from, to)?;
 
         for i in 1..snapshots.len() {
-            let prev_coord = BiTemporalCoordinate::at(snapshots[i-1]);
+            let prev_coord = BiTemporalCoordinate::at(snapshots[i - 1]);
             let curr_coord = BiTemporalCoordinate::at(snapshots[i]);
 
             let changes = self.compute_changes(&prev_coord, &curr_coord)?;
@@ -165,18 +179,20 @@ impl TaxonomyEvolutionTracker {
         &mut self,
         threshold: usize,
         from: DateTime<Utc>,
-        to: DateTime<Utc>
+        to: DateTime<Utc>,
     ) -> Result<Vec<MassReclassification>> {
         let mut mass_events = Vec::new();
 
         for (date, events) in self.reclassification_index.range(from..=to) {
             // Group by old -> new taxon transitions
-            let mut transitions: HashMap<(Option<TaxonId>, Option<TaxonId>), Vec<String>> = HashMap::new();
+            let mut transitions: HashMap<(Option<TaxonId>, Option<TaxonId>), Vec<String>> =
+                HashMap::new();
 
             for event in events {
                 let key = (event.old_taxon, event.new_taxon);
-                transitions.entry(key)
-                    .or_insert_with(Vec::new)
+                transitions
+                    .entry(key)
+                    .or_default()
                     .push(event.sequence_id.clone());
             }
 
@@ -198,7 +214,12 @@ impl TaxonomyEvolutionTracker {
     }
 
     /// Generate evolution report for a taxonomic group
-    pub fn generate_taxon_report(&mut self, taxon_id: TaxonId, from: DateTime<Utc>, to: DateTime<Utc>) -> Result<TaxonEvolutionReport> {
+    pub fn generate_taxon_report(
+        &mut self,
+        taxon_id: TaxonId,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<TaxonEvolutionReport> {
         let mut sequences_added = Vec::new();
         let mut sequences_removed = Vec::new();
         let mut sequences_stable = Vec::new();
@@ -248,17 +269,29 @@ impl TaxonomyEvolutionTracker {
 
     // Helper methods
 
-    fn get_snapshots_in_range(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> Result<Vec<DateTime<Utc>>> {
+    fn get_snapshots_in_range(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<Vec<DateTime<Utc>>> {
         // Query temporal index for available snapshots
         self.repository.temporal.get_snapshots_between(from, to)
     }
 
-    fn find_sequence_at_time(&self, sequence_id: &str, coordinate: &BiTemporalCoordinate) -> Result<Option<crate::bio::sequence::Sequence>> {
+    fn find_sequence_at_time(
+        &self,
+        sequence_id: &str,
+        coordinate: &BiTemporalCoordinate,
+    ) -> Result<Option<crate::bio::sequence::Sequence>> {
         // Query specific sequence at temporal coordinate
         let chunks = self.repository.temporal.get_chunks_at_time(coordinate)?;
 
         for chunk_meta in chunks {
-            if let Ok(sequences) = self.repository.storage.load_sequences_from_chunk(&chunk_meta.hash) {
+            if let Ok(sequences) = self
+                .repository
+                .storage
+                .load_sequences_from_chunk(&chunk_meta.hash)
+            {
                 for seq in sequences {
                     if seq.id == sequence_id {
                         return Ok(Some(seq));
@@ -270,13 +303,21 @@ impl TaxonomyEvolutionTracker {
         Ok(None)
     }
 
-    fn get_taxon_sequences_at_time(&self, taxon_id: TaxonId, coordinate: &BiTemporalCoordinate) -> Result<Vec<crate::bio::sequence::Sequence>> {
+    fn get_taxon_sequences_at_time(
+        &self,
+        taxon_id: TaxonId,
+        coordinate: &BiTemporalCoordinate,
+    ) -> Result<Vec<crate::bio::sequence::Sequence>> {
         let chunks = self.repository.temporal.get_chunks_at_time(coordinate)?;
         let mut sequences = Vec::new();
 
         for chunk_meta in chunks {
             if chunk_meta.taxon_ids.contains(&taxon_id) {
-                if let Ok(chunk_sequences) = self.repository.storage.load_sequences_from_chunk(&chunk_meta.hash) {
+                if let Ok(chunk_sequences) = self
+                    .repository
+                    .storage
+                    .load_sequences_from_chunk(&chunk_meta.hash)
+                {
                     for seq in chunk_sequences {
                         if seq.taxon_id == Some(taxon_id.0) {
                             sequences.push(seq);
@@ -289,7 +330,11 @@ impl TaxonomyEvolutionTracker {
         Ok(sequences)
     }
 
-    fn compute_changes(&self, prev: &BiTemporalCoordinate, curr: &BiTemporalCoordinate) -> Result<ChangeSet> {
+    fn compute_changes(
+        &self,
+        prev: &BiTemporalCoordinate,
+        curr: &BiTemporalCoordinate,
+    ) -> Result<ChangeSet> {
         let prev_chunks = self.repository.temporal.get_chunks_at_time(prev)?;
         let curr_chunks = self.repository.temporal.get_chunks_at_time(curr)?;
 
@@ -298,7 +343,11 @@ impl TaxonomyEvolutionTracker {
 
         // Load previous state
         for chunk_meta in prev_chunks {
-            if let Ok(sequences) = self.repository.storage.load_sequences_from_chunk(&chunk_meta.hash) {
+            if let Ok(sequences) = self
+                .repository
+                .storage
+                .load_sequences_from_chunk(&chunk_meta.hash)
+            {
                 for seq in sequences {
                     prev_sequences.insert(seq.id.clone(), seq.taxon_id);
                 }
@@ -307,7 +356,11 @@ impl TaxonomyEvolutionTracker {
 
         // Load current state
         for chunk_meta in curr_chunks {
-            if let Ok(sequences) = self.repository.storage.load_sequences_from_chunk(&chunk_meta.hash) {
+            if let Ok(sequences) = self
+                .repository
+                .storage
+                .load_sequences_from_chunk(&chunk_meta.hash)
+            {
                 for seq in sequences {
                     curr_sequences.insert(seq.id.clone(), seq.taxon_id);
                 }
@@ -317,7 +370,7 @@ impl TaxonomyEvolutionTracker {
         let mut changes = ChangeSet::default();
 
         // Find additions
-        for (id, _) in &curr_sequences {
+        for id in curr_sequences.keys() {
             if !prev_sequences.contains_key(id) {
                 changes.added_sequences.push(id.clone());
             }

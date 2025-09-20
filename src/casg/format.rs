@@ -3,7 +3,6 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-
 /// Magic bytes for Talaria format
 pub const TALARIA_MAGIC: &[u8] = b"TAL\x01";
 
@@ -39,7 +38,10 @@ pub fn serialize<T: Serialize>(format: &dyn ManifestFormat, manifest: &T) -> Res
     format.serialize_value(&json_value)
 }
 
-pub fn deserialize<T: for<'de> Deserialize<'de>>(format: &dyn ManifestFormat, data: &[u8]) -> Result<T> {
+pub fn deserialize<T: for<'de> Deserialize<'de>>(
+    format: &dyn ManifestFormat,
+    data: &[u8],
+) -> Result<T> {
     let json_value = format.deserialize_value(data)?;
     Ok(serde_json::from_value(json_value)?)
 }
@@ -85,7 +87,7 @@ impl ManifestFormat for TalariaFormat {
     }
 
     fn compression_ratio(&self) -> f32 {
-        0.09  // ~91% size reduction compared to JSON
+        0.09 // ~91% size reduction compared to JSON
     }
 
     fn name(&self) -> &str {
@@ -130,7 +132,7 @@ impl ManifestFormat for JsonFormat {
     }
 
     fn compression_ratio(&self) -> f32 {
-        1.0  // Baseline
+        1.0 // Baseline
     }
 
     fn name(&self) -> &str {
@@ -159,7 +161,7 @@ impl ManifestFormat for MessagePackFormat {
     }
 
     fn compression_ratio(&self) -> f32 {
-        0.10  // Similar to Talaria format without header
+        0.10 // Similar to Talaria format without header
     }
 
     fn name(&self) -> &str {

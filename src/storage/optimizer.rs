@@ -187,15 +187,11 @@ impl StandardStorageOptimizer {
             let path = entry.path();
 
             if path.is_file() {
-                let file_name = path.file_stem()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("");
+                let file_name = path.file_stem().and_then(|n| n.to_str()).unwrap_or("");
 
                 if let Ok(hash) = SHA256Hash::from_hex(file_name) {
                     let metadata = entry.metadata()?;
-                    let compressed = path.extension()
-                        .map(|e| e == "gz")
-                        .unwrap_or(false);
+                    let compressed = path.extension().map(|e| e == "gz").unwrap_or(false);
 
                     self.chunk_cache.insert(
                         hash.clone(),
@@ -220,7 +216,8 @@ impl StandardStorageOptimizer {
 
         // Group chunks by hash
         for (hash, info) in &self.chunk_cache {
-            hash_locations.entry(hash.clone())
+            hash_locations
+                .entry(hash.clone())
                 .or_default()
                 .extend(info.references.clone());
         }
@@ -310,13 +307,15 @@ impl StorageOptimizer for StandardStorageOptimizer {
         let mut potential_savings = HashMap::new();
 
         // Deduplication savings
-        let dedup_savings: usize = duplicate_chunks.iter()
+        let dedup_savings: usize = duplicate_chunks
+            .iter()
             .map(|d| d.size * (d.count - 1))
             .sum();
         potential_savings.insert(StorageStrategy::Deduplication, dedup_savings);
 
         // Compression savings
-        let compression_savings: usize = compressible_chunks.iter()
+        let compression_savings: usize = compressible_chunks
+            .iter()
             .map(|c| c.current_size - c.compressed_size)
             .sum();
         potential_savings.insert(StorageStrategy::Compression, compression_savings);
@@ -517,13 +516,12 @@ impl StorageOptimizer for StandardStorageOptimizer {
         match strategy {
             StorageStrategy::Deduplication => {
                 let duplicates = self.find_duplicates();
-                Ok(duplicates.iter()
-                    .map(|d| d.size * (d.count - 1))
-                    .sum())
+                Ok(duplicates.iter().map(|d| d.size * (d.count - 1)).sum())
             }
             StorageStrategy::Compression => {
                 let compressible = self.find_compressible();
-                Ok(compressible.iter()
+                Ok(compressible
+                    .iter()
                     .map(|c| c.current_size - c.compressed_size)
                     .sum())
             }

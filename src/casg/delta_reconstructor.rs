@@ -2,10 +2,9 @@
 ///
 /// This module provides efficient reconstruction of sequences from delta chunks,
 /// including reference caching, parallel reconstruction, and chain management.
-
 use crate::bio::sequence::Sequence;
-use crate::casg::types::*;
 use crate::casg::delta::DeltaReconstructor as DeltaReconstructorTrait;
+use crate::casg::types::*;
 use anyhow::Result;
 use dashmap::DashMap;
 use rayon::prelude::*;
@@ -104,15 +103,13 @@ impl DeltaReconstructor {
         delta_chunk: &DeltaChunk,
         ref_map: &HashMap<String, &Sequence>,
     ) -> Result<Vec<Sequence>> {
-        let sequences: Result<Vec<Option<Sequence>>> = delta_chunk.deltas
+        let sequences: Result<Vec<Option<Sequence>>> = delta_chunk
+            .deltas
             .par_iter()
             .map(|delta_op| self.apply_delta_operation(delta_op, ref_map))
             .collect();
 
-        Ok(sequences?
-            .into_iter()
-            .filter_map(|s| s)
-            .collect())
+        Ok(sequences?.into_iter().flatten().collect())
     }
 
     /// Apply a single delta operation
@@ -122,11 +119,18 @@ impl DeltaReconstructor {
         ref_map: &HashMap<String, &Sequence>,
     ) -> Result<Option<Sequence>> {
         match operation {
-            DeltaOperation::UseReference { sequence_id, reference_offset, length } => {
+            DeltaOperation::UseReference {
+                sequence_id,
+                reference_offset,
+                length,
+            } => {
                 // Find the reference sequence
-                let ref_seq = ref_map.values()
+                let ref_seq = ref_map
+                    .values()
                     .find(|s| s.sequence.len() >= reference_offset + length)
-                    .ok_or_else(|| anyhow::anyhow!("No suitable reference found for {}", sequence_id))?;
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("No suitable reference found for {}", sequence_id)
+                    })?;
 
                 // Extract the subsequence if needed
                 let sequence = if *reference_offset == 0 && *length == ref_seq.sequence.len() {
@@ -155,11 +159,18 @@ impl DeltaReconstructor {
                 }))
             }
 
-            DeltaOperation::Modify { sequence_id, reference_offset: _, operations } => {
+            DeltaOperation::Modify {
+                sequence_id,
+                reference_offset: _,
+                operations,
+            } => {
                 // Find reference sequence to modify
-                let ref_seq = ref_map.get(sequence_id)
+                let ref_seq = ref_map
+                    .get(sequence_id)
                     .or_else(|| ref_map.values().next())
-                    .ok_or_else(|| anyhow::anyhow!("No reference found for modification of {}", sequence_id))?;
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("No reference found for modification of {}", sequence_id)
+                    })?;
 
                 // Start with reference sequence
                 let mut sequence = ref_seq.sequence.clone();
@@ -207,7 +218,11 @@ impl DeltaReconstructor {
 
             SeqEdit::Delete { pos, count } => {
                 if *pos + *count > sequence.len() {
-                    return Err(anyhow::anyhow!("Delete range {}..{} out of range", pos, pos + count));
+                    return Err(anyhow::anyhow!(
+                        "Delete range {}..{} out of range",
+                        pos,
+                        pos + count
+                    ));
                 }
                 // Remove bases
                 for _ in 0..*count {
@@ -271,7 +286,8 @@ impl DeltaReconstructor {
             _ => 0,
         };
 
-        self.chain_depth_cache.insert(delta_chunk.content_hash.clone(), depth);
+        self.chain_depth_cache
+            .insert(delta_chunk.content_hash.clone(), depth);
         depth
     }
 
@@ -285,7 +301,8 @@ impl DeltaReconstructor {
 
         for chunk in delta_chunks {
             // Get references for this chunk
-            let references = if let Some(cached) = self.get_cached_references(&chunk.reference_hash) {
+            let references = if let Some(cached) = self.get_cached_references(&chunk.reference_hash)
+            {
                 cached
             } else {
                 reference_provider(&chunk.reference_hash)?
@@ -333,7 +350,8 @@ impl DeltaChainManager {
     /// Add a delta chunk to the chain tracker
     pub fn add_chunk(&mut self, chunk: &DeltaChunk) {
         if let ChunkType::Delta { reference_hash, .. } = &chunk.chunk_type {
-            let depth = self.chain_map
+            let depth = self
+                .chain_map
                 .get(reference_hash)
                 .map(|info| info.depth + 1)
                 .unwrap_or(1);
@@ -388,8 +406,13 @@ mod tests {
         let reconstructor = DeltaReconstructor::default();
         let mut sequence = b"ACGT".to_vec();
 
-        let edit = SeqEdit::Substitute { pos: 1, new_base: b'T' };
-        reconstructor.apply_sequence_edit(&mut sequence, &edit).unwrap();
+        let edit = SeqEdit::Substitute {
+            pos: 1,
+            new_base: b'T',
+        };
+        reconstructor
+            .apply_sequence_edit(&mut sequence, &edit)
+            .unwrap();
 
         assert_eq!(sequence, b"ATGT");
     }
@@ -399,8 +422,13 @@ mod tests {
         let reconstructor = DeltaReconstructor::default();
         let mut sequence = b"ACGT".to_vec();
 
-        let edit = SeqEdit::Insert { pos: 2, bases: vec![b'A', b'A'] };
-        reconstructor.apply_sequence_edit(&mut sequence, &edit).unwrap();
+        let edit = SeqEdit::Insert {
+            pos: 2,
+            bases: vec![b'A', b'A'],
+        };
+        reconstructor
+            .apply_sequence_edit(&mut sequence, &edit)
+            .unwrap();
 
         assert_eq!(sequence, b"ACAAGT");
     }
@@ -411,7 +439,9 @@ mod tests {
         let mut sequence = b"ACGTACGT".to_vec();
 
         let edit = SeqEdit::Delete { pos: 2, count: 4 };
-        reconstructor.apply_sequence_edit(&mut sequence, &edit).unwrap();
+        reconstructor
+            .apply_sequence_edit(&mut sequence, &edit)
+            .unwrap();
 
         assert_eq!(sequence, b"ACGT");
     }
@@ -477,4 +507,3 @@ impl DeltaReconstructorTrait for DeltaReconstructor {
         Ok(true)
     }
 }
-

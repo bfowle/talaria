@@ -1,10 +1,9 @@
-/// Smart chunking system for taxonomic groups
-
-use crate::casg::types::*;
-use crate::bio::sequence::Sequence;
-use crate::bio::taxonomy::{TaxonomyResolver, TaxonomyEnrichable, TaxonomyDiscrepancy};
-use crate::utils::progress::{create_progress_bar, create_spinner};
 use super::traits::{Chunker, ChunkingStats};
+use crate::bio::sequence::Sequence;
+use crate::bio::taxonomy::{TaxonomyDiscrepancy, TaxonomyEnrichable, TaxonomyResolver};
+/// Smart chunking system for taxonomic groups
+use crate::casg::types::*;
+use crate::utils::progress::{create_progress_bar, create_spinner};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
@@ -27,14 +26,19 @@ impl TaxonomicChunker {
     }
 
     /// Chunk sequences with validation using trait-based taxonomy resolution
-    pub fn chunk_with_validation(&mut self, mut sequences: Vec<Sequence>) -> Result<Vec<TaxonomyAwareChunk>> {
+    pub fn chunk_with_validation(
+        &mut self,
+        mut sequences: Vec<Sequence>,
+    ) -> Result<Vec<TaxonomyAwareChunk>> {
         // Enrich all sequences with taxonomy from mappings
-        let mappings: HashMap<String, u32> = self.taxonomy_map
+        let mappings: HashMap<String, u32> = self
+            .taxonomy_map
             .iter()
             .map(|(k, v)| (k.clone(), v.0))
             .collect();
 
-        let enrichment_progress = create_progress_bar(sequences.len() as u64, "Enriching sequences with taxonomy");
+        let enrichment_progress =
+            create_progress_bar(sequences.len() as u64, "Enriching sequences with taxonomy");
         for seq in &mut sequences {
             // Enrich from various sources
             seq.enrich_from_mappings(&mappings);
@@ -55,7 +59,10 @@ impl TaxonomicChunker {
         }
 
         // Group sequences by resolved taxonomy
-        let grouping_progress = create_progress_bar(sequences.len() as u64, "Grouping sequences by resolved taxonomy");
+        let grouping_progress = create_progress_bar(
+            sequences.len() as u64,
+            "Grouping sequences by resolved taxonomy",
+        );
         let mut taxon_groups: HashMap<TaxonId, Vec<Sequence>> = HashMap::new();
 
         for seq in sequences {
@@ -78,7 +85,10 @@ impl TaxonomicChunker {
         println!("Grouped into {} taxa", taxon_groups.len());
 
         // Apply chunking strategy to each group
-        let chunking_progress = create_progress_bar(taxon_groups.len() as u64, "Creating chunks from taxa groups");
+        let chunking_progress = create_progress_bar(
+            taxon_groups.len() as u64,
+            "Creating chunks from taxa groups",
+        );
         let mut chunks = Vec::new();
 
         for (taxon_id, sequences) in taxon_groups {
@@ -106,19 +116,28 @@ impl TaxonomicChunker {
             return;
         }
 
-        warning(&format!("Found {} taxonomy discrepancies", discrepancies.len()));
+        warning(&format!(
+            "Found {} taxonomy discrepancies",
+            discrepancies.len()
+        ));
 
         // Group by conflict pattern
         let mut by_pattern: HashMap<String, Vec<&TaxonomyDiscrepancy>> = HashMap::new();
         for disc in discrepancies {
-            let pattern = format!("{:?}", disc.conflicts.iter().map(|(s, _)| s).collect::<Vec<_>>());
+            let pattern = format!(
+                "{:?}",
+                disc.conflicts.iter().map(|(s, _)| s).collect::<Vec<_>>()
+            );
             by_pattern.entry(pattern).or_default().push(disc);
         }
 
         for (pattern, discs) in by_pattern.iter().take(5) {
             println!("  Conflict pattern {}: {} sequences", pattern, discs.len());
             for disc in discs.iter().take(3) {
-                println!("    - {} (resolved by {})", disc.sequence_id, disc.resolution_strategy);
+                println!(
+                    "    - {} (resolved by {})",
+                    disc.sequence_id, disc.resolution_strategy
+                );
             }
             if discs.len() > 3 {
                 println!("    ... and {} more", discs.len() - 3);
@@ -136,7 +155,8 @@ impl TaxonomicChunker {
         sequences: Vec<Sequence>,
     ) -> Result<Vec<TaxonomyAwareChunk>> {
         // Group sequences by taxon ID
-        let grouping_progress = create_progress_bar(sequences.len() as u64, "Grouping sequences by taxonomy");
+        let grouping_progress =
+            create_progress_bar(sequences.len() as u64, "Grouping sequences by taxonomy");
         let mut taxon_groups: HashMap<TaxonId, Vec<Sequence>> = HashMap::new();
 
         for seq in sequences {
@@ -148,7 +168,10 @@ impl TaxonomicChunker {
         println!("Grouped into {} taxa", taxon_groups.len());
 
         // Apply chunking strategy to each group
-        let chunking_progress = create_progress_bar(taxon_groups.len() as u64, "Creating chunks from taxa groups");
+        let chunking_progress = create_progress_bar(
+            taxon_groups.len() as u64,
+            "Creating chunks from taxa groups",
+        );
         let mut chunks = Vec::new();
 
         for (taxon_id, sequences) in taxon_groups {
@@ -180,7 +203,7 @@ impl TaxonomicChunker {
 
         // Look up in taxonomy map
         if let Some(taxon_id) = self.taxonomy_map.get(&accession) {
-            return Ok(taxon_id.clone());
+            return Ok(*taxon_id);
         }
 
         // Try to parse from description (common formats)
@@ -268,15 +291,14 @@ impl TaxonomicChunker {
             let seq_size = seq.sequence.len();
 
             // Check if adding this sequence would exceed limits
-            if current_size + seq_size > self.strategy.max_chunk_size ||
-               (current_size > self.strategy.target_chunk_size &&
-                current_chunk_sequences.len() >= self.strategy.min_sequences_per_chunk) {
+            if current_size + seq_size > self.strategy.max_chunk_size
+                || (current_size > self.strategy.target_chunk_size
+                    && current_chunk_sequences.len() >= self.strategy.min_sequences_per_chunk)
+            {
                 // Create chunk
                 if !current_chunk_sequences.is_empty() {
-                    chunks.push(self.create_chunk(
-                        vec![taxon_id.clone()],
-                        current_chunk_sequences,
-                    )?);
+                    chunks
+                        .push(self.create_chunk(vec![taxon_id], current_chunk_sequences)?);
                 }
 
                 // Start new chunk
@@ -290,10 +312,7 @@ impl TaxonomicChunker {
 
         // Create final chunk
         if !current_chunk_sequences.is_empty() {
-            chunks.push(self.create_chunk(
-                vec![taxon_id],
-                current_chunk_sequences,
-            )?);
+            chunks.push(self.create_chunk(vec![taxon_id], current_chunk_sequences)?);
         }
 
         Ok(chunks)
@@ -329,9 +348,13 @@ impl TaxonomicChunker {
         // Get actual version hashes
         use crate::core::paths;
 
-        let taxonomy_version = if let Ok(tax_mgr) = crate::casg::taxonomy::TaxonomyManager::new(&paths::talaria_databases_dir()) {
+        let taxonomy_version = if let Ok(tax_mgr) =
+            crate::casg::taxonomy::TaxonomyManager::new(&paths::talaria_databases_dir())
+        {
             if tax_mgr.has_taxonomy() {
-                tax_mgr.get_taxonomy_root().unwrap_or_else(|_| SHA256Hash::compute(b"v1"))
+                tax_mgr
+                    .get_taxonomy_root()
+                    .unwrap_or_else(|_| SHA256Hash::compute(b"v1"))
             } else {
                 SHA256Hash::compute(b"no_taxonomy")
             }
@@ -349,7 +372,7 @@ impl TaxonomicChunker {
             sequence_version,
             taxon_ids,
             sequences: sequence_refs,
-            sequence_data: chunk_data,  // Store the actual sequence data
+            sequence_data: chunk_data, // Store the actual sequence data
             created_at: now,
             valid_from: now,
             valid_until: None,
@@ -404,7 +427,7 @@ impl TaxonomicChunker {
             for special_taxon in &self.strategy.special_taxa {
                 if chunk.taxon_ids.contains(&special_taxon.taxon_id) {
                     special_taxa_chunks
-                        .entry(special_taxon.taxon_id.clone())
+                        .entry(special_taxon.taxon_id)
                         .or_default()
                         .push(chunk.clone());
                     is_special = true;
@@ -419,7 +442,9 @@ impl TaxonomicChunker {
 
         // Process special taxa according to their strategies
         for (taxon_id, chunks) in special_taxa_chunks {
-            let special_taxon = self.strategy.special_taxa
+            let special_taxon = self
+                .strategy
+                .special_taxa
                 .iter()
                 .find(|st| st.taxon_id == taxon_id)
                 .unwrap();
@@ -432,7 +457,10 @@ impl TaxonomicChunker {
                 ChunkStrategy::GroupWithSiblings => {
                     // Group with sibling taxa (same parent)
                     use crate::core::paths;
-                    let taxonomy = crate::casg::taxonomy::TaxonomyManager::new(&paths::talaria_databases_dir()).ok();
+                    let taxonomy = crate::casg::taxonomy::TaxonomyManager::new(
+                        &paths::talaria_databases_dir(),
+                    )
+                    .ok();
 
                     if let Some(_tax) = taxonomy {
                         // Find parent taxon
@@ -440,7 +468,8 @@ impl TaxonomicChunker {
                         let _parent_id = TaxonId(1);
                         if true {
                             // Find all siblings (taxa with same parent)
-                            let siblings = chunks.iter()
+                            let siblings = chunks
+                                .iter()
                                 .filter(|c| {
                                     c.taxon_ids.iter().any(|&tid| {
                                         // Simplified check - would need actual parent lookup
@@ -469,11 +498,15 @@ impl TaxonomicChunker {
                     eprintln!("Grouping at taxonomic level: {}", level);
 
                     use crate::core::paths;
-                    let taxonomy = crate::casg::taxonomy::TaxonomyManager::new(&paths::talaria_databases_dir()).ok();
+                    let taxonomy = crate::casg::taxonomy::TaxonomyManager::new(
+                        &paths::talaria_databases_dir(),
+                    )
+                    .ok();
 
                     if let Some(_tax) = taxonomy {
                         // Group chunks by ancestor at specified level
-                        let mut level_groups: HashMap<TaxonId, Vec<TaxonomyAwareChunk>> = HashMap::new();
+                        let mut level_groups: HashMap<TaxonId, Vec<TaxonomyAwareChunk>> =
+                            HashMap::new();
 
                         for chunk in chunks {
                             // Find the ancestor at the specified level for this chunk's primary taxon
@@ -481,7 +514,10 @@ impl TaxonomicChunker {
                                 // Simplified ancestor lookup - would need actual implementation
                                 let ancestor = TaxonId(primary_taxon.0 / 100); // Placeholder logic
                                 if true {
-                                    level_groups.entry(ancestor).or_insert_with(Vec::new).push(chunk);
+                                    level_groups
+                                        .entry(ancestor)
+                                        .or_default()
+                                        .push(chunk);
                                 } else {
                                     // No ancestor at this level, keep as separate chunk
                                     final_chunks.push(chunk);
@@ -494,8 +530,13 @@ impl TaxonomicChunker {
                         // Merge chunks in each group
                         for (ancestor_id, group_chunks) in level_groups {
                             if group_chunks.len() > 1 {
-                                eprintln!("  Merging {} chunks for ancestor taxon {}", group_chunks.len(), ancestor_id);
-                                let merged = self.merge_chunks(&group_chunks.iter().collect::<Vec<_>>())?;
+                                eprintln!(
+                                    "  Merging {} chunks for ancestor taxon {}",
+                                    group_chunks.len(),
+                                    ancestor_id
+                                );
+                                let merged =
+                                    self.merge_chunks(&group_chunks.iter().collect::<Vec<_>>())?;
                                 final_chunks.push(merged);
                             } else {
                                 final_chunks.extend(group_chunks);
@@ -534,10 +575,12 @@ impl TaxonomicChunker {
         let content_hash = SHA256Hash::compute(&all_sequence_data);
 
         // Get version hashes from first chunk (all should have same versions in this context)
-        let taxonomy_version = chunks.first()
+        let taxonomy_version = chunks
+            .first()
             .map(|c| c.taxonomy_version.clone())
             .unwrap_or_else(|| SHA256Hash::compute(b"v1"));
-        let sequence_version = chunks.first()
+        let sequence_version = chunks
+            .first()
             .map(|c| c.sequence_version.clone())
             .unwrap_or_else(|| SHA256Hash::compute(b"v1"));
 
@@ -632,13 +675,13 @@ pub struct ChunkingAnalysis {
 impl Default for ChunkingStrategy {
     fn default() -> Self {
         Self {
-            target_chunk_size: 50 * 1024 * 1024,    // 50 MB
-            max_chunk_size: 100 * 1024 * 1024,      // 100 MB
+            target_chunk_size: 50 * 1024 * 1024, // 50 MB
+            max_chunk_size: 100 * 1024 * 1024,   // 100 MB
             min_sequences_per_chunk: 10,
             taxonomic_coherence: 0.9,
             special_taxa: vec![
                 SpecialTaxon {
-                    taxon_id: TaxonId(562),  // E. coli
+                    taxon_id: TaxonId(562), // E. coli
                     name: "Escherichia coli".to_string(),
                     strategy: ChunkStrategy::OwnChunks,
                 },
@@ -659,13 +702,16 @@ impl Chunker for TaxonomicChunker {
         let chunks = self.chunk_sequences_into_taxonomy_aware(sequences.to_vec())?;
 
         // Convert TaxonomyAwareChunk to ChunkMetadata
-        Ok(chunks.into_iter().map(|chunk| ChunkMetadata {
-            hash: chunk.content_hash,
-            taxon_ids: chunk.taxon_ids,
-            sequence_count: chunk.sequences.len(),
-            size: chunk.size,
-            compressed_size: chunk.compressed_size,
-        }).collect())
+        Ok(chunks
+            .into_iter()
+            .map(|chunk| ChunkMetadata {
+                hash: chunk.content_hash,
+                taxon_ids: chunk.taxon_ids,
+                sequence_count: chunk.sequences.len(),
+                size: chunk.size,
+                compressed_size: chunk.compressed_size,
+            })
+            .collect())
     }
 
     fn get_stats(&self) -> ChunkingStats {
@@ -681,7 +727,6 @@ impl Chunker for TaxonomicChunker {
         // Would update internal configuration
     }
 }
-
 
 // Additional helper methods for TaxonomicChunker
 // (These are already defined in the main impl block above)

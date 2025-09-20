@@ -19,64 +19,74 @@ pub fn generate_utc_timestamp() -> String {
 /// Get the Talaria home directory
 /// Checks TALARIA_HOME environment variable, falls back to ${HOME}/.talaria
 pub fn talaria_home() -> PathBuf {
-    TALARIA_HOME.get_or_init(|| {
-        if let Ok(path) = std::env::var("TALARIA_HOME") {
-            PathBuf::from(path)
-        } else {
-            let home = std::env::var("HOME")
-                .unwrap_or_else(|_| std::env::var("USERPROFILE")
-                    .unwrap_or_else(|_| ".".to_string()));
-            PathBuf::from(home).join(".talaria")
-        }
-    }).clone()
+    TALARIA_HOME
+        .get_or_init(|| {
+            if let Ok(path) = std::env::var("TALARIA_HOME") {
+                PathBuf::from(path)
+            } else {
+                let home = std::env::var("HOME").unwrap_or_else(|_| {
+                    std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string())
+                });
+                PathBuf::from(home).join(".talaria")
+            }
+        })
+        .clone()
 }
 
 /// Get the Talaria data directory
 /// Checks TALARIA_DATA_DIR environment variable, falls back to TALARIA_HOME
 pub fn talaria_data_dir() -> PathBuf {
-    TALARIA_DATA_DIR.get_or_init(|| {
-        if let Ok(path) = std::env::var("TALARIA_DATA_DIR") {
-            PathBuf::from(path)
-        } else {
-            talaria_home()
-        }
-    }).clone()
+    TALARIA_DATA_DIR
+        .get_or_init(|| {
+            if let Ok(path) = std::env::var("TALARIA_DATA_DIR") {
+                PathBuf::from(path)
+            } else {
+                talaria_home()
+            }
+        })
+        .clone()
 }
 
 /// Get the databases storage directory
 /// Checks TALARIA_DATABASES_DIR environment variable, falls back to TALARIA_DATA_DIR/databases
 pub fn talaria_databases_dir() -> PathBuf {
-    TALARIA_DATABASES_DIR.get_or_init(|| {
-        if let Ok(path) = std::env::var("TALARIA_DATABASES_DIR") {
-            PathBuf::from(path)
-        } else {
-            talaria_data_dir().join("databases")
-        }
-    }).clone()
+    TALARIA_DATABASES_DIR
+        .get_or_init(|| {
+            if let Ok(path) = std::env::var("TALARIA_DATABASES_DIR") {
+                PathBuf::from(path)
+            } else {
+                talaria_data_dir().join("databases")
+            }
+        })
+        .clone()
 }
 
 /// Get the tools directory
 /// Checks TALARIA_TOOLS_DIR environment variable, falls back to TALARIA_DATA_DIR/tools
 pub fn talaria_tools_dir() -> PathBuf {
-    TALARIA_TOOLS_DIR.get_or_init(|| {
-        if let Ok(path) = std::env::var("TALARIA_TOOLS_DIR") {
-            PathBuf::from(path)
-        } else {
-            talaria_data_dir().join("tools")
-        }
-    }).clone()
+    TALARIA_TOOLS_DIR
+        .get_or_init(|| {
+            if let Ok(path) = std::env::var("TALARIA_TOOLS_DIR") {
+                PathBuf::from(path)
+            } else {
+                talaria_data_dir().join("tools")
+            }
+        })
+        .clone()
 }
 
 /// Get the cache directory
 /// Checks TALARIA_CACHE_DIR environment variable, falls back to TALARIA_DATA_DIR/cache
 pub fn talaria_cache_dir() -> PathBuf {
-    TALARIA_CACHE_DIR.get_or_init(|| {
-        if let Ok(path) = std::env::var("TALARIA_CACHE_DIR") {
-            PathBuf::from(path)
-        } else {
-            talaria_data_dir().join("cache")
-        }
-    }).clone()
+    TALARIA_CACHE_DIR
+        .get_or_init(|| {
+            if let Ok(path) = std::env::var("TALARIA_CACHE_DIR") {
+                PathBuf::from(path)
+            } else {
+                talaria_data_dir().join("cache")
+            }
+        })
+        .clone()
 }
 
 /// Get the unified taxonomy directory
@@ -100,15 +110,17 @@ pub fn talaria_taxonomy_version_dir(version: &str) -> PathBuf {
 /// Get the workspace directory for temporal workspaces
 /// Checks TALARIA_WORKSPACE_DIR environment variable, falls back to /tmp/talaria or $TMPDIR/talaria
 pub fn talaria_workspace_dir() -> PathBuf {
-    TALARIA_WORKSPACE_DIR.get_or_init(|| {
-        if let Ok(path) = std::env::var("TALARIA_WORKSPACE_DIR") {
-            PathBuf::from(path)
-        } else if let Ok(tmpdir) = std::env::var("TMPDIR") {
-            PathBuf::from(tmpdir).join("talaria")
-        } else {
-            PathBuf::from("/tmp/talaria")
-        }
-    }).clone()
+    TALARIA_WORKSPACE_DIR
+        .get_or_init(|| {
+            if let Ok(path) = std::env::var("TALARIA_WORKSPACE_DIR") {
+                PathBuf::from(path)
+            } else if let Ok(tmpdir) = std::env::var("TMPDIR") {
+                PathBuf::from(tmpdir).join("talaria")
+            } else {
+                PathBuf::from("/tmp/talaria")
+            }
+        })
+        .clone()
 }
 
 /// Get database path for a specific source and dataset
@@ -123,7 +135,9 @@ pub fn storage_path() -> PathBuf {
 
 /// Get manifest path for a specific database
 pub fn manifest_path(source: &str, dataset: &str) -> PathBuf {
-    talaria_databases_dir().join("manifests").join(format!("{}-{}.json", source, dataset))
+    talaria_databases_dir()
+        .join("manifests")
+        .join(format!("{}-{}.json", source, dataset))
 }
 
 /// Check if running in a custom data directory
@@ -146,7 +160,11 @@ pub fn describe_paths() -> String {
         talaria_databases_dir().display(),
         talaria_tools_dir().display(),
         talaria_cache_dir().display(),
-        if is_custom_data_dir() { "Yes" } else { "No (using defaults)" }
+        if is_custom_data_dir() {
+            "Yes"
+        } else {
+            "No (using defaults)"
+        }
     )
 }
 

@@ -99,11 +99,7 @@ pub trait VersionStore: Send + Sync {
     async fn list_aliases(&self, source: &DatabaseSource) -> Result<HashMap<String, String>>;
 
     /// Atomic version promotion (make a version current)
-    async fn promote_version(
-        &mut self,
-        source: &DatabaseSource,
-        version_id: &str,
-    ) -> Result<()> {
+    async fn promote_version(&mut self, source: &DatabaseSource, version_id: &str) -> Result<()> {
         self.update_alias(source, "current", version_id).await
     }
 
@@ -192,9 +188,7 @@ impl VersionStore for FilesystemVersionStore {
                 continue;
             }
 
-            let dir_name = path.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
+            let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
             // Check if it looks like a version directory (timestamp format)
             if dir_name.len() == 15 && dir_name.chars().nth(8) == Some('_') {
@@ -214,8 +208,8 @@ impl VersionStore for FilesystemVersionStore {
                     created_at: Self::parse_timestamp_version(dir_name)?,
                     manifest_path,
                     size,
-                    chunk_count: 0,  // Would need to read manifest
-                    entry_count: 0,   // Would need to read manifest
+                    chunk_count: 0, // Would need to read manifest
+                    entry_count: 0, // Would need to read manifest
                     upstream_version: None,
                     metadata: HashMap::new(),
                 });
@@ -241,20 +235,28 @@ impl VersionStore for FilesystemVersionStore {
 
         if current_link.exists() {
             let target = std::fs::read_link(&current_link)?;
-            let version_id = target.file_name()
+            let version_id = target
+                .file_name()
                 .and_then(|n| n.to_str())
                 .ok_or_else(|| anyhow::anyhow!("Invalid current symlink"))?;
 
             self.get_version(source, version_id).await
         } else {
             // No current link, get the newest version
-            let versions = self.list_versions(source, ListOptions {
-                limit: Some(1),
-                newest_first: true,
-                ..Default::default()
-            }).await?;
+            let versions = self
+                .list_versions(
+                    source,
+                    ListOptions {
+                        limit: Some(1),
+                        newest_first: true,
+                        ..Default::default()
+                    },
+                )
+                .await?;
 
-            versions.into_iter().next()
+            versions
+                .into_iter()
+                .next()
                 .ok_or_else(|| anyhow::anyhow!("No versions found"))
         }
     }
@@ -348,7 +350,8 @@ impl VersionStore for FilesystemVersionStore {
 
         if alias_path.exists() && alias_path.is_symlink() {
             let target = std::fs::read_link(&alias_path)?;
-            let version_id = target.file_name()
+            let version_id = target
+                .file_name()
                 .and_then(|n| n.to_str())
                 .ok_or_else(|| anyhow::anyhow!("Invalid alias symlink"))?;
 
@@ -371,7 +374,8 @@ impl VersionStore for FilesystemVersionStore {
             let path = entry.path();
 
             if path.is_symlink() {
-                let name = path.file_name()
+                let name = path
+                    .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("")
                     .to_string();
@@ -396,10 +400,15 @@ impl VersionStore for FilesystemVersionStore {
         source: &DatabaseSource,
         keep_count: usize,
     ) -> Result<Vec<String>> {
-        let versions = self.list_versions(source, ListOptions {
-            newest_first: true,
-            ..Default::default()
-        }).await?;
+        let versions = self
+            .list_versions(
+                source,
+                ListOptions {
+                    newest_first: true,
+                    ..Default::default()
+                },
+            )
+            .await?;
 
         let mut deleted = Vec::new();
 
@@ -459,14 +468,16 @@ impl FilesystemVersionStore {
     fn parse_timestamp_version(version: &str) -> Result<DateTime<Utc>> {
         if version.len() == 15 && version.chars().nth(8) == Some('_') {
             let dt = DateTime::parse_from_str(
-                &format!("{} {}:{}:{}",
+                &format!(
+                    "{} {}:{}:{}",
                     &version[0..8],
                     &version[9..11],
                     &version[11..13],
                     &version[13..15]
                 ),
-                "%Y%m%d %H:%M:%S"
-            )?.with_timezone(&Utc);
+                "%Y%m%d %H:%M:%S",
+            )?
+            .with_timezone(&Utc);
             Ok(dt)
         } else {
             // Non-timestamp version, use current time

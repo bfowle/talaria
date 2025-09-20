@@ -15,17 +15,37 @@
 
 - [Downloading Databases](./databases/downloading.md)
 
-# Storage Architecture
+# CASG Storage System
+
+## Understanding CASG
+
+- [What is CASG?](./casg/introduction.md)
+- [Core Concepts](./casg/concepts.md)
+- [How CASG Works](./casg/how-it-works.md)
+
+## Using CASG
+
+- [Getting Started](./casg/getting-started.md)
+- [Common Workflows](./casg/workflows.md)
+- [Best Practices](./casg/best-practices.md)
+- [Performance Metrics](./casg/performance.md)
+
+## CASG Internals
 
 - [Storage Overview](./casg/overview.md)
-- [Workflows and Operations](./casg/workflows.md)
-- [Real-World Case Studies](./casg/case-studies.md)
-- [Architecture Deep Dive](./casg/architecture.md)
-- [Manifest Format](./casg/manifest.md)
 - [Smart Chunking](./casg/chunking.md)
+- [Manifest Format](./casg/manifest.md)
 - [Merkle DAG & Proofs](./casg/merkle.md)
+
+## Reference & Troubleshooting
+
 - [API Reference](./casg/api-reference.md)
 - [Troubleshooting Guide](./casg/troubleshooting.md)
+- [Real-World Case Studies](./casg/case-studies.md)
+
+## Research
+
+- [Academic Whitepaper](./whitepapers/casg-architecture.md)
 
 # Workflows
 

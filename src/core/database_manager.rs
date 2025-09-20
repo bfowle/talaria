@@ -1,10 +1,11 @@
+use crate::bio::sequence::Sequence;
 /// Database manager using content-addressed storage
 ///
 /// Instead of downloading entire databases and creating dated directories,
 /// this uses content-addressed storage with manifests for efficient updates.
-
-use crate::casg::{CASGRepository, TaxonomicChunker, ChunkingStrategy, SHA256Hash, TaxonomyAwareChunk};
-use crate::bio::sequence::Sequence;
+use crate::casg::{
+    CASGRepository, ChunkingStrategy, SHA256Hash, TaxonomicChunker, TaxonomyAwareChunk,
+};
 use crate::core::paths;
 use crate::core::taxonomy_manager::{TaxonomyManager, VersionDecision};
 use crate::download::{DatabaseSource, NCBIDatabase, UniProtDatabase};
@@ -103,7 +104,9 @@ impl DatabaseManager {
         // Try to get manifest URL for update check
         if let Ok(manifest_url) = self.get_manifest_url(source) {
             progress_callback("Checking for updates...");
-            self.repository.manifest.set_remote_url(manifest_url.clone());
+            self.repository
+                .manifest
+                .set_remote_url(manifest_url.clone());
 
             match self.repository.check_updates().await {
                 Ok(false) => {
@@ -161,9 +164,9 @@ impl DatabaseManager {
 
     /// Ensure version integrity - fix symlinks and metadata even if data is present
     pub fn ensure_version_integrity(&mut self, source: &DatabaseSource) -> Result<()> {
-
         let (source_name, dataset) = self.get_source_dataset_names(source);
-        let versions_dir = self.base_path
+        let versions_dir = self
+            .base_path
             .join("versions")
             .join(&source_name)
             .join(&dataset);
@@ -219,13 +222,13 @@ impl DatabaseManager {
         Ok(())
     }
 
-
     /// Get current version information
     pub fn get_current_version_info(&self, source: &DatabaseSource) -> Result<VersionInfo> {
         use crate::utils::version_detector::DatabaseVersion;
 
         let (source_name, dataset) = self.get_source_dataset_names(source);
-        let versions_dir = self.base_path
+        let versions_dir = self
+            .base_path
             .join("versions")
             .join(&source_name)
             .join(&dataset);
@@ -261,7 +264,8 @@ impl DatabaseManager {
             })
         } else {
             // Fallback to just timestamp
-            let timestamp = version_dir.file_name()
+            let timestamp = version_dir
+                .file_name()
                 .and_then(|s| s.to_str())
                 .unwrap_or("unknown")
                 .to_string();
@@ -289,7 +293,9 @@ impl DatabaseManager {
             // Component doesn't exist yet, proceed directly to download
             // Skip CASG manifest checks for taxonomy files
             println!("  Taxonomy component not found, will download: {}", source);
-            return self.handle_initial_download(source, progress_callback).await;
+            return self
+                .handle_initial_download(source, progress_callback)
+                .await;
         }
 
         // Check if we have a cached manifest (for non-taxonomy databases)
@@ -303,7 +309,9 @@ impl DatabaseManager {
                 progress_callback("Checking for updates...");
 
                 // Set remote URL in repository
-                self.repository.manifest.set_remote_url(manifest_url.clone());
+                self.repository
+                    .manifest
+                    .set_remote_url(manifest_url.clone());
 
                 // Try to check for updates, but don't fail if manifest server is unavailable
                 match self.repository.check_updates().await {
@@ -317,17 +325,23 @@ impl DatabaseManager {
                         match self.repository.manifest.fetch_remote().await {
                             Ok(new_manifest) => {
                                 // Successfully got remote manifest, proceed with incremental update
-                                return self.handle_incremental_update(new_manifest, progress_callback).await;
+                                return self
+                                    .handle_incremental_update(new_manifest, progress_callback)
+                                    .await;
                             }
                             Err(_) => {
-                                progress_callback("[!] Manifest server unavailable, keeping current version");
+                                progress_callback(
+                                    "[!] Manifest server unavailable, keeping current version",
+                                );
                                 return Ok(DownloadResult::UpToDate);
                             }
                         }
                     }
                     Err(_) => {
                         // Manifest server unavailable, but we have local data
-                        progress_callback("[!] Cannot check for updates (manifest server unavailable)");
+                        progress_callback(
+                            "[!] Cannot check for updates (manifest server unavailable)",
+                        );
                         return Ok(DownloadResult::UpToDate);
                     }
                 }
@@ -343,7 +357,8 @@ impl DatabaseManager {
         progress_callback("This will download the full database and convert it to CASG format");
         progress_callback("Future updates will be incremental and much faster!");
 
-        self.handle_initial_download(source, progress_callback).await
+        self.handle_initial_download(source, progress_callback)
+            .await
     }
 
     /// Handle incremental update when manifest is available
@@ -355,7 +370,8 @@ impl DatabaseManager {
         use crate::casg::{OperationType, SourceInfo};
 
         // Get manifest data for version info
-        let manifest_data = new_manifest.get_data()
+        let manifest_data = new_manifest
+            .get_data()
             .ok_or_else(|| anyhow::anyhow!("No manifest data"))?;
         let manifest_hash = SHA256Hash::compute(&serde_json::to_vec(&manifest_data)?);
         let manifest_version = manifest_data.version.clone();
@@ -368,7 +384,10 @@ impl DatabaseManager {
 
         // Check for resumable state
         let source_info = SourceInfo {
-            database: manifest_data.source_database.clone().unwrap_or_else(|| "unknown".to_string()),
+            database: manifest_data
+                .source_database
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string()),
             source_url: new_manifest.get_remote_url().map(|s| s.to_string()),
             etag: new_manifest.get_etag().map(|s| s.to_string()),
             total_size_bytes: None,
@@ -410,10 +429,14 @@ impl DatabaseManager {
         // Download only new chunks (with resume support)
         if !diff.new_chunks.is_empty() {
             progress_callback("Downloading new chunks...");
-            let downloaded = self.repository.storage.fetch_chunks_with_resume(
-                &diff.new_chunks,
-                true  // Enable resume checking
-            ).await?;
+            let downloaded = self
+                .repository
+                .storage
+                .fetch_chunks_with_resume(
+                    &diff.new_chunks,
+                    true, // Enable resume checking
+                )
+                .await?;
 
             progress_callback(&format!(
                 "Downloaded {} chunks, {:.2} MB",
@@ -427,9 +450,11 @@ impl DatabaseManager {
             progress_callback("Removing obsolete chunks...");
 
             // Get all currently referenced chunks from the new manifest
-            let manifest_data = new_manifest.get_data()
+            let manifest_data = new_manifest
+                .get_data()
                 .ok_or_else(|| anyhow::anyhow!("No manifest data"))?;
-            let referenced_chunks: Vec<SHA256Hash> = manifest_data.chunk_index
+            let referenced_chunks: Vec<SHA256Hash> = manifest_data
+                .chunk_index
                 .iter()
                 .map(|c| c.hash.clone())
                 .collect();
@@ -459,7 +484,9 @@ impl DatabaseManager {
                 manifest_data.version.clone(),
                 manifest_data.sequence_root.clone(),
                 manifest_data.chunk_index.len(),
-                manifest_data.chunk_index.iter()
+                manifest_data
+                    .chunk_index
+                    .iter()
                     .map(|c| c.sequence_count)
                     .sum(),
             )?;
@@ -483,13 +510,11 @@ impl DatabaseManager {
     fn is_taxonomy_database(source: &DatabaseSource) -> bool {
         use crate::download::{NCBIDatabase, UniProtDatabase};
 
-        match source {
-            DatabaseSource::UniProt(UniProtDatabase::IdMapping) => true,
-            DatabaseSource::NCBI(NCBIDatabase::Taxonomy) => true,
-            DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId) => true,
-            DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId) => true,
-            _ => false,
-        }
+        matches!(source,
+            DatabaseSource::UniProt(UniProtDatabase::IdMapping)
+            | DatabaseSource::NCBI(NCBIDatabase::Taxonomy)
+            | DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId)
+            | DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId))
     }
 
     /// Check if the specific taxonomy file exists by checking manifest components
@@ -511,8 +536,12 @@ impl DatabaseManager {
             if let Ok(manifest) = serde_json::from_str::<serde_json::Value>(&content) {
                 let component_name = match source {
                     DatabaseSource::NCBI(NCBIDatabase::Taxonomy) => "taxdump",
-                    DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId) => "prot_accession2taxid",
-                    DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId) => "nucl_accession2taxid",
+                    DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId) => {
+                        "prot_accession2taxid"
+                    }
+                    DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId) => {
+                        "nucl_accession2taxid"
+                    }
                     DatabaseSource::UniProt(UniProtDatabase::IdMapping) => "idmapping",
                     _ => return false,
                 };
@@ -520,7 +549,10 @@ impl DatabaseManager {
                 if let Some(components) = manifest.get("components").and_then(|c| c.as_object()) {
                     let exists = components.contains_key(component_name);
                     if exists {
-                        println!("  Component '{}' already exists in manifest", component_name);
+                        println!(
+                            "  Component '{}' already exists in manifest",
+                            component_name
+                        );
                     }
                     return exists;
                 }
@@ -532,13 +564,19 @@ impl DatabaseManager {
 
     /// Create or update a composite manifest for taxonomy files
     /// Now accepts the version directory to ensure consistency
-    fn create_or_update_taxonomy_manifest(&self, source: &DatabaseSource, file_path: &Path, version_dir: &Path, version: &str) -> Result<()> {
-        use chrono::Utc;
-        use crate::download::{NCBIDatabase, UniProtDatabase};
+    fn create_or_update_taxonomy_manifest(
+        &self,
+        source: &DatabaseSource,
+        file_path: &Path,
+        version_dir: &Path,
+        version: &str,
+    ) -> Result<()> {
         use crate::core::taxonomy_manager::{
-            TaxonomyManifest, InstalledComponent,
-            TaxonomyVersionPolicy, AuditEntry, TaxonomyManifestFormat
+            AuditEntry, InstalledComponent, TaxonomyManifest, TaxonomyManifestFormat,
+            TaxonomyVersionPolicy,
         };
+        use crate::download::{NCBIDatabase, UniProtDatabase};
+        use chrono::Utc;
         use std::collections::HashMap;
 
         // Determine manifest format and path
@@ -570,7 +608,8 @@ impl DatabaseManager {
                     version: version.to_string(),
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
-                    expected_components: crate::core::taxonomy_manager::TaxonomyManager::default_components(),
+                    expected_components:
+                        crate::core::taxonomy_manager::TaxonomyManager::default_components(),
                     installed_components: HashMap::new(),
                     history: vec![],
                     policy: TaxonomyVersionPolicy::default(),
@@ -581,14 +620,22 @@ impl DatabaseManager {
         // Determine component name and metadata
         let (component_name, source_name) = match source {
             DatabaseSource::NCBI(NCBIDatabase::Taxonomy) => ("taxdump", "NCBI: NCBI Taxonomy"),
-            DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId) => ("prot_accession2taxid", "NCBI: Protein Accession to TaxID"),
-            DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId) => ("nucl_accession2taxid", "NCBI: Nucleotide Accession to TaxID"),
-            DatabaseSource::UniProt(UniProtDatabase::IdMapping) => ("idmapping", "UniProt: ID Mapping"),
+            DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId) => {
+                ("prot_accession2taxid", "NCBI: Protein Accession to TaxID")
+            }
+            DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId) => (
+                "nucl_accession2taxid",
+                "NCBI: Nucleotide Accession to TaxID",
+            ),
+            DatabaseSource::UniProt(UniProtDatabase::IdMapping) => {
+                ("idmapping", "UniProt: ID Mapping")
+            }
             _ => return Err(anyhow::anyhow!("Unsupported taxonomy source")),
         };
 
         // Detect file format
-        let file_format = crate::core::taxonomy_manager::TaxonomyManager::detect_file_format(file_path)?;
+        let file_format =
+            crate::core::taxonomy_manager::TaxonomyManager::detect_file_format(file_path)?;
 
         // Create installed component
         let installed = InstalledComponent {
@@ -599,7 +646,8 @@ impl DatabaseManager {
             source_version: None,
             carried_from: None,
             file_path: file_path.to_path_buf(),
-            compressed: file_path.extension()
+            compressed: file_path
+                .extension()
                 .and_then(|s| s.to_str())
                 .map(|s| s == "gz" || s == "tar")
                 .unwrap_or(false),
@@ -607,7 +655,9 @@ impl DatabaseManager {
         };
 
         // Add or update the component
-        manifest.installed_components.insert(component_name.to_string(), installed);
+        manifest
+            .installed_components
+            .insert(component_name.to_string(), installed);
 
         // Add audit entry
         manifest.history.push(AuditEntry {
@@ -626,14 +676,21 @@ impl DatabaseManager {
         // Update symlinks only if not already done
         self.update_version_symlinks(source, version)?;
 
-        println!("  Updated manifest component '{}': {}", component_name, manifest_path.display());
+        println!(
+            "  Updated manifest component '{}': {}",
+            component_name,
+            manifest_path.display()
+        );
         println!("  Version: {}", version);
         Ok(())
     }
 
     /// Check if we should create a new taxonomy version or update current
     /// Determine if we should create a new taxonomy version using the new manager
-    fn should_create_new_taxonomy_version(&self, source: &DatabaseSource) -> Result<VersionDecision> {
+    fn should_create_new_taxonomy_version(
+        &self,
+        source: &DatabaseSource,
+    ) -> Result<VersionDecision> {
         // Map source to component name
         let component_name = match source {
             DatabaseSource::NCBI(NCBIDatabase::Taxonomy) => "taxdump",
@@ -646,7 +703,8 @@ impl DatabaseManager {
         // Check if running in non-interactive mode (e.g., CI)
         let interactive = atty::is(atty::Stream::Stdin);
 
-        self.taxonomy_manager.should_create_new_version(component_name, interactive)
+        self.taxonomy_manager
+            .should_create_new_version(component_name, interactive)
     }
 
     /// Create a new taxonomy version, optionally copying existing files
@@ -694,7 +752,10 @@ impl DatabaseManager {
                                     .unwrap_or_default();
                                 let age_days = age.as_secs() / 86400;
 
-                                carried_files.push((entry.file_name().to_string_lossy().to_string(), age_days));
+                                carried_files.push((
+                                    entry.file_name().to_string_lossy().to_string(),
+                                    age_days,
+                                ));
                             }
                         }
 
@@ -726,7 +787,11 @@ impl DatabaseManager {
     }
 
     /// Store taxonomy mapping files directly without FASTA processing
-    fn store_taxonomy_mapping_file(&mut self, file_path: &Path, source: &DatabaseSource) -> Result<()> {
+    fn store_taxonomy_mapping_file(
+        &mut self,
+        file_path: &Path,
+        source: &DatabaseSource,
+    ) -> Result<()> {
         use crate::download::{NCBIDatabase, UniProtDatabase};
 
         println!("Storing taxonomy mapping file...");
@@ -735,7 +800,10 @@ impl DatabaseManager {
         let version_decision = self.should_create_new_taxonomy_version(source)?;
 
         let (taxonomy_dir, version) = match version_decision {
-            VersionDecision::CreateNew { copy_forward, reason } => {
+            VersionDecision::CreateNew {
+                copy_forward,
+                reason,
+            } => {
                 println!("Creating new taxonomy version: {}", reason);
 
                 // Create new version and optionally copy existing files
@@ -745,7 +813,8 @@ impl DatabaseManager {
                     self.create_new_taxonomy_version()?
                 };
 
-                let version = new_dir.file_name()
+                let version = new_dir
+                    .file_name()
                     .and_then(|s| s.to_str())
                     .ok_or_else(|| anyhow::anyhow!("Failed to get version from directory"))?
                     .to_string();
@@ -759,7 +828,8 @@ impl DatabaseManager {
                     // First file - create initial version
                     println!("No current taxonomy version found, creating initial version...");
                     let new_dir = self.create_new_taxonomy_version()?;
-                    let version = new_dir.file_name()
+                    let version = new_dir
+                        .file_name()
                         .and_then(|s| s.to_str())
                         .ok_or_else(|| anyhow::anyhow!("Failed to get version from directory"))?
                         .to_string();
@@ -769,7 +839,8 @@ impl DatabaseManager {
                     let actual_dir = if current.is_symlink() {
                         let target = std::fs::read_link(&current)?;
                         if target.is_relative() {
-                            current.parent()
+                            current
+                                .parent()
                                 .ok_or_else(|| anyhow::anyhow!("Failed to get parent directory"))?
                                 .join(target)
                         } else {
@@ -779,7 +850,8 @@ impl DatabaseManager {
                         current.clone()
                     };
 
-                    let version = actual_dir.file_name()
+                    let version = actual_dir
+                        .file_name()
                         .and_then(|s| s.to_str())
                         .ok_or_else(|| anyhow::anyhow!("Failed to get version from directory"))?
                         .to_string();
@@ -818,7 +890,12 @@ impl DatabaseManager {
                 let nodes_file = tree_dir.join("nodes.dmp");
                 if nodes_file.exists() {
                     // taxonomy_dir is already the actual version directory from above
-                    self.create_or_update_taxonomy_manifest(source, &nodes_file, &taxonomy_dir, &version)?;
+                    self.create_or_update_taxonomy_manifest(
+                        source,
+                        &nodes_file,
+                        &taxonomy_dir,
+                        &version,
+                    )?;
                 }
 
                 return Ok(());
@@ -892,7 +969,8 @@ impl DatabaseManager {
         progress_callback("Downloading full database (this may take a while)...");
 
         // Download full file
-        self.download_full_database(source, &temp_file, &progress_callback).await?;
+        self.download_full_database(source, &temp_file, &progress_callback)
+            .await?;
 
         // Chunk the database
         progress_callback("Processing database into CASG chunks...");
@@ -911,8 +989,11 @@ impl DatabaseManager {
     }
 
     /// Chunk sequences directly into CASG format (unified pipeline)
-    pub fn chunk_sequences_direct(&mut self, sequences: Vec<Sequence>, source: &DatabaseSource) -> Result<()> {
-
+    pub fn chunk_sequences_direct(
+        &mut self,
+        sequences: Vec<Sequence>,
+        source: &DatabaseSource,
+    ) -> Result<()> {
         // Load taxonomy mapping if available
         let taxonomy_map = self.load_taxonomy_mapping(source)?;
 
@@ -921,7 +1002,6 @@ impl DatabaseManager {
         chunker.load_taxonomy_mapping(taxonomy_map);
 
         // If this is a custom database with user-specified taxids, enrich sequences
-        let sequences = sequences;
         if let DatabaseSource::Custom(name) = source {
             // Try to extract taxids from the database name or metadata
             // For now, the taxids should have been set during fetch
@@ -941,7 +1021,11 @@ impl DatabaseManager {
     }
 
     /// Store chunks in CASG repository
-    fn store_chunks_in_casg(&mut self, chunks: Vec<TaxonomyAwareChunk>, source: &DatabaseSource) -> Result<()> {
+    fn store_chunks_in_casg(
+        &mut self,
+        chunks: Vec<TaxonomyAwareChunk>,
+        source: &DatabaseSource,
+    ) -> Result<()> {
         // Store chunks in CASG with parallel processing
         let total_chunks = chunks.len();
         let pb = ProgressBar::new(total_chunks as u64);
@@ -969,7 +1053,6 @@ impl DatabaseManager {
                 }
                 // Final update to ensure we show 100%
                 pb_clone.set_position(total as u64);
-                pb_clone.finish_and_clear();
             })
         };
 
@@ -993,6 +1076,9 @@ impl DatabaseManager {
         // Wait for progress thread to finish
         pb_handle.join().unwrap();
 
+        // Finish and clear the progress bar
+        pb.finish_and_clear();
+
         // Now do a single bulk update of all taxonomy mappings (no contention!)
         for (result, chunk) in &results {
             if result.is_ok() {
@@ -1000,7 +1086,6 @@ impl DatabaseManager {
             }
         }
 
-        // Progress bar already finished by the thread, no need to call finish again
         // Small delay to ensure terminal has finished updating
         std::thread::sleep(std::time::Duration::from_millis(50));
 
@@ -1031,7 +1116,8 @@ impl DatabaseManager {
 
         // Save manifest to versioned database-specific location
         let save_spinner = create_spinner("Saving manifest to disk...");
-        let (manifest_path, version) = self.create_versioned_manifest_path(source, self.use_json_manifest)?;
+        let (manifest_path, version) =
+            self.create_versioned_manifest_path(source, self.use_json_manifest)?;
 
         if self.use_json_manifest {
             // Write JSON format if requested
@@ -1069,7 +1155,9 @@ impl DatabaseManager {
             manifest_data.version.clone(),
             manifest_data.sequence_root.clone(),
             manifest_data.chunk_index.len(),
-            manifest_data.chunk_index.iter()
+            manifest_data
+                .chunk_index
+                .iter()
                 .map(|c| c.sequence_count)
                 .sum(),
         )?;
@@ -1082,7 +1170,10 @@ impl DatabaseManager {
         // Also update the repository's manifest for immediate use
         self.repository.manifest.set_data(manifest_data);
 
-        println!("✓ Manifest saved successfully to {}", manifest_path.display());
+        println!(
+            "✓ Manifest saved successfully to {}",
+            manifest_path.display()
+        );
         println!("  Version: {}", version);
 
         println!("Database successfully stored in CASG format");
@@ -1110,9 +1201,13 @@ impl DatabaseManager {
     /// Original chunking logic (kept for reference but not used)
 
     /// Create version metadata file with upstream version detection
-    fn create_version_metadata(&self, source: &DatabaseSource, timestamp: &str, manifest_path: &Path) -> Result<()> {
-        use crate::utils::version_detector::{VersionDetector, DatabaseVersion};
-        
+    fn create_version_metadata(
+        &self,
+        source: &DatabaseSource,
+        timestamp: &str,
+        manifest_path: &Path,
+    ) -> Result<()> {
+        use crate::utils::version_detector::{DatabaseVersion, VersionDetector};
 
         let (source_name, dataset) = self.get_source_dataset_names(source);
 
@@ -1138,7 +1233,7 @@ impl DatabaseManager {
                     let year = &timestamp[0..4];
                     let month = &timestamp[4..6];
                     Some(format!("{}_{}", year, month))
-                },
+                }
                 DatabaseSource::NCBI(_) => {
                     // Convert timestamp to NCBI date format: YYYY-MM-DD
                     if timestamp.len() >= 8 {
@@ -1149,7 +1244,7 @@ impl DatabaseManager {
                     } else {
                         None
                     }
-                },
+                }
                 _ => None,
             };
         }
@@ -1207,14 +1302,14 @@ impl DatabaseManager {
                     let year = &version[0..4];
                     let month = &version[4..6];
                     Some(format!("{}_{}", year, month))
-                },
+                }
                 DatabaseSource::NCBI(_) => {
                     // Create date format alias: YYYY-MM-DD
                     let year = &version[0..4];
                     let month = &version[4..6];
                     let day = &version[6..8];
                     Some(format!("{}-{}-{}", year, month, day))
-                },
+                }
                 _ => None,
             };
 
@@ -1235,7 +1330,9 @@ impl DatabaseManager {
                 if version_file.exists() {
                     use crate::utils::version_detector::DatabaseVersion;
                     if let Ok(content) = std::fs::read_to_string(&version_file) {
-                        if let Ok(mut version_data) = serde_json::from_str::<DatabaseVersion>(&content) {
+                        if let Ok(mut version_data) =
+                            serde_json::from_str::<DatabaseVersion>(&content)
+                        {
                             // Update upstream version if not set
                             if version_data.upstream_version.is_none() {
                                 version_data.upstream_version = Some(alias.clone());
@@ -1262,20 +1359,26 @@ impl DatabaseManager {
         // Check environment variable for manifest server
         if let Ok(manifest_server) = std::env::var("TALARIA_MANIFEST_SERVER") {
             return Ok(match source {
-                DatabaseSource::UniProt(UniProtDatabase::SwissProt) =>
-                    format!("{}/uniprot-swissprot.json", manifest_server),
-                DatabaseSource::UniProt(UniProtDatabase::TrEMBL) =>
-                    format!("{}/uniprot-trembl.json", manifest_server),
-                DatabaseSource::NCBI(NCBIDatabase::NR) =>
-                    format!("{}/ncbi-nr.json", manifest_server),
-                DatabaseSource::NCBI(NCBIDatabase::NT) =>
-                    format!("{}/ncbi-nt.json", manifest_server),
+                DatabaseSource::UniProt(UniProtDatabase::SwissProt) => {
+                    format!("{}/uniprot-swissprot.json", manifest_server)
+                }
+                DatabaseSource::UniProt(UniProtDatabase::TrEMBL) => {
+                    format!("{}/uniprot-trembl.json", manifest_server)
+                }
+                DatabaseSource::NCBI(NCBIDatabase::NR) => {
+                    format!("{}/ncbi-nr.json", manifest_server)
+                }
+                DatabaseSource::NCBI(NCBIDatabase::NT) => {
+                    format!("{}/ncbi-nt.json", manifest_server)
+                }
                 _ => anyhow::bail!("No manifest URL for this database source"),
             });
         }
 
         // No manifest server configured - this is fine for local/dev use
-        anyhow::bail!("No manifest server configured (set TALARIA_MANIFEST_SERVER for remote updates)")
+        anyhow::bail!(
+            "No manifest server configured (set TALARIA_MANIFEST_SERVER for remote updates)"
+        )
     }
 
     /// Get the current manifest path for reading an existing database
@@ -1308,7 +1411,11 @@ impl DatabaseManager {
 
     /// Create a new versioned manifest path for saving a database
     /// Returns (manifest_path, version_string)
-    fn create_versioned_manifest_path(&self, source: &DatabaseSource, use_json: bool) -> Result<(PathBuf, String)> {
+    fn create_versioned_manifest_path(
+        &self,
+        source: &DatabaseSource,
+        use_json: bool,
+    ) -> Result<(PathBuf, String)> {
         // Generate timestamp version
         let version = crate::core::paths::generate_utc_timestamp();
 
@@ -1328,16 +1435,21 @@ impl DatabaseManager {
         use crate::download::NCBIDatabase;
 
         // Special handling for taxonomy - use unified directory
-        if matches!(source,
-            DatabaseSource::NCBI(NCBIDatabase::Taxonomy) |
-            DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId) |
-            DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId) |
-            DatabaseSource::UniProt(crate::download::UniProtDatabase::IdMapping)) {
+        if matches!(
+            source,
+            DatabaseSource::NCBI(NCBIDatabase::Taxonomy)
+                | DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId)
+                | DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId)
+                | DatabaseSource::UniProt(crate::download::UniProtDatabase::IdMapping)
+        ) {
             return crate::core::paths::talaria_taxonomy_versions_dir();
         }
 
         let (source_name, dataset) = self.get_source_dataset_names(source);
-        self.base_path.join("versions").join(source_name).join(dataset)
+        self.base_path
+            .join("versions")
+            .join(source_name)
+            .join(dataset)
     }
 
     /// Get source and dataset names for directory structure
@@ -1345,19 +1457,41 @@ impl DatabaseManager {
         use crate::download::{NCBIDatabase, UniProtDatabase};
 
         match source {
-            DatabaseSource::UniProt(UniProtDatabase::SwissProt) => ("uniprot".to_string(), "swissprot".to_string()),
-            DatabaseSource::UniProt(UniProtDatabase::TrEMBL) => ("uniprot".to_string(), "trembl".to_string()),
-            DatabaseSource::UniProt(UniProtDatabase::UniRef50) => ("uniprot".to_string(), "uniref50".to_string()),
-            DatabaseSource::UniProt(UniProtDatabase::UniRef90) => ("uniprot".to_string(), "uniref90".to_string()),
-            DatabaseSource::UniProt(UniProtDatabase::UniRef100) => ("uniprot".to_string(), "uniref100".to_string()),
-            DatabaseSource::UniProt(UniProtDatabase::IdMapping) => ("uniprot".to_string(), "idmapping".to_string()),
+            DatabaseSource::UniProt(UniProtDatabase::SwissProt) => {
+                ("uniprot".to_string(), "swissprot".to_string())
+            }
+            DatabaseSource::UniProt(UniProtDatabase::TrEMBL) => {
+                ("uniprot".to_string(), "trembl".to_string())
+            }
+            DatabaseSource::UniProt(UniProtDatabase::UniRef50) => {
+                ("uniprot".to_string(), "uniref50".to_string())
+            }
+            DatabaseSource::UniProt(UniProtDatabase::UniRef90) => {
+                ("uniprot".to_string(), "uniref90".to_string())
+            }
+            DatabaseSource::UniProt(UniProtDatabase::UniRef100) => {
+                ("uniprot".to_string(), "uniref100".to_string())
+            }
+            DatabaseSource::UniProt(UniProtDatabase::IdMapping) => {
+                ("uniprot".to_string(), "idmapping".to_string())
+            }
             DatabaseSource::NCBI(NCBIDatabase::NR) => ("ncbi".to_string(), "nr".to_string()),
             DatabaseSource::NCBI(NCBIDatabase::NT) => ("ncbi".to_string(), "nt".to_string()),
-            DatabaseSource::NCBI(NCBIDatabase::RefSeqProtein) => ("ncbi".to_string(), "refseq-protein".to_string()),
-            DatabaseSource::NCBI(NCBIDatabase::RefSeqGenomic) => ("ncbi".to_string(), "refseq-genomic".to_string()),
-            DatabaseSource::NCBI(NCBIDatabase::Taxonomy) => ("ncbi".to_string(), "taxonomy".to_string()),
-            DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId) => ("ncbi".to_string(), "prot-accession2taxid".to_string()),
-            DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId) => ("ncbi".to_string(), "nucl-accession2taxid".to_string()),
+            DatabaseSource::NCBI(NCBIDatabase::RefSeqProtein) => {
+                ("ncbi".to_string(), "refseq-protein".to_string())
+            }
+            DatabaseSource::NCBI(NCBIDatabase::RefSeqGenomic) => {
+                ("ncbi".to_string(), "refseq-genomic".to_string())
+            }
+            DatabaseSource::NCBI(NCBIDatabase::Taxonomy) => {
+                ("ncbi".to_string(), "taxonomy".to_string())
+            }
+            DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId) => {
+                ("ncbi".to_string(), "prot-accession2taxid".to_string())
+            }
+            DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId) => {
+                ("ncbi".to_string(), "nucl-accession2taxid".to_string())
+            }
             DatabaseSource::Custom(name) => ("custom".to_string(), name.clone()),
         }
     }
@@ -1374,18 +1508,17 @@ impl DatabaseManager {
         progress_callback("Downloading full database...");
 
         let mut progress = DownloadProgress::new();
-        crate::download::download_database(
-            source.clone(),
-            output_path,
-            &mut progress,
-        ).await?;
+        crate::download::download_database(source.clone(), output_path, &mut progress).await?;
 
         Ok(())
     }
 
     /// Get taxonomy mapping from CASG manifest
     /// This extracts accession-to-taxid mappings directly from the manifest's chunk metadata
-    pub fn get_taxonomy_mapping_from_manifest(&self, source: &DatabaseSource) -> Result<std::collections::HashMap<String, crate::casg::TaxonId>> {
+    pub fn get_taxonomy_mapping_from_manifest(
+        &self,
+        source: &DatabaseSource,
+    ) -> Result<std::collections::HashMap<String, crate::casg::TaxonId>> {
         use std::collections::HashMap;
 
         // Load manifest for this database
@@ -1400,7 +1533,10 @@ impl DatabaseManager {
 
         let pb = crate::utils::progress::create_progress_bar(
             manifest.chunk_index.len() as u64,
-            &format!("Processing {} chunks from manifest", manifest.chunk_index.len())
+            &format!(
+                "Processing {} chunks from manifest",
+                manifest.chunk_index.len()
+            ),
         );
 
         let mut chunks_with_taxids = 0;
@@ -1408,7 +1544,7 @@ impl DatabaseManager {
 
         // For each chunk, we need to load its sequences to get the accessions
         // and map them to the chunk's TaxIDs
-        for (_idx, chunk_meta) in manifest.chunk_index.iter().enumerate() {
+        for chunk_meta in manifest.chunk_index.iter() {
             pb.inc(1);
 
             if chunk_meta.taxon_ids.is_empty() {
@@ -1468,7 +1604,8 @@ impl DatabaseManager {
             // Look for ref| or gb| or similar
             for (i, part) in parts.iter().enumerate() {
                 if (*part == "ref" || *part == "gb" || *part == "emb" || *part == "dbj")
-                    && i + 1 < parts.len() {
+                    && i + 1 < parts.len()
+                {
                     return Some(parts[i + 1].to_string());
                 }
             }
@@ -1485,8 +1622,10 @@ impl DatabaseManager {
 
         // Create temporary file with .accession2taxid extension (required by LAMBDA)
         let temp_dir = std::env::temp_dir();
-        let temp_file = temp_dir.join(format!("talaria_manifest_{}.accession2taxid",
-                                              std::process::id()));
+        let temp_file = temp_dir.join(format!(
+            "talaria_manifest_{}.accession2taxid",
+            std::process::id()
+        ));
 
         use std::io::Write;
         let mut file = std::fs::File::create(&temp_file)?;
@@ -1501,16 +1640,22 @@ impl DatabaseManager {
             writeln!(file, "{}\t{}\t{}\t0", accession, accession, taxid.0)?;
         }
 
-        println!("Created temporary accession2taxid file with manifest data: {:?}", temp_file);
+        println!(
+            "Created temporary accession2taxid file with manifest data: {:?}",
+            temp_file
+        );
         Ok(temp_file)
     }
 
     /// Load taxonomy mapping for a database
-    fn load_taxonomy_mapping(&self, source: &DatabaseSource) -> Result<std::collections::HashMap<String, crate::casg::TaxonId>> {
-        use std::collections::HashMap;
+    fn load_taxonomy_mapping(
+        &self,
+        source: &DatabaseSource,
+    ) -> Result<std::collections::HashMap<String, crate::casg::TaxonId>> {
         use flate2::read::GzDecoder;
-        use std::io::{BufRead, BufReader};
+        use std::collections::HashMap;
         use std::fs::File;
+        use std::io::{BufRead, BufReader};
 
         // Load from unified taxonomy mappings directory
         let mappings_dir = crate::core::paths::talaria_taxonomy_current_dir().join("mappings");
@@ -1578,7 +1723,10 @@ impl DatabaseManager {
 
                             // Also store without version suffix
                             if let Some(dot_pos) = accession.rfind('.') {
-                                mappings.insert(accession[..dot_pos].to_string(), crate::casg::TaxonId(taxid));
+                                mappings.insert(
+                                    accession[..dot_pos].to_string(),
+                                    crate::casg::TaxonId(taxid),
+                                );
                             }
                         }
                     }
@@ -1593,10 +1741,7 @@ impl DatabaseManager {
     }
 
     /// Ensure taxonomy is loaded, downloading if necessary
-    async fn ensure_taxonomy_loaded(
-        &mut self,
-        progress_callback: &impl Fn(&str),
-    ) -> Result<()> {
+    async fn ensure_taxonomy_loaded(&mut self, progress_callback: &impl Fn(&str)) -> Result<()> {
         let taxonomy_dir = crate::core::paths::talaria_taxonomy_current_dir();
         let taxdump_dir = taxonomy_dir.join("tree");
 
@@ -1655,7 +1800,11 @@ impl DatabaseManager {
             let mut matching_profiles = Vec::new();
             let profiles = self.repository.storage.list_reduction_profiles()?;
             for profile_name in &profiles {
-                if let Ok(Some(manifest)) = self.repository.storage.get_reduction_by_profile(profile_name) {
+                if let Ok(Some(manifest)) = self
+                    .repository
+                    .storage
+                    .get_reduction_by_profile(profile_name)
+                {
                     if manifest.source_database == db_name {
                         matching_profiles.push(profile_name.clone());
                     }
@@ -1668,7 +1817,9 @@ impl DatabaseManager {
         let dataset = parts[1];
 
         // Get profiles from the version-specific directories
-        self.repository.storage.list_database_reduction_profiles(source, dataset, None)
+        self.repository
+            .storage
+            .list_database_reduction_profiles(source, dataset, None)
     }
 
     /// Find the latest version directory in a dataset path
@@ -1709,11 +1860,13 @@ impl DatabaseManager {
         // Check if it's a .tal file (binary format with magic header)
         if path.extension().and_then(|s| s.to_str()) == Some("tal") {
             // Check for TALARIA_MAGIC header
-            if content.len() > TALARIA_MAGIC.len() &&
-               &content[..TALARIA_MAGIC.len()] == TALARIA_MAGIC {
+            if content.len() > TALARIA_MAGIC.len()
+                && &content[..TALARIA_MAGIC.len()] == TALARIA_MAGIC
+            {
                 // Skip magic header and deserialize MessagePack data
                 let manifest_bytes = &content[TALARIA_MAGIC.len()..];
-                let manifest: crate::casg::TemporalManifest = rmp_serde::from_slice(manifest_bytes)?;
+                let manifest: crate::casg::TemporalManifest =
+                    rmp_serde::from_slice(manifest_bytes)?;
                 return Ok(manifest);
             }
         }
@@ -1747,7 +1900,8 @@ impl DatabaseManager {
                 continue;
             }
 
-            let source_name = source_path.file_name()
+            let source_name = source_path
+                .file_name()
                 .and_then(|s| s.to_str())
                 .unwrap_or("unknown")
                 .to_string();
@@ -1761,7 +1915,8 @@ impl DatabaseManager {
                     continue;
                 }
 
-                let dataset_name = dataset_path.file_name()
+                let dataset_name = dataset_path
+                    .file_name()
                     .and_then(|s| s.to_str())
                     .unwrap_or("unknown")
                     .to_string();
@@ -1808,7 +1963,8 @@ impl DatabaseManager {
                     let db_name = format!("{}/{}", source_name, dataset_name);
 
                     // Get reduction profiles for this database
-                    let reduction_profiles = self.get_reduction_profiles_for_database(&db_name)
+                    let reduction_profiles = self
+                        .get_reduction_profiles_for_database(&db_name)
                         .unwrap_or_default();
 
                     databases.push(DatabaseInfo {
@@ -1842,15 +1998,15 @@ impl DatabaseManager {
         let root_manifest = self.base_path.join("manifest.json");
         if root_manifest.exists() {
             if let Ok(content) = std::fs::read_to_string(&root_manifest) {
-                if let Ok(manifest) = serde_json::from_str::<crate::casg::TemporalManifest>(&content) {
+                if let Ok(manifest) =
+                    serde_json::from_str::<crate::casg::TemporalManifest>(&content)
+                {
                     // Add initial version to temporal index
                     temporal_index.add_sequence_version(
                         manifest.version.clone(),
                         manifest.sequence_root.clone(),
                         manifest.chunk_index.len(),
-                        manifest.chunk_index.iter()
-                            .map(|c| c.sequence_count)
-                            .sum(),
+                        manifest.chunk_index.iter().map(|c| c.sequence_count).sum(),
                     )?;
 
                     // Save the temporal index
@@ -1917,7 +2073,8 @@ impl DatabaseManager {
         let response = client.head(taxdump_url).send().await?;
 
         // Get last modified date from headers
-        let last_modified = response.headers()
+        let last_modified = response
+            .headers()
             .get(reqwest::header::LAST_MODIFIED)
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
@@ -1926,7 +2083,7 @@ impl DatabaseManager {
         let needs_update = match (&current_version, &last_modified) {
             (Some(current), Some(latest)) => current != latest,
             (None, Some(_)) => true, // No current version, need to download
-            _ => false, // Can't determine, assume no update needed
+            _ => false,              // Can't determine, assume no update needed
         };
 
         if !needs_update {
@@ -1945,7 +2102,7 @@ impl DatabaseManager {
             std::fs::create_dir_all(&new_version_dir)?;
 
             // Copy existing data to new version
-            let _ = std::fs::create_dir_all(&new_version_dir.join("taxdump"));
+            let _ = std::fs::create_dir_all(new_version_dir.join("taxdump"));
 
             // Update current symlink to point to new version
             let current_link = crate::core::paths::talaria_taxonomy_versions_dir().join("current");
@@ -1980,7 +2137,9 @@ impl DatabaseManager {
         std::fs::remove_file(taxdump_file).ok();
 
         // Save version information
-        let version_date = last_modified.clone().unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+        let version_date = last_modified
+            .clone()
+            .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
         let version_data = serde_json::json!({
             "date": &version_date,
             "source": "NCBI",
@@ -2020,7 +2179,8 @@ impl DatabaseManager {
         let manifest = self.read_manifest(&manifest_path)?;
 
         // Get all chunk hashes
-        let chunk_hashes: Vec<_> = manifest.chunk_index
+        let chunk_hashes: Vec<_> = manifest
+            .chunk_index
             .iter()
             .map(|c| c.hash.clone())
             .collect();
@@ -2031,7 +2191,11 @@ impl DatabaseManager {
 
         let sequence_count = assembler.stream_assembly(&chunk_hashes, &mut output_file)?;
 
-        println!("Assembled {} sequences to {}", sequence_count, output_path.display());
+        println!(
+            "Assembled {} sequences to {}",
+            sequence_count,
+            output_path.display()
+        );
 
         Ok(())
     }
@@ -2057,8 +2221,8 @@ impl DatabaseManager {
 
     /// Read sequences from a FASTA file
     fn read_fasta_sequences(&self, path: &Path) -> Result<Vec<Sequence>> {
-        use std::io::{BufRead, BufReader};
         use std::fs::File;
+        use std::io::{BufRead, BufReader};
 
         let file = File::open(path)?;
         let file_size = file.metadata()?.len();
@@ -2173,18 +2337,15 @@ impl DatabaseManager {
         taxonomy_time: chrono::DateTime<chrono::Utc>,
         taxon_ids: Option<Vec<u32>>,
     ) -> Result<Vec<crate::bio::sequence::Sequence>> {
-        
-
         // Find manifest that matches the temporal coordinate
         let manifest = self.find_manifest_at_time(&sequence_time, &taxonomy_time)?;
 
         // Filter chunks by taxon IDs if specified
         let chunks = if let Some(taxa) = taxon_ids {
-            manifest.chunk_index
+            manifest
+                .chunk_index
                 .iter()
-                .filter(|chunk| {
-                    chunk.taxon_ids.iter().any(|tid| taxa.contains(&tid.0))
-                })
+                .filter(|chunk| chunk.taxon_ids.iter().any(|tid| taxa.contains(&tid.0)))
                 .cloned()
                 .collect()
         } else {
@@ -2203,7 +2364,9 @@ impl DatabaseManager {
     ) -> Result<crate::casg::types::TemporalManifest> {
         // For now, return the current manifest
         // In a full implementation, this would search historical manifests
-        self.repository.manifest.get_data()
+        self.repository
+            .manifest
+            .get_data()
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("No manifest available"))
     }
@@ -2217,7 +2380,11 @@ impl DatabaseManager {
             // Search for sequence in chunks
             for chunk in &manifest.chunk_index {
                 // Load chunk and check for sequence
-                if let Ok(sequences) = self.repository.storage.load_sequences_from_chunk(&chunk.hash) {
+                if let Ok(sequences) = self
+                    .repository
+                    .storage
+                    .load_sequences_from_chunk(&chunk.hash)
+                {
                     if let Some(seq) = sequences.iter().find(|s| s.id == sequence_id) {
                         history.push(TemporalSequenceRecord {
                             sequence_id: sequence_id.to_string(),
@@ -2239,7 +2406,10 @@ impl DatabaseManager {
     pub fn verify_chunk_proof(&self, chunk_hash: &crate::casg::types::SHA256Hash) -> Result<bool> {
         use crate::casg::merkle::MerkleDAG;
 
-        let manifest = self.repository.manifest.get_data()
+        let manifest = self
+            .repository
+            .manifest
+            .get_data()
             .ok_or_else(|| anyhow::anyhow!("No manifest available"))?;
 
         // Rebuild Merkle tree from manifest chunks
@@ -2253,15 +2423,24 @@ impl DatabaseManager {
     }
 
     /// Get manifest for a database by name
-    pub fn get_manifest(&self, database_name: &str) -> Result<crate::casg::types::TemporalManifest> {
+    pub fn get_manifest(
+        &self,
+        database_name: &str,
+    ) -> Result<crate::casg::types::TemporalManifest> {
         // Try to find manifest file for this database
-        let manifest_path = self.base_path.join(format!("{}.manifest.json", database_name));
+        let manifest_path = self
+            .base_path
+            .join(format!("{}.manifest.json", database_name));
         if manifest_path.exists() {
             return self.read_manifest(&manifest_path);
         }
 
         // Try the manifest in data directory
-        let data_manifest_path = self.base_path.join("data").join(database_name).join("manifest.json");
+        let data_manifest_path = self
+            .base_path
+            .join("data")
+            .join(database_name)
+            .join("manifest.json");
         if data_manifest_path.exists() {
             return self.read_manifest(&data_manifest_path);
         }
@@ -2277,7 +2456,10 @@ impl DatabaseManager {
     }
 
     /// Load a chunk by its hash
-    pub fn load_chunk(&self, hash: &crate::casg::SHA256Hash) -> Result<crate::casg::types::TaxonomyAwareChunk> {
+    pub fn load_chunk(
+        &self,
+        hash: &crate::casg::SHA256Hash,
+    ) -> Result<crate::casg::types::TaxonomyAwareChunk> {
         // Use the storage to get the chunk
         let chunk_data = self.repository.storage.get_chunk(hash)?;
 
@@ -2296,7 +2478,10 @@ impl DatabaseManager {
     }
 
     /// Load taxonomy mappings for a database
-    pub fn load_taxonomy_mappings(&self, database_name: &str) -> Result<std::collections::HashMap<String, crate::casg::TaxonId>> {
+    pub fn load_taxonomy_mappings(
+        &self,
+        database_name: &str,
+    ) -> Result<std::collections::HashMap<String, crate::casg::TaxonId>> {
         // Try to get mappings from the manifest
         let source = DatabaseSource::from_string(database_name)
             .unwrap_or(DatabaseSource::Custom(database_name.to_string()));
@@ -2317,5 +2502,304 @@ pub struct TemporalSequenceRecord {
 }
 
 #[cfg(test)]
-#[path = "casg_database_manager_tests.rs"]
-mod tests;
+mod tests {
+    use super::*;
+    use crate::download::{DatabaseSource, NCBIDatabase, UniProtDatabase};
+    use std::fs;
+    use tempfile::TempDir;
+
+    /// Helper to create a test CASG manager with temp directory
+    fn create_test_manager() -> (DatabaseManager, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let manager =
+            DatabaseManager::new(Some(temp_dir.path().to_string_lossy().to_string())).unwrap();
+        (manager, temp_dir)
+    }
+
+    /// Helper to create a fake manifest
+    fn create_fake_manifest() -> crate::casg::TemporalManifest {
+        use crate::casg::{ChunkMetadata, SHA256Hash, TaxonId, TemporalManifest};
+        use chrono::Utc;
+
+        TemporalManifest {
+            version: "test_v1".to_string(),
+            created_at: Utc::now(),
+            sequence_version: "2024-01-01".to_string(),
+            taxonomy_version: "2024-01-01".to_string(),
+            temporal_coordinate: None,
+            taxonomy_root: SHA256Hash::compute(b"test_taxonomy"),
+            sequence_root: SHA256Hash::compute(b"test_sequence"),
+            chunk_merkle_tree: None,
+            taxonomy_manifest_hash: SHA256Hash::compute(b"test_tax_manifest"),
+            taxonomy_dump_version: "2024-01-01".to_string(),
+            source_database: Some("uniprot-swissprot".to_string()),
+            chunk_index: vec![
+                ChunkMetadata {
+                    hash: SHA256Hash::compute(b"chunk1"),
+                    taxon_ids: vec![TaxonId(9606)], // Human
+                    sequence_count: 100,
+                    size: 1024,
+                    compressed_size: Some(512),
+                },
+                ChunkMetadata {
+                    hash: SHA256Hash::compute(b"chunk2"),
+                    taxon_ids: vec![TaxonId(10090)], // Mouse
+                    sequence_count: 50,
+                    size: 512,
+                    compressed_size: Some(256),
+                },
+            ],
+            discrepancies: vec![],
+            etag: "test_etag_123".to_string(),
+            previous_version: None,
+        }
+    }
+
+    #[test]
+    fn test_manifest_path_for_different_databases() {
+        let (manager, _temp_dir) = create_test_manager();
+
+        // Test SwissProt - path should be in versions structure
+        let swissprot_path =
+            manager.get_manifest_path(&DatabaseSource::UniProt(UniProtDatabase::SwissProt));
+        assert!(swissprot_path
+            .to_string_lossy()
+            .contains("versions/uniprot/swissprot"));
+        assert!(
+            swissprot_path.to_string_lossy().contains("manifest.tal")
+                || swissprot_path.to_string_lossy().contains("manifest.json")
+        );
+
+        // Test TrEMBL
+        let trembl_path =
+            manager.get_manifest_path(&DatabaseSource::UniProt(UniProtDatabase::TrEMBL));
+        assert!(trembl_path
+            .to_string_lossy()
+            .contains("versions/uniprot/trembl"));
+        assert!(
+            trembl_path.to_string_lossy().contains("manifest.tal")
+                || trembl_path.to_string_lossy().contains("manifest.json")
+        );
+
+        // Test NCBI NR
+        let nr_path = manager.get_manifest_path(&DatabaseSource::NCBI(NCBIDatabase::NR));
+        assert!(nr_path.to_string_lossy().contains("versions/ncbi/nr"));
+        assert!(
+            nr_path.to_string_lossy().contains("manifest.tal")
+                || nr_path.to_string_lossy().contains("manifest.json")
+        );
+
+        // Test NCBI NT
+        let nt_path = manager.get_manifest_path(&DatabaseSource::NCBI(NCBIDatabase::NT));
+        assert!(nt_path.to_string_lossy().contains("versions/ncbi/nt"));
+        assert!(
+            nt_path.to_string_lossy().contains("manifest.tal")
+                || nt_path.to_string_lossy().contains("manifest.json")
+        );
+
+        // Test Taxonomy databases - should use unified taxonomy directory
+        let taxonomy_path =
+            manager.get_manifest_path(&DatabaseSource::NCBI(NCBIDatabase::Taxonomy));
+        assert!(taxonomy_path.to_string_lossy().contains("taxonomy/"));
+        assert!(!taxonomy_path
+            .to_string_lossy()
+            .contains("versions/ncbi/taxonomy"));
+
+        let prot_accession_path =
+            manager.get_manifest_path(&DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId));
+        assert!(prot_accession_path.to_string_lossy().contains("taxonomy/"));
+        assert!(!prot_accession_path
+            .to_string_lossy()
+            .contains("versions/ncbi/prot-accession2taxid"));
+    }
+
+    #[test]
+    fn test_manifest_saved_to_correct_location() {
+        let (manager, temp_dir) = create_test_manager();
+        let manifest = create_fake_manifest();
+
+        // Save manifest for SwissProt
+        let manifest_path =
+            manager.get_manifest_path(&DatabaseSource::UniProt(UniProtDatabase::SwissProt));
+
+        // Ensure directory exists
+        fs::create_dir_all(manifest_path.parent().unwrap()).unwrap();
+
+        // Write manifest
+        let content = serde_json::to_string_pretty(&manifest).unwrap();
+        fs::write(&manifest_path, content).unwrap();
+
+        // Verify it exists at the expected location
+        assert!(manifest_path.exists());
+        // Path should be in the versions structure: versions/uniprot/swissprot/timestamp/manifest.tal
+        assert!(manifest_path
+            .to_string_lossy()
+            .contains("versions/uniprot/swissprot"));
+
+        // Verify it's NOT at the old location
+        let old_path = temp_dir.path().join("manifest.json");
+        assert!(!old_path.exists());
+    }
+
+    #[test]
+    fn test_subsequent_download_finds_existing_manifest() {
+        let (manager, _temp_dir) = create_test_manager();
+        let manifest = create_fake_manifest();
+
+        // Save manifest to correct location
+        let manifest_path =
+            manager.get_manifest_path(&DatabaseSource::UniProt(UniProtDatabase::SwissProt));
+        fs::create_dir_all(manifest_path.parent().unwrap()).unwrap();
+        fs::write(
+            &manifest_path,
+            serde_json::to_string_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+
+        // Simulate checking for existing manifest
+        assert!(
+            manifest_path.exists(),
+            "Manifest should exist at: {:?}",
+            manifest_path
+        );
+
+        // The download function should find this manifest
+        // In real usage, this would return DownloadResult::UpToDate
+    }
+
+    #[test]
+    fn test_multiple_database_manifests_coexist() {
+        let (manager, _temp_dir) = create_test_manager();
+
+        // Create manifests for different databases
+        let swissprot_manifest = {
+            let mut m = create_fake_manifest();
+            m.source_database = Some("uniprot-swissprot".to_string());
+            m
+        };
+
+        let trembl_manifest = {
+            let mut m = create_fake_manifest();
+            m.source_database = Some("uniprot-trembl".to_string());
+            m.version = "trembl_v1".to_string();
+            m
+        };
+
+        // Save both manifests
+        let swissprot_path =
+            manager.get_manifest_path(&DatabaseSource::UniProt(UniProtDatabase::SwissProt));
+        let trembl_path =
+            manager.get_manifest_path(&DatabaseSource::UniProt(UniProtDatabase::TrEMBL));
+
+        fs::create_dir_all(swissprot_path.parent().unwrap()).unwrap();
+        fs::create_dir_all(trembl_path.parent().unwrap()).unwrap();
+        fs::write(
+            &swissprot_path,
+            serde_json::to_string_pretty(&swissprot_manifest).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            &trembl_path,
+            serde_json::to_string_pretty(&trembl_manifest).unwrap(),
+        )
+        .unwrap();
+
+        // Verify both exist independently
+        assert!(swissprot_path.exists());
+        assert!(trembl_path.exists());
+        assert_ne!(swissprot_path, trembl_path, "Paths should be different");
+
+        // Verify content is different
+        let sp_content: crate::casg::TemporalManifest =
+            serde_json::from_str(&fs::read_to_string(&swissprot_path).unwrap()).unwrap();
+        let tr_content: crate::casg::TemporalManifest =
+            serde_json::from_str(&fs::read_to_string(&trembl_path).unwrap()).unwrap();
+
+        assert_eq!(
+            sp_content.source_database,
+            Some("uniprot-swissprot".to_string())
+        );
+        assert_eq!(
+            tr_content.source_database,
+            Some("uniprot-trembl".to_string())
+        );
+        assert_ne!(sp_content.version, tr_content.version);
+    }
+
+    #[test]
+    fn test_manifest_directory_creation() {
+        let (manager, _temp_dir) = create_test_manager();
+
+        let manifest_path =
+            manager.get_manifest_path(&DatabaseSource::UniProt(UniProtDatabase::SwissProt));
+        let manifests_dir = manifest_path.parent().unwrap();
+
+        // Initially shouldn't exist
+        assert!(!manifests_dir.exists());
+
+        // Create directory
+        fs::create_dir_all(manifests_dir).unwrap();
+
+        // Now it should exist
+        assert!(manifests_dir.exists());
+        assert!(manifests_dir.is_dir());
+        // The directory should be part of the versions tree, not manifests
+        // Path is like: versions/uniprot/swissprot/20240101_120000/
+    }
+
+    #[tokio::test]
+    async fn test_download_detection_flow() {
+        let (manager, _temp_dir) = create_test_manager();
+        let source = DatabaseSource::UniProt(UniProtDatabase::SwissProt);
+
+        // Mock progress callback
+        let progress_messages = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let progress_clone = progress_messages.clone();
+        let _progress_callback = move |msg: &str| {
+            progress_clone.lock().unwrap().push(msg.to_string());
+        };
+
+        // First: No manifest exists - should detect no local data
+        let manifest_path = manager.get_manifest_path(&source);
+        assert!(
+            !manifest_path.exists(),
+            "No manifest should exist initially"
+        );
+
+        // This would trigger initial download in real scenario
+        // We can't test the full download without network, but we can verify the path checking
+
+        // Second: Create a manifest to simulate completed download
+        fs::create_dir_all(manifest_path.parent().unwrap()).unwrap();
+        let manifest = create_fake_manifest();
+        fs::write(
+            &manifest_path,
+            serde_json::to_string_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+
+        // Now manifest exists - should detect existing data
+        assert!(
+            manifest_path.exists(),
+            "Manifest should exist after 'download'"
+        );
+
+        // In real scenario, download() would now return UpToDate or check for updates
+    }
+
+    #[test]
+    fn test_manifest_content_has_source_database() {
+        let manifest = create_fake_manifest();
+
+        // Verify source_database is set
+        assert_eq!(
+            manifest.source_database,
+            Some("uniprot-swissprot".to_string())
+        );
+
+        // Serialize and verify it's in JSON
+        let json = serde_json::to_string_pretty(&manifest).unwrap();
+        assert!(json.contains("\"source_database\""));
+        assert!(json.contains("uniprot-swissprot"));
+    }
+}

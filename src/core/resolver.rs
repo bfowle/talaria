@@ -30,10 +30,12 @@ impl DatabaseReference {
         let version = version_parts.next().map(|s| s.to_string());
 
         let mut path_parts = base.split('/');
-        let source = path_parts.next()
+        let source = path_parts
+            .next()
             .ok_or_else(|| anyhow::anyhow!("Invalid reference: missing source"))?
             .to_string();
-        let dataset = path_parts.next()
+        let dataset = path_parts
+            .next()
             .ok_or_else(|| anyhow::anyhow!("Invalid reference: missing dataset"))?
             .to_string();
 
@@ -161,7 +163,11 @@ impl DatabaseResolver for StandardDatabaseResolver {
         let metadata_dir = version_dir.join("metadata");
 
         let profiles_dir = if reference.profile.is_some() {
-            Some(version_dir.join("profiles").join(reference.profile_or_default()))
+            Some(
+                version_dir
+                    .join("profiles")
+                    .join(reference.profile_or_default()),
+            )
         } else {
             None
         };
@@ -197,8 +203,12 @@ impl DatabaseResolver for StandardDatabaseResolver {
             DatabaseSource::NCBI(NCBIDatabase::RefSeqProtein) => ("ncbi", "refseq-protein"),
             DatabaseSource::NCBI(NCBIDatabase::RefSeqGenomic) => ("ncbi", "refseq-genomic"),
             DatabaseSource::NCBI(NCBIDatabase::Taxonomy) => ("ncbi", "taxonomy"),
-            DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId) => ("ncbi", "prot-accession2taxid"),
-            DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId) => ("ncbi", "nucl-accession2taxid"),
+            DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId) => {
+                ("ncbi", "prot-accession2taxid")
+            }
+            DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId) => {
+                ("ncbi", "nucl-accession2taxid")
+            }
             DatabaseSource::Custom(name) => ("custom", name.as_str()),
         };
 
@@ -214,22 +224,48 @@ impl DatabaseResolver for StandardDatabaseResolver {
         // Check source is valid
         let valid_sources = vec!["uniprot", "ncbi", "custom"];
         if !valid_sources.contains(&reference.source.as_str()) {
-            anyhow::bail!("Invalid source: {}. Valid sources: {:?}", reference.source, valid_sources);
+            anyhow::bail!(
+                "Invalid source: {}. Valid sources: {:?}",
+                reference.source,
+                valid_sources
+            );
         }
 
         // Check dataset is valid for source
         match reference.source.as_str() {
             "uniprot" => {
-                let valid = vec!["swissprot", "trembl", "uniref50", "uniref90", "uniref100", "idmapping"];
+                let valid = vec![
+                    "swissprot",
+                    "trembl",
+                    "uniref50",
+                    "uniref90",
+                    "uniref100",
+                    "idmapping",
+                ];
                 if !valid.contains(&reference.dataset.as_str()) {
-                    anyhow::bail!("Invalid UniProt dataset: {}. Valid: {:?}", reference.dataset, valid);
+                    anyhow::bail!(
+                        "Invalid UniProt dataset: {}. Valid: {:?}",
+                        reference.dataset,
+                        valid
+                    );
                 }
             }
             "ncbi" => {
-                let valid = vec!["nr", "nt", "refseq-protein", "refseq-genomic", "taxonomy",
-                                "prot-accession2taxid", "nucl-accession2taxid"];
+                let valid = vec![
+                    "nr",
+                    "nt",
+                    "refseq-protein",
+                    "refseq-genomic",
+                    "taxonomy",
+                    "prot-accession2taxid",
+                    "nucl-accession2taxid",
+                ];
                 if !valid.contains(&reference.dataset.as_str()) {
-                    anyhow::bail!("Invalid NCBI dataset: {}. Valid: {:?}", reference.dataset, valid);
+                    anyhow::bail!(
+                        "Invalid NCBI dataset: {}. Valid: {:?}",
+                        reference.dataset,
+                        valid
+                    );
                 }
             }
             "custom" => {
@@ -244,8 +280,9 @@ impl DatabaseResolver for StandardDatabaseResolver {
                 // Check if it's a timestamp version
                 if version.len() == 15 && version.chars().nth(8) == Some('_') {
                     // Validate timestamp format
-                    if !version[0..8].chars().all(|c| c.is_ascii_digit()) ||
-                       !version[9..15].chars().all(|c| c.is_ascii_digit()) {
+                    if !version[0..8].chars().all(|c| c.is_ascii_digit())
+                        || !version[9..15].chars().all(|c| c.is_ascii_digit())
+                    {
                         anyhow::bail!("Invalid timestamp version format: {}", version);
                     }
                 }
@@ -270,7 +307,10 @@ impl DatabaseResolver for StandardDatabaseResolver {
             ("refseq", vec!["ncbi/refseq-protein", "ncbi/refseq-genomic"]),
             ("taxonomy", vec!["ncbi/taxonomy"]),
             ("taxon", vec!["ncbi/taxonomy"]),
-            ("uniref", vec!["uniprot/uniref50", "uniprot/uniref90", "uniprot/uniref100"]),
+            (
+                "uniref",
+                vec!["uniprot/uniref50", "uniprot/uniref90", "uniprot/uniref100"],
+            ),
         ];
 
         let lower = invalid.to_lowercase();
@@ -310,10 +350,7 @@ impl DatabaseResolver for StandardDatabaseResolver {
                 continue;
             }
 
-            let source = source_entry.file_name()
-                .to_str()
-                .unwrap_or("")
-                .to_string();
+            let source = source_entry.file_name().to_str().unwrap_or("").to_string();
 
             // Iterate through dataset directories
             for dataset_entry in std::fs::read_dir(&source_path)? {
@@ -324,10 +361,7 @@ impl DatabaseResolver for StandardDatabaseResolver {
                     continue;
                 }
 
-                let dataset = dataset_entry.file_name()
-                    .to_str()
-                    .unwrap_or("")
-                    .to_string();
+                let dataset = dataset_entry.file_name().to_str().unwrap_or("").to_string();
 
                 databases.push(DatabaseReference {
                     source: source.clone(),
@@ -347,12 +381,14 @@ impl DatabaseResolver for StandardDatabaseResolver {
             Err(_) => return false,
         };
 
-        paths.version_dir.exists() ||
-        (reference.version.is_none() && self.base_path
-            .join("versions")
-            .join(&reference.source)
-            .join(&reference.dataset)
-            .exists())
+        paths.version_dir.exists()
+            || (reference.version.is_none()
+                && self
+                    .base_path
+                    .join("versions")
+                    .join(&reference.source)
+                    .join(&reference.dataset)
+                    .exists())
     }
 
     fn base_path(&self) -> &PathBuf {

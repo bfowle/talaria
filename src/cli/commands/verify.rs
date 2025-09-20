@@ -1,5 +1,5 @@
-use clap::Args;
 use anyhow::Result;
+use clap::Args;
 
 #[derive(Args)]
 pub struct VerifyArgs {
@@ -17,19 +17,22 @@ pub struct VerifyArgs {
 }
 
 pub fn run(args: VerifyArgs) -> Result<()> {
-    use crate::core::database_manager::DatabaseManager;
-    use crate::cli::output::*;
     use crate::casg::types::SHA256Hash;
+    use crate::cli::output::*;
+    use crate::core::database_manager::DatabaseManager;
 
     // Initialize database manager
     let manager = DatabaseManager::new(None)?;
 
     if let Some(ref chunk_hash_str) = args.chunk {
         // Verify chunk Merkle proof
-        action(&format!("Verifying Merkle proof for chunk: {}", chunk_hash_str));
+        action(&format!(
+            "Verifying Merkle proof for chunk: {}",
+            chunk_hash_str
+        ));
 
         // Parse chunk hash
-        let chunk_hash = SHA256Hash::from_hex(&chunk_hash_str)?;
+        let chunk_hash = SHA256Hash::from_hex(chunk_hash_str)?;
 
         // Verify proof
         match manager.verify_chunk_proof(&chunk_hash) {
@@ -49,9 +52,12 @@ pub fn run(args: VerifyArgs) -> Result<()> {
 
     if let Some(ref sequence_id) = args.sequence {
         // Get temporal history for a sequence
-        action(&format!("Retrieving temporal history for sequence: {}", sequence_id));
+        action(&format!(
+            "Retrieving temporal history for sequence: {}",
+            sequence_id
+        ));
 
-        match manager.get_sequence_history(&sequence_id) {
+        match manager.get_sequence_history(sequence_id) {
             Ok(history) => {
                 if history.is_empty() {
                     warning("No history found for this sequence");
@@ -59,16 +65,21 @@ pub fn run(args: VerifyArgs) -> Result<()> {
                     success(&format!("Found {} version(s) for sequence", history.len()));
 
                     // Display history in tree format
-                    let history_items: Vec<(&str, String)> = history.iter().map(|record| {
-                        let details = format!(
-                            "Version {}: Seq: {}, Tax: {}, TaxID: {}",
-                            record.version,
-                            record.sequence_time.format("%Y-%m-%d"),
-                            record.taxonomy_time.format("%Y-%m-%d"),
-                            record.taxon_id.map_or("unknown".to_string(), |id| id.to_string())
-                        );
-                        ("", details)
-                    }).collect();
+                    let history_items: Vec<(&str, String)> = history
+                        .iter()
+                        .map(|record| {
+                            let details = format!(
+                                "Version {}: Seq: {}, Tax: {}, TaxID: {}",
+                                record.version,
+                                record.sequence_time.format("%Y-%m-%d"),
+                                record.taxonomy_time.format("%Y-%m-%d"),
+                                record
+                                    .taxon_id
+                                    .map_or("unknown".to_string(), |id| id.to_string())
+                            );
+                            ("", details)
+                        })
+                        .collect();
 
                     tree_section("Sequence History", history_items, false);
                 }

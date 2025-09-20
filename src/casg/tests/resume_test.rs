@@ -1,6 +1,7 @@
 /// Tests for resumable processing operations in CASG
-
-use crate::casg::processing_state::{ProcessingState, ProcessingStateManager, OperationType, SourceInfo};
+use crate::casg::processing_state::{
+    OperationType, ProcessingState, ProcessingStateManager, SourceInfo,
+};
 use crate::casg::storage::CASGStorage;
 use crate::casg::types::SHA256Hash;
 use anyhow::Result;
@@ -34,9 +35,7 @@ fn test_resume_after_partial_download() -> Result<()> {
     )?;
 
     // Simulate downloading some chunks
-    let completed_chunks: Vec<SHA256Hash> = (0..50)
-        .map(|i| SHA256Hash::compute(&[i]))
-        .collect();
+    let completed_chunks: Vec<SHA256Hash> = (0..50).map(|i| SHA256Hash::compute(&[i])).collect();
 
     storage.update_processing_state(&completed_chunks)?;
 
@@ -66,9 +65,7 @@ fn test_resume_after_partial_download() -> Result<()> {
     assert!(resumed_state.can_resume_with(&manifest_hash, &manifest_version));
 
     // Complete the operation
-    let remaining_chunks: Vec<SHA256Hash> = (50..100)
-        .map(|i| SHA256Hash::compute(&[i]))
-        .collect();
+    let remaining_chunks: Vec<SHA256Hash> = (50..100).map(|i| SHA256Hash::compute(&[i])).collect();
 
     storage2.update_processing_state(&remaining_chunks)?;
 
@@ -112,9 +109,7 @@ fn test_version_mismatch_prevents_resume() -> Result<()> {
     )?;
 
     // Add some completed chunks
-    let chunks: Vec<SHA256Hash> = (0..10)
-        .map(|i| SHA256Hash::compute(&[i]))
-        .collect();
+    let chunks: Vec<SHA256Hash> = (0..10).map(|i| SHA256Hash::compute(&[i])).collect();
     storage.update_processing_state(&chunks)?;
 
     // Try to resume with different version
@@ -208,7 +203,12 @@ fn test_multiple_operations_tracking() -> Result<()> {
     let operations = vec![
         ("db1", OperationType::InitialDownload),
         ("db2", OperationType::IncrementalUpdate),
-        ("db3", OperationType::Reduction { profile: "blast-30".to_string() }),
+        (
+            "db3",
+            OperationType::Reduction {
+                profile: "blast-30".to_string(),
+            },
+        ),
     ];
 
     for (db, op_type) in &operations {
@@ -243,9 +243,7 @@ fn test_get_remaining_chunks() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let storage = CASGStorage::new(temp_dir.path())?;
 
-    let all_chunks: Vec<SHA256Hash> = (0..100)
-        .map(|i| SHA256Hash::compute(&[i]))
-        .collect();
+    let all_chunks: Vec<SHA256Hash> = (0..100).map(|i| SHA256Hash::compute(&[i])).collect();
 
     // Without any processing state, should return all chunks
     let remaining = storage.get_remaining_chunks(&all_chunks)?;
