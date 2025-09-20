@@ -484,8 +484,8 @@ pub enum CASGError {
 ### Command Line Usage
 
 ```bash
-# Initialize CASG repository
-talaria casg init
+# Initialize database repository
+talaria database init
 
 # Download database (handles both initial download and updates)
 talaria database download uniprot -d swissprot
@@ -495,7 +495,7 @@ talaria database download uniprot -d swissprot
 talaria database add -i sequences.fasta --source mylab --dataset proteins
 
 # Show repository statistics
-talaria casg stats
+talaria database stats
 
 # List databases
 talaria database list

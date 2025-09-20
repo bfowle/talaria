@@ -1,4 +1,6 @@
 pub mod assembler;
+pub mod cache;
+pub mod cache_traits;
 pub mod chunk_index;
 pub mod chunker;
 pub mod cloud;
@@ -7,6 +9,7 @@ pub mod delta;
 pub mod delta_generator;
 pub mod delta_reconstructor;
 pub mod differ;
+// pub mod evolution_delta;  // Removed incomplete module
 pub mod evolution_tracker;
 pub mod format;
 /// Content-Addressed Sequence Graph (CASG) System
@@ -15,6 +18,7 @@ pub mod format;
 /// Merkle DAGs, and taxonomy-aware chunking for efficient storage and verification.
 pub mod manifest;
 pub mod merkle;
+// pub mod dual_merkle;  // Removed incomplete module
 pub mod processing_state;
 pub mod reduction;
 pub mod retroactive;
@@ -29,6 +33,7 @@ pub mod validator;
 pub mod verifier;
 
 pub use assembler::FastaAssembler;
+pub use cache::{ChunkCache, CacheStats, get_cache};
 pub use chunk_index::{
     ChunkAccessTracker, ChunkIndexBuilder, ChunkQuery, ChunkRelationships, DefaultChunkIndex,
     IndexStatistics, OptimizationSuggestion,
@@ -37,10 +42,12 @@ pub use chunker::{Chunker, TaxonomicChunker, TaxonomyAwareChunker};
 pub use differ::{
     ChangeType, DiffOptions, DiffResult, StandardTemporalManifestDiffer, TemporalManifestDiffer,
 };
+// pub use evolution_delta::{EvolutionAwareDeltaGenerator, EvolutionaryDeltaChunk, PhylogeneticDistance};
 pub use evolution_tracker::{MassReclassification, TaxonEvolutionReport, TaxonomyEvolutionTracker};
 pub use format::{FormatDetector, JsonFormat, ManifestFormat, MessagePackFormat, TalariaFormat};
 pub use manifest::Manifest;
 pub use merkle::{MerkleDAG, MerkleVerifiable};
+// pub use dual_merkle::{DualMerkleDAG, DualProof, BiTemporalSnapshot, BiTemporalManager};
 pub use processing_state::{OperationType, ProcessingState, ProcessingStateManager, SourceInfo};
 pub use storage::CASGStorage;
 pub use taxonomy::discrepancy::DiscrepancyDetector;

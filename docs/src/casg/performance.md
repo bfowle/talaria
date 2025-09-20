@@ -9,7 +9,7 @@ CASG delivers dramatic improvements across all metrics:
 | Metric | Traditional | CASG | Improvement |
 |--------|------------|------|-------------|
 | Update Bandwidth | 100% of database | 0.5-2% of database | **50-200×** |
-| Storage (10 versions) | 10× database size | 1.3× database size | **7.7×** |
+| Storage (10 versions) | 10× database size | 2-3× database size | **3-5×** |
 | Verification Time | Hours | Seconds | **1000×** |
 | Update Check | Full download | Manifest only (1KB) | **100,000×** |
 
@@ -301,13 +301,13 @@ time talaria database update uniprot/swissprot
 
 # Storage test
 du -sh ~/.talaria/databases/
-talaria casg stats --storage
+talaria database stats
 
 # Verification test
 time talaria database verify uniprot/swissprot
 
-# Cache performance
-talaria casg benchmark --cache-sizes 1G,2G,4G,8G
+# Cache performance (not yet implemented)
+# Future: talaria benchmark --cache-sizes 1G,2G,4G,8G
 
 # Parallel download test
 for p in 1 2 4 8 16; do
@@ -320,7 +320,7 @@ done
 
 CASG provides:
 - **50-200× bandwidth reduction** for updates
-- **5-10× storage reduction** for multiple versions
+- **2-3× storage reduction** for multiple versions
 - **100-1000× faster verification**
 - **Near-constant time** complexity for key operations
 - **Linear scalability** with database size

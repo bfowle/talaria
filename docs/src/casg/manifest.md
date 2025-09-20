@@ -2,7 +2,7 @@
 
 ## Overview: Small Files, Massive Impact
 
-The manifest is the heart of the CASG system—a compact binary file using Talaria's proprietary `.tal` format that completely describes the state of a multi-gigabyte sequence database. Based on MessagePack but optimized for biological data, `.tal` files achieve 90% size reduction compared to JSON while maintaining compatibility. Think of it as the "genome" of your database: just as DNA encodes an entire organism in a tiny molecule, the manifest encodes an entire database scaling linearly with content.
+The manifest is the heart of the CASG system—a compact binary file using Talaria's `.tal` format that completely describes the state of a multi-gigabyte sequence database. The `.tal` format is MessagePack-based serialization that achieves approximately 50% size reduction compared to pretty-printed JSON while maintaining compatibility. Think of it as the "genome" of your database: just as DNA encodes an entire organism in a tiny molecule, the manifest encodes an entire database scaling linearly with content.
 
 ### Why Manifests Matter
 
@@ -28,14 +28,14 @@ Instead of moving massive databases around, we move compact manifests. A researc
 
 ## Format Structure: Anatomy of a Manifest
 
-The manifest uses the Talaria format (`.tal`) as the primary storage mechanism, with JSON as a fallback for debugging and compatibility. The `.tal` format provides:
+The manifest uses the Talaria format (`.tal`) as the primary storage mechanism, with JSON as a fallback for debugging and compatibility. The `.tal` format is MessagePack-based and provides:
 
-- **90% size reduction** compared to pretty-printed JSON
+- **~50% size reduction** compared to pretty-printed JSON
 - **Binary hash storage** - 32 bytes instead of 64-character hex strings
 - **Compact integers** - variable-length encoding for numbers
 - **Fast parsing** - direct binary deserialization
 - **Type preservation** - exact numeric types maintained
-- **Proprietary optimization** - tailored for sequence database metadata
+- **MessagePack serialization** - industry-standard binary format
 
 ### Core Design Principles
 
@@ -49,12 +49,12 @@ The manifest uses the Talaria format (`.tal`) as the primary storage mechanism, 
 
 The manifest structure is identical whether stored as Talaria (`.tal`), MessagePack (legacy), or JSON. The system automatically detects the format based on file extension.
 
-#### Talaria Format (.tal) Optimizations
+#### Talaria Format (.tal) Implementation
 - SHA256 hashes use `serde_bytes` for raw 32-byte storage
 - Taxon IDs stored as compact integers
 - No whitespace or field name repetition
 - Approximately 50 bytes per chunk entry
-- File extension clearly identifies Talaria-specific data
+- File extension clearly identifies Talaria MessagePack data
 
 ### JSON Schema (Debug Format)
 
@@ -418,7 +418,7 @@ The system automatically handles all formats with clear priority:
 2. **Writing**: Creates `.tal` for efficiency, `.json` for compatibility
 3. **Network**: Negotiates format via Accept headers
 4. **Migration**: Existing `.msgpack` files work seamlessly, saved as `.tal` on update
-5. **Identification**: `.tal` extension clearly marks Talaria-optimized content
+5. **Identification**: `.tal` extension clearly marks Talaria MessagePack content
 
 ## Security: Trust Through Verification
 

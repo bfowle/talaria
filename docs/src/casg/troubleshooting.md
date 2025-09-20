@@ -19,8 +19,8 @@ No local CASG data found
 **Solutions:**
 
 ```bash
-# Initialize CASG if needed
-talaria casg init
+# Initialize database repository if needed
+talaria database init
 
 # Check manifest exists
 ls ${TALARIA_HOME}/databases/manifests/
@@ -121,7 +121,7 @@ Error: Failed to add custom database
 
 ```bash
 # Initialize CASG first
-talaria casg init
+talaria database init
 
 # Replace existing database
 talaria database add -i sequences.fasta --source mylab --dataset proteins --replace
@@ -150,7 +150,7 @@ Warning: Storage usage at 95%
 
 ```bash
 # Check storage usage
-talaria casg stats
+talaria database stats
 du -sh ${TALARIA_HOME}/databases/
 
 # Remove unused databases manually
@@ -161,7 +161,7 @@ mv ${TALARIA_HOME}/databases /data/casg
 ln -s /data/casg ${TALARIA_HOME}/databases
 
 # Future: Garbage collection will be added
-# talaria casg gc  # Not yet implemented
+# Database cleanup functionality not yet implemented
 ```
 
 ### 6. Memory Issues During Reduction
@@ -206,14 +206,14 @@ export TALARIA_PARALLEL_DOWNLOADS=10
 talaria database update ncbi/nr --use-casg --download
 
 # Use faster compression
-talaria casg config --compression lz4
+# Compression configuration not yet available via CLI
 
 # Skip verification during assembly (faster but less safe)
-talaria casg assemble uniprot/swissprot --no-verify -o output.fasta
+talaria database export uniprot/swissprot -o output.fasta
 
 # Enable chunk caching
 export TALARIA_CACHE_SIZE=4G
-talaria casg assemble ncbi/nr -o nr.fasta
+talaria database export ncbi/nr -o nr.fasta
 
 # Use SSD for chunk storage
 ln -s /ssd/casg ${TALARIA_HOME}/databases
@@ -297,10 +297,10 @@ ps aux | grep talaria
 rm ${TALARIA_HOME}/databases/.lock
 
 # Use read-only mode
-talaria casg assemble uniprot/swissprot --read-only -o output.fasta
+talaria database export uniprot/swissprot -o output.fasta
 
 # Wait for lock
-talaria casg assemble uniprot/swissprot --wait-lock -o output.fasta
+talaria database export uniprot/swissprot -o output.fasta
 ```
 
 ### 11. Future: Cloud Storage Support
@@ -341,7 +341,7 @@ talaria database download uniprot -d swissprot 2> casg_debug.log
 
 ```bash
 # Check CASG repository statistics
-talaria casg stats
+talaria database stats
 
 # List databases
 talaria database list
@@ -358,7 +358,7 @@ tar -czf casg_backup.tar.gz ${TALARIA_HOME}/databases/
 
 # Manual reset (remove and reinitialize)
 rm -rf ${TALARIA_HOME}/databases
-talaria casg init
+talaria database init
 
 # Restore from backup
 tar -xzf casg_backup.tar.gz -C ~/
@@ -406,14 +406,14 @@ parallel_downloads = 8
 ```bash
 # Built-in help
 talaria --help
-talaria casg --help
+talaria database --help
 talaria database --help
 
 # Check version
 talaria --version
 
 # View statistics
-talaria casg stats
+talaria database stats
 
 # List available databases
 talaria database list

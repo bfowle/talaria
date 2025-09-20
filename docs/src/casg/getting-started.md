@@ -263,8 +263,8 @@ talaria reduce --database uniprot/swissprot ...
 ### Issue: "No CASG data found"
 
 ```bash
-# Initialize CASG if needed
-talaria casg init
+# Initialize database repository if needed
+talaria database init
 
 # Verify TALARIA_HOME is set correctly
 echo $TALARIA_HOME
@@ -283,8 +283,8 @@ talaria database repair uniprot/swissprot
 # Check available space
 df -h ~/.talaria
 
-# Clean old versions
-talaria database clean --keep-latest 2
+# Remove old versions (planned feature)
+# talaria database clean --keep-latest 2
 ```
 
 ## Next Steps
@@ -305,7 +305,7 @@ Now that you understand CASG basics:
 | `talaria database list` | List available databases |
 | `talaria database status <db>` | Check database status |
 | `talaria database verify <db>` | Verify integrity |
-| `talaria database clean` | Remove old versions |
-| `talaria casg init` | Initialize CASG |
+| `talaria database list` | List databases |
+| `talaria database init` | Initialize database repository |
 
 Remember: CASG makes database management efficient, verifiable, and reproducible!

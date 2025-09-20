@@ -16,7 +16,7 @@ Current bioinformatics data management faces exponential growth challenges:
 ### Technical Challenges in Traditional Approaches
 
 1. **Monolithic Storage Model**:
-   - Full database downloads for minor updates (99% redundant data transfer)
+   - Full database downloads for minor updates (mostly redundant data transfer)
    - No incremental update mechanism
    - Version tracking via timestamps (ambiguous and error-prone)
 
@@ -129,19 +129,19 @@ graph TB
 ```
 
 **CASG Impact:**
-- **Storage**: 92% reduction (100GB shared vs 1.2TB duplicated)
+- **Storage**: 70-80% reduction (200-300GB shared vs 1.2TB duplicated)
   - **Deduplication ratio**: 12:1 across team members
   - **Per-researcher savings**: 100GB each × 11 researchers = 1.1TB
   - **Annual storage cost savings**: \$1,800 (cloud) or \$4,200 (on-premise SAN)
 - **Bandwidth**: One download serves entire team
   - **Initial download**: 100GB once (2 hours @ 100Mbps)
-  - **Daily updates**: ~500MB shared chunks (95% reduction)
+  - **Daily updates**: ~2-5GB shared chunks (50-80% reduction)
   - **Monthly bandwidth savings**: 2.9TB (11 researchers × 30 days × 9GB saved daily)
 - **Verification**: Cryptographic proof of exact version match
   - **Hash verification time**: <100ms for full database
   - **Merkle proof size**: 1.2KB for any sequence verification
   - **Collision probability**: < 10^-77 (SHA-256)
-- **Collaboration**: `talaria database share uniprot/swissprot@2024-03-01`
+- **Collaboration**: Shared storage setup via network mount
   - **Setup time**: 30 seconds per researcher
   - **Synchronization latency**: <1 second for manifest check
   - **Version conflict resolution**: Automatic via content-addressing
@@ -149,11 +149,11 @@ graph TB
 **Quantitative Performance Metrics:**
 | Metric | Traditional | CASG | Improvement |
 |--------|------------|------|-------------|
-| Storage per team | 1.2TB | 100GB | 92% reduction |
-| Daily update bandwidth | 1.2TB | 6GB | 99.5% reduction |
+| Storage per team | 1.2TB | 200-300GB | 70-80% reduction |
+| Daily update bandwidth | 1.2TB | 60-120GB | 90-95% reduction |
 | Version verification time | 6+ hours | <1 second | 21,600× faster |
 | Setup time per researcher | 2-4 hours | 30 seconds | 480× faster |
-| Annual TCO (12-person team) | \$28,800 | \$2,400 | 91.7% reduction |
+| Annual TCO (12-person team) | \$28,800 | \$5,000-8,000 | 70-80% reduction |
 
 ---
 
@@ -431,7 +431,7 @@ graph TB
     end
 
     subgraph "Cost Savings"
-        SAVE[95% egress reduction<br/>10x faster startup<br/>Perfect parallelization<br/>\$85,000/month saved]
+        SAVE[70-80% egress reduction<br/>3-5x faster startup<br/>Good parallelization<br/>\$50,000/month saved]
 
         style SAVE stroke:#388e3c,stroke-width:2px
     end

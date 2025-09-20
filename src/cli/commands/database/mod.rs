@@ -1,5 +1,7 @@
 pub mod add;
 pub mod check_discrepancies;
+pub mod clean;
+pub mod diff;
 pub mod download;
 pub mod download_impl;
 pub mod export;
@@ -9,6 +11,7 @@ pub mod list_sequences;
 pub mod taxa_coverage;
 pub mod update;
 pub mod update_taxonomy;
+pub mod verify;
 pub mod versions;
 
 use clap::{Args, Subcommand};
@@ -59,6 +62,15 @@ pub enum DatabaseCommands {
 
     /// Initialize database repository
     Init,
+
+    /// Verify database integrity
+    Verify(verify::VerifyArgs),
+
+    /// Clean database (remove orphaned chunks, etc.)
+    Clean(clean::CleanArgs),
+
+    /// Show differences between databases or versions
+    Diff(diff::DiffArgs),
 }
 
 pub fn run(args: DatabaseArgs) -> anyhow::Result<()> {
@@ -76,6 +88,9 @@ pub fn run(args: DatabaseArgs) -> anyhow::Result<()> {
         DatabaseCommands::UpdateTaxonomy(args) => update_taxonomy::run(args),
         DatabaseCommands::Check(args) => check_discrepancies::run(args),
         DatabaseCommands::Init => run_init(),
+        DatabaseCommands::Verify(args) => verify::run(args),
+        DatabaseCommands::Clean(args) => clean::run(args),
+        DatabaseCommands::Diff(args) => diff::run(args),
     }
 }
 

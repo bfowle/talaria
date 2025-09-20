@@ -37,7 +37,7 @@ The CASG (Content-Addressed Sequence Graph) architecture fundamentally reimagine
 
 ### Key Benefits
 - **50-200× bandwidth reduction** for database updates
-- **10× storage improvement** through deduplication
+- **2-3× storage improvement** through deduplication
 - **Cryptographic verification** of all data
 - **Perfect reproducibility** for research
 

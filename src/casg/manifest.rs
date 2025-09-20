@@ -39,6 +39,7 @@ impl ManifestFormat {
     }
 }
 
+#[derive(Clone)]
 pub struct Manifest {
     data: Option<TemporalManifest>,
     path: PathBuf,

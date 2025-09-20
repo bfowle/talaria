@@ -384,7 +384,7 @@ graph LR
 
 | Query Type | Traditional (Full DB) | CASG (Smart Chunks) | Improvement | Typical Use Case |
 |------------|---------------------|-------------------|-------------|------------------|
-| **Single species** | 100GB download | 50-200MB | **500-2000×** | "I only need E. coli proteins" |
+| **Single species** | 100GB download | 200-500MB | **200-500×** | "I only need E. coli proteins" |
 | **Genus level** | 100GB download | 200-500MB | **200-500×** | "Studying all Lactobacillus" |
 | **Family level** | 100GB download | 0.5-2GB | **50-200×** | "Analyzing Enterobacteriaceae" |
 | **Viral sequences** | 100GB scan | 100-500MB direct | **200-1000×** | "Just viral genomes please" |

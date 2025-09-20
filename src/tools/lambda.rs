@@ -750,10 +750,30 @@ impl LambdaAligner {
         for (accession, taxid) in &acc2taxid_entries {
             writeln!(acc_file, "{}\t{}\t{}\t0", accession, accession, taxid)?;
         }
+
+        // Ensure file is synced to disk
+        acc_file.sync_all()?;
+        drop(acc_file);
+
+        // Debug: Check file size
+        if std::env::var("TALARIA_DEBUG").is_ok() || std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok() {
+            let file_size = std::fs::metadata(&acc2taxid_path)?.len();
+            println!("    DEBUG: accession2taxid file size: {} bytes", file_size);
+            if file_size == 0 {
+                eprintln!("    WARNING: Created empty accession2taxid file!");
+            }
+        }
+
         success(&format!(
             "Created accession2taxid file with {} entries",
             format_number(acc2taxid_entries.len())
         ));
+
+        // Preserve the file for debugging if needed
+        if self.preserve_on_failure {
+            let preserved_path = self.get_temp_path("preserved_header_based.accession2taxid");
+            std::fs::copy(&acc2taxid_path, &preserved_path).ok();
+        }
 
         // Load nodes.dmp to find all ancestors
         let nodes_file = taxdump_dir.join("nodes.dmp");
@@ -1116,6 +1136,19 @@ impl LambdaAligner {
                         Ok((filtered_dir, acc2taxid_file)) => {
                             cmd.arg("--tax-dump-dir").arg(&filtered_dir);
                             cmd.arg("--acc-tax-map").arg(&acc2taxid_file);
+
+                            // Debug: Check what's in the accession2taxid file
+                            if lambda_verbose {
+                                println!("  DEBUG: Created accession2taxid file: {:?}", acc2taxid_file);
+                                if let Ok(content) = std::fs::read_to_string(&acc2taxid_file) {
+                                    let lines: Vec<&str> = content.lines().take(3).collect();
+                                    println!("  DEBUG: First 3 lines of accession2taxid:");
+                                    for line in lines {
+                                        println!("    > {}", line);
+                                    }
+                                    println!("  DEBUG: File size: {} bytes", content.len());
+                                }
+                            }
                             let taxonomy_config = vec![
                                 ("Database", format!("{:?}", filtered_dir)),
                                 (

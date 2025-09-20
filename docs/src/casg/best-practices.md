@@ -368,9 +368,9 @@ rm *.chunk  # Breaks everything!
 
 ```bash
 # GOOD: Use provided tools
-talaria database clean
-talaria casg repair
-talaria database remove uniprot/swissprot
+talaria database list
+talaria database verify
+talaria database update uniprot/swissprot
 ```
 
 ## Summary

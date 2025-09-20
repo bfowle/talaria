@@ -599,6 +599,28 @@ impl TemporalIndex {
         })
     }
 
+    /// Get manifest at a specific version
+    pub fn get_manifest_at_version(&self, version: &str) -> Result<crate::casg::Manifest> {
+        use crate::casg::Manifest;
+
+        // Find the version in sequence timeline
+        let timestamp = self.sequence_timeline
+            .iter()
+            .find(|(_, v)| v.version == version)
+            .map(|(ts, _)| *ts)
+            .ok_or_else(|| anyhow::anyhow!("Version {} not found", version))?;
+
+        // Load manifest at that timestamp
+        let temporal_manifest = self.load_manifest_at(timestamp)?
+            .ok_or_else(|| anyhow::anyhow!("No manifest found for version {}", version))?;
+
+        // Convert TemporalManifest to Manifest
+        let mut manifest = Manifest::new_with_path(&self.base_path);
+        manifest.set_data(temporal_manifest);
+
+        Ok(manifest)
+    }
+
     /// Get timeline of changes
     pub fn get_timeline(&self, start: DateTime<Utc>, end: DateTime<Utc>) -> Timeline {
         let mut events = Vec::new();

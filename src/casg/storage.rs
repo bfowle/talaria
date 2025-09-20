@@ -1617,3 +1617,50 @@ pub enum VerificationErrorType {
     },
     ReadError(String),
 }
+
+impl CASGStorage {
+    /// List all chunks in storage
+    pub fn list_all_chunks(&self) -> Result<Vec<SHA256Hash>> {
+        let chunks: Vec<SHA256Hash> = self.chunk_index
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect();
+        Ok(chunks)
+    }
+
+    /// Get size of a specific chunk
+    pub fn get_chunk_size(&self, hash: &SHA256Hash) -> Result<usize> {
+        if let Some(location) = self.chunk_index.get(hash) {
+            Ok(location.size)
+        } else {
+            Err(anyhow::anyhow!("Chunk not found: {}", hash.to_hex()))
+        }
+    }
+
+    /// Remove a chunk from storage
+    pub fn remove_chunk(&self, hash: &SHA256Hash) -> Result<()> {
+        // Remove from index
+        if let Some((_, location)) = self.chunk_index.remove(hash) {
+            // Remove file
+            if location.path.exists() {
+                fs::remove_file(&location.path)?;
+            }
+
+            // Remove compressed version if exists
+            let gz_path = self.get_chunk_path(hash, true);
+            if gz_path.exists() {
+                fs::remove_file(&gz_path)?;
+            }
+
+            // Remove metadata if exists
+            let metadata_path = self.base_path
+                .join("metadata")
+                .join(format!("{}.meta", hash.to_hex()));
+            if metadata_path.exists() {
+                fs::remove_file(&metadata_path)?;
+            }
+        }
+
+        Ok(())
+    }
+}
