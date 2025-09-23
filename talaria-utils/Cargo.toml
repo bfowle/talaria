@@ -1,0 +1,20 @@
+[package]
+name = "talaria-utils"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+talaria-core = { path = "../talaria-core" }
+anyhow = { workspace = true }
+indicatif = { workspace = true }
+colored = { workspace = true }
+comfy-table = "7.0"
+unicode-width = "0.1"
+console = "0.15"
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { version = "1.5", features = ["v4", "serde"] }
+num_cpus = "1.16"
+rayon = { workspace = true }

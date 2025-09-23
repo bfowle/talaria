@@ -17,7 +17,7 @@ cargo install talaria
 
 ```bash
 # 1. One-time setup (5 seconds)
-talaria casg init
+talaria sequoia init
 
 # 2. Download SwissProt database (small, ~200MB, perfect for testing)
 talaria database download uniprot -d swissprot
@@ -31,7 +31,7 @@ lambda3 mkindexp -d reduced.fasta
 
 ## What Just Happened?
 
-- **CASG initialized**: Smart storage system that only downloads changes in the future
+- **SEQUOIA initialized**: Smart storage system that only downloads changes in the future
 - **Downloaded SwissProt**: In chunks, ready for instant updates
 - **Intelligently reduced**: Auto-detected optimal representatives using alignment analysis
 - **Ready to use**: Works with LAMBDA, BLAST, Diamond, MMseqs2, etc.
@@ -76,8 +76,8 @@ talaria database list
 # View database info
 talaria database info uniprot/swissprot
 
-# Check CASG storage
-talaria casg stats
+# Check SEQUOIA storage
+talaria sequoia stats
 
 # List sequences
 talaria database list-sequences uniprot/swissprot --limit 10
@@ -113,7 +113,7 @@ ${TALARIA_HOME}/databases/
 
 # Change it using environment variables
 export TALARIA_DATABASES_DIR=/fast/ssd/talaria-databases
-talaria casg init
+talaria sequoia init
 ```
 
 ### Use More Cores
@@ -122,7 +122,7 @@ talaria casg init
 talaria -j 16 reduce ncbi/nr -o output.fasta  # Auto-detection with 16 threads
 ```
 
-## Why CASG? The Update Problem Solved
+## Why SEQUOIA? The Update Problem Solved
 
 Traditional approach downloads entire databases repeatedly:
 - **Day 1**: Download 100GB nr database
@@ -145,7 +145,7 @@ talaria database download ncbi -d nr
 
 ```bash
 # Complete workflow in 5 commands
-talaria casg init
+talaria sequoia init
 talaria database download uniprot -d swissprot
 talaria reduce uniprot/swissprot -a lambda -o lambda_db.fasta  # Auto-detects optimal size
 lambda3 mkindexp -d lambda_db.fasta
@@ -159,7 +159,7 @@ talaria database download uniprot -d swissprot  # Only downloads changes!
 
 - [Basic Usage Guide](basic-usage.md) - Detailed explanations
 - [CLI Reference](../api/cli-reference.md) - All commands and options
-- [Troubleshooting](../casg/troubleshooting.md) - Common issues
+- [Troubleshooting](../sequoia/troubleshooting.md) - Common issues
 
 ## Getting Help
 

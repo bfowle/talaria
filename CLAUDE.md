@@ -35,7 +35,7 @@ Talaria uses environment variables to configure paths and behavior:
 ### Cloud and Remote Storage
 - `TALARIA_MANIFEST_SERVER`: URL for remote manifest storage (S3, GCS, Azure, HTTP)
 - `TALARIA_CHUNK_SERVER`: URL for remote chunk storage
-- `TALARIA_REMOTE_REPO`: Remote repository URL for CASG sync
+- `TALARIA_REMOTE_REPO`: Remote repository URL for SEQUOIA sync
 
 ## Commands
 
@@ -78,7 +78,7 @@ Talaria is a bioinformatics tool for FASTA sequence database reduction using con
   - `paths.rs`: Centralized path configuration using environment variables
   - `database_manager.rs`: Database management with content-addressed storage
   - `reducer.rs`: Sequence reduction algorithms
-- `src/casg/`: Content-Addressed Sequence Graph implementation
+- `src/sequoia/`: Sequence Query Optimization with Indexed Architecture implementation
 - `src/bio/`: Bioinformatics utilities (FASTA, taxonomy)
 - `src/tools/`: External tool integration (LAMBDA aligner)
 - `src/cli/`: Command-line interface modules
@@ -92,7 +92,7 @@ The reduction process follows these steps:
 2. **Sanitization**: Validates and cleans input sequences
 3. **Reference Selection**: Uses LAMBDA aligner (if available) to select optimal references
 4. **Delta Encoding**: Encodes non-references as differences from closest references
-5. **CASG Storage**: Stores data using content-addressed chunking
+5. **SEQUOIA Storage**: Stores data using content-addressed chunking
 6. **Output Generation**: Produces reduced FASTA and delta metadata
 
 ### Workspace Structure
@@ -113,7 +113,7 @@ ${TALARIA_WORKSPACE_DIR}/{timestamp}_{uuid}/    # Default: /tmp/talaria/{timesta
 ### Important Notes
 - Always use `crate::core::paths::talaria_home()` instead of hardcoding paths
 - Workspace is automatically cleaned up unless preservation is enabled
-- LAMBDA aligner now uses CASG workspace instead of system /tmp directory
+- LAMBDA aligner now uses SEQUOIA workspace instead of system /tmp directory
 - All temporary operations go through TempWorkspace for proper tracking
 
 ### UI and Output Guidelines
@@ -129,9 +129,9 @@ When implementing traits in Talaria, follow these principles:
 
 #### 1. Colocate with Functionality
 Traits should live in the same module as their primary implementation:
-- `MerkleVerifiable` trait lives in `src/casg/merkle.rs`
-- `TemporalVersioned` trait lives in `src/casg/temporal.rs`
-- `ChunkingStrategy` trait lives in `src/casg/chunker/mod.rs`
+- `MerkleVerifiable` trait lives in `src/sequoia/merkle.rs`
+- `TemporalVersioned` trait lives in `src/sequoia/temporal.rs`
+- `ChunkingStrategy` trait lives in `src/sequoia/chunker/mod.rs`
 
 **DO NOT** create a catch-all `src/traits/` directory. Exceptions are only for truly cross-cutting concerns used across multiple unrelated modules.
 
@@ -142,7 +142,7 @@ Traits should live in the same module as their primary implementation:
 #### 3. Example Patterns
 ```rust
 // Good - capability trait with its implementation
-// src/casg/merkle.rs
+// src/sequoia/merkle.rs
 pub trait MerkleVerifiable {
     fn compute_hash(&self) -> SHA256Hash;
 }
@@ -174,7 +174,7 @@ pub trait MerkleVerifiable { ... }
 ### What to Test
 **DO Test:**
 - Core algorithms (reduction, chunking, delta encoding)
-- Database operations (CASG storage, manifest handling)
+- Database operations (SEQUOIA storage, manifest handling)
 - Command-line argument parsing and validation
 - Data transformations and conversions
 - Error handling and edge cases
@@ -192,7 +192,7 @@ pub trait MerkleVerifiable { ... }
 ```
 tests/                      # Integration tests
 ├── database_fetch_tests.rs  # Tests for fetching sequences by TaxID
-├── reduce_casg_tests.rs     # Tests for CASG-based reduction
+├── reduce_sequoia_tests.rs     # Tests for SEQUOIA-based reduction
 ├── lambda_integration_tests.rs  # LAMBDA aligner integration
 └── common/                  # Shared test utilities
     └── mod.rs
@@ -289,7 +289,7 @@ fn test_empty_sequence_handling_regression() {
 ### Test Utilities
 Common test helpers are in `tests/common/mod.rs`:
 - `create_test_sequences()` - Generate test FASTA sequences
-- `setup_test_database()` - Create temporary CASG database
+- `setup_test_database()` - Create temporary SEQUOIA database
 - `assert_manifest_valid()` - Validate manifest structure
 - `with_temp_env()` - Run test with temporary environment
 

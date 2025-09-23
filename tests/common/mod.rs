@@ -4,7 +4,7 @@
 /// test-specific code in the main source files.
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use talaria::utils::temp_workspace::{TempWorkspace, WorkspaceConfig};
+use talaria_utils::temp_workspace::{TempWorkspace, WorkspaceConfig};
 use tempfile::TempDir;
 
 /// Test environment that manages temporary directories and cleanup
@@ -39,7 +39,7 @@ pub fn create_test_workspace(name: &str) -> Result<TempWorkspace, Box<dyn std::e
     // Create a temporary directory that will persist for the test duration
     let temp_dir = tempfile::tempdir()?;
     let config = WorkspaceConfig {
-        casg_root: temp_dir.path().join("casg"),
+        sequoia_root: temp_dir.path().join("sequoia"),
         preserve_on_failure: false,
         preserve_always: false,
         max_age_seconds: 86400,
@@ -60,7 +60,7 @@ pub fn create_shared_test_workspace(
 #[allow(dead_code)]
 pub fn test_workspace_config(base_dir: &Path) -> WorkspaceConfig {
     WorkspaceConfig {
-        casg_root: base_dir.join("casg"),
+        sequoia_root: base_dir.join("sequoia"),
         preserve_on_failure: false,
         preserve_always: false,
         max_age_seconds: 86400,

@@ -2,6 +2,8 @@
 
 **Talaria** - Intelligent FASTA reduction for aligner index optimization
 
+> A modular Rust workspace for high-performance biological sequence processing
+
 ## Overview
 
 Talaria is a high-performance Rust tool that intelligently reduces biological sequence databases (FASTA files) before indexing, optimizing them for use with various aligners like LAMBDA, BLAST, Kraken, Diamond, MMseqs2, and others.
@@ -28,8 +30,8 @@ git clone https://github.com/brett/talaria
 cd talaria
 cargo build --release
 
-# Install to PATH
-cargo install --path .
+# Install CLI to PATH
+cargo install --path talaria-cli
 ```
 
 ### Basic Usage
@@ -79,6 +81,19 @@ lambda2 searchp \
   -i uniprot_reduced.lambda \
   -o results.m8
 ```
+
+## Architecture
+
+Talaria is organized as a Rust workspace with modular crates:
+
+- **talaria-core** - Shared utilities and types
+- **talaria-bio** - Bioinformatics algorithms and data structures
+- **talaria-storage** - Storage backend abstractions
+- **talaria-sequoia** - Sequence Query Optimization with Indexed Architecture
+- **talaria-tools** - External tool integrations
+- **talaria-cli** - Command-line interface
+
+This modular architecture allows using Talaria components as libraries in other projects.
 
 ## Commands
 
@@ -272,6 +287,35 @@ cargo test
 
 # Run with verbose output
 RUST_LOG=debug cargo run -- reduce -i input.fasta -o output.fasta
+```
+
+## Using as a Library
+
+Add Talaria crates to your `Cargo.toml`:
+
+```toml
+[dependencies]
+talaria-bio = { git = "https://github.com/brett/talaria" }
+talaria-sequoia = { git = "https://github.com/brett/talaria" }
+```
+
+Example usage:
+
+```rust
+use talaria_bio::{FastaReader, Sequence};
+use talaria_sequoia::{SEQUOIARepository, ChunkingStrategy};
+
+fn main() -> Result<()> {
+    // Read sequences
+    let reader = FastaReader::new("input.fasta")?;
+    let sequences = reader.read_all()?;
+
+    // Store in SEQUOIA
+    let mut repo = SEQUOIARepository::init("./data")?;
+    let chunks = repo.store_sequences(sequences)?;
+
+    Ok(())
+}
 ```
 
 ## License

@@ -1,0 +1,37 @@
+[package]
+name = "talaria-tools"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+talaria-core = { path = "../talaria-core" }
+talaria-bio = { path = "../talaria-bio" }
+talaria-utils = { path = "../talaria-utils" }
+anyhow = { workspace = true }
+indicatif = { workspace = true }
+rand = { workspace = true }
+chrono = { workspace = true }
+num_cpus = "1.16"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tempfile = { workspace = true }
+which = "4.4"
+rayon = { workspace = true }
+flate2 = { workspace = true }
+tar = "0.4"
+futures = "0.3"
+futures-util = "0.3"
+reqwest = { version = "0.11", features = ["json", "stream"] }
+zip = "0.6"
+bzip2 = "0.4"
+xz2 = "0.1"
+colored = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4"

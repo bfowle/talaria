@@ -15,37 +15,38 @@
 
 - [Downloading Databases](./databases/downloading.md)
 
-# CASG Storage System
+# SEQUOIA Storage System
 
-## Understanding CASG
+## Understanding SEQUOIA
 
-- [What is CASG?](./casg/introduction.md)
-- [Core Concepts](./casg/concepts.md)
-- [How CASG Works](./casg/how-it-works.md)
+- [What is SEQUOIA?](./sequoia/introduction.md)
+- [Core Concepts](./sequoia/concepts.md)
+- [How SEQUOIA Works](./sequoia/how-it-works.md)
 
-## Using CASG
+## Using SEQUOIA
 
-- [Getting Started](./casg/getting-started.md)
-- [Common Workflows](./casg/workflows.md)
-- [Best Practices](./casg/best-practices.md)
-- [Performance Metrics](./casg/performance.md)
+- [Getting Started](./sequoia/getting-started.md)
+- [Common Workflows](./sequoia/workflows.md)
+- [Example Workflow](./sequoia/example-workflow.md)
+- [Best Practices](./sequoia/best-practices.md)
+- [Performance Metrics](./sequoia/performance.md)
 
-## CASG Internals
+## SEQUOIA Internals
 
-- [Storage Overview](./casg/overview.md)
-- [Smart Chunking](./casg/chunking.md)
-- [Manifest Format](./casg/manifest.md)
-- [Merkle DAG & Proofs](./casg/merkle.md)
+- [Storage Overview](./sequoia/overview.md)
+- [Smart Chunking](./sequoia/chunking.md)
+- [Manifest Format](./sequoia/manifest.md)
+- [Merkle DAG & Proofs](./sequoia/merkle.md)
 
 ## Reference & Troubleshooting
 
-- [API Reference](./casg/api-reference.md)
-- [Troubleshooting Guide](./casg/troubleshooting.md)
-- [Real-World Case Studies](./casg/case-studies.md)
+- [API Reference](./sequoia/api-reference.md)
+- [Troubleshooting Guide](./sequoia/troubleshooting.md)
+- [Real-World Case Studies](./sequoia/case-studies.md)
 
 ## Research
 
-- [Academic Whitepaper](./whitepapers/casg-architecture.md)
+- [Academic Whitepaper](./whitepapers/sequoia-architecture.md)
 
 # Workflows
 

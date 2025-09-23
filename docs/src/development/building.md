@@ -108,36 +108,78 @@ git clone git@github.com:yourusername/talaria.git
 cd talaria
 ```
 
-### Repository Structure
+### Workspace Structure
 
 ```
 talaria/
-├── Cargo.toml          # Main package manifest
-├── Cargo.lock          # Dependency lock file
-├── src/                # Source code
-├── tests/              # Test files
-├── benches/            # Benchmarks
-├── docs/               # Documentation
-├── scripts/            # Build scripts
-└── .github/            # CI/CD workflows
+├── Cargo.toml              # Workspace configuration
+├── Cargo.lock              # Dependency lock file
+│
+├── talaria-core/           # Shared utilities
+│   ├── Cargo.toml
+│   └── src/
+│
+├── talaria-bio/            # Bioinformatics library
+│   ├── Cargo.toml
+│   └── src/
+│
+├── talaria-storage/        # Storage backends
+│   ├── Cargo.toml
+│   └── src/
+│
+├── talaria-sequoia/           # SEQUOIA system
+│   ├── Cargo.toml
+│   └── src/
+│
+├── talaria-tools/          # External tools
+│   ├── Cargo.toml
+│   └── src/
+│
+├── talaria-cli/            # CLI application
+│   ├── Cargo.toml
+│   └── src/
+│
+├── tests/                  # Integration tests
+├── docs/                   # Documentation
+├── scripts/                # Build scripts
+└── .github/                # CI/CD workflows
 ```
 
 ## Building
 
-### Standard Build
+### Workspace Build Commands
 
 ```bash
-# Development build (debug mode)
+# Build all crates in workspace (debug mode)
 cargo build
 
-# Release build (optimized)
+# Build all crates in workspace (release mode)
 cargo build --release
+
+# Build specific crate
+cargo build -p talaria-cli --release
 
 # Build with all features
 cargo build --release --all-features
 
-# Build specific features
-cargo build --release --features "gpu simd"
+# Build and run tests
+cargo test --workspace
+
+# Build documentation
+cargo doc --workspace --no-deps --open
+```
+
+### Individual Crate Builds
+
+```bash
+# Build only the CLI
+cd talaria-cli && cargo build --release
+
+# Build only the SEQUOIA library
+cd talaria-sequoia && cargo build --release
+
+# Build as library (no CLI)
+cargo build -p talaria-sequoia -p talaria-bio -p talaria-storage
 ```
 
 ### Build Profiles
@@ -165,7 +207,7 @@ opt-level = 3
 debug = false
 debug-assertions = false
 overflow-checks = false
-lto = "fat"
+lto = "thin"
 panic = 'abort'
 incremental = false
 codegen-units = 1
@@ -175,211 +217,103 @@ strip = true
 #### Optimized Profile
 
 ```toml
-[profile.optimized]
+[profile.release-with-debug]
 inherits = "release"
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-panic = "abort"
-strip = true
+strip = false
+debug = true
 ```
 
 ### Feature Flags
 
+Each crate has its own features. Key features:
+
+#### talaria-cli Features
 | Feature | Description | Default |
 |---------|-------------|---------|
-| `default` | Standard features | ✓ |
-| `simd` | SIMD acceleration | ✓ |
-| `parallel` | Parallel processing | ✓ |
-| `compression` | Compression support | ✓ |
-| `gpu` | GPU acceleration | ✗ |
+| `default` | Standard CLI features | ✓ |
+| `interactive` | Terminal UI | ✓ |
+| `html-report` | HTML report generation | ✓ |
+
+#### talaria-sequoia Features
+| Feature | Description | Default |
+|---------|-------------|---------|
+| `default` | Core SEQUOIA features | ✓ |
+| `cloud` | Cloud storage support | ✗ |
 | `distributed` | Distributed processing | ✗ |
-| `python` | Python bindings | ✗ |
+
+#### talaria-bio Features
+| Feature | Description | Default |
+|---------|-------------|---------|
+| `default` | Core bio features | ✓ |
+| `simd` | SIMD acceleration | ✓ |
+| `mmap` | Memory-mapped I/O | ✓ |
 
 ```bash
 # Build with specific features
-cargo build --release --features "gpu python"
+cargo build --release --features "cloud distributed"
 
 # Build without default features
-cargo build --release --no-default-features
-
-# Build with all features
-cargo build --release --all-features
+cargo build --release --no-default-features --features "core"
 ```
 
-## Platform-Specific Builds
+## Installation
 
-### Linux Build
+### Install from Workspace
 
 ```bash
-# Optimized for native CPU
-RUSTFLAGS="-C target-cpu=native" cargo build --release
+# Install the CLI binary
+cargo install --path talaria-cli
 
-# Static linking
-RUSTFLAGS="-C target-feature=+crt-static" cargo build --release
-
-# Musl target (fully static)
-rustup target add x86_64-unknown-linux-musl
-cargo build --release --target x86_64-unknown-linux-musl
+# Install with specific features
+cargo install --path talaria-cli --features "cloud"
 ```
 
-### macOS Build
+### System-Wide Installation
 
 ```bash
-# Universal binary (Intel + ARM)
-rustup target add x86_64-apple-darwin
-rustup target add aarch64-apple-darwin
+# Build optimized binary
+cargo build --release -p talaria-cli
 
-cargo build --release --target x86_64-apple-darwin
-cargo build --release --target aarch64-apple-darwin
+# Copy to system PATH
+sudo cp target/release/talaria /usr/local/bin/
 
-# Create universal binary
-lipo -create \
-    target/x86_64-apple-darwin/release/talaria \
-    target/aarch64-apple-darwin/release/talaria \
-    -output talaria-universal
+# Or create symlink
+sudo ln -s $(pwd)/target/release/talaria /usr/local/bin/talaria
 ```
 
-### Windows Build
+### Using as Library
 
-```powershell
-# MSVC toolchain (default)
-cargo build --release
-
-# GNU toolchain
-rustup target add x86_64-pc-windows-gnu
-cargo build --release --target x86_64-pc-windows-gnu
-
-# Static CRT linking
-set RUSTFLAGS=-C target-feature=+crt-static
-cargo build --release
-```
-
-### Cross-Compilation
-
-```bash
-# Install cross
-cargo install cross
-
-# Build for ARM64 Linux
-cross build --release --target aarch64-unknown-linux-gnu
-
-# Build for ARM32 Linux
-cross build --release --target armv7-unknown-linux-gnueabihf
-
-# Build for MIPS
-cross build --release --target mips64-unknown-linux-gnuabi64
-```
-
-## Docker Build
-
-### Standard Dockerfile
-
-```dockerfile
-# Build stage
-FROM rust:1.75 as builder
-
-WORKDIR /usr/src/talaria
-COPY Cargo.toml Cargo.lock ./
-COPY src ./src
-
-RUN cargo build --release
-
-# Runtime stage
-FROM debian:bookworm-slim
-
-RUN apt-get update && apt-get install -y \
-    libssl3 \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY --from=builder /usr/src/talaria/target/release/talaria /usr/local/bin/
-
-ENTRYPOINT ["talaria"]
-```
-
-### Multi-arch Build
-
-```bash
-# Setup buildx
-docker buildx create --use
-
-# Build for multiple platforms
-docker buildx build \
-    --platform linux/amd64,linux/arm64,linux/arm/v7 \
-    --tag talaria:latest \
-    --push .
-```
-
-## Advanced Build Options
-
-### Link-Time Optimization (LTO)
+Add to your project's `Cargo.toml`:
 
 ```toml
-[profile.release]
-lto = "fat"  # Full LTO
-# or
-lto = "thin" # Thin LTO (faster builds)
-```
-
-### Profile-Guided Optimization (PGO)
-
-```bash
-# Step 1: Build with profiling
-RUSTFLAGS="-Cprofile-generate=/tmp/pgo-data" \
-    cargo build --release
-
-# Step 2: Run with representative workload
-./target/release/talaria reduce -i sample.fasta -o output.fasta
-
-# Step 3: Build with profile data
-RUSTFLAGS="-Cprofile-use=/tmp/pgo-data" \
-    cargo build --release
-```
-
-### Custom Allocators
-
-```toml
-# Cargo.toml
 [dependencies]
-jemallocator = { version = "0.5", optional = true }
-mimalloc = { version = "0.1", optional = true }
+talaria-bio = { git = "https://github.com/yourusername/talaria" }
+talaria-sequoia = { git = "https://github.com/yourusername/talaria" }
 
-[features]
-jemalloc = ["jemallocator"]
-mimalloc = ["mimalloc"]
-```
-
-```rust
-// src/main.rs
-#[cfg(feature = "jemalloc")]
-#[global_allocator]
-static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
-
-#[cfg(feature = "mimalloc")]
-#[global_allocator]
-static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+# Or from local path
+talaria-bio = { path = "../talaria/talaria-bio" }
+talaria-sequoia = { path = "../talaria/talaria-sequoia" }
 ```
 
 ## Testing
 
-### Run Tests
+### Running Tests
 
 ```bash
-# Run all tests
-cargo test
+# Run all tests (unit + integration)
+cargo test --workspace
 
-# Run specific test
-cargo test test_alignment
+# Run tests for specific crate
+cargo test -p talaria-sequoia
+
+# Run integration tests only
+cargo test --test '*'
 
 # Run with output
 cargo test -- --nocapture
 
-# Run with multiple threads
-cargo test -- --test-threads=4
-
-# Run ignored tests
-cargo test -- --ignored
+# Run specific test
+cargo test test_chunking
 
 # Run benchmarks
 cargo bench
@@ -392,26 +326,159 @@ cargo bench
 cargo install cargo-tarpaulin
 
 # Generate coverage report
-cargo tarpaulin --out Html --output-dir coverage
+cargo tarpaulin --out Html --workspace
 
-# With specific features
-cargo tarpaulin --features "gpu simd" --out Xml
+# Open report
+open tarpaulin-report.html
 ```
 
-## Building Documentation
+## Docker Build
+
+### Building Docker Image
+
+```dockerfile
+# Dockerfile
+FROM rust:1.75 AS builder
+
+WORKDIR /app
+COPY . .
+RUN cargo build --release -p talaria-cli
+
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y \
+    libssl3 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/target/release/talaria /usr/local/bin/
+ENTRYPOINT ["talaria"]
+```
 
 ```bash
-# Build documentation
-cargo doc
+# Build image
+docker build -t talaria:latest .
 
-# Build and open in browser
-cargo doc --open
+# Run container
+docker run --rm talaria:latest reduce --help
+```
 
-# Build with private items
-cargo doc --document-private-items
+## Cross-Compilation
 
-# Build for all dependencies
-cargo doc --all --no-deps
+### Setup Cross
+
+```bash
+# Install cross
+cargo install cross
+
+# Build for Linux x86_64
+cross build --release --target x86_64-unknown-linux-gnu
+
+# Build for Linux ARM64
+cross build --release --target aarch64-unknown-linux-gnu
+
+# Build for macOS (from Linux)
+cross build --release --target x86_64-apple-darwin
+```
+
+## Troubleshooting
+
+### Common Issues
+
+#### Linking Errors
+
+```bash
+# Linux: Install missing libraries
+sudo apt-get install libssl-dev pkg-config
+
+# macOS: Set OpenSSL path
+export OPENSSL_DIR=$(brew --prefix openssl)
+export PKG_CONFIG_PATH=$OPENSSL_DIR/lib/pkgconfig
+```
+
+#### Out of Memory
+
+```bash
+# Reduce parallel jobs
+cargo build -j 2
+
+# Or set in config
+export CARGO_BUILD_JOBS=2
+```
+
+#### Slow Compilation
+
+```bash
+# Use sccache for caching
+cargo install sccache
+export RUSTC_WRAPPER=sccache
+
+# Use mold linker (Linux)
+sudo apt install mold
+export RUSTFLAGS="-C link-arg=-fuse-ld=mold"
+```
+
+### Performance Optimization
+
+```bash
+# CPU-specific optimizations
+RUSTFLAGS="-C target-cpu=native" cargo build --release
+
+# Profile-guided optimization
+cargo build --release
+./target/release/talaria reduce -i test.fasta -o /dev/null
+cargo build --release --profile pgo
+```
+
+## Development Setup
+
+### IDE Setup
+
+#### VS Code
+
+```json
+// .vscode/settings.json
+{
+    "rust-analyzer.cargo.features": "all",
+    "rust-analyzer.checkOnSave.command": "clippy",
+    "rust-analyzer.cargo.target": "x86_64-unknown-linux-gnu"
+}
+```
+
+#### IntelliJ/CLion
+
+1. Install Rust plugin
+2. Open project root
+3. Configure toolchain in Settings → Rust
+
+### Pre-commit Hooks
+
+```bash
+# Install pre-commit
+pip install pre-commit
+
+# Setup hooks
+cat > .pre-commit-config.yaml << EOF
+repos:
+  - repo: local
+    hooks:
+      - id: fmt
+        name: cargo fmt
+        entry: cargo fmt --all -- --check
+        language: system
+        pass_filenames: false
+      - id: clippy
+        name: cargo clippy
+        entry: cargo clippy --workspace -- -D warnings
+        language: system
+        pass_filenames: false
+      - id: test
+        name: cargo test
+        entry: cargo test --workspace
+        language: system
+        pass_filenames: false
+EOF
+
+pre-commit install
 ```
 
 ## Continuous Integration
@@ -419,214 +486,28 @@ cargo doc --all --no-deps
 ### GitHub Actions
 
 ```yaml
-# .github/workflows/build.yml
-name: Build
+# .github/workflows/ci.yml
+name: CI
 
 on: [push, pull_request]
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        rust: [stable, beta, nightly]
-    
+  test:
+    runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Setup Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: ${{ matrix.rust }}
-        override: true
-    
-    - name: Build
-      run: cargo build --release --all-features
-    
-    - name: Test
-      run: cargo test --all-features
-```
-
-## Troubleshooting
-
-### Common Build Issues
-
-#### 1. Linking Errors
-
-**Problem**: Undefined references during linking
-
-**Solution**:
-```bash
-# Clean build
-cargo clean
-cargo build
-
-# Check for missing system libraries
-pkg-config --libs openssl
-```
-
-#### 2. Out of Memory
-
-**Problem**: Build fails with OOM
-
-**Solution**:
-```bash
-# Reduce codegen units
-CARGO_BUILD_JOBS=1 cargo build --release
-
-# Or modify Cargo.toml
-[profile.release]
-codegen-units = 1
-```
-
-#### 3. Slow Builds
-
-**Problem**: Compilation takes too long
-
-**Solutions**:
-```bash
-# Use sccache
-cargo install sccache
-export RUSTC_WRAPPER=sccache
-
-# Use mold linker (Linux)
-RUSTFLAGS="-C link-arg=-fuse-ld=mold" cargo build
-
-# Incremental compilation
-CARGO_INCREMENTAL=1 cargo build
-```
-
-#### 4. Feature Conflicts
-
-**Problem**: Incompatible features
-
-**Solution**:
-```bash
-# Check feature dependencies
-cargo tree --features "feature1 feature2"
-
-# Build with resolver v2
-# In Cargo.toml:
-[package]
-resolver = "2"
-```
-
-## Build Scripts
-
-### Makefile
-
-```makefile
-.PHONY: all build release test clean
-
-all: build
-
-build:
-	cargo build
-
-release:
-	cargo build --release
-
-test:
-	cargo test
-
-bench:
-	cargo bench
-
-clean:
-	cargo clean
-
-install: release
-	cargo install --path .
-
-docker:
-	docker build -t talaria .
-```
-
-### Build Script (build.rs)
-
-```rust
-// build.rs
-use std::env;
-
-fn main() {
-    // Set version from git
-    if let Ok(output) = std::process::Command::new("git")
-        .args(&["describe", "--tags", "--always"])
-        .output()
-    {
-        let git_version = String::from_utf8(output.stdout).unwrap();
-        println!("cargo:rustc-env=GIT_VERSION={}", git_version);
-    }
-    
-    // Link native libraries
-    if cfg!(target_os = "linux") {
-        println!("cargo:rustc-link-lib=ssl");
-        println!("cargo:rustc-link-lib=crypto");
-    }
-}
-```
-
-## Performance Builds
-
-### Maximum Performance
-
-```bash
-# CPU-specific optimizations
-RUSTFLAGS="-C target-cpu=native -C opt-level=3" \
-    cargo build --release
-
-# With additional flags
-RUSTFLAGS="-C target-cpu=native \
-          -C opt-level=3 \
-          -C lto=fat \
-          -C embed-bitcode=yes \
-          -C codegen-units=1 \
-          -C inline-threshold=1000" \
-    cargo build --release
-```
-
-### Binary Size Optimization
-
-```bash
-# Minimize binary size
-RUSTFLAGS="-C opt-level=z" cargo build --release
-
-# Strip symbols
-strip target/release/talaria
-
-# Or use cargo configuration
-[profile.release]
-opt-level = "z"
-strip = true
-panic = "abort"
-```
-
-## Distribution
-
-### Creating Release Packages
-
-```bash
-# Create tarball
-tar czf talaria-${VERSION}-${TARGET}.tar.gz \
-    -C target/release talaria
-
-# Create debian package
-cargo install cargo-deb
-cargo deb
-
-# Create RPM package
-cargo install cargo-rpm
-cargo rpm build
-
-# Create Windows installer
-cargo install cargo-wix
-cargo wix
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace
+      - run: cargo test --workspace
+      - run: cargo clippy --workspace -- -D warnings
 ```
 
 ## See Also
 
 - [Architecture](architecture.md) - System design
 - [Contributing](contributing.md) - Development guidelines
-- [Installation](../user-guide/installation.md) - Installation methods
-- [Configuration](../user-guide/configuration.md) - Runtime configuration
+- [Testing](../testing.md) - Testing guide
+- [Performance](../advanced/performance.md) - Optimization tips

@@ -2,225 +2,290 @@
 
 Comprehensive overview of Talaria's system architecture, design patterns, and internal structure.
 
-## System Overview
+## Workspace Architecture
+
+Talaria is organized as a Rust workspace with modular crates for better separation of concerns:
+
+```
+talaria/
+├── Cargo.toml           # Workspace configuration
+├── talaria-core/        # Shared utilities and types
+├── talaria-bio/         # Bioinformatics library
+├── talaria-storage/     # Storage backend abstractions
+├── talaria-sequoia/        # Content-addressed sequence graph
+├── talaria-tools/       # External tool integrations
+├── talaria-cli/         # Command-line interface
+└── tests/               # Integration tests
+    ├── sequoia_integration/
+    ├── reduction_pipeline/
+    ├── database_operations/
+    ├── tool_integration/
+    └── cross_module/
+```
+
+### Crate Dependencies
 
 ```mermaid
-graph TB
-    subgraph "CLI Interface"
-        A1[reduce]
-        A2[stats]
-        A3[download]
-        A4[interactive]
-    end
-    
-    subgraph "Core Engine"
-        B1[Reduction Engine]
-        B2[Alignment Manager]
-        B3[Delta Encoder]
-    end
-    
-    subgraph "Aligner Abstraction"
-        C1[BLAST]
-        C2[LAMBDA]
-        C3[Kraken]
-        C4[Diamond]
-        C5[MMseqs2]
-    end
-    
-    subgraph "I/O Layer"
-        D1[FASTA Parser]
-        D2[Memory Map]
-        D3[Compression]
-    end
-    
-    A1 --> B1
-    A2 --> B1
-    A2 --> B2
-    A3 --> D1
-    A4 --> B1
-    
-    B1 --> C1
-    B1 --> C2
-    B1 --> C3
-    B1 --> C4
-    B1 --> C5
-    
-    B2 --> C1
-    B2 --> C2
-    B2 --> C3
-    B2 --> C4
-    B2 --> C5
-    
-    B3 --> D1
-    B3 --> D2
-    
-    C1 --> D1
-    C2 --> D1
-    C3 --> D1
-    C4 --> D1
-    C5 --> D1
+graph TD
+    CLI[talaria-cli] --> SEQUOIA[talaria-sequoia]
+    CLI --> Tools[talaria-tools]
+    CLI --> Bio[talaria-bio]
+    SEQUOIA --> Storage[talaria-storage]
+    SEQUOIA --> Bio
+    Storage --> Core[talaria-core]
+    Bio --> Core
+    Tools --> Bio
+    Tools --> Core
 ```
 
 ## Module Structure
 
-### Core Modules
+### talaria-core
+Shared utilities and fundamental types:
 
 ```
-src/
-├── main.rs              # Entry point and CLI setup
-├── lib.rs               # Library exports
-│
-├── bio/                 # Biological data structures
-│   ├── mod.rs           # Module exports
-│   ├── sequence.rs      # Sequence representation
-│   ├── alignment.rs     # Alignment algorithms
-│   ├── scoring.rs       # Scoring matrices
-│   ├── delta.rs         # Delta encoding
-│   └── stats.rs         # Statistics calculation
-│
-├── core/                # Core reduction logic
-│   ├── mod.rs           # Module exports
-│   ├── reducer.rs       # Main reduction engine
-│   ├── selector.rs      # Reference selection
-│   ├── clustering.rs    # Sequence clustering
-│   ├── taxonomy.rs      # Taxonomy-aware reduction
-│   └── config.rs        # Configuration management
-│
-├── aligners/            # Aligner implementations
-│   ├── mod.rs           # Aligner trait and registry
-│   ├── blast.rs         # BLAST integration
-│   ├── lambda.rs        # LAMBDA integration
-│   ├── kraken.rs        # Kraken optimization
-│   ├── diamond.rs       # Diamond integration
-│   └── mmseqs2.rs       # MMseqs2 integration
-│
-├── io/                  # Input/Output handling
-│   ├── mod.rs           # Module exports
-│   ├── fasta.rs         # FASTA parser and writer
-│   ├── compression.rs   # Compression utilities
-│   ├── mmap.rs          # Memory-mapped I/O
-│   └── streaming.rs     # Stream processing
-│
-├── cli/                 # Command-line interface
-│   ├── mod.rs           # CLI setup
-│   ├── commands/        # Command implementations
-│   │   ├── reduce.rs    # Reduce command
-│   │   ├── stats.rs     # Statistics command
-│   │   ├── download.rs  # Download command
-│   │   └── expand.rs    # Expand command
-│   ├── interactive/     # Interactive TUI
-│   │   ├── mod.rs       # TUI framework
-│   │   ├── reduce.rs    # Reduction wizard
-│   │   ├── stats.rs     # Statistics viewer
-│   │   └── config.rs    # Configuration editor
-│   └── visualize.rs     # Visualization utilities
-│
-├── download/            # Database download
-│   ├── mod.rs           # Download manager
-│   ├── uniprot.rs       # UniProt downloader
-│   ├── ncbi.rs          # NCBI downloader
-│   └── pdb.rs           # PDB downloader
-│
-└── utils/               # Utility functions
-    ├── mod.rs           # Module exports
-    ├── parallel.rs      # Parallel processing
-    ├── progress.rs      # Progress reporting
-    └── error.rs         # Error handling
+talaria-core/
+├── src/
+│   ├── lib.rs           # Public API
+│   ├── error.rs         # Unified error types
+│   ├── paths.rs         # Path management
+│   ├── config.rs        # Configuration
+│   └── version.rs       # Version utilities
+```
+
+**Key Features:**
+- Centralized path management with environment variable support
+- Unified error handling across all crates
+- System-wide configuration management
+- Semantic versioning utilities
+
+### talaria-bio
+Bioinformatics algorithms and data structures:
+
+```
+talaria-bio/
+├── src/
+│   ├── lib.rs           # Public API
+│   ├── sequence.rs      # Sequence types
+│   ├── fasta.rs         # FASTA I/O
+│   ├── taxonomy.rs      # Taxonomy management
+│   ├── stats.rs         # Statistics
+│   ├── uniprot.rs       # UniProt parsing
+│   └── alignment/       # Alignment algorithms
+│       ├── mod.rs
+│       ├── nw_aligner.rs
+│       └── scoring.rs
+```
+
+**Key Features:**
+- High-performance FASTA parsing with memory mapping
+- Needleman-Wunsch and other alignment algorithms
+- Taxonomy tree management and queries
+- UniProt/NCBI format support
+
+### talaria-storage
+Storage backend implementations:
+
+```
+talaria-storage/
+├── src/
+│   ├── lib.rs           # Public API
+│   ├── traits.rs        # Storage traits
+│   ├── cache.rs         # Caching layer
+│   ├── index.rs         # Chunk indexing
+│   ├── metadata.rs      # Metadata storage
+│   └── optimizer.rs     # Storage optimization
+```
+
+**Key Features:**
+- Trait-based storage abstraction
+- Multiple backend support (filesystem, S3, memory)
+- Multi-level caching with various eviction policies
+- Storage optimization strategies
+
+### talaria-sequoia
+Content-addressed sequence graph system:
+
+```
+talaria-sequoia/
+├── src/
+│   ├── lib.rs           # Public API
+│   ├── storage.rs       # SEQUOIA storage
+│   ├── manifest.rs      # Manifest management
+│   ├── chunker/         # Chunking strategies
+│   │   ├── mod.rs
+│   │   ├── taxonomic.rs
+│   │   └── advanced.rs
+│   ├── merkle.rs        # Merkle DAG
+│   ├── temporal.rs      # Temporal versioning
+│   └── taxonomy/        # Taxonomy integration
+```
+
+**Key Features:**
+- Content-addressed storage with SHA256
+- Multi-objective optimization for chunking
+- Dual Merkle DAGs for bi-temporal verification
+- Evolution-aware delta encoding
+
+### talaria-tools
+External tool integration:
+
+```
+talaria-tools/
+├── src/
+│   ├── lib.rs           # Public API
+│   ├── traits.rs        # Aligner traits
+│   ├── lambda.rs        # LAMBDA aligner
+│   └── tool_manager.rs  # Tool management
+```
+
+**Key Features:**
+- Unified interface for multiple aligners
+- Automatic tool download and installation
+- Version management
+- Tool-specific optimizations
+
+### talaria-cli
+Command-line interface:
+
+```
+talaria-cli/
+├── src/
+│   ├── main.rs          # Entry point
+│   ├── cli/             # CLI modules
+│   │   ├── commands/    # Command implementations
+│   │   │   ├── reduce.rs
+│   │   │   ├── database/
+│   │   │   └── chunk/
+│   │   ├── visualize.rs # Visualization
+│   │   └── charts.rs    # Terminal charts
+│   ├── download/        # Database downloads
+│   ├── processing/      # Pipeline processing
+│   ├── report/          # Report generation
+│   └── utils/           # CLI utilities
+```
+
+**Key Features:**
+- Rich command-line interface with subcommands
+- Interactive terminal UI
+- HTML report generation
+- Progress visualization
+
+## System Overview
+
+```mermaid
+graph TB
+    subgraph "CLI Layer"
+        A1[reduce]
+        A2[database]
+        A3[chunk]
+        A4[stats]
+        A5[interactive]
+    end
+
+    subgraph "Core Libraries"
+        B1[talaria-bio]
+        B2[talaria-sequoia]
+        B3[talaria-tools]
+        B4[talaria-storage]
+    end
+
+    subgraph "External Tools"
+        C1[LAMBDA]
+        C2[BLAST]
+        C3[DIAMOND]
+        C4[MMseqs2]
+    end
+
+    subgraph "Storage Backends"
+        D1[Filesystem]
+        D2[S3/Cloud]
+        D3[Memory]
+    end
+
+    A1 --> B1
+    A1 --> B2
+    A1 --> B3
+    A2 --> B2
+    A2 --> B4
+    A3 --> B2
+
+    B3 --> C1
+    B3 --> C2
+    B3 --> C3
+    B3 --> C4
+
+    B4 --> D1
+    B4 --> D2
+    B4 --> D3
 ```
 
 ## Design Patterns
 
-### 1. Strategy Pattern for Aligners
+### 1. Trait-Based Architecture
+
+All major components use traits for flexibility:
 
 ```rust
+// Storage trait
+pub trait ChunkStorage: Send + Sync {
+    fn store_chunk(&self, data: &[u8], compress: bool) -> Result<SHA256Hash>;
+    fn get_chunk(&self, hash: &SHA256Hash) -> Result<Vec<u8>>;
+    fn has_chunk(&self, hash: &SHA256Hash) -> bool;
+}
+
+// Aligner trait
 pub trait Aligner: Send + Sync {
-    fn align(&self, seq1: &[u8], seq2: &[u8]) -> AlignmentResult;
-    fn optimization_hints(&self) -> OptimizationHints;
+    fn search(&mut self, query: &[Sequence], reference: &[Sequence]) -> Result<Vec<AlignmentResult>>;
+    fn version(&self) -> Result<String>;
+    fn is_available(&self) -> bool;
 }
 
-pub struct AlignerRegistry {
-    aligners: HashMap<String, Box<dyn Aligner>>,
-}
-
-impl AlignerRegistry {
-    pub fn get_aligner(&self, name: &str) -> Option<&dyn Aligner> {
-        self.aligners.get(name).map(|b| b.as_ref())
-    }
+// Chunker trait
+pub trait Chunker: Send + Sync {
+    fn chunk_sequences(&mut self, sequences: &[Sequence]) -> Result<Vec<ChunkMetadata>>;
+    fn get_stats(&self) -> ChunkingStats;
 }
 ```
 
-### 2. Builder Pattern for Configuration
+### 2. Builder Pattern for Complex Objects
 
 ```rust
-pub struct ReductionBuilder {
-    config: ReductionConfig,
+pub struct ChunkingStrategyBuilder {
+    strategy: ChunkingStrategy,
 }
 
-impl ReductionBuilder {
-    pub fn new() -> Self {
-        Self {
-            config: ReductionConfig::default(),
-        }
-    }
-    
-    pub fn threshold(mut self, threshold: f64) -> Self {
-        self.config.threshold = threshold;
+impl ChunkingStrategyBuilder {
+    pub fn target_size(mut self, size: usize) -> Self {
+        self.strategy.target_chunk_size = size;
         self
     }
-    
-    pub fn aligner(mut self, aligner: String) -> Self {
-        self.config.aligner = aligner;
+
+    pub fn taxonomic_coherence(mut self, coherence: f64) -> Self {
+        self.strategy.taxonomic_coherence = coherence;
         self
     }
-    
-    pub fn build(self) -> Result<ReductionEngine> {
-        ReductionEngine::new(self.config)
+
+    pub fn build(self) -> ChunkingStrategy {
+        self.strategy
     }
 }
 ```
 
-### 3. Iterator Pattern for Streaming
+### 3. Repository Pattern for Data Access
 
 ```rust
-pub struct FastaIterator<R: BufRead> {
-    reader: R,
-    buffer: String,
+pub struct SEQUOIARepository {
+    storage: SEQUOIAStorage,
+    manifest: Manifest,
+    taxonomy: TaxonomyManager,
+    temporal: TemporalIndex,
 }
 
-impl<R: BufRead> Iterator for FastaIterator<R> {
-    type Item = Result<Sequence>;
-    
-    fn next(&mut self) -> Option<Self::Item> {
-        // Parse next sequence
-    }
-}
-
-pub trait StreamProcessor {
-    fn process_stream<I>(&self, iter: I) -> Result<()>
-    where
-        I: Iterator<Item = Result<Sequence>>;
-}
-```
-
-### 4. Observer Pattern for Progress
-
-```rust
-pub trait ProgressObserver: Send + Sync {
-    fn on_progress(&self, current: usize, total: usize);
-    fn on_complete(&self);
-    fn on_error(&self, error: &Error);
-}
-
-pub struct ProgressManager {
-    observers: Vec<Box<dyn ProgressObserver>>,
-}
-
-impl ProgressManager {
-    pub fn notify_progress(&self, current: usize, total: usize) {
-        for observer in &self.observers {
-            observer.on_progress(current, total);
-        }
-    }
+impl SEQUOIARepository {
+    pub fn store_sequences(&mut self, sequences: Vec<Sequence>) -> Result<Vec<ChunkMetadata>>;
+    pub fn extract_taxon(&self, taxon: &str) -> Result<Vec<Sequence>>;
+    pub fn verify(&self) -> Result<VerificationResult>;
 }
 ```
 
@@ -230,381 +295,163 @@ impl ProgressManager {
 
 ```mermaid
 flowchart TD
-    A[Input FASTA] --> B[Parse & Load]
-    B -->|Memory-mapped for large files| C[Pre-filtering]
-    C -->|Length, complexity filters| D[Clustering]
-    D -->|Group similar sequences| E[Reference Select]
-    E -->|Choose representatives| F{Skip Deltas?}
-    F -->|No| G[Delta Encoding]
-    F -->|Yes --no-deltas| H[Write Output]
-    G -->|Encode non-references| H[Write Output]
-    H --> I[FASTA + Delta files]
-    
+    A[Input FASTA] --> B[Parse & Validate]
+    B --> C[Taxonomy Mapping]
+    C --> D[Chunking Strategy]
+    D --> E[Reference Selection]
+    E --> F{SEQUOIA Storage?}
+    F -->|Yes| G[Content Addressing]
+    F -->|No| H[Delta Encoding]
+    G --> I[Merkle DAG]
+    H --> I
+    I --> J[Write Output]
+    J --> K[Reduced FASTA/SEQUOIA]
+
     style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
-    style B stroke:#00796b,stroke-width:2px
-    style C stroke:#00796b,stroke-width:2px
-    style D stroke:#00796b,stroke-width:2px
-    style E stroke:#512da8,stroke-width:2px,fill:#d1c4e9
-    style F stroke:#f57c00,stroke-width:2px,fill:#ffe0b2
-    style G stroke:#0288d1,stroke-width:2px,fill:#b3e5fc
-    style H stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
-    style I stroke:#388e3c,stroke-width:3px,fill:#a5d6a7
+    style K stroke:#388e3c,stroke-width:3px,fill:#a5d6a7
 ```
 
-### Alignment Processing
+## Testing Architecture
 
-```mermaid
-flowchart TD
-    A[Query Sequences] --> B[Batch Manager]
-    B --> C1[Thread 1]
-    B --> C2[Thread 2]
-    B --> CN[Thread N]
-    
-    C1 --> D1[Aligner]
-    C2 --> D2[Aligner]
-    CN --> DN[Aligner]
-    
-    D1 --> E[Cache]
-    D2 --> E
-    DN --> E
-    
-    E --> F[Results]
-    
-    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
-    style B stroke:#7b1fa2,stroke-width:2px,fill:#e1bee7
-    style E stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
-    style F stroke:#388e3c,stroke-width:3px,fill:#a5d6a7
-    style C1 stroke:#00796b,stroke-width:2px
-    style C2 stroke:#00796b,stroke-width:2px
-    style CN stroke:#00796b,stroke-width:2px
-    style D1 stroke:#0288d1,stroke-width:2px
-    style D2 stroke:#0288d1,stroke-width:2px
-    style DN stroke:#0288d1,stroke-width:2px
+### Test Organization
+
 ```
+tests/
+├── sequoia_integration/        # SEQUOIA system tests
+│   ├── basic_operations.rs
+│   ├── manifest_operations.rs
+│   └── temporal_operations.rs
+├── reduction_pipeline/      # Reduction workflow tests
+│   ├── basic_reduction.rs
+│   ├── sequoia_reduction.rs
+│   └── reference_selection.rs
+├── database_operations/     # Database management tests
+│   ├── fetch_tests.rs
+│   ├── add_tests.rs
+│   └── taxonomy_tests.rs
+├── tool_integration/        # External tool tests
+│   └── lambda_tests.rs
+└── cross_module/           # Cross-cutting tests
+    ├── trait_tests.rs
+    ├── versioning_tests.rs
+    └── regression_tests.rs
+```
+
+### Testing Strategy
+
+- **Unit Tests**: Within each crate's source
+- **Integration Tests**: Workspace-level tests directory
+- **Property Testing**: Using proptest for invariants
+- **Regression Tests**: Specific bug prevention
+- **Performance Tests**: Benchmarks with criterion
 
 ## Memory Management
 
-### Memory Layout
+### Strategies
 
-```mermaid
-graph TB
-    subgraph "Application Memory"
-        A["Stack (per thread)<br/>• Function calls<br/>• Local variables"]
-        B["Heap<br/>• Sequence buffers<br/>• Alignment matrices<br/>• Cache structures"]
-        C["Memory-Mapped Regions<br/>• Large FASTA files<br/>• Read-only mapping<br/>• Page-aligned access"]
-        D["Shared Memory<br/>• Inter-process communication<br/>• Alignment cache<br/>• Progress tracking"]
-    end
-    
-    A -.->|Thread-local| B
-    B -.->|Dynamic allocation| C
-    C -.->|Shared access| D
-    
-    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
-    style B stroke:#00796b,stroke-width:2px,fill:#b2dfdb
-    style C stroke:#512da8,stroke-width:2px,fill:#d1c4e9
-    style D stroke:#7b1fa2,stroke-width:2px,fill:#e1bee7
-```
-
-### Object Pooling
-
-```rust
-pub struct AlignmentMatrixPool {
-    available: Vec<AlignmentMatrix>,
-    in_use: HashSet<usize>,
-}
-
-impl AlignmentMatrixPool {
-    pub fn acquire(&mut self, rows: usize, cols: usize) -> PooledMatrix {
-        let matrix = self.available.pop()
-            .unwrap_or_else(|| AlignmentMatrix::new(rows, cols));
-        PooledMatrix::new(matrix, self)
-    }
-    
-    pub fn release(&mut self, matrix: AlignmentMatrix) {
-        if self.available.len() < MAX_POOL_SIZE {
-            self.available.push(matrix);
-        }
-    }
-}
-```
+1. **Memory Mapping**: Large FASTA files
+2. **Streaming**: Processing without full load
+3. **Chunking**: Bounded memory usage
+4. **Object Pooling**: Reusable alignment matrices
+5. **Reference Counting**: Shared immutable data
 
 ## Concurrency Model
 
-### Thread Pool Architecture
+### Parallelism Levels
 
-```mermaid
-flowchart TD
-    A["Main Thread<br/>CLI parsing, coordination"] --> B[Producer Queue]
-    A --> C[Consumer Queue]
-    
-    B --> D1[Worker 1]
-    B --> D2[Worker 2]
-    B --> D3[Worker 3]
-    B --> DN[Worker N]
-    
-    D1 --> C
-    D2 --> C
-    D3 --> C
-    DN --> C
-    
-    style A stroke:#7b1fa2,stroke-width:3px,fill:#e1bee7
-    style B stroke:#1976d2,stroke-width:2px,fill:#bbdefb
-    style C stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
-    style D1 stroke:#00796b,stroke-width:2px
-    style D2 stroke:#00796b,stroke-width:2px
-    style D3 stroke:#00796b,stroke-width:2px
-    style DN stroke:#00796b,stroke-width:2px
-```
+1. **Sequence Level**: Process sequences in parallel
+2. **Chunk Level**: Parallel chunk creation
+3. **Alignment Level**: Concurrent alignments
+4. **I/O Level**: Async file operations
 
-### Synchronization Primitives
+### Synchronization
 
 ```rust
 pub struct SharedState {
-    // Read-heavy data
-    config: RwLock<Config>,
-    
-    // Write-heavy data
-    progress: Mutex<Progress>,
-    
-    // Lock-free structures
-    stats: AtomicU64,
-    
-    // Channel communication
-    results: mpsc::Sender<Result>,
+    config: RwLock<Config>,        // Read-heavy
+    progress: Mutex<Progress>,     // Write-heavy
+    stats: AtomicU64,             // Lock-free
+    results: mpsc::Sender<Result>, // Channel-based
 }
 ```
 
 ## Error Handling
 
-### Error Hierarchy
+### Unified Error Type
 
 ```rust
-#[derive(Debug, thiserror::Error)]
+use thiserror::Error;
+
+#[derive(Error, Debug)]
 pub enum TalariaError {
-    #[error("I/O error: {0}")]
+    #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
-    #[error("Parse error: {0}")]
-    Parse(String),
-    
-    #[error("Alignment error: {0}")]
-    Alignment(String),
-    
+
     #[error("Configuration error: {0}")]
-    Config(String),
-    
-    #[error("Download error: {0}")]
-    Download(#[from] reqwest::Error),
-}
+    Configuration(String),
 
-pub type Result<T> = std::result::Result<T, TalariaError>;
-```
+    #[error("Storage error: {0}")]
+    Storage(String),
 
-### Error Recovery
-
-```rust
-pub trait ErrorRecovery {
-    fn recover(&self, error: &TalariaError) -> RecoveryAction;
-}
-
-pub enum RecoveryAction {
-    Retry,
-    Skip,
-    Abort,
-    Fallback(Box<dyn Fn() -> Result<()>>),
-}
-```
-
-## Plugin System
-
-### Plugin Interface
-
-```rust
-pub trait Plugin: Send + Sync {
-    fn name(&self) -> &str;
-    fn version(&self) -> &str;
-    fn initialize(&mut self, config: &Config) -> Result<()>;
-    fn execute(&self, context: &mut Context) -> Result<()>;
-}
-
-pub struct PluginManager {
-    plugins: Vec<Box<dyn Plugin>>,
-    hooks: HashMap<String, Vec<PluginHook>>,
-}
-```
-
-### Hook Points
-
-```mermaid
-flowchart LR
-    A[Application Start] --> B[pre_init]
-    B --> C[post_init]
-    C --> D[pre_reduction]
-    D --> E[Reduction Process]
-    E --> F[post_reduction]
-    F --> G[pre_alignment]
-    G --> H[Alignment Process]
-    H --> I[post_alignment]
-    I --> J[pre_output]
-    J --> K[Write Output]
-    K --> L[post_output]
-    L --> M[Application End]
-    
-    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
-    style E stroke:#512da8,stroke-width:3px,fill:#d1c4e9
-    style H stroke:#512da8,stroke-width:3px,fill:#d1c4e9
-    style K stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
-    style M stroke:#388e3c,stroke-width:3px,fill:#a5d6a7
-```
-
-## Testing Architecture
-
-### Test Structure
-
-```
-tests/
-├── unit/               # Unit tests
-│   ├── alignment_test.rs
-│   ├── delta_test.rs
-│   └── parser_test.rs
-│
-├── integration/        # Integration tests
-│   ├── reduce_test.rs
-│   ├── download_test.rs
-│   └── cli_test.rs
-│
-├── fixtures/           # Test data
-│   ├── small.fasta
-│   ├── large.fasta
-│   └── edge_cases.fasta
-│
-└── benchmarks/         # Performance tests
-    ├── alignment_bench.rs
-    ├── parsing_bench.rs
-    └── reduction_bench.rs
-```
-
-### Testing Strategy
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use proptest::prelude::*;
-    
-    // Property-based testing
-    proptest! {
-        #[test]
-        fn test_alignment_symmetry(seq1 in sequence_strategy(),
-                                   seq2 in sequence_strategy()) {
-            let score1 = align(&seq1, &seq2);
-            let score2 = align(&seq2, &seq1);
-            prop_assert_eq!(score1, score2);
-        }
-    }
-    
-    // Fuzz testing
-    #[test]
-    fn fuzz_parser() {
-        let data = include_bytes!("../fuzz/corpus/parser/crash-1");
-        let _ = parse_fasta(data);
-    }
+    // ... other variants
 }
 ```
 
 ## Performance Considerations
 
-### Hot Paths
-
-1. **Alignment Inner Loop**: SIMD-optimized
-2. **FASTA Parsing**: Zero-copy parsing
-3. **Delta Encoding**: Bit-packed representation
-4. **Cache Lookup**: Lock-free hash maps
-
 ### Optimization Techniques
 
-```rust
-// Branch prediction hints
-#[inline(always)]
-#[cold]
-fn handle_error(e: Error) { /* ... */ }
+1. **SIMD**: Alignment scoring
+2. **Zero-Copy**: FASTA parsing
+3. **Lazy Loading**: On-demand chunk retrieval
+4. **Batch Processing**: Amortize overhead
+5. **Cache Locality**: Data structure layout
 
-// Cache-friendly data layout
-#[repr(C, align(64))]
-struct CacheAligned {
-    data: [u8; 64],
-}
+### Hot Paths
 
-// SIMD operations
-#[target_feature(enable = "avx2")]
-unsafe fn simd_compare(a: &[u8], b: &[u8]) -> u32 {
-    // AVX2 implementation
-}
-```
+- Sequence comparison (SIMD-optimized)
+- Hash computation (hardware acceleration)
+- Chunk lookup (O(1) with caching)
+- Merkle proof generation (O(log n))
 
 ## Security Considerations
 
 ### Input Validation
 
-```rust
-pub struct InputValidator {
-    max_sequence_length: usize,
-    max_file_size: usize,
-    allowed_characters: HashSet<u8>,
-}
-
-impl InputValidator {
-    pub fn validate(&self, input: &[u8]) -> Result<()> {
-        if input.len() > self.max_file_size {
-            return Err(TalariaError::InvalidInput("File too large"));
-        }
-        // Additional validation
-        Ok(())
-    }
-}
-```
+- Maximum file size limits
+- Sequence character validation
+- Path traversal prevention
+- Resource consumption limits
 
 ### Sandboxing
 
-```rust
-#[cfg(target_os = "linux")]
-pub fn setup_sandbox() -> Result<()> {
-    use syscallz::{Context, Syscall, Action};
-    
-    let mut ctx = Context::init()?;
-    ctx.allow_syscall(Syscall::read)?;
-    ctx.allow_syscall(Syscall::write)?;
-    ctx.allow_syscall(Syscall::mmap)?;
-    // Restrict other syscalls
-    ctx.load()?;
-    
-    Ok(())
-}
-```
+- Restricted file system access
+- Network isolation for tools
+- Memory limits per operation
+- CPU time limits
 
 ## Future Architecture
 
 ### Planned Enhancements
 
-1. **Distributed Processing**: MPI support
-2. **Cloud Integration**: S3/GCS backends
-3. **GPU Acceleration**: CUDA/OpenCL kernels
-4. **Web Assembly**: Browser-based version
+1. **Distributed SEQUOIA**: Multi-node storage
+2. **Cloud-Native**: Kubernetes operators
+3. **GPU Acceleration**: CUDA/ROCm support
+4. **WebAssembly**: Browser-based tools
 5. **gRPC API**: Remote procedure calls
 
-### Extensibility Points
+### Extension Points
 
-```rust
-pub trait Extension {
-    fn extend_cli(&self, app: App) -> App;
-    fn extend_config(&self, config: &mut Config);
-    fn extend_pipeline(&self, pipeline: &mut Pipeline);
-}
-```
+- Custom chunking strategies
+- Additional storage backends
+- New alignment algorithms
+- Alternative compression methods
+- Plugin system for tools
 
 ## See Also
 
 - [Building](building.md) - Build instructions
 - [Contributing](contributing.md) - Development guidelines
-- [API Reference](../api/lib.md) - Library documentation
+- [API Reference](../api/cli-reference.md) - CLI documentation
 - [Performance](../advanced/performance.md) - Optimization guide
+- [SEQUOIA Architecture](../sequoia/architecture.md) - SEQUOIA deep dive

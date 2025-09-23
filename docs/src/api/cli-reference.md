@@ -58,7 +58,7 @@ uniprot/swissprot@2024-01-01:blast-30  # Specific version's reduction
 
 ### database
 
-Manage biological sequence databases with CASG (Content-Addressed Sequence Graph) for efficient storage and updates.
+Manage biological sequence databases with SEQUOIA (Sequence Query Optimization with Indexed Architecture) for efficient storage and updates.
 
 #### Usage
 ```bash
@@ -69,7 +69,7 @@ talaria database <SUBCOMMAND> [OPTIONS]
 
 ##### database download
 
-Download a new database using CASG.
+Download a new database using SEQUOIA.
 
 ```bash
 talaria database download <SOURCE> [OPTIONS]
@@ -126,7 +126,7 @@ talaria database list
 
 ##### database add
 
-Add a custom FASTA file to CASG.
+Add a custom FASTA file to SEQUOIA.
 
 ```bash
 talaria database add [OPTIONS]
@@ -148,7 +148,7 @@ talaria database add --source mylab --dataset proteins --input sequences.fasta
 
 ##### database list-sequences
 
-List sequences from a CASG database.
+List sequences from a SEQUOIA database.
 
 ```bash
 talaria database list-sequences <DATABASE> [OPTIONS]
@@ -173,15 +173,15 @@ talaria database list-sequences uniprot/swissprot --format json -o sequences.jso
 
 **Example:**
 ```bash
-talaria casg gc --dry-run
+talaria sequoia gc --dry-run
 ```
 
-##### casg diff
+##### sequoia diff
 
-Compare two CASG database versions.
+Compare two SEQUOIA database versions.
 
 ```bash
-talaria casg diff <OLD> <NEW> [OPTIONS]
+talaria sequoia diff <OLD> <NEW> [OPTIONS]
 ```
 
 **Arguments:**
@@ -194,7 +194,7 @@ talaria casg diff <OLD> <NEW> [OPTIONS]
 
 **Example:**
 ```bash
-talaria casg diff uniprot/swissprot@2024-01 uniprot/swissprot@2024-02
+talaria sequoia diff uniprot/swissprot@2024-01 uniprot/swissprot@2024-02
 ```
 
 ---
@@ -211,7 +211,7 @@ talaria reduce [OPTIONS]
 **Options:**
 - `-i, --input <PATH>`: Input FASTA file or database reference
 - `-o, --output <PATH>`: Output FASTA file
-- `-d, --database <DB>`: Use CASG database as input
+- `-d, --database <DB>`: Use SEQUOIA database as input
 - `-r, --reduction-ratio <RATIO>`: Target reduction ratio (0.0-1.0)
 - `-a, --target-aligner <ALIGNER>`: Target aligner (blast, diamond, lambda, etc.)
 - `--profile <NAME>`: Name for this reduction profile
@@ -224,7 +224,7 @@ talaria reduce [OPTIONS]
 # Reduce from file
 talaria reduce -i input.fasta -o reduced.fasta -r 0.3
 
-# Reduce from CASG database
+# Reduce from SEQUOIA database
 talaria reduce -d uniprot/swissprot -o reduced.fasta --profile blast-30 -r 0.3
 
 # Optimize for specific aligner

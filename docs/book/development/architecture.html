@@ -199,563 +199,415 @@
                         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="architecture"><a class="header" href="#architecture">Architecture</a></h1>
 <p>Comprehensive overview of Talaria’s system architecture, design patterns, and internal structure.</p>
-<h2 id="system-overview"><a class="header" href="#system-overview">System Overview</a></h2>
-<pre class="mermaid">graph TB
-    subgraph &quot;CLI Interface&quot;
-        A1[reduce]
-        A2[stats]
-        A3[download]
-        A4[interactive]
-    end
-    
-    subgraph &quot;Core Engine&quot;
-        B1[Reduction Engine]
-        B2[Alignment Manager]
-        B3[Delta Encoder]
-    end
-    
-    subgraph &quot;Aligner Abstraction&quot;
-        C1[BLAST]
-        C2[LAMBDA]
-        C3[Kraken]
-        C4[Diamond]
-        C5[MMseqs2]
-    end
-    
-    subgraph &quot;I/O Layer&quot;
-        D1[FASTA Parser]
-        D2[Memory Map]
-        D3[Compression]
-    end
-    
-    A1 --&gt; B1
-    A2 --&gt; B1
-    A2 --&gt; B2
-    A3 --&gt; D1
-    A4 --&gt; B1
-    
-    B1 --&gt; C1
-    B1 --&gt; C2
-    B1 --&gt; C3
-    B1 --&gt; C4
-    B1 --&gt; C5
-    
-    B2 --&gt; C1
-    B2 --&gt; C2
-    B2 --&gt; C3
-    B2 --&gt; C4
-    B2 --&gt; C5
-    
-    B3 --&gt; D1
-    B3 --&gt; D2
-    
-    C1 --&gt; D1
-    C2 --&gt; D1
-    C3 --&gt; D1
-    C4 --&gt; D1
-    C5 --&gt; D1
+<h2 id="workspace-architecture"><a class="header" href="#workspace-architecture">Workspace Architecture</a></h2>
+<p>Talaria is organized as a Rust workspace with modular crates for better separation of concerns:</p>
+<pre><code>talaria/
+├── Cargo.toml           # Workspace configuration
+├── talaria-core/        # Shared utilities and types
+├── talaria-bio/         # Bioinformatics library
+├── talaria-storage/     # Storage backend abstractions
+├── talaria-sequoia/        # Content-addressed sequence graph
+├── talaria-tools/       # External tool integrations
+├── talaria-cli/         # Command-line interface
+└── tests/               # Integration tests
+    ├── sequoia_integration/
+    ├── reduction_pipeline/
+    ├── database_operations/
+    ├── tool_integration/
+    └── cross_module/
+</code></pre>
+<h3 id="crate-dependencies"><a class="header" href="#crate-dependencies">Crate Dependencies</a></h3>
+<pre class="mermaid">graph TD
+    CLI[talaria-cli] --&gt; SEQUOIA[talaria-sequoia]
+    CLI --&gt; Tools[talaria-tools]
+    CLI --&gt; Bio[talaria-bio]
+    SEQUOIA --&gt; Storage[talaria-storage]
+    SEQUOIA --&gt; Bio
+    Storage --&gt; Core[talaria-core]
+    Bio --&gt; Core
+    Tools --&gt; Bio
+    Tools --&gt; Core
 </pre>
 <h2 id="module-structure"><a class="header" href="#module-structure">Module Structure</a></h2>
-<h3 id="core-modules"><a class="header" href="#core-modules">Core Modules</a></h3>
-<pre><code>src/
-├── main.rs              # Entry point and CLI setup
-├── lib.rs               # Library exports
-│
-├── bio/                 # Biological data structures
-│   ├── mod.rs           # Module exports
-│   ├── sequence.rs      # Sequence representation
-│   ├── alignment.rs     # Alignment algorithms
-│   ├── scoring.rs       # Scoring matrices
-│   ├── delta.rs         # Delta encoding
-│   └── stats.rs         # Statistics calculation
-│
-├── core/                # Core reduction logic
-│   ├── mod.rs           # Module exports
-│   ├── reducer.rs       # Main reduction engine
-│   ├── selector.rs      # Reference selection
-│   ├── clustering.rs    # Sequence clustering
-│   ├── taxonomy.rs      # Taxonomy-aware reduction
-│   └── config.rs        # Configuration management
-│
-├── aligners/            # Aligner implementations
-│   ├── mod.rs           # Aligner trait and registry
-│   ├── blast.rs         # BLAST integration
-│   ├── lambda.rs        # LAMBDA integration
-│   ├── kraken.rs        # Kraken optimization
-│   ├── diamond.rs       # Diamond integration
-│   └── mmseqs2.rs       # MMseqs2 integration
-│
-├── io/                  # Input/Output handling
-│   ├── mod.rs           # Module exports
-│   ├── fasta.rs         # FASTA parser and writer
-│   ├── compression.rs   # Compression utilities
-│   ├── mmap.rs          # Memory-mapped I/O
-│   └── streaming.rs     # Stream processing
-│
-├── cli/                 # Command-line interface
-│   ├── mod.rs           # CLI setup
-│   ├── commands/        # Command implementations
-│   │   ├── reduce.rs    # Reduce command
-│   │   ├── stats.rs     # Statistics command
-│   │   ├── download.rs  # Download command
-│   │   └── expand.rs    # Expand command
-│   ├── interactive/     # Interactive TUI
-│   │   ├── mod.rs       # TUI framework
-│   │   ├── reduce.rs    # Reduction wizard
-│   │   ├── stats.rs     # Statistics viewer
-│   │   └── config.rs    # Configuration editor
-│   └── visualize.rs     # Visualization utilities
-│
-├── download/            # Database download
-│   ├── mod.rs           # Download manager
-│   ├── uniprot.rs       # UniProt downloader
-│   ├── ncbi.rs          # NCBI downloader
-│   └── pdb.rs           # PDB downloader
-│
-└── utils/               # Utility functions
-    ├── mod.rs           # Module exports
-    ├── parallel.rs      # Parallel processing
-    ├── progress.rs      # Progress reporting
-    └── error.rs         # Error handling
+<h3 id="talaria-core"><a class="header" href="#talaria-core">talaria-core</a></h3>
+<p>Shared utilities and fundamental types:</p>
+<pre><code>talaria-core/
+├── src/
+│   ├── lib.rs           # Public API
+│   ├── error.rs         # Unified error types
+│   ├── paths.rs         # Path management
+│   ├── config.rs        # Configuration
+│   └── version.rs       # Version utilities
 </code></pre>
+<p><strong>Key Features:</strong></p>
+<ul>
+<li>Centralized path management with environment variable support</li>
+<li>Unified error handling across all crates</li>
+<li>System-wide configuration management</li>
+<li>Semantic versioning utilities</li>
+</ul>
+<h3 id="talaria-bio"><a class="header" href="#talaria-bio">talaria-bio</a></h3>
+<p>Bioinformatics algorithms and data structures:</p>
+<pre><code>talaria-bio/
+├── src/
+│   ├── lib.rs           # Public API
+│   ├── sequence.rs      # Sequence types
+│   ├── fasta.rs         # FASTA I/O
+│   ├── taxonomy.rs      # Taxonomy management
+│   ├── stats.rs         # Statistics
+│   ├── uniprot.rs       # UniProt parsing
+│   └── alignment/       # Alignment algorithms
+│       ├── mod.rs
+│       ├── nw_aligner.rs
+│       └── scoring.rs
+</code></pre>
+<p><strong>Key Features:</strong></p>
+<ul>
+<li>High-performance FASTA parsing with memory mapping</li>
+<li>Needleman-Wunsch and other alignment algorithms</li>
+<li>Taxonomy tree management and queries</li>
+<li>UniProt/NCBI format support</li>
+</ul>
+<h3 id="talaria-storage"><a class="header" href="#talaria-storage">talaria-storage</a></h3>
+<p>Storage backend implementations:</p>
+<pre><code>talaria-storage/
+├── src/
+│   ├── lib.rs           # Public API
+│   ├── traits.rs        # Storage traits
+│   ├── cache.rs         # Caching layer
+│   ├── index.rs         # Chunk indexing
+│   ├── metadata.rs      # Metadata storage
+│   └── optimizer.rs     # Storage optimization
+</code></pre>
+<p><strong>Key Features:</strong></p>
+<ul>
+<li>Trait-based storage abstraction</li>
+<li>Multiple backend support (filesystem, S3, memory)</li>
+<li>Multi-level caching with various eviction policies</li>
+<li>Storage optimization strategies</li>
+</ul>
+<h3 id="talaria-sequoia"><a class="header" href="#talaria-sequoia">talaria-sequoia</a></h3>
+<p>Content-addressed sequence graph system:</p>
+<pre><code>talaria-sequoia/
+├── src/
+│   ├── lib.rs           # Public API
+│   ├── storage.rs       # SEQUOIA storage
+│   ├── manifest.rs      # Manifest management
+│   ├── chunker/         # Chunking strategies
+│   │   ├── mod.rs
+│   │   ├── taxonomic.rs
+│   │   └── advanced.rs
+│   ├── merkle.rs        # Merkle DAG
+│   ├── temporal.rs      # Temporal versioning
+│   └── taxonomy/        # Taxonomy integration
+</code></pre>
+<p><strong>Key Features:</strong></p>
+<ul>
+<li>Content-addressed storage with SHA256</li>
+<li>Multi-objective optimization for chunking</li>
+<li>Dual Merkle DAGs for bi-temporal verification</li>
+<li>Evolution-aware delta encoding</li>
+</ul>
+<h3 id="talaria-tools"><a class="header" href="#talaria-tools">talaria-tools</a></h3>
+<p>External tool integration:</p>
+<pre><code>talaria-tools/
+├── src/
+│   ├── lib.rs           # Public API
+│   ├── traits.rs        # Aligner traits
+│   ├── lambda.rs        # LAMBDA aligner
+│   └── tool_manager.rs  # Tool management
+</code></pre>
+<p><strong>Key Features:</strong></p>
+<ul>
+<li>Unified interface for multiple aligners</li>
+<li>Automatic tool download and installation</li>
+<li>Version management</li>
+<li>Tool-specific optimizations</li>
+</ul>
+<h3 id="talaria-cli"><a class="header" href="#talaria-cli">talaria-cli</a></h3>
+<p>Command-line interface:</p>
+<pre><code>talaria-cli/
+├── src/
+│   ├── main.rs          # Entry point
+│   ├── cli/             # CLI modules
+│   │   ├── commands/    # Command implementations
+│   │   │   ├── reduce.rs
+│   │   │   ├── database/
+│   │   │   └── chunk/
+│   │   ├── visualize.rs # Visualization
+│   │   └── charts.rs    # Terminal charts
+│   ├── download/        # Database downloads
+│   ├── processing/      # Pipeline processing
+│   ├── report/          # Report generation
+│   └── utils/           # CLI utilities
+</code></pre>
+<p><strong>Key Features:</strong></p>
+<ul>
+<li>Rich command-line interface with subcommands</li>
+<li>Interactive terminal UI</li>
+<li>HTML report generation</li>
+<li>Progress visualization</li>
+</ul>
+<h2 id="system-overview"><a class="header" href="#system-overview">System Overview</a></h2>
+<pre class="mermaid">graph TB
+    subgraph &quot;CLI Layer&quot;
+        A1[reduce]
+        A2[database]
+        A3[chunk]
+        A4[stats]
+        A5[interactive]
+    end
+
+    subgraph &quot;Core Libraries&quot;
+        B1[talaria-bio]
+        B2[talaria-sequoia]
+        B3[talaria-tools]
+        B4[talaria-storage]
+    end
+
+    subgraph &quot;External Tools&quot;
+        C1[LAMBDA]
+        C2[BLAST]
+        C3[DIAMOND]
+        C4[MMseqs2]
+    end
+
+    subgraph &quot;Storage Backends&quot;
+        D1[Filesystem]
+        D2[S3/Cloud]
+        D3[Memory]
+    end
+
+    A1 --&gt; B1
+    A1 --&gt; B2
+    A1 --&gt; B3
+    A2 --&gt; B2
+    A2 --&gt; B4
+    A3 --&gt; B2
+
+    B3 --&gt; C1
+    B3 --&gt; C2
+    B3 --&gt; C3
+    B3 --&gt; C4
+
+    B4 --&gt; D1
+    B4 --&gt; D2
+    B4 --&gt; D3
+</pre>
 <h2 id="design-patterns"><a class="header" href="#design-patterns">Design Patterns</a></h2>
-<h3 id="1-strategy-pattern-for-aligners"><a class="header" href="#1-strategy-pattern-for-aligners">1. Strategy Pattern for Aligners</a></h3>
+<h3 id="1-trait-based-architecture"><a class="header" href="#1-trait-based-architecture">1. Trait-Based Architecture</a></h3>
+<p>All major components use traits for flexibility:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>pub trait Aligner: Send + Sync {
-    fn align(&amp;self, seq1: &amp;[u8], seq2: &amp;[u8]) -&gt; AlignmentResult;
-    fn optimization_hints(&amp;self) -&gt; OptimizationHints;
+</span>// Storage trait
+pub trait ChunkStorage: Send + Sync {
+    fn store_chunk(&amp;self, data: &amp;[u8], compress: bool) -&gt; Result&lt;SHA256Hash&gt;;
+    fn get_chunk(&amp;self, hash: &amp;SHA256Hash) -&gt; Result&lt;Vec&lt;u8&gt;&gt;;
+    fn has_chunk(&amp;self, hash: &amp;SHA256Hash) -&gt; bool;
 }
 
-pub struct AlignerRegistry {
-    aligners: HashMap&lt;String, Box&lt;dyn Aligner&gt;&gt;,
+// Aligner trait
+pub trait Aligner: Send + Sync {
+    fn search(&amp;mut self, query: &amp;[Sequence], reference: &amp;[Sequence]) -&gt; Result&lt;Vec&lt;AlignmentResult&gt;&gt;;
+    fn version(&amp;self) -&gt; Result&lt;String&gt;;
+    fn is_available(&amp;self) -&gt; bool;
 }
 
-impl AlignerRegistry {
-    pub fn get_aligner(&amp;self, name: &amp;str) -&gt; Option&lt;&amp;dyn Aligner&gt; {
-        self.aligners.get(name).map(|b| b.as_ref())
-    }
+// Chunker trait
+pub trait Chunker: Send + Sync {
+    fn chunk_sequences(&amp;mut self, sequences: &amp;[Sequence]) -&gt; Result&lt;Vec&lt;ChunkMetadata&gt;&gt;;
+    fn get_stats(&amp;self) -&gt; ChunkingStats;
 }
 <span class="boring">}</span></code></pre></pre>
-<h3 id="2-builder-pattern-for-configuration"><a class="header" href="#2-builder-pattern-for-configuration">2. Builder Pattern for Configuration</a></h3>
+<h3 id="2-builder-pattern-for-complex-objects"><a class="header" href="#2-builder-pattern-for-complex-objects">2. Builder Pattern for Complex Objects</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>pub struct ReductionBuilder {
-    config: ReductionConfig,
+</span>pub struct ChunkingStrategyBuilder {
+    strategy: ChunkingStrategy,
 }
 
-impl ReductionBuilder {
-    pub fn new() -&gt; Self {
-        Self {
-            config: ReductionConfig::default(),
-        }
-    }
-    
-    pub fn threshold(mut self, threshold: f64) -&gt; Self {
-        self.config.threshold = threshold;
+impl ChunkingStrategyBuilder {
+    pub fn target_size(mut self, size: usize) -&gt; Self {
+        self.strategy.target_chunk_size = size;
         self
     }
-    
-    pub fn aligner(mut self, aligner: String) -&gt; Self {
-        self.config.aligner = aligner;
+
+    pub fn taxonomic_coherence(mut self, coherence: f64) -&gt; Self {
+        self.strategy.taxonomic_coherence = coherence;
         self
     }
-    
-    pub fn build(self) -&gt; Result&lt;ReductionEngine&gt; {
-        ReductionEngine::new(self.config)
+
+    pub fn build(self) -&gt; ChunkingStrategy {
+        self.strategy
     }
 }
 <span class="boring">}</span></code></pre></pre>
-<h3 id="3-iterator-pattern-for-streaming"><a class="header" href="#3-iterator-pattern-for-streaming">3. Iterator Pattern for Streaming</a></h3>
+<h3 id="3-repository-pattern-for-data-access"><a class="header" href="#3-repository-pattern-for-data-access">3. Repository Pattern for Data Access</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>pub struct FastaIterator&lt;R: BufRead&gt; {
-    reader: R,
-    buffer: String,
+</span>pub struct SEQUOIARepository {
+    storage: SEQUOIAStorage,
+    manifest: Manifest,
+    taxonomy: TaxonomyManager,
+    temporal: TemporalIndex,
 }
 
-impl&lt;R: BufRead&gt; Iterator for FastaIterator&lt;R&gt; {
-    type Item = Result&lt;Sequence&gt;;
-    
-    fn next(&amp;mut self) -&gt; Option&lt;Self::Item&gt; {
-        // Parse next sequence
-    }
-}
-
-pub trait StreamProcessor {
-    fn process_stream&lt;I&gt;(&amp;self, iter: I) -&gt; Result&lt;()&gt;
-    where
-        I: Iterator&lt;Item = Result&lt;Sequence&gt;&gt;;
-}
-<span class="boring">}</span></code></pre></pre>
-<h3 id="4-observer-pattern-for-progress"><a class="header" href="#4-observer-pattern-for-progress">4. Observer Pattern for Progress</a></h3>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>pub trait ProgressObserver: Send + Sync {
-    fn on_progress(&amp;self, current: usize, total: usize);
-    fn on_complete(&amp;self);
-    fn on_error(&amp;self, error: &amp;Error);
-}
-
-pub struct ProgressManager {
-    observers: Vec&lt;Box&lt;dyn ProgressObserver&gt;&gt;,
-}
-
-impl ProgressManager {
-    pub fn notify_progress(&amp;self, current: usize, total: usize) {
-        for observer in &amp;self.observers {
-            observer.on_progress(current, total);
-        }
-    }
+impl SEQUOIARepository {
+    pub fn store_sequences(&amp;mut self, sequences: Vec&lt;Sequence&gt;) -&gt; Result&lt;Vec&lt;ChunkMetadata&gt;&gt;;
+    pub fn extract_taxon(&amp;self, taxon: &amp;str) -&gt; Result&lt;Vec&lt;Sequence&gt;&gt;;
+    pub fn verify(&amp;self) -&gt; Result&lt;VerificationResult&gt;;
 }
 <span class="boring">}</span></code></pre></pre>
 <h2 id="data-flow"><a class="header" href="#data-flow">Data Flow</a></h2>
 <h3 id="reduction-pipeline"><a class="header" href="#reduction-pipeline">Reduction Pipeline</a></h3>
 <pre class="mermaid">flowchart TD
-    A[Input FASTA] --&gt; B[Parse &amp; Load]
-    B --&gt;|Memory-mapped for large files| C[Pre-filtering]
-    C --&gt;|Length, complexity filters| D[Clustering]
-    D --&gt;|Group similar sequences| E[Reference Select]
-    E --&gt;|Choose representatives| F{Skip Deltas?}
-    F --&gt;|No| G[Delta Encoding]
-    F --&gt;|Yes --no-deltas| H[Write Output]
-    G --&gt;|Encode non-references| H[Write Output]
-    H --&gt; I[FASTA + Delta files]
-    
-    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
-    style B stroke:#00796b,stroke-width:2px
-    style C stroke:#00796b,stroke-width:2px
-    style D stroke:#00796b,stroke-width:2px
-    style E stroke:#512da8,stroke-width:2px,fill:#d1c4e9
-    style F stroke:#f57c00,stroke-width:2px,fill:#ffe0b2
-    style G stroke:#0288d1,stroke-width:2px,fill:#b3e5fc
-    style H stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
-    style I stroke:#388e3c,stroke-width:3px,fill:#a5d6a7
-</pre>
-<h3 id="alignment-processing"><a class="header" href="#alignment-processing">Alignment Processing</a></h3>
-<pre class="mermaid">flowchart TD
-    A[Query Sequences] --&gt; B[Batch Manager]
-    B --&gt; C1[Thread 1]
-    B --&gt; C2[Thread 2]
-    B --&gt; CN[Thread N]
-    
-    C1 --&gt; D1[Aligner]
-    C2 --&gt; D2[Aligner]
-    CN --&gt; DN[Aligner]
-    
-    D1 --&gt; E[Cache]
-    D2 --&gt; E
-    DN --&gt; E
-    
-    E --&gt; F[Results]
-    
-    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
-    style B stroke:#7b1fa2,stroke-width:2px,fill:#e1bee7
-    style E stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
-    style F stroke:#388e3c,stroke-width:3px,fill:#a5d6a7
-    style C1 stroke:#00796b,stroke-width:2px
-    style C2 stroke:#00796b,stroke-width:2px
-    style CN stroke:#00796b,stroke-width:2px
-    style D1 stroke:#0288d1,stroke-width:2px
-    style D2 stroke:#0288d1,stroke-width:2px
-    style DN stroke:#0288d1,stroke-width:2px
-</pre>
-<h2 id="memory-management"><a class="header" href="#memory-management">Memory Management</a></h2>
-<h3 id="memory-layout"><a class="header" href="#memory-layout">Memory Layout</a></h3>
-<pre class="mermaid">graph TB
-    subgraph &quot;Application Memory&quot;
-        A[&quot;Stack (per thread)&lt;br/&gt;• Function calls&lt;br/&gt;• Local variables&quot;]
-        B[&quot;Heap&lt;br/&gt;• Sequence buffers&lt;br/&gt;• Alignment matrices&lt;br/&gt;• Cache structures&quot;]
-        C[&quot;Memory-Mapped Regions&lt;br/&gt;• Large FASTA files&lt;br/&gt;• Read-only mapping&lt;br/&gt;• Page-aligned access&quot;]
-        D[&quot;Shared Memory&lt;br/&gt;• Inter-process communication&lt;br/&gt;• Alignment cache&lt;br/&gt;• Progress tracking&quot;]
-    end
-    
-    A -.-&gt;|Thread-local| B
-    B -.-&gt;|Dynamic allocation| C
-    C -.-&gt;|Shared access| D
-    
-    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
-    style B stroke:#00796b,stroke-width:2px,fill:#b2dfdb
-    style C stroke:#512da8,stroke-width:2px,fill:#d1c4e9
-    style D stroke:#7b1fa2,stroke-width:2px,fill:#e1bee7
-</pre>
-<h3 id="object-pooling"><a class="header" href="#object-pooling">Object Pooling</a></h3>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>pub struct AlignmentMatrixPool {
-    available: Vec&lt;AlignmentMatrix&gt;,
-    in_use: HashSet&lt;usize&gt;,
-}
+    A[Input FASTA] --&gt; B[Parse &amp; Validate]
+    B --&gt; C[Taxonomy Mapping]
+    C --&gt; D[Chunking Strategy]
+    D --&gt; E[Reference Selection]
+    E --&gt; F{SEQUOIA Storage?}
+    F --&gt;|Yes| G[Content Addressing]
+    F --&gt;|No| H[Delta Encoding]
+    G --&gt; I[Merkle DAG]
+    H --&gt; I
+    I --&gt; J[Write Output]
+    J --&gt; K[Reduced FASTA/SEQUOIA]
 
-impl AlignmentMatrixPool {
-    pub fn acquire(&amp;mut self, rows: usize, cols: usize) -&gt; PooledMatrix {
-        let matrix = self.available.pop()
-            .unwrap_or_else(|| AlignmentMatrix::new(rows, cols));
-        PooledMatrix::new(matrix, self)
-    }
-    
-    pub fn release(&amp;mut self, matrix: AlignmentMatrix) {
-        if self.available.len() &lt; MAX_POOL_SIZE {
-            self.available.push(matrix);
-        }
-    }
-}
-<span class="boring">}</span></code></pre></pre>
-<h2 id="concurrency-model"><a class="header" href="#concurrency-model">Concurrency Model</a></h2>
-<h3 id="thread-pool-architecture"><a class="header" href="#thread-pool-architecture">Thread Pool Architecture</a></h3>
-<pre class="mermaid">flowchart TD
-    A[&quot;Main Thread&lt;br/&gt;CLI parsing, coordination&quot;] --&gt; B[Producer Queue]
-    A --&gt; C[Consumer Queue]
-    
-    B --&gt; D1[Worker 1]
-    B --&gt; D2[Worker 2]
-    B --&gt; D3[Worker 3]
-    B --&gt; DN[Worker N]
-    
-    D1 --&gt; C
-    D2 --&gt; C
-    D3 --&gt; C
-    DN --&gt; C
-    
-    style A stroke:#7b1fa2,stroke-width:3px,fill:#e1bee7
-    style B stroke:#1976d2,stroke-width:2px,fill:#bbdefb
-    style C stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
-    style D1 stroke:#00796b,stroke-width:2px
-    style D2 stroke:#00796b,stroke-width:2px
-    style D3 stroke:#00796b,stroke-width:2px
-    style DN stroke:#00796b,stroke-width:2px
+    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
+    style K stroke:#388e3c,stroke-width:3px,fill:#a5d6a7
 </pre>
-<h3 id="synchronization-primitives"><a class="header" href="#synchronization-primitives">Synchronization Primitives</a></h3>
+<h2 id="testing-architecture"><a class="header" href="#testing-architecture">Testing Architecture</a></h2>
+<h3 id="test-organization"><a class="header" href="#test-organization">Test Organization</a></h3>
+<pre><code>tests/
+├── sequoia_integration/        # SEQUOIA system tests
+│   ├── basic_operations.rs
+│   ├── manifest_operations.rs
+│   └── temporal_operations.rs
+├── reduction_pipeline/      # Reduction workflow tests
+│   ├── basic_reduction.rs
+│   ├── sequoia_reduction.rs
+│   └── reference_selection.rs
+├── database_operations/     # Database management tests
+│   ├── fetch_tests.rs
+│   ├── add_tests.rs
+│   └── taxonomy_tests.rs
+├── tool_integration/        # External tool tests
+│   └── lambda_tests.rs
+└── cross_module/           # Cross-cutting tests
+    ├── trait_tests.rs
+    ├── versioning_tests.rs
+    └── regression_tests.rs
+</code></pre>
+<h3 id="testing-strategy"><a class="header" href="#testing-strategy">Testing Strategy</a></h3>
+<ul>
+<li><strong>Unit Tests</strong>: Within each crate’s source</li>
+<li><strong>Integration Tests</strong>: Workspace-level tests directory</li>
+<li><strong>Property Testing</strong>: Using proptest for invariants</li>
+<li><strong>Regression Tests</strong>: Specific bug prevention</li>
+<li><strong>Performance Tests</strong>: Benchmarks with criterion</li>
+</ul>
+<h2 id="memory-management"><a class="header" href="#memory-management">Memory Management</a></h2>
+<h3 id="strategies"><a class="header" href="#strategies">Strategies</a></h3>
+<ol>
+<li><strong>Memory Mapping</strong>: Large FASTA files</li>
+<li><strong>Streaming</strong>: Processing without full load</li>
+<li><strong>Chunking</strong>: Bounded memory usage</li>
+<li><strong>Object Pooling</strong>: Reusable alignment matrices</li>
+<li><strong>Reference Counting</strong>: Shared immutable data</li>
+</ol>
+<h2 id="concurrency-model"><a class="header" href="#concurrency-model">Concurrency Model</a></h2>
+<h3 id="parallelism-levels"><a class="header" href="#parallelism-levels">Parallelism Levels</a></h3>
+<ol>
+<li><strong>Sequence Level</strong>: Process sequences in parallel</li>
+<li><strong>Chunk Level</strong>: Parallel chunk creation</li>
+<li><strong>Alignment Level</strong>: Concurrent alignments</li>
+<li><strong>I/O Level</strong>: Async file operations</li>
+</ol>
+<h3 id="synchronization"><a class="header" href="#synchronization">Synchronization</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>pub struct SharedState {
-    // Read-heavy data
-    config: RwLock&lt;Config&gt;,
-    
-    // Write-heavy data
-    progress: Mutex&lt;Progress&gt;,
-    
-    // Lock-free structures
-    stats: AtomicU64,
-    
-    // Channel communication
-    results: mpsc::Sender&lt;Result&gt;,
+    config: RwLock&lt;Config&gt;,        // Read-heavy
+    progress: Mutex&lt;Progress&gt;,     // Write-heavy
+    stats: AtomicU64,             // Lock-free
+    results: mpsc::Sender&lt;Result&gt;, // Channel-based
 }
 <span class="boring">}</span></code></pre></pre>
 <h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
-<h3 id="error-hierarchy"><a class="header" href="#error-hierarchy">Error Hierarchy</a></h3>
+<h3 id="unified-error-type"><a class="header" href="#unified-error-type">Unified Error Type</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>#[derive(Debug, thiserror::Error)]
+</span>use thiserror::Error;
+
+#[derive(Error, Debug)]
 pub enum TalariaError {
-    #[error("I/O error: {0}")]
+    #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
-    #[error("Parse error: {0}")]
-    Parse(String),
-    
-    #[error("Alignment error: {0}")]
-    Alignment(String),
-    
+
     #[error("Configuration error: {0}")]
-    Config(String),
-    
-    #[error("Download error: {0}")]
-    Download(#[from] reqwest::Error),
-}
+    Configuration(String),
 
-pub type Result&lt;T&gt; = std::result::Result&lt;T, TalariaError&gt;;
-<span class="boring">}</span></code></pre></pre>
-<h3 id="error-recovery"><a class="header" href="#error-recovery">Error Recovery</a></h3>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>pub trait ErrorRecovery {
-    fn recover(&amp;self, error: &amp;TalariaError) -&gt; RecoveryAction;
-}
+    #[error("Storage error: {0}")]
+    Storage(String),
 
-pub enum RecoveryAction {
-    Retry,
-    Skip,
-    Abort,
-    Fallback(Box&lt;dyn Fn() -&gt; Result&lt;()&gt;&gt;),
-}
-<span class="boring">}</span></code></pre></pre>
-<h2 id="plugin-system"><a class="header" href="#plugin-system">Plugin System</a></h2>
-<h3 id="plugin-interface"><a class="header" href="#plugin-interface">Plugin Interface</a></h3>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>pub trait Plugin: Send + Sync {
-    fn name(&amp;self) -&gt; &amp;str;
-    fn version(&amp;self) -&gt; &amp;str;
-    fn initialize(&amp;mut self, config: &amp;Config) -&gt; Result&lt;()&gt;;
-    fn execute(&amp;self, context: &amp;mut Context) -&gt; Result&lt;()&gt;;
-}
-
-pub struct PluginManager {
-    plugins: Vec&lt;Box&lt;dyn Plugin&gt;&gt;,
-    hooks: HashMap&lt;String, Vec&lt;PluginHook&gt;&gt;,
-}
-<span class="boring">}</span></code></pre></pre>
-<h3 id="hook-points"><a class="header" href="#hook-points">Hook Points</a></h3>
-<pre class="mermaid">flowchart LR
-    A[Application Start] --&gt; B[pre_init]
-    B --&gt; C[post_init]
-    C --&gt; D[pre_reduction]
-    D --&gt; E[Reduction Process]
-    E --&gt; F[post_reduction]
-    F --&gt; G[pre_alignment]
-    G --&gt; H[Alignment Process]
-    H --&gt; I[post_alignment]
-    I --&gt; J[pre_output]
-    J --&gt; K[Write Output]
-    K --&gt; L[post_output]
-    L --&gt; M[Application End]
-    
-    style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
-    style E stroke:#512da8,stroke-width:3px,fill:#d1c4e9
-    style H stroke:#512da8,stroke-width:3px,fill:#d1c4e9
-    style K stroke:#388e3c,stroke-width:2px,fill:#c8e6c9
-    style M stroke:#388e3c,stroke-width:3px,fill:#a5d6a7
-</pre>
-<h2 id="testing-architecture"><a class="header" href="#testing-architecture">Testing Architecture</a></h2>
-<h3 id="test-structure"><a class="header" href="#test-structure">Test Structure</a></h3>
-<pre><code>tests/
-├── unit/               # Unit tests
-│   ├── alignment_test.rs
-│   ├── delta_test.rs
-│   └── parser_test.rs
-│
-├── integration/        # Integration tests
-│   ├── reduce_test.rs
-│   ├── download_test.rs
-│   └── cli_test.rs
-│
-├── fixtures/           # Test data
-│   ├── small.fasta
-│   ├── large.fasta
-│   └── edge_cases.fasta
-│
-└── benchmarks/         # Performance tests
-    ├── alignment_bench.rs
-    ├── parsing_bench.rs
-    └── reduction_bench.rs
-</code></pre>
-<h3 id="testing-strategy"><a class="header" href="#testing-strategy">Testing Strategy</a></h3>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>#[cfg(test)]
-mod tests {
-    use super::*;
-    use proptest::prelude::*;
-    
-    // Property-based testing
-    proptest! {
-        #[test]
-        fn test_alignment_symmetry(seq1 in sequence_strategy(),
-                                   seq2 in sequence_strategy()) {
-            let score1 = align(&amp;seq1, &amp;seq2);
-            let score2 = align(&amp;seq2, &amp;seq1);
-            prop_assert_eq!(score1, score2);
-        }
-    }
-    
-    // Fuzz testing
-    #[test]
-    fn fuzz_parser() {
-        let data = include_bytes!("../fuzz/corpus/parser/crash-1");
-        let _ = parse_fasta(data);
-    }
+    // ... other variants
 }
 <span class="boring">}</span></code></pre></pre>
 <h2 id="performance-considerations"><a class="header" href="#performance-considerations">Performance Considerations</a></h2>
-<h3 id="hot-paths"><a class="header" href="#hot-paths">Hot Paths</a></h3>
-<ol>
-<li><strong>Alignment Inner Loop</strong>: SIMD-optimized</li>
-<li><strong>FASTA Parsing</strong>: Zero-copy parsing</li>
-<li><strong>Delta Encoding</strong>: Bit-packed representation</li>
-<li><strong>Cache Lookup</strong>: Lock-free hash maps</li>
-</ol>
 <h3 id="optimization-techniques"><a class="header" href="#optimization-techniques">Optimization Techniques</a></h3>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Branch prediction hints
-#[inline(always)]
-#[cold]
-fn handle_error(e: Error) { /* ... */ }
-
-// Cache-friendly data layout
-#[repr(C, align(64))]
-struct CacheAligned {
-    data: [u8; 64],
-}
-
-// SIMD operations
-#[target_feature(enable = "avx2")]
-unsafe fn simd_compare(a: &amp;[u8], b: &amp;[u8]) -&gt; u32 {
-    // AVX2 implementation
-}
-<span class="boring">}</span></code></pre></pre>
+<ol>
+<li><strong>SIMD</strong>: Alignment scoring</li>
+<li><strong>Zero-Copy</strong>: FASTA parsing</li>
+<li><strong>Lazy Loading</strong>: On-demand chunk retrieval</li>
+<li><strong>Batch Processing</strong>: Amortize overhead</li>
+<li><strong>Cache Locality</strong>: Data structure layout</li>
+</ol>
+<h3 id="hot-paths"><a class="header" href="#hot-paths">Hot Paths</a></h3>
+<ul>
+<li>Sequence comparison (SIMD-optimized)</li>
+<li>Hash computation (hardware acceleration)</li>
+<li>Chunk lookup (O(1) with caching)</li>
+<li>Merkle proof generation (O(log n))</li>
+</ul>
 <h2 id="security-considerations"><a class="header" href="#security-considerations">Security Considerations</a></h2>
 <h3 id="input-validation"><a class="header" href="#input-validation">Input Validation</a></h3>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>pub struct InputValidator {
-    max_sequence_length: usize,
-    max_file_size: usize,
-    allowed_characters: HashSet&lt;u8&gt;,
-}
-
-impl InputValidator {
-    pub fn validate(&amp;self, input: &amp;[u8]) -&gt; Result&lt;()&gt; {
-        if input.len() &gt; self.max_file_size {
-            return Err(TalariaError::InvalidInput("File too large"));
-        }
-        // Additional validation
-        Ok(())
-    }
-}
-<span class="boring">}</span></code></pre></pre>
+<ul>
+<li>Maximum file size limits</li>
+<li>Sequence character validation</li>
+<li>Path traversal prevention</li>
+<li>Resource consumption limits</li>
+</ul>
 <h3 id="sandboxing"><a class="header" href="#sandboxing">Sandboxing</a></h3>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>#[cfg(target_os = "linux")]
-pub fn setup_sandbox() -&gt; Result&lt;()&gt; {
-    use syscallz::{Context, Syscall, Action};
-    
-    let mut ctx = Context::init()?;
-    ctx.allow_syscall(Syscall::read)?;
-    ctx.allow_syscall(Syscall::write)?;
-    ctx.allow_syscall(Syscall::mmap)?;
-    // Restrict other syscalls
-    ctx.load()?;
-    
-    Ok(())
-}
-<span class="boring">}</span></code></pre></pre>
+<ul>
+<li>Restricted file system access</li>
+<li>Network isolation for tools</li>
+<li>Memory limits per operation</li>
+<li>CPU time limits</li>
+</ul>
 <h2 id="future-architecture"><a class="header" href="#future-architecture">Future Architecture</a></h2>
 <h3 id="planned-enhancements"><a class="header" href="#planned-enhancements">Planned Enhancements</a></h3>
 <ol>
-<li><strong>Distributed Processing</strong>: MPI support</li>
-<li><strong>Cloud Integration</strong>: S3/GCS backends</li>
-<li><strong>GPU Acceleration</strong>: CUDA/OpenCL kernels</li>
-<li><strong>Web Assembly</strong>: Browser-based version</li>
+<li><strong>Distributed SEQUOIA</strong>: Multi-node storage</li>
+<li><strong>Cloud-Native</strong>: Kubernetes operators</li>
+<li><strong>GPU Acceleration</strong>: CUDA/ROCm support</li>
+<li><strong>WebAssembly</strong>: Browser-based tools</li>
 <li><strong>gRPC API</strong>: Remote procedure calls</li>
 </ol>
-<h3 id="extensibility-points"><a class="header" href="#extensibility-points">Extensibility Points</a></h3>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>pub trait Extension {
-    fn extend_cli(&amp;self, app: App) -&gt; App;
-    fn extend_config(&amp;self, config: &amp;mut Config);
-    fn extend_pipeline(&amp;self, pipeline: &amp;mut Pipeline);
-}
-<span class="boring">}</span></code></pre></pre>
+<h3 id="extension-points"><a class="header" href="#extension-points">Extension Points</a></h3>
+<ul>
+<li>Custom chunking strategies</li>
+<li>Additional storage backends</li>
+<li>New alignment algorithms</li>
+<li>Alternative compression methods</li>
+<li>Plugin system for tools</li>
+</ul>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
 <li><a href="building.html">Building</a> - Build instructions</li>
 <li><a href="contributing.html">Contributing</a> - Development guidelines</li>
-<li><a href="../api/lib.html">API Reference</a> - Library documentation</li>
+<li><a href="../api/cli-reference.html">API Reference</a> - CLI documentation</li>
 <li><a href="../advanced/performance.html">Performance</a> - Optimization guide</li>
+<li><a href="../sequoia/architecture.html">SEQUOIA Architecture</a> - SEQUOIA deep dive</li>
 </ul>
 
                     </main>

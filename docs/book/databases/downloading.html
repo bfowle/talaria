@@ -198,9 +198,9 @@
                     <main>
                         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="database-management-guide"><a class="header" href="#database-management-guide">Database Management Guide</a></h1>
-<p>Talaria provides comprehensive database management using the Content-Addressed Sequence Graph (CASG) system for efficient incremental updates.</p>
-<h2 id="how-casg-works"><a class="header" href="#how-casg-works">How CASG Works</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Aspect</th><th>CASG Benefit</th></tr></thead><tbody>
+<p>Talaria provides comprehensive database management using the Sequence Query Optimization with Indexed Architecture (SEQUOIA) system for efficient incremental updates.</p>
+<h2 id="how-sequoia-works"><a class="header" href="#how-sequoia-works">How SEQUOIA Works</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Aspect</th><th>SEQUOIA Benefit</th></tr></thead><tbody>
 <tr><td>Initial Download</td><td>100GB split into chunks</td></tr>
 <tr><td>Daily Updates</td><td>~1GB (only changed chunks)</td></tr>
 <tr><td>Storage (1 year)</td><td>~100GB (deduplicated)</td></tr>
@@ -218,7 +218,7 @@
 <li><strong>Smart Chunking</strong>: Group sequences by taxonomy for better compression</li>
 </ul>
 <h2 id="directory-structure"><a class="header" href="#directory-structure">Directory Structure</a></h2>
-<h3 id="casg-directory-structure"><a class="header" href="#casg-directory-structure">CASG Directory Structure</a></h3>
+<h3 id="sequoia-directory-structure"><a class="header" href="#sequoia-directory-structure">SEQUOIA Directory Structure</a></h3>
 <pre><code>${TALARIA_HOME}/databases/
 ├── manifests/                      # Database-specific manifest files
 │   ├── uniprot-swissprot.json     # SwissProt manifest (filename uses -)
@@ -299,7 +299,7 @@ talaria database download uniprot -d swissprot
 <pre><code class="language-bash"># Download database (initial or update)
 talaria database download uniprot -d swissprot
 
-# Add custom FASTA to CASG
+# Add custom FASTA to SEQUOIA
 talaria database add -i sequences.fasta --source mylab --dataset proteins
 
 # List downloaded databases
@@ -473,14 +473,14 @@ talaria database download uniprot -d swissprot
 talaria database download uniprot -d swissprot --resume
 </code></pre>
 <h3 id="storage-management"><a class="header" href="#storage-management">Storage Management</a></h3>
-<pre><code class="language-bash"># View CASG repository statistics
-talaria casg stats
+<pre><code class="language-bash"># View SEQUOIA repository statistics
+talaria sequoia stats
 
-# Initialize CASG if not already done
-talaria casg init
+# Initialize SEQUOIA if not already done
+talaria sequoia init
 
 # Future: Garbage collection for unused chunks
-# talaria casg gc  # Not yet implemented
+# talaria sequoia gc  # Not yet implemented
 </code></pre>
 <h3 id="compare-database-versions"><a class="header" href="#compare-database-versions">Compare Database Versions</a></h3>
 <pre><code class="language-bash"># Compare current with previous version
@@ -572,7 +572,7 @@ talaria download --database ncbi --dataset nr \
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../casg/introduction.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../sequoia/introduction.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -586,7 +586,7 @@ talaria download --database ncbi --dataset nr \
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../casg/introduction.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../sequoia/introduction.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

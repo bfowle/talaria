@@ -1,16 +1,16 @@
 <!--
 ---
-title: "CASG Architecture: A Content-Addressed Approach to Biological Database Management"
+title: "SEQUOIA: Content-Addressed Storage for Evolutionary Biological Databases"
 author: "Andromeda Tech, LLC"
 date: "September 2025"
 ---
 -->
 
-# CASG Architecture: A Content-Addressed Approach to Biological Database Management
+# SEQUOIA: Content-Addressed Storage for Evolutionary Biological Databases
 
 ## Abstract
 
-The Content-Addressed Sequence Graph (CASG) represents a paradigm shift in biological database architecture, addressing fundamental inefficiencies in how genomic and proteomic data is stored, versioned, and distributed. By combining cryptographic content addressing with biology-aware data organization, CASG achieves order-of-magnitude improvements in storage efficiency, update bandwidth, and verification capabilities compared to traditional file-based approaches. This paper presents the architectural principles underlying CASG, including its novel bi-temporal versioning system that independently tracks data evolution and taxonomic knowledge changes, its Merkle DAG structure enabling logarithmic-time verification proofs, and its taxonomically-aware chunking strategy that leverages evolutionary relationships for optimal compression. Empirical evaluation on production databases including UniProt and NCBI nr demonstrates $20$-$100\times$ reduction in update bandwidth[^perf1], $10\times$ improvement in storage efficiency[^perf1], and constant-time update checking regardless of database size. These architectural innovations enable new workflows in computational biology while providing cryptographic guarantees essential for scientific reproducibility.
+SEQUOIA (Sequence Query Optimization with Indexed Architecture) represents a paradigm shift in biological database architecture, addressing fundamental inefficiencies in how genomic and proteomic data is stored, versioned, and distributed. By combining cryptographic content addressing with biology-aware data organization, SEQUOIA achieves order-of-magnitude improvements in storage efficiency, update bandwidth, and verification capabilities compared to traditional file-based approaches. This paper presents the architectural principles underlying SEQUOIA, including its novel bi-temporal versioning system that independently tracks data evolution and taxonomic knowledge changes, its Merkle DAG structure enabling logarithmic-time verification proofs, and its taxonomically-aware chunking strategy that leverages evolutionary relationships for optimal compression. Empirical evaluation on production databases including UniProt and NCBI nr demonstrates $20$-$100\times$ reduction in update bandwidth[^perf1], $10\times$ improvement in storage efficiency[^perf1], and constant-time update checking regardless of database size. These architectural innovations enable new workflows in computational biology while providing cryptographic guarantees essential for scientific reproducibility.
 
 ---
 
@@ -28,9 +28,9 @@ Traditional approaches treat biological databases as monolithic files, leading t
 - **Verification Challenges**: No cryptographic guarantees that downloaded data matches published datasets
 - **Taxonomic Fluidity**: Cannot separate sequence data changes from classification changes
 
-### 1.2 The CASG Solution
+### 1.2 The SEQUOIA Solution
 
-CASG addresses these challenges through a fundamentally different architecture based on content-addressed storage, where data identity derives from its cryptographic hash rather than arbitrary names. This simple inversion enables profound improvements:
+SEQUOIA addresses these challenges through a fundamentally different architecture based on content-addressed storage, where data identity derives from its cryptographic hash rather than arbitrary names. This simple inversion enables profound improvements:
 
 - **Perfect Deduplication**: Identical sequences stored exactly once, regardless of occurrence frequency
 - **Incremental Updates**: Only changed data transmitted, reducing bandwidth by $20$-$100\times$[^perf1]
@@ -60,7 +60,7 @@ Content-addressed storage emerged from distributed systems research, with notabl
 
 **IPFS** (InterPlanetary File System) extends content addressing to distributed storage but treats all data uniformly, missing opportunities for biology-specific optimizations.
 
-**Blockchain systems** (Bitcoin, Ethereum) demonstrate content-addressing at massive scale, where each block is identified by its cryptographic hash. While blockchains prove the viability of Merkle trees and content-addressed architectures for distributed consensus, they optimize for immutability and decentralization rather than the compression, versioning, and biological organization that CASG provides.
+**Blockchain systems** (Bitcoin, Ethereum) demonstrate content-addressing at massive scale, where each block is identified by its cryptographic hash. While blockchains prove the viability of Merkle trees and content-addressed architectures for distributed consensus, they optimize for immutability and decentralization rather than the compression, versioning, and biological organization that SEQUOIA provides.
 
 ### 2.2 Biological Database Systems
 
@@ -78,9 +78,13 @@ Previous work on biological sequence compression includes:
 
 **DSRC** and **DSRC2** achieve high compression ratios for raw sequencing data but don't address database versioning[^roguski2014].
 
-**Reference-based compression** exploits similarity between sequences but lacks the systematic organization CASG provides through taxonomic chunking.
+**Reference-based compression** exploits similarity between sequences but lacks the systematic organization SEQUOIA provides through taxonomic chunking.
 
-**Delta encoding systems** like xdelta work at the byte level, missing biological structure that CASG exploits.
+**Delta encoding systems** like xdelta work at the byte level, missing biological structure that SEQUOIA exploits.
+
+### 2.4 Naming Rationale
+
+The SEQUOIA acronym (Sequence Query Optimization with Indexed Architecture) reflects the system's core capabilities while drawing inspiration from Sequoia trees, which exemplify longevity and interconnected growth—qualities essential to biological data preservation. Just as Sequoia forests share root systems for mutual support, SEQUOIA's content-addressed architecture enables perfect deduplication across database versions.
 
 ---
 
@@ -88,7 +92,7 @@ Previous work on biological sequence compression includes:
 
 ### 3.1 Design Principles
 
-CASG's architecture rests on five fundamental principles that work synergistically:
+SEQUOIA's architecture rests on five fundamental principles that work synergistically:
 
 ```mermaid
 graph TB
@@ -117,7 +121,7 @@ Each principle addresses specific challenges while reinforcing the others, creat
 Content addressing inverts the traditional name→data relationship, deriving names from data through cryptographic hashing:
 
 - **Traditional**: `Name → Mutable Data`
-- **CASG**: `Hash(Data) → Immutable Data`
+- **SEQUOIA**: `Hash(Data) → Immutable Data`
 
 This inversion provides several mathematical guarantees:
 
@@ -197,7 +201,7 @@ For a database with 1 million chunks:
 
 ### 3.4 Bi-Temporal Versioning
 
-Biological databases face a unique versioning challenge: the data itself (sequences) evolves independently from our understanding of it (taxonomy). CASG's bi-temporal architecture elegantly handles this complexity:
+Biological databases face a unique versioning challenge: the data itself (sequences) evolves independently from our understanding of it (taxonomy). SEQUOIA's bi-temporal architecture elegantly handles this complexity:
 
 ```mermaid
 graph LR
@@ -248,7 +252,7 @@ This creates a two-dimensional version space where researchers can navigate both
 
 ### 4.1 Biological Coherence Principle
 
-Unlike generic chunking strategies that treat data uniformly, CASG's taxonomic chunking leverages the tree of life structure:
+Unlike generic chunking strategies that treat data uniformly, SEQUOIA's taxonomic chunking leverages the tree of life structure:
 
 ```mermaid
 graph TD
@@ -325,7 +329,7 @@ Performance measurements show 3-5× improvement in query response time compared 
 
 ### 5.1 Evolution-Aware Storage
 
-Delta compression in CASG leverages the fundamental principle that biological sequences evolve through accumulation of small changes:
+Delta compression in SEQUOIA leverages the fundamental principle that biological sequences evolve through accumulation of small changes:
 
 ```mermaid
 graph TD
@@ -360,7 +364,7 @@ graph TD
 
 ### 5.2 Reference Selection Algorithm
 
-The choice of reference sequences critically impacts compression efficiency. CASG uses graph centrality metrics:
+The choice of reference sequences critically impacts compression efficiency. SEQUOIA uses graph centrality metrics:
 
 **Centrality Score** = α·Degree + β·Betweenness + γ·Coverage
 
@@ -392,9 +396,9 @@ The system automatically chooses between delta and full storage based on efficie
 
 ### 6.1 Theoretical Complexity Analysis
 
-CASG's architecture provides favorable complexity characteristics:
+SEQUOIA's architecture provides favorable complexity characteristics:
 
-| Operation | Traditional | CASG | Improvement |
+| Operation | Traditional | SEQUOIA | Improvement |
 |-----------|------------|------|-------------|
 | Update check | $O(n)$ | $O(1)$ | $n\times$ |
 | Incremental update | $O(n)$ | $O(\Delta)$ | $n/\Delta\times$ |
@@ -417,14 +421,14 @@ Production deployment on real databases validates theoretical predictions, inclu
 graph LR
     subgraph UP["UniProt SwissProt<br/>(570K sequences, 2024)"]
         US1["Initial Download<br/>85GB (Jan 2024)"]
-        US2["Daily Update<br/>Traditional: 85GB<br/>CASG: 100MB"]
-        US3["Storage (1 year)<br/>Traditional: 31TB<br/>CASG: 90GB"]
+        US2["Daily Update<br/>Traditional: 85GB<br/>SEQUOIA: 100MB"]
+        US3["Storage (1 year)<br/>Traditional: 31TB<br/>SEQUOIA: 90GB"]
     end
 
     subgraph NR["NCBI nr<br/>(350M sequences, 2024)"]
         NR1["Initial Download<br/>500GB (Jan 2024)"]
-        NR2["Weekly Update<br/>Traditional: 500GB<br/>CASG: 2.5GB"]
-        NR3["Storage (1 year)<br/>Traditional: 26TB<br/>CASG: 630GB"]
+        NR2["Weekly Update<br/>Traditional: 500GB<br/>SEQUOIA: 2.5GB"]
+        NR3["Storage (1 year)<br/>Traditional: 26TB<br/>SEQUOIA: 630GB"]
     end
 
     style US1 stroke:#757575,stroke-width:2px
@@ -437,7 +441,7 @@ graph LR
 
 ### 6.3 Scalability Analysis
 
-CASG scales favorably with database growth:
+SEQUOIA scales favorably with database growth:
 
 ```mermaid
 graph TD
@@ -481,7 +485,7 @@ The architecture maintains efficiency even at petabyte scale through:
 
 ### 7.1 Trust Model
 
-CASG provides cryptographic guarantees without requiring trust:
+SEQUOIA provides cryptographic guarantees without requiring trust:
 
 ```mermaid
 graph TD
@@ -539,23 +543,23 @@ Verification overhead remains negligible:
 
 ### 8.1 Storage Backend Flexibility
 
-CASG's architecture supports various storage backends:
+SEQUOIA's architecture supports various storage backends:
 
 ```mermaid
 graph TD
-    CASG["CASG Core"]
+    SEQUOIA["SEQUOIA Core"]
 
     Local["Local Filesystem<br/>Development/Single User"]
     NFS["Network Storage<br/>Team Sharing"]
     S3["Cloud Object Storage<br/>Global Distribution"]
     IPFS["P2P Network<br/>Decentralized"]
 
-    CASG --> Local
-    CASG --> NFS
-    CASG --> S3
-    CASG --> IPFS
+    SEQUOIA --> Local
+    SEQUOIA --> NFS
+    SEQUOIA --> S3
+    SEQUOIA --> IPFS
 
-    style CASG stroke:#7b1fa2,stroke-width:3px
+    style SEQUOIA stroke:#7b1fa2,stroke-width:3px
     style Local stroke:#757575,stroke-width:2px
     style NFS stroke:#757575,stroke-width:2px
     style S3 stroke:#1976d2,stroke-width:2px
@@ -566,7 +570,7 @@ The content-addressed nature makes chunks location-agnostic, enabling transparen
 
 ### 8.2 Network Protocol Efficiency
 
-CASG minimizes network overhead through:
+SEQUOIA minimizes network overhead through:
 
 - **Manifest-based updates**: Check changes with ~100KB download
 - **Parallel chunk retrieval**: Maximize bandwidth utilization
@@ -592,16 +596,16 @@ Adaptive caching algorithms prioritize frequently accessed chunks (model organis
 
 ### 9.1 UniProt Deployment
 
-A major research institution deployed CASG for UniProt management:
+A major research institution deployed SEQUOIA for UniProt management:
 
-**Before CASG**:
+**Before SEQUOIA**:
 
 - 85GB monthly downloads (2023 data)[^uniprot2024stats]
 - 3TB storage for quarterly snapshots²
 - 4 hours to verify integrity²
 - No incremental updates
 
-**After CASG**:
+**After SEQUOIA**:
 
 - 100MB-1GB monthly updates¹
 - 90GB storage for all versions¹
@@ -616,7 +620,7 @@ The 2020 Lactobacillus reclassification affected 260+ species across thousands o
 
 **Traditional approach**: Re-download all affected databases (terabytes)
 
-**CASG approach**:
+**SEQUOIA approach**:
 
 1. Download new taxonomy manifest (100KB)
 2. Existing sequence chunks remain unchanged
@@ -650,7 +654,7 @@ International consortium sharing NCBI nr database:
 
 ### 10.1 Design Trade-offs
 
-CASG makes explicit trade-offs optimizing for specific use cases:
+SEQUOIA makes explicit trade-offs optimizing for specific use cases:
 
 | Aspect | Optimized For | Trade-off |
 |--------|--------------|-----------|
@@ -670,7 +674,7 @@ CASG makes explicit trade-offs optimizing for specific use cases:
 
 ### 10.3 Inappropriate Use Cases
 
-CASG may not suit:
+SEQUOIA may not suit:
 
 - Frequently mutating data (use traditional databases)
 - Small datasets (<1GB, overhead exceeds benefits)
@@ -683,7 +687,7 @@ CASG may not suit:
 
 ### 11.1 Distributed Architecture
 
-Extending CASG to global scale:
+Extending SEQUOIA to global scale:
 
 - Distributed hash table for chunk discovery
 - Consensus protocols for manifest agreement
@@ -712,7 +716,7 @@ Deeper biological understanding:
 
 ## 12. Conclusions
 
-The Content-Addressed Sequence Graph represents a fundamental rethinking of biological database architecture. By combining cryptographic content addressing with biology-aware organization, CASG achieves order-of-magnitude improvements in storage efficiency, update bandwidth, and verification capabilities.
+The Content-Addressed Sequence Graph represents a fundamental rethinking of biological database architecture. By combining cryptographic content addressing with biology-aware organization, SEQUOIA achieves order-of-magnitude improvements in storage efficiency, update bandwidth, and verification capabilities.
 
 Key innovations include:
 
@@ -728,17 +732,17 @@ Empirical evaluation demonstrates:
 - **Constant-time update checking** regardless of database size
 - **Logarithmic verification** scaling with database size
 
-These architectural advances enable new workflows in computational biology while providing the cryptographic guarantees essential for reproducible science. As biological databases continue their exponential growth[^stephens2015], content-addressed architectures like CASG will become increasingly critical for sustainable scientific infrastructure.
+These architectural advances enable new workflows in computational biology while providing the cryptographic guarantees essential for reproducible science. As biological databases continue their exponential growth[^stephens2015], content-addressed architectures like SEQUOIA will become increasingly critical for sustainable scientific infrastructure.
 
 ---
 
 ## Acknowledgments
 
-The CASG architecture builds upon decades of research in distributed systems, cryptography, and bioinformatics. We acknowledge the foundational work in content-addressed storage, Merkle trees, and biological sequence compression that made this system possible.
+The SEQUOIA architecture builds upon decades of research in distributed systems, cryptography, and bioinformatics. We acknowledge the foundational work in content-addressed storage, Merkle trees, and biological sequence compression that made this system possible.
 
 ---
 
-[^perf1]: Projected performance improvements based on theoretical analysis of content-addressed storage architectures and preliminary prototyping. These estimates assume typical biological database characteristics (high sequence redundancy, evolutionary relationships, incremental changes) and represent potential benefits achievable through full implementation of CASG principles.
+[^perf1]: Projected performance improvements based on theoretical analysis of content-addressed storage architectures and preliminary prototyping. These estimates assume typical biological database characteristics (high sequence redundancy, evolutionary relationships, incremental changes) and represent potential benefits achievable through full implementation of SEQUOIA principles.
 
 [^stephens2015]: Stephens, Z.D., et al. (2015). "Big Data: Astronomical or Genomical?" PLoS Biology, 13(7), e1002195. doi:10.1371/journal.pbio.1002195
 

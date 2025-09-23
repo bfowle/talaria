@@ -49,7 +49,7 @@ mjx-container[jax="CHTML"][display="true"] {
 }
 
 /* Global Mermaid Diagram Styling */
-/* Define common color scheme for all CASG documentation */
+/* Define common color scheme for all Talaria documentation */
 .mermaid {
   --mermaid-error-color: #d32f2f;      /* Red for errors/problems */
   --mermaid-success-color: #388e3c;    /* Green for success/benefits */

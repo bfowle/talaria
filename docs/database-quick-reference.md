@@ -158,7 +158,7 @@ talaria reduce -i input.fasta -o reduced.fasta -r 0.3 --target-aligner blast
 
 ### Store as Reduction Profile
 ```bash
-# Reduce a database from CASG repository (creates a profile, not a new database)
+# Reduce a database from SEQUOIA repository (creates a profile, not a new database)
 talaria reduce custom/cholera -a lambda
 # Creates profile: auto-detect
 

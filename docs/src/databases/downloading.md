@@ -1,10 +1,10 @@
 # Database Management Guide
 
-Talaria provides comprehensive database management using the Content-Addressed Sequence Graph (CASG) system for efficient incremental updates.
+Talaria provides comprehensive database management using the Sequence Query Optimization with Indexed Architecture (SEQUOIA) system for efficient incremental updates.
 
-## How CASG Works
+## How SEQUOIA Works
 
-| Aspect | CASG Benefit |
+| Aspect | SEQUOIA Benefit |
 |--------|-------------|
 | Initial Download | 100GB split into chunks |
 | Daily Updates | ~1GB (only changed chunks) |
@@ -23,7 +23,7 @@ Talaria provides comprehensive database management using the Content-Addressed S
 
 ## Directory Structure
 
-### CASG Directory Structure
+### SEQUOIA Directory Structure
 ```
 ${TALARIA_HOME}/databases/
 ├── manifests/                      # Database-specific manifest files
@@ -105,7 +105,7 @@ For large databases, the savings are massive:
 # Download database (initial or update)
 talaria database download uniprot -d swissprot
 
-# Add custom FASTA to CASG
+# Add custom FASTA to SEQUOIA
 talaria database add -i sequences.fasta --source mylab --dataset proteins
 
 # List downloaded databases
@@ -327,14 +327,14 @@ talaria database download uniprot -d swissprot --resume
 ### Storage Management
 
 ```bash
-# View CASG repository statistics
-talaria casg stats
+# View SEQUOIA repository statistics
+talaria sequoia stats
 
-# Initialize CASG if not already done
-talaria casg init
+# Initialize SEQUOIA if not already done
+talaria sequoia init
 
 # Future: Garbage collection for unused chunks
-# talaria casg gc  # Not yet implemented
+# talaria sequoia gc  # Not yet implemented
 ```
 
 ### Compare Database Versions

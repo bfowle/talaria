@@ -1,118 +1,67 @@
-[package]
-name = "talaria"
+[workspace]
+members = [
+    "talaria-core",
+    "talaria-bio",
+    "talaria-storage",
+    "talaria-sequoia",
+    "talaria-tools",
+    "talaria-cli",
+    "talaria-utils",
+]
+resolver = "2"
+
+[workspace.package]
 version = "0.1.0"
+authors = ["Talaria Contributors"]
 edition = "2021"
-authors = ["Brett Fowle <brett@androm.tech>", "Omar Tabbaa <omar@androm.tech>"]
-description = "Intelligent FASTA reduction for aligner index optimization"
 license = "MIT"
-repository = "https://github.com/Andromeda-Tech/talaria"
-keywords = ["bioinformatics", "fasta", "alignment", "lambda", "blast"]
-categories = ["command-line-utilities", "science"]
+repository = "https://github.com/yourusername/talaria"
 
-[dependencies]
-# CLI and configuration
-clap = { version = "4.5.47", features = ["derive", "env", "wrap_help"] }
-toml = "0.9.5"
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.143"
-
-# Parallel processing
-rayon = "1.11.0"
-crossbeam = "0.8.4"
-dashmap = "6.0"
-parking_lot = "0.12.4"
-num_cpus = "1.17.0"
-
-# Progress and logging
-indicatif = "0.18.0"
-tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
-colored = "3.0.0"
-
-# Interactive CLI
-ratatui = "0.29"
-crossterm = "0.29"
-termimad = "0.34"
-comfy-table = "7.2.1"
-dialoguer = "0.12"
-dirs = "5.0"
-atty = "0.2"
-terminal_size = "0.4"
-
-# Network and downloads
-reqwest = { version = "0.12.23", features = ["blocking", "stream", "json"] }
-tokio = { version = "1.47.1", features = ["full"] }
-futures = "0.3.31"
-futures-util = "0.3.31"
-sha2 = "0.10"
-md5 = "0.8.0"
-flate2 = "1.1.2"
-tar = "0.4.44"
-zstd = "0.13"
-url = "2.5.7"
-
-# File I/O and parsing
-memmap2 = "0.9.8"
-nom = "7.1"
-byteorder = "1.5"
-bincode = "1.3"
-
-# Data structures
-indexmap = "2.11.1"
-petgraph = "0.8.2"
-bit-vec = "0.8"
-smallvec = "1.13"
-
-# Error handling
-anyhow = "1.0.99"
-thiserror = "1.0"
-
-# CASG dependencies
-hex = "0.4"
-uuid = { version = "1.11", features = ["v4", "serde"] }
-crypto-hash = "0.3"
-rmp-serde = "1.3"
-serde_bytes = "0.11"
-
-# Cloud storage dependencies
-aws-sdk-s3 = "1.6"
-aws-config = "1.0"
+[workspace.dependencies]
+# Common dependencies used across multiple crates
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.32", features = ["full"] }
 async-trait = "0.1"
-glob = "0.3"
-
-# Testing and benchmarking
-proptest = "1.7.0"
-criterion = { version = "0.7.0", features = ["html_reports"] }
+tracing = "0.1"
+thiserror = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
-humansize = "2.1.3"
+sha2 = "0.10"
+bincode = "1.3"
+flate2 = "1.0"
+rayon = "1.7"
+dashmap = "5.5"
+indicatif = "0.17"
+colored = "2.0"
+clap = { version = "4.4", features = ["derive", "env", "wrap_help"] }
+rmp-serde = "1.1"
+tempfile = "3.8"
 rand = "0.8"
-regex = "1.10"
-sysinfo = "0.37.0"
 
-[dev-dependencies]
-tempfile = "3.22.0"
-pretty_assertions = "1.4.1"
-quickcheck = "1.0.3"
-mockall = "0.13.0"
-test-case = "3.3.1"
-rstest = "0.23.0"
 
-[[bench]]
-name = "alignment_bench"
-harness = false
-
-[[bench]]
-name = "parsing_bench"
-harness = false
-
-[[bench]]
-name = "reduction_bench"
-harness = false
-
+# Optimize for binary size in release builds
 [profile.release]
-lto = true
-codegen-units = 1
 opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.release-with-debug]
+inherits = "release"
+strip = false
+debug = true
 
 [profile.bench]
 inherits = "release"
+
+# Development profile with better compilation times
+[profile.dev]
+opt-level = 0
+debug = true
+split-debuginfo = "unpacked"
+incremental = true
+
+[profile.test]
+opt-level = 2
