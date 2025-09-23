@@ -42,107 +42,107 @@ pub enum OutputFormat {
 }
 
 pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
-    use talaria_sequoia::assembler::FastaAssembler;
     use crate::core::database_manager::DatabaseManager;
     use crate::utils::progress::create_spinner;
     use std::io::Write;
+    use talaria_sequoia::reduction::ReductionManifest;
 
     // Show loading spinner while initializing
     let spinner = create_spinner("Loading database information...");
 
     // Initialize database manager
-    use talaria_core::paths;
-    let base_path = paths::talaria_databases_dir();
-
-    let manager = DatabaseManager::new(Some(base_path.to_string_lossy().to_string()))?;
+    let manager = DatabaseManager::new(None)?;
 
     spinner.finish_and_clear();
 
-    // Parse database reference
-    let parts: Vec<&str> = args.database.split('/').collect();
-    if parts.len() != 2 {
-        anyhow::bail!(
-            "Invalid database reference. Use format: source/database (e.g., uniprot/swissprot)"
-        );
-    }
+    // Parse database reference to check for profile
+    let db_ref = crate::utils::database_ref::parse_database_reference(&args.database)?;
 
-    let source = parts[0];
-    let db_name = parts[1];
+    // Load appropriate manifest based on whether profile is specified
+    let (chunk_metadata, total_sequences, db_display_name) = if let Some(profile) = &db_ref.profile {
+        // Load reduction manifest for profile
+        let versions_dir = talaria_core::paths::talaria_databases_dir().join("versions");
+        let version = db_ref.version.as_deref().unwrap_or("current");
+        let profile_path = versions_dir
+            .join(&db_ref.source)
+            .join(&db_ref.dataset)
+            .join(version)
+            .join("profiles")
+            .join(format!("{}.tal", profile));
 
-    // Find the database manifest in the manifests directory
-    // Try both naming conventions
-    let manifest_name = format!("{}-{}.json", source, db_name);
-    let manifest_path = base_path.join("manifests").join(&manifest_name);
-
-    let manifest_path = if manifest_path.exists() {
-        manifest_path
-    } else {
-        // Try alternative naming
-        let alt_manifest_path = base_path
-            .join("manifests")
-            .join(format!("{}_{}.json", source, db_name));
-        if alt_manifest_path.exists() {
-            alt_manifest_path
-        } else {
-            anyhow::bail!(
-                "Database not found: {}\nLooked for: {}\nand: {}",
-                args.database,
-                manifest_path.display(),
-                alt_manifest_path.display()
-            );
+        if !profile_path.exists() {
+            anyhow::bail!("Profile '{}' not found for {}/{}", profile, db_ref.source, db_ref.dataset);
         }
+
+        // Read and parse reduction manifest
+        let mut content = std::fs::read(&profile_path)?;
+        if content.starts_with(b"TAL") && content.len() > 4 {
+            content = content[4..].to_vec();
+        }
+
+        let reduction_manifest: ReductionManifest = rmp_serde::from_slice(&content)?;
+
+        // Convert reference chunks to chunk metadata format
+        let mut chunk_metadata = Vec::new();
+        for ref_chunk in &reduction_manifest.reference_chunks {
+            chunk_metadata.push(talaria_sequoia::types::ChunkMetadata {
+                hash: ref_chunk.chunk_hash.clone(),
+                taxon_ids: ref_chunk.taxon_ids.clone(),
+                sequence_count: ref_chunk.sequence_count,
+                size: ref_chunk.size,
+                compressed_size: ref_chunk.compressed_size,
+            });
+        }
+
+        let total = reduction_manifest.statistics.reference_sequences;
+        let display = format!("{}/{}:{}", db_ref.source, db_ref.dataset, profile);
+        (chunk_metadata, total, display)
+    } else {
+        // Load regular database manifest
+        let manifest = manager.get_manifest(&args.database)?;
+        let total = manifest.chunk_index.iter().map(|c| c.sequence_count).sum();
+        let display = format!("{}/{}", db_ref.source, db_ref.dataset);
+        (manifest.chunk_index, total, display)
     };
 
-    // Load manifest
-    let manifest = talaria_sequoia::manifest::Manifest::load_file(&manifest_path)?;
-    let manifest_data = manifest
-        .get_data()
-        .ok_or_else(|| anyhow::anyhow!("No manifest data found"))?;
-
     eprintln!(
-        "\u{25cf} Loading sequences from {} (version {})",
-        args.database, manifest_data.version
+        "\u{25cf} Loading sequences from {}",
+        db_display_name
     );
-    eprintln!("  Total chunks: {}", manifest_data.chunk_index.len());
+    eprintln!("  Total chunks: {}", chunk_metadata.len());
+    eprintln!("  Total sequences: {}", total_sequences);
 
-    // Create assembler
-    let _assembler = FastaAssembler::new(manager.get_storage());
-
-    // Collect sequence references from chunks
+    // Collect sequence information from chunks
     let mut all_sequences = Vec::new();
     let pb = crate::utils::progress::create_progress_bar(
-        manifest_data.chunk_index.len() as u64,
+        chunk_metadata.len() as u64,
         "Reading chunks",
     );
 
     let mut missing_chunks = 0;
-    for chunk_info in &manifest_data.chunk_index {
+    for chunk_info in &chunk_metadata {
         pb.inc(1);
 
-        // Load chunk
-        match manager.get_storage().get_chunk(&chunk_info.hash) {
-            Ok(chunk_data) => {
-                if let Ok(chunk) =
-                    serde_json::from_slice::<talaria_sequoia::types::TaxonomyAwareChunk>(&chunk_data)
-                {
-                    // Apply filter if specified
-                    let sequences: Vec<_> = if let Some(filter) = &args.filter {
-                        chunk
-                            .sequences
-                            .into_iter()
-                            .filter(|seq| seq.sequence_id.contains(filter))
-                            .collect()
-                    } else {
-                        chunk.sequences
-                    };
+        // Load chunk using manager's method which handles binary format
+        match manager.load_chunk(&chunk_info.hash) {
+            Ok(chunk) => {
+                // Apply filter if specified
+                let sequences: Vec<_> = if let Some(filter) = &args.filter {
+                    chunk
+                        .sequences
+                        .into_iter()
+                        .filter(|seq| seq.sequence_id.contains(filter))
+                        .collect()
+                } else {
+                    chunk.sequences
+                };
 
-                    all_sequences.extend(sequences);
+                all_sequences.extend(sequences);
 
-                    // Check limit
-                    if all_sequences.len() >= args.limit {
-                        all_sequences.truncate(args.limit);
-                        break;
-                    }
+                // Check limit
+                if all_sequences.len() >= args.limit {
+                    all_sequences.truncate(args.limit);
+                    break;
                 }
             }
             Err(_) => {

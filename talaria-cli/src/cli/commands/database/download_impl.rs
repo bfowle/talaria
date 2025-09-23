@@ -245,7 +245,7 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
             // Show version information
             if let Ok(version_info) = manager.get_current_version_info(&database_source) {
                 println!();
-                subsection_header("◆ Current Version");
+                subsection_header("Current Version");
                 tree_item(false, "Timestamp", Some(&version_info.timestamp));
                 if let Some(upstream) = version_info.upstream_version {
                     tree_item(false, "Upstream", Some(&upstream));
@@ -312,7 +312,7 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
     let stats = manager.get_stats()?;
 
     println!();
-    subsection_header("◆ Repository Statistics");
+    subsection_header("Repository Statistics");
     tree_item(
         false,
         "Total chunks",

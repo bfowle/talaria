@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 pub mod add;
+pub mod backup;
 pub mod check_discrepancies;
 pub mod clean;
 pub mod diff;
@@ -73,6 +74,9 @@ pub enum DatabaseCommands {
 
     /// Show differences between databases or versions
     Diff(diff::DiffArgs),
+
+    /// Manage database backups
+    Backup(backup::BackupCommand),
 }
 
 pub fn run(args: DatabaseArgs) -> anyhow::Result<()> {
@@ -93,6 +97,7 @@ pub fn run(args: DatabaseArgs) -> anyhow::Result<()> {
         DatabaseCommands::Verify(args) => verify::run(args),
         DatabaseCommands::Clean(args) => clean::run(args),
         DatabaseCommands::Diff(args) => diff::run(args),
+        DatabaseCommands::Backup(args) => backup::execute(&args),
     }
 }
 

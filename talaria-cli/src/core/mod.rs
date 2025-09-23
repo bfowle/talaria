@@ -16,6 +16,7 @@ pub mod version_store;
 pub mod migrator;
 pub mod resolver;
 pub mod alias;
+pub mod backup_manager;
 
 // Taxonomy modules
 pub mod taxonomy_manager;

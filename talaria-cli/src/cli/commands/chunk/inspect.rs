@@ -492,6 +492,313 @@ impl ManifestInspector for TemporalManifest {
     }
 }
 
+impl ManifestInspector for talaria_sequoia::reduction::ReductionManifest {
+    fn inspect_taxonomy(&self, max_depth: usize) -> Result<String> {
+        let mut output = String::new();
+        output.push_str(&format!("{}\n", "Taxonomic Organization:".bold().green()));
+        output.push_str(&format!("{}\n", "─".repeat(40)));
+
+        // Group reference chunks by taxonomy
+        let mut taxonomy_groups: BTreeMap<(String, TaxonId), Vec<&talaria_sequoia::reduction::ReferenceChunk>> = BTreeMap::new();
+
+        // Try to load taxonomy database for better display
+        let taxonomy_db = load_taxonomy_db().ok();
+
+        // Group chunks by their taxon IDs
+        for chunk in &self.reference_chunks {
+            if let Some(first_taxon) = chunk.taxon_ids.first() {
+                let name = get_taxonomy_name(*first_taxon, &taxonomy_db);
+                taxonomy_groups
+                    .entry((name, *first_taxon))
+                    .or_default()
+                    .push(chunk);
+            }
+        }
+
+        // Convert to vector and categorize
+        let mut all_groups: Vec<_> = taxonomy_groups
+            .iter()
+            .map(|((name, taxon_id), chunks)| {
+                let total_sequences: usize = chunks.iter().map(|c| c.sequence_count).sum();
+                let total_size: usize = chunks.iter().map(|c| c.size).sum();
+                (
+                    (name.clone(), *taxon_id),
+                    chunks.clone(),
+                    total_sequences,
+                    total_size,
+                )
+            })
+            .collect();
+
+        // Sort by sequence count (descending)
+        all_groups.sort_by(|a, b| b.2.cmp(&a.2));
+
+        // Categorize taxa
+        let mut model_organisms = Vec::new();
+        let mut pathogens = Vec::new();
+        let mut environmental = Vec::new();
+        let mut others = Vec::new();
+
+        for group in all_groups.iter() {
+            let ((name, taxon_id), _, _, _) = group;
+
+            if is_model_organism(*taxon_id, name) {
+                model_organisms.push(group.clone());
+            } else if is_pathogen(*taxon_id, name) {
+                pathogens.push(group.clone());
+            } else if is_environmental(*taxon_id, name) {
+                environmental.push(group.clone());
+            } else {
+                others.push(group.clone());
+            }
+        }
+
+        // Helper to format entries
+        let format_entry = |name: &str, taxon_id: &TaxonId, chunks: &[&talaria_sequoia::reduction::ReferenceChunk], total_sequences: usize, total_size: usize| -> String {
+            let display_name = if name.starts_with("TaxID") {
+                name.to_string()
+            } else {
+                format!("{} (taxid:{})", name, taxon_id.0)
+            };
+            format!(
+                "    ├─ {} ({} chunks, {} sequences, {:.2} MB)\n",
+                display_name.bold(),
+                chunks.len(),
+                format_number(total_sequences),
+                total_size as f64 / 1_048_576.0
+            )
+        };
+
+        // Display categories
+        if !model_organisms.is_empty() {
+            output.push_str(&format!("\n  {} Model Organisms:\n", "●".green()));
+            for ((name, taxon_id), chunks, total_sequences, total_size) in model_organisms.iter().take(max_depth.min(5)) {
+                output.push_str(&format_entry(name, taxon_id, chunks, *total_sequences, *total_size));
+            }
+            if model_organisms.len() > 5 {
+                output.push_str(&format!("    └─ ... {} more model organisms\n", model_organisms.len() - 5));
+            }
+        }
+
+        if !pathogens.is_empty() {
+            output.push_str(&format!("\n  {} Pathogens:\n", "●".red()));
+            for ((name, taxon_id), chunks, total_sequences, total_size) in pathogens.iter().take(max_depth.min(5)) {
+                output.push_str(&format_entry(name, taxon_id, chunks, *total_sequences, *total_size));
+            }
+            if pathogens.len() > 5 {
+                output.push_str(&format!("    └─ ... {} more pathogens\n", pathogens.len() - 5));
+            }
+        }
+
+        if !environmental.is_empty() {
+            output.push_str(&format!("\n  {} Environmental:\n", "●".blue()));
+            for ((name, taxon_id), chunks, total_sequences, total_size) in environmental.iter().take(max_depth.min(5)) {
+                output.push_str(&format_entry(name, taxon_id, chunks, *total_sequences, *total_size));
+            }
+            if environmental.len() > 5 {
+                output.push_str(&format!("    └─ ... {} more environmental organisms\n", environmental.len() - 5));
+            }
+        }
+
+        if !others.is_empty() {
+            output.push_str(&format!("\n  {} Other Organisms:\n", "●".yellow()));
+            for ((name, taxon_id), chunks, total_sequences, total_size) in others.iter().take(max_depth.min(5)) {
+                output.push_str(&format_entry(name, taxon_id, chunks, *total_sequences, *total_size));
+            }
+            if others.len() > 5 {
+                output.push_str(&format!("    └─ ... {} more organisms\n", others.len() - 5));
+            }
+        }
+
+        // Summary
+        output.push_str(&format!("\nTotal reference chunks: {}\n", format_number(self.reference_chunks.len()).cyan()));
+        output.push_str(&format!("Total reference sequences: {}\n", format_number(self.statistics.reference_sequences).cyan()));
+        if !self.delta_chunks.is_empty() {
+            output.push_str(&format!("Delta chunks: {}\n", format_number(self.delta_chunks.len()).cyan()));
+            output.push_str(&format!("Delta-encoded sequences: {}\n", format_number(self.statistics.child_sequences).cyan()));
+        }
+
+        Ok(output)
+    }
+
+    fn inspect_chunk_distribution(&self) -> Result<String> {
+        let mut output = String::new();
+        output.push_str(&format!("{}\n", "Chunk Size Distribution:".bold().green()));
+        output.push_str(&format!("{}\n", "─".repeat(40)));
+
+        // Load taxonomy database for categorization
+        let taxonomy_db = load_taxonomy_db().ok();
+
+        // Initialize size buckets with category counts
+        let mut tiny_counts = CategoryCounts::default(); // < 1MB
+        let mut small_counts = CategoryCounts::default(); // 1-10MB
+        let mut medium_counts = CategoryCounts::default(); // 10-50MB
+        let mut large_counts = CategoryCounts::default(); // 50-100MB
+        let mut xlarge_counts = CategoryCounts::default(); // > 100MB
+
+        // Categorize reference chunks by size and organism type
+        for chunk in &self.reference_chunks {
+            let size_mb = chunk.size as f64 / (1024.0 * 1024.0);
+
+            // Determine organism category for this chunk
+            let mut is_model = false;
+            let mut is_pathogen_chunk = false;
+            let mut is_environmental_chunk = false;
+
+            // Check each taxon in the chunk
+            for taxon_id in &chunk.taxon_ids {
+                let name = get_taxonomy_name(*taxon_id, &taxonomy_db);
+
+                if is_model_organism(*taxon_id, &name) {
+                    is_model = true;
+                } else if is_pathogen(*taxon_id, &name) {
+                    is_pathogen_chunk = true;
+                } else if is_environmental(*taxon_id, &name) {
+                    is_environmental_chunk = true;
+                }
+            }
+
+            // Categorize into the appropriate size bucket with organism type
+            let counts = if size_mb < 1.0 {
+                &mut tiny_counts
+            } else if size_mb < 10.0 {
+                &mut small_counts
+            } else if size_mb < 50.0 {
+                &mut medium_counts
+            } else if size_mb < 100.0 {
+                &mut large_counts
+            } else {
+                &mut xlarge_counts
+            };
+
+            // Increment the appropriate category
+            // Priority: model > pathogen > environmental > other
+            if is_model {
+                counts.model += 1;
+            } else if is_pathogen_chunk {
+                counts.pathogen += 1;
+            } else if is_environmental_chunk {
+                counts.environmental += 1;
+            } else {
+                counts.other += 1;
+            }
+        }
+
+        // Also add delta chunks (as "other" category since they don't have taxon info)
+        for delta in &self.delta_chunks {
+            let size_mb = delta.size as f64 / (1024.0 * 1024.0);
+
+            let counts = if size_mb < 1.0 {
+                &mut tiny_counts
+            } else if size_mb < 10.0 {
+                &mut small_counts
+            } else if size_mb < 50.0 {
+                &mut medium_counts
+            } else if size_mb < 100.0 {
+                &mut large_counts
+            } else {
+                &mut xlarge_counts
+            };
+
+            counts.other += 1;
+        }
+
+        // Build the categorized data
+        let mut size_categories: Vec<(String, CategoryCounts)> = Vec::new();
+        if tiny_counts.total() > 0 {
+            size_categories.push(("< 1MB".to_string(), tiny_counts));
+        }
+        if small_counts.total() > 0 {
+            size_categories.push(("1-10MB".to_string(), small_counts));
+        }
+        if medium_counts.total() > 0 {
+            size_categories.push(("10-50MB".to_string(), medium_counts));
+        }
+        if large_counts.total() > 0 {
+            size_categories.push(("50-100MB".to_string(), large_counts));
+        }
+        if xlarge_counts.total() > 0 {
+            size_categories.push(("> 100MB".to_string(), xlarge_counts));
+        }
+
+        // Display categorized histogram
+        let total_chunks = self.reference_chunks.len() + self.delta_chunks.len();
+        let histogram = ascii_histogram_categorized(&size_categories, 40, total_chunks);
+        output.push_str(&histogram);
+
+        // Show organism category legend
+        output.push_str(&format!("\n{}\n", "Organism Categories:".bold()));
+        output.push_str(&format!("  {} Model Organisms\n", "█".green()));
+        output.push_str(&format!("  {} Pathogens\n", "█".yellow()));
+        output.push_str(&format!("  {} Environmental\n", "█".blue()));
+        output.push_str(&format!("  {} Other/Unknown", "█".white().dimmed()));
+
+        Ok(output)
+    }
+
+    fn inspect_centrality_metrics(&self) -> Result<String> {
+        let mut output = String::new();
+        output.push_str(&format!("{}\n", "Reference Selection Metrics:".bold().green()));
+        output.push_str(&format!("{}\n", "─".repeat(40)));
+
+        // Display reduction parameters used
+        output.push_str("Reduction Strategy:\n");
+        if self.parameters.taxonomy_aware {
+            output.push_str("  ✓ Taxonomy-aware clustering\n");
+        }
+        if self.parameters.align_select {
+            output.push_str("  ✓ Alignment-based selection\n");
+        }
+        output.push_str(&format!("  Similarity threshold: {:.1}%\n", self.parameters.similarity_threshold * 100.0));
+
+        output.push_str(&format!("\nTop Reference Chunks (by sequence count):\n"));
+
+        // Sort reference chunks by sequence count
+        let mut sorted_refs = self.reference_chunks.clone();
+        sorted_refs.sort_by(|a, b| b.sequence_count.cmp(&a.sequence_count));
+
+        for (i, chunk) in sorted_refs.iter().take(5).enumerate() {
+            output.push_str(&format!(
+                "  {}. Chunk {} \n",
+                i + 1,
+                &chunk.chunk_hash.to_hex()[..8]
+            ));
+            output.push_str(&format!("     Sequences: {}\n", format_number(chunk.sequence_count).cyan()));
+            output.push_str(&format!("     Size: {:.2} MB\n", chunk.size as f64 / 1_048_576.0));
+            if !chunk.taxon_ids.is_empty() {
+                output.push_str(&format!("     Taxa: {} species\n", chunk.taxon_ids.len()));
+            }
+        }
+
+        // Coverage statistics
+        output.push_str(&format!("\nCoverage Statistics:\n"));
+        output.push_str(&format!("  Total sequences: {}\n", format_number(self.statistics.original_sequences).cyan()));
+        output.push_str(&format!("  Reference sequences: {} ({:.1}%)\n",
+            format_number(self.statistics.reference_sequences).cyan(),
+            (self.statistics.reference_sequences as f64 / self.statistics.original_sequences as f64) * 100.0
+        ));
+
+        Ok(output)
+    }
+
+    fn inspect_temporal_timeline(&self, _base_path: &Path, _database: &str) -> Result<String> {
+        let mut output = String::new();
+        output.push_str(&format!("{}\n", "Temporal Version Timeline:".bold().green()));
+        output.push_str(&format!("{}\n", "─".repeat(40)));
+
+        // Display creation and version info
+        output.push_str(&format!("\nReduction Profile: {}\n", self.profile));
+        output.push_str(&format!("Created: {}\n", self.created_at.format("%Y-%m-%d %H:%M:%S UTC")));
+        output.push_str(&format!("Version: {}\n", self.version));
+
+        if let Some(prev) = &self.previous_version {
+            output.push_str(&format!("Previous version: {}\n", prev.to_hex()));
+        }
+
+        Ok(output)
+    }
+}
+
 #[derive(Args)]
 pub struct InspectArgs {
     /// Database to inspect (e.g., uniprot/swissprot or uniprot/swissprot:2024-03-15)
@@ -554,42 +861,46 @@ pub fn run(args: InspectArgs) -> Result<()> {
     let spinner = create_spinner("Analyzing database structure...");
     let _manager = DatabaseManager::new(args.talaria_home.clone())?;
 
+    // Parse database name (e.g., "uniprot/swissprot")
+    let db_parts: Vec<&str> = database.split('/').collect();
+    let (source, dataset) = if db_parts.len() == 2 {
+        (db_parts[0], db_parts[1])
+    } else {
+        // Assume custom source with single name
+        ("custom", database.as_str())
+    };
+
     // Get database path from versions directory
     let base_path = talaria_core::paths::talaria_databases_dir();
-    let db_path = if let Some(_prof) = &profile {
-        // Profile specified - look in profiles directory
-        let version_dir = if let Some(ver) = &version {
-            base_path.join("versions").join(&database).join(ver)
-        } else {
-            base_path.join("versions").join(&database).join("current")
-        };
-        version_dir.join("profiles")
-    } else if let Some(ver) = &version {
-        // Version specified without profile
-        base_path.join("versions").join(&database).join(ver)
+    let db_path = if let Some(ver) = &version {
+        // Version specified
+        base_path.join("versions").join(source).join(dataset).join(ver)
     } else {
         // Default to current version
-        base_path.join("versions").join(&database).join("current")
+        base_path.join("versions").join(source).join(dataset).join("current")
     };
 
     if !db_path.exists() {
         anyhow::bail!("Database {} not found at {:?}", database, db_path);
     }
 
-    // Load manifest using existing infrastructure
-    let manifest_path = if let Some(prof) = &profile {
-        // Profile manifest is named after the profile
-        db_path.join(format!("{}.tal", prof))
-    } else {
-        // Version manifest
-        db_path.join("manifest.tal")
-    };
+    // Check if this is a profile manifest first
+    if let Some(prof) = &profile {
+        // This is a reduction profile - handle it separately
+        spinner.finish_and_clear();
+        return handle_profile_manifest(&db_path, &database, version.as_deref(), prof, &args);
+    }
+
+    // Load database manifest (TemporalManifest)
+    let manifest_path = db_path.join("manifest.tal");
     if !manifest_path.exists() {
         spinner.finish_and_clear();
         anyhow::bail!("No manifest.tal found in database directory");
     }
 
     spinner.set_message("Loading manifest...");
+
+    // This is a database manifest - load as TemporalManifest
     let manifest_wrapper = Manifest::load_file(&manifest_path)?;
     let manifest = manifest_wrapper
         .get_data()
@@ -653,6 +964,124 @@ pub fn run(args: InspectArgs) -> Result<()> {
 }
 
 /// Parse database specification (database[@version][:profile])
+/// Handle profile manifest inspection
+fn handle_profile_manifest(
+    db_path: &Path,
+    database: &str,
+    version: Option<&str>,
+    profile: &str,
+    args: &InspectArgs,
+) -> Result<()> {
+    use talaria_sequoia::reduction::ReductionManifest;
+    use anyhow::Context;
+
+    // Load the reduction manifest
+    let profile_path = db_path.join("profiles").join(format!("{}.tal", profile));
+    if !profile_path.exists() {
+        anyhow::bail!("Profile manifest not found at {:?}", profile_path);
+    }
+
+    // Read and parse the reduction manifest
+    let mut content = std::fs::read(&profile_path)?;
+
+    // Skip TAL header if present
+    if content.starts_with(b"TAL") && content.len() > 4 {
+        content = content[4..].to_vec();
+    }
+
+    let reduction_manifest: ReductionManifest = rmp_serde::from_slice(&content)
+        .context("Failed to parse reduction manifest")?;
+
+    // Determine which visualizations to show
+    let show_tree = args.tree || args.all;
+    let show_histogram = args.histogram || args.all;
+    let show_centrality = args.centrality || args.all;
+    let show_temporal = args.temporal || args.all;
+
+    // Display based on format
+    match args.format {
+        OutputFormat::Summary => {
+            // Display basic information
+            println!("{}", "Reduction Profile Information:".bold().green());
+            println!("  Profile: {}", profile.cyan());
+            println!("  Database: {}", reduction_manifest.source_database);
+            if let Some(v) = version {
+                println!("  Version: {}", v);
+            }
+            println!();
+
+            println!("{}", "Reduction Statistics:".bold().green());
+            println!("  Original sequences: {}", format_number(reduction_manifest.statistics.original_sequences));
+            println!("  Reference sequences: {}", format_number(reduction_manifest.statistics.reference_sequences));
+            println!("  Delta-encoded sequences: {}", format_number(reduction_manifest.statistics.child_sequences));
+            println!("  Reduction ratio: {:.1}%", reduction_manifest.statistics.actual_reduction_ratio * 100.0);
+
+            println!("\n{}", "Size Information:".bold().green());
+            println!("  Original size: {:.2} MB", reduction_manifest.statistics.original_size as f64 / 1_048_576.0);
+            println!("  Reduced size (references only): {:.2} MB", reduction_manifest.statistics.reduced_size as f64 / 1_048_576.0);
+            println!("  Total size with deltas: {:.2} MB", reduction_manifest.statistics.total_size_with_deltas as f64 / 1_048_576.0);
+
+            // Use ManifestInspector trait methods for visualizations
+            if show_tree {
+                println!();
+                println!("{}", reduction_manifest.inspect_taxonomy(args.max_depth)?);
+            }
+
+            if show_histogram {
+                println!();
+                println!("{}", reduction_manifest.inspect_chunk_distribution()?);
+            }
+
+            if show_centrality {
+                println!();
+                println!("{}", reduction_manifest.inspect_centrality_metrics()?);
+            }
+
+            if show_temporal {
+                println!();
+                println!("{}", reduction_manifest.inspect_temporal_timeline(&db_path, database)?);
+            }
+
+            // If no specific visualizations requested, show basic metadata
+            if !show_tree && !show_histogram && !show_centrality && !show_temporal {
+                println!("\n{}", "Storage Structure:".bold().green());
+                println!("  Reference chunks: {}", format_number(reduction_manifest.reference_chunks.len()));
+                println!("  Delta chunks: {}", format_number(reduction_manifest.delta_chunks.len()));
+                println!("  Source manifest: {}", reduction_manifest.source_manifest.to_hex());
+
+                println!("\n{}", "Metadata:".bold().green());
+                println!("  Reduction ID: {}", reduction_manifest.reduction_id.to_hex());
+                println!("  Created: {}", reduction_manifest.created_at.format("%Y-%m-%d %H:%M:%S UTC"));
+            }
+        }
+        OutputFormat::Json => {
+            // Output as JSON
+            println!("{}", serde_json::to_string_pretty(&reduction_manifest)?);
+        }
+        OutputFormat::Detailed => {
+            // Show everything
+            println!("{}", "Reduction Profile Information:".bold().green());
+            println!("  Profile: {}", profile.cyan());
+            println!("  Database: {}", reduction_manifest.source_database);
+            if let Some(v) = version {
+                println!("  Version: {}", v);
+            }
+
+            // Show all visualizations
+            println!();
+            println!("{}", reduction_manifest.inspect_taxonomy(args.max_depth)?);
+            println!();
+            println!("{}", reduction_manifest.inspect_chunk_distribution()?);
+            println!();
+            println!("{}", reduction_manifest.inspect_centrality_metrics()?);
+            println!();
+            println!("{}", reduction_manifest.inspect_temporal_timeline(&db_path, database)?);
+        }
+    }
+
+    Ok(())
+}
+
 fn parse_database_spec(spec: &str) -> Result<(String, Option<String>, Option<String>)> {
     // First split by @ for version
     let (base, version) = if let Some(at_idx) = spec.find('@') {

@@ -29,31 +29,89 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
     let spinner = create_spinner("Loading database...");
     let manager = DatabaseManager::new(None)?;
 
-    // Get the database manifest
-    let manifest = manager.get_manifest(&args.database)?;
-    spinner.finish_and_clear();
+    // Parse database reference to check for profile
+    let db_ref = crate::utils::database_ref::parse_database_reference(&args.database)?;
 
-    println!("\n{}", "═".repeat(60));
-    println!("{:^60}", format!("DISCREPANCY CHECK: {}", args.database));
-    println!("{}", "═".repeat(60));
-    println!();
+    // Load appropriate manifest based on whether profile is specified
+    let (chunk_metadata, _total_sequences) = if let Some(profile) = &db_ref.profile {
+        // Load reduction manifest for profile
+        spinner.set_message(format!("Loading reduction profile: {}...", profile));
 
-    let spinner = create_spinner("Analyzing sequences for discrepancies...");
+        let versions_dir = talaria_core::paths::talaria_databases_dir().join("versions");
+        let version = db_ref.version.as_deref().unwrap_or("current");
+        let profile_path = versions_dir
+            .join(&db_ref.source)
+            .join(&db_ref.dataset)
+            .join(version)
+            .join("profiles")
+            .join(format!("{}.tal", profile));
+
+        if !profile_path.exists() {
+            anyhow::bail!("Profile '{}' not found for {}/{}", profile, db_ref.source, db_ref.dataset);
+        }
+
+        // Read and parse reduction manifest
+        let mut content = std::fs::read(&profile_path)?;
+        if content.starts_with(b"TAL") && content.len() > 4 {
+            content = content[4..].to_vec();
+        }
+
+        let reduction_manifest: talaria_sequoia::reduction::ReductionManifest =
+            rmp_serde::from_slice(&content)?;
+
+        // Convert reference chunks to chunk metadata format
+        let mut chunk_metadata = Vec::new();
+        for ref_chunk in &reduction_manifest.reference_chunks {
+            chunk_metadata.push(talaria_sequoia::types::ChunkMetadata {
+                hash: ref_chunk.chunk_hash.clone(),
+                taxon_ids: ref_chunk.taxon_ids.clone(),
+                sequence_count: ref_chunk.sequence_count,
+                size: ref_chunk.size,
+                compressed_size: ref_chunk.compressed_size,
+            });
+        }
+
+        spinner.finish_and_clear();
+        println!("\n{}", "═".repeat(60));
+        println!("{:^60}", format!("DISCREPANCY CHECK: {} (REDUCED)", args.database));
+        println!("{}", "═".repeat(60));
+        println!();
+
+        (chunk_metadata, reduction_manifest.statistics.reference_sequences)
+    } else {
+        // Load regular database manifest
+        let manifest = manager.get_manifest(&args.database)?;
+        let total_seqs = manifest.chunk_index.iter().map(|c| c.sequence_count).sum();
+
+        spinner.finish_and_clear();
+        println!("\n{}", "═".repeat(60));
+        println!("{:^60}", format!("DISCREPANCY CHECK: {}", args.database));
+        println!("{}", "═".repeat(60));
+        println!();
+
+        (manifest.chunk_index, total_seqs)
+    };
 
     // Initialize the discrepancy detector
     let mut detector = DiscrepancyDetector::new();
 
-    // Load taxonomy mappings if available
+    // Load taxonomy mappings if available (this shows its own progress bar)
+    let spinner = create_spinner("Loading taxonomy mappings...");
+    spinner.finish_and_clear(); // Clear spinner before progress bar appears
+
     if let Ok(mappings) = manager.load_taxonomy_mappings(&args.database) {
         detector.set_taxonomy_mappings(mappings);
     }
+
+    // Now analyze sequences for discrepancies
+    let spinner = create_spinner("Analyzing sequences for discrepancies...");
 
     let mut all_discrepancies = Vec::new();
     let mut chunk_count = 0;
     let mut sequence_count = 0;
 
-    // Process each chunk in the manifest
-    for chunk_meta in &manifest.chunk_index {
+    // Process each chunk
+    for chunk_meta in &chunk_metadata {
         chunk_count += 1;
 
         // Load the actual chunk data
