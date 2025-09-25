@@ -79,7 +79,7 @@ pub fn run(args: InstallArgs) -> anyhow::Result<()> {
 
         // Test the tool
         if tool == Tool::Lambda {
-            use talaria_tools::lambda::LambdaAligner;
+            use talaria_tools::aligners::lambda::LambdaAligner;
             let aligner = LambdaAligner::new(path)?;
             if let Ok(version) = aligner.check_version() {
                 println!("Version check: {}", version);

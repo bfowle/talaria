@@ -3,7 +3,7 @@
 use talaria_bio::alignment::Alignment;
 /// Reference selection algorithm for choosing representative sequences
 use talaria_bio::sequence::Sequence;
-use crate::cli::output::{format_number, tree_section};
+use crate::cli::formatting::output::{format_number, tree_section};
 use talaria_utils::workspace::TempWorkspace;
 use dashmap::DashMap;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -659,7 +659,7 @@ impl ReferenceSelectorImpl {
     }
 
     #[allow(dead_code)]
-    fn calculate_similarity(&self, alignment: &talaria_tools::AlignmentResult) -> f64 {
+    fn calculate_similarity(&self, alignment: &talaria_tools::AlignmentSummary) -> f64 {
         // Use identity field directly from tools::AlignmentResult
         // Identity is already a percentage (0.0 to 100.0)
         alignment.identity as f64 / 100.0
@@ -837,9 +837,9 @@ impl ReferenceSelectorImpl {
         &mut self,
         sequences: Vec<Sequence>,
     ) -> anyhow::Result<SelectionResult> {
-        use talaria_tools::lambda::LambdaAligner;
+        use talaria_tools::aligners::lambda::LambdaAligner;
         use talaria_tools::{Tool, ToolManager};
-        use crate::cli::output::{
+        use crate::cli::formatting::output::{
             action, info, section_header, success, warning, tree_section,
         };
         
@@ -897,7 +897,7 @@ impl ReferenceSelectorImpl {
         // If we have a manifest-based accession2taxid file, use it
         if let Some(ref acc2taxid_path) = self.manifest_acc2taxid {
             // Also need the taxdump directory
-            let taxonomy_dir = talaria_core::paths::talaria_taxonomy_current_dir();
+            let taxonomy_dir = talaria_core::system::paths::talaria_taxonomy_current_dir();
             let taxdump_dir = taxonomy_dir.join("taxdump");
 
             if taxdump_dir.exists() {
@@ -1203,7 +1203,7 @@ impl ReferenceSelectorImpl {
             }
             SelectionAlgorithm::GraphCentrality => {
                 // Use graph centrality approach from SEQUOIA architecture
-                use crate::cli::output::info;
+                use crate::cli::formatting::output::info;
                 info("Using graph centrality-based selection (SEQUOIA 5-dimensional)");
                 self.select_with_graph_centrality(alignments, sequences_to_process)
             }
@@ -1213,7 +1213,7 @@ impl ReferenceSelectorImpl {
     /// Single-pass O(n) greedy selection matching original ref-db-gen.cpp
     fn select_with_single_pass(
         &self,
-        alignments: Vec<talaria_tools::AlignmentResult>,
+        alignments: Vec<talaria_tools::AlignmentSummary>,
         sequences: Vec<Sequence>,
     ) -> anyhow::Result<SelectionResult> {
         // Group alignments by query sequence (matching original approach)
@@ -1410,10 +1410,10 @@ impl ReferenceSelectorImpl {
     /// Similarity matrix O(n²) algorithm - evaluates all candidates against all uncovered sequences
     fn select_with_similarity_matrix(
         &self,
-        alignments: Vec<talaria_tools::AlignmentResult>,
+        alignments: Vec<talaria_tools::AlignmentSummary>,
         sequences: Vec<Sequence>,
     ) -> anyhow::Result<SelectionResult> {
-        use crate::cli::output::{info, section_header, warning};
+        use crate::cli::formatting::output::{info, section_header, warning};
         section_header("Similarity Matrix Algorithm");
         info("Using O(n²) algorithm - slower but potentially more optimal");
 
@@ -1576,10 +1576,10 @@ impl ReferenceSelectorImpl {
     /// Implements: Centrality Score = α·Degree + β·Betweenness + γ·Coverage
     fn select_with_graph_centrality(
         &self,
-        alignments: Vec<talaria_tools::AlignmentResult>,
+        alignments: Vec<talaria_tools::AlignmentSummary>,
         sequences: Vec<Sequence>,
     ) -> anyhow::Result<SelectionResult> {
-        use crate::cli::output::{info, section_header};
+        use crate::cli::formatting::output::{info, section_header};
         use super::reference_selector_optimized::{
             AlignmentCache, OptimizedReferenceSelector,
         };

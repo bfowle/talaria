@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 use talaria_sequoia::SEQUOIARepository;
-use talaria_core::paths;
-use crate::utils::progress::create_spinner;
+use talaria_core::system::paths;
+use crate::cli::progress::create_spinner;
 use clap::Args;
 use colored::*;
 use std::collections::HashSet;
@@ -216,7 +216,7 @@ fn compact_database(repo: &mut SEQUOIARepository, dry_run: bool) -> anyhow::Resu
     Ok(0)
 }
 
-fn estimate_chunk_size(chunks: &[talaria_sequoia::types::SHA256Hash]) -> usize {
+fn estimate_chunk_size(chunks: &[talaria_sequoia::SHA256Hash]) -> usize {
     // Estimate 100KB per chunk as a rough average
     chunks.len() * 102_400
 }

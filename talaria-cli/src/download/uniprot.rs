@@ -488,32 +488,19 @@ impl UniProtDownloader {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum UniProtDatabase {
-    SwissProt,
-    TrEMBL,
-    UniRef50,
-    UniRef90,
-    UniRef100,
-    IdMapping,
+// Import UniProtDatabase from talaria-core
+pub use talaria_core::UniProtDatabase;
+
+// Extension trait for UniProtDatabase with CLI-specific methods
+#[allow(dead_code)]
+pub trait UniProtDatabaseExt {
+    fn description(&self) -> &str;
+    fn typical_size(&self) -> &str;
 }
 
-impl std::fmt::Display for UniProtDatabase {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            UniProtDatabase::SwissProt => write!(f, "SwissProt"),
-            UniProtDatabase::TrEMBL => write!(f, "TrEMBL"),
-            UniProtDatabase::UniRef50 => write!(f, "UniRef50"),
-            UniProtDatabase::UniRef90 => write!(f, "UniRef90"),
-            UniProtDatabase::UniRef100 => write!(f, "UniRef100"),
-            UniProtDatabase::IdMapping => write!(f, "IdMapping"),
-        }
-    }
-}
-
-impl UniProtDatabase {
+impl UniProtDatabaseExt for UniProtDatabase {
     #[allow(dead_code)]
-    pub fn description(&self) -> &str {
+    fn description(&self) -> &str {
         match self {
             UniProtDatabase::SwissProt => "Manually annotated and reviewed protein sequences",
             UniProtDatabase::TrEMBL => "Automatically annotated protein sequences",
@@ -525,7 +512,7 @@ impl UniProtDatabase {
     }
 
     #[allow(dead_code)]
-    pub fn typical_size(&self) -> &str {
+    fn typical_size(&self) -> &str {
         match self {
             UniProtDatabase::SwissProt => "~100 MB compressed",
             UniProtDatabase::TrEMBL => "~50 GB compressed",

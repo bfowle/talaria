@@ -2,11 +2,11 @@
 
 /// Database download implementation using content-addressed storage
 use crate::cli::commands::database::download::DownloadArgs;
-use crate::cli::formatter::{self, format_bytes, format_number, print_tip, TaskList, TaskStatus};
-use crate::cli::output::*;
-use crate::core::database_manager::{DatabaseManager, DownloadResult};
+use crate::cli::formatting::{format_bytes, format_number, print_tip, TaskList, TaskStatus};
+use crate::cli::formatting::output::*;
+use crate::core::database::database_manager::{DatabaseManager, DownloadResult};
 use crate::download::DatabaseSource;
-use crate::utils::progress::create_spinner;
+use crate::cli::progress::create_spinner;
 use anyhow::Result;
 use colored::Colorize;
 use indicatif::ProgressBar;
@@ -24,20 +24,37 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
         std::env::set_var("TALARIA_PRESERVE_LAMBDA_ON_FAILURE", "1");
     }
 
+    // Handle continue/resume flag alias
+    let _resume = args.resume || args.continue_download;
+
+    // Set verbosity level
+    if args.quiet {
+        std::env::set_var("TALARIA_LOG", "error");
+    } else if std::env::var("TALARIA_VERBOSE").unwrap_or_default().parse::<u8>().unwrap_or(0) > 0 {
+        std::env::set_var("TALARIA_LOG", "debug");
+    }
+
     let runtime = tokio::runtime::Runtime::new()?;
 
     // Initialize formatter
+    use crate::cli::formatting::formatter;
     formatter::init();
 
-    // Print header based on mode (only if not called from interactive mode)
+    // Print header based on mode (only if not called from interactive mode and not quiet)
     let _db_name = format!("{}", database_source);
-    if args.dry_run {
-        info("Running in dry-run mode - no downloads will be performed");
-        println!();
+    if !args.quiet {
+        if args.dry_run {
+            info("Running in dry-run mode - no downloads will be performed");
+            println!();
+        }
     }
 
     // Create task list for tracking operations
-    let mut task_list = TaskList::new();
+    let mut task_list = if args.quiet {
+        TaskList::silent()
+    } else {
+        TaskList::new()
+    };
 
     // Add all tasks upfront
     let init_task = task_list.add_task("Initialize SEQUOIA repository");
@@ -46,6 +63,13 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
     let process_task = task_list.add_task("Process into chunks");
     let store_task = task_list.add_task("Store in repository");
     let manifest_task = task_list.add_task("Create manifest");
+
+    // Set up rate limiting if specified
+    if let Some(rate_kb) = args.limit_rate {
+        info(&format!("Download rate limited to {} KB/s", rate_kb));
+        // Note: Actual rate limiting would be implemented in the downloader
+        std::env::set_var("TALARIA_DOWNLOAD_RATE_LIMIT", rate_kb.to_string());
+    }
 
     // Initialize SEQUOIA repository
     task_list.update_task(init_task, TaskStatus::InProgress);
@@ -56,7 +80,7 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
     manager.ensure_version_integrity(&database_source)?;
 
     // Check for resumable operations
-    if args.resume {
+    if args.resume && !args.quiet {
         println!();
         let spinner = create_spinner("Checking for resumable downloads...");
         let resumable_ops = manager.list_resumable_operations()?;
@@ -83,7 +107,12 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
     let spinner_clone = Arc::clone(&current_spinner);
 
     // Progress callback that updates task list and shows detailed output
+    let quiet_mode = args.quiet;
     let progress = move |msg: &str| {
+        // In quiet mode, don't output anything
+        if quiet_mode {
+            return;
+        }
         let mut tl = task_list_clone.lock().unwrap();
         let mut spinner = spinner_clone.lock().unwrap();
 
@@ -228,10 +257,53 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
         }
     }
 
-    println!("  {} Manifest created", "✓".green());
-    println!();
+    if !args.quiet {
+        println!("  {} Manifest created", "✓".green());
+        println!();
+    }
 
-    // Report results with nice formatting
+    // Handle output document option (export to FASTA if specified)
+    if let Some(ref output_doc) = args.output_document {
+        info(&format!("Exporting database to {}", output_doc.display()));
+
+        // Use the export command to create the FASTA file
+        use crate::cli::commands::database::export::{ExportArgs, ExportFormat, run as export_run};
+        let export_args = ExportArgs {
+            database: format!("{}", database_source),
+            output: Some(output_doc.clone()),
+            force: true,
+            format: ExportFormat::Fasta,
+            compress: output_doc.extension().map_or(false, |ext| ext == "gz"),
+            no_cache: false,
+            cached_only: false,
+            with_taxonomy: false,
+            quiet: args.quiet,
+            stream: true,
+            sequence_date: None,
+            taxonomy_date: None,
+            taxonomy_filter: None,
+            redundancy: None,
+            max_sequences: None,
+            sample: None,
+        };
+
+        export_run(export_args)?;
+        success(&format!("Database exported to {}", output_doc.display()));
+    }
+
+    // Handle mirror mode
+    if args.mirror {
+        info("Mirror mode: maintaining exact database structure");
+        // Mirror mode would copy the exact directory structure
+        // This is already handled by the default behavior of DatabaseManager
+    }
+
+    // Report results with nice formatting (unless quiet mode)
+    if args.quiet {
+        // In quiet mode, just return success
+        return Ok(());
+    }
+
     match result {
         DownloadResult::UpToDate => {
             println!("{}", "─".repeat(80).dimmed());

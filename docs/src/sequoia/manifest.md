@@ -43,7 +43,7 @@ The manifest uses the Talaria format (`.tal`) as the primary storage mechanism, 
 2. **Verifiable**: Multiple cross-checks ensure integrity
 3. **Efficient**: Binary format optimized for rapid parsing and minimal size
 4. **Extensible**: Forward-compatible with future enhancements
-5. **Multi-Format**: Supports `.tal` (primary), `.msgpack` (legacy), and `.json` (debug)
+5. **Single Format**: Uses `.tal` format exclusively (MessagePack + Zstandard compression)
 
 ### Schema Structure
 
@@ -190,14 +190,14 @@ sequenceDiagram
     participant Server
 
     Client->>Client: Load cached manifest & ETag
-    Client->>Server: HEAD /manifest.json<br/>If-None-Match: "5e3b-old"
+    Client->>Server: HEAD /manifest.tal<br/>If-None-Match: "5e3b-old"
 
     alt No Updates
         Server-->>Client: 304 Not Modified
         Client->>Client: Use cached manifest
     else Updates Available
         Server-->>Client: 200 OK<br/>ETag: "5e3b-new"
-        Client->>Server: GET /manifest.json
+        Client->>Server: GET /manifest.tal
         Server-->>Client: New manifest
         Client->>Client: Compare & download changed chunks
     end
@@ -405,17 +405,13 @@ The dual-format approach provides flexibility while maintaining efficiency:
 
 | Format | Extension | SwissProt Size | Parsing Speed | Use Case |
 |--------|-----------|----------------|---------------|----------|
-| Talaria | `.tal` | 750KB | ~5ms | Production |
-| MessagePack | `.msgpack` | 750KB | ~5ms | Legacy compatibility |
-| JSON | `.json` | 8MB | ~50ms | Debugging |
-| JSON + Gzip | `.json.gz` | 1.2MB | ~30ms | External tools |
-| Talaria + Zstd | `.tal.zst` | 600KB | ~8ms | Network transfer |
+| Talaria Format | `.tal` | 600KB | ~5ms | All purposes |
 
-### Format Priority and Migration
+### Format Standardization
 
-The system automatically handles all formats with clear priority:
-1. **Reading**: Tries `.tal` first, then `.msgpack` (legacy), then `.json`
-2. **Writing**: Creates `.tal` for efficiency, `.json` for compatibility
+The system uses a single standardized format:
+1. **Reading**: Supports `.tal`, `.msgpack`, and `.json` for backwards compatibility
+2. **Writing**: Always creates `.tal` format (MessagePack + Zstandard compression)
 3. **Network**: Negotiates format via Accept headers
 4. **Migration**: Existing `.msgpack` files work seamlessly, saved as `.tal` on update
 5. **Identification**: `.tal` extension clearly marks Talaria MessagePack content
@@ -511,9 +507,9 @@ Typical manifest operations:
 Always cache manifests with their ETags:
 ```bash
 ${TALARIA_HOME}/cache/manifests/
-├── uniprot-swissprot-20240315.json
+├── uniprot-swissprot-20240315.tal
 ├── uniprot-swissprot-20240315.etag
-└── ncbi-nr-20240310.json
+└── ncbi-nr-20240310.tal
 ```
 This enables instant local operations and offline work.
 

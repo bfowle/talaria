@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
-use talaria_sequoia::{SEQUOIARepository, DiffResult, StandardTemporalManifestDiffer};
-use talaria_sequoia::differ::{TemporalManifestDiffer, DiffOptions, ChangeType};
-use talaria_core::paths;
+use talaria_sequoia::{SEQUOIARepository, DiffResult};
+use talaria_sequoia::operations::{TemporalManifestDiffer, StandardTemporalManifestDiffer, DiffOptions, ChangeType};
+use talaria_core::system::paths;
 use clap::Args;
 use colored::*;
 use std::path::{Path, PathBuf};
@@ -32,9 +32,31 @@ pub struct DiffArgs {
     /// Export diff to JSON file
     #[arg(long, value_name = "FILE")]
     pub export: Option<PathBuf>,
+
+    /// First sequence date for bi-temporal comparison (e.g., "2020-01-01")
+    #[arg(long)]
+    pub sequence_date: Option<String>,
+
+    /// First taxonomy date for bi-temporal comparison
+    #[arg(long)]
+    pub taxonomy_date: Option<String>,
+
+    /// Second sequence date for bi-temporal comparison (vs-)
+    #[arg(long)]
+    pub vs_sequence_date: Option<String>,
+
+    /// Second taxonomy date for bi-temporal comparison (vs-)
+    #[arg(long)]
+    pub vs_taxonomy_date: Option<String>,
 }
 
 pub fn run(args: DiffArgs) -> anyhow::Result<()> {
+    // Check if we need bi-temporal diff
+    if args.sequence_date.is_some() || args.taxonomy_date.is_some() ||
+       args.vs_sequence_date.is_some() || args.vs_taxonomy_date.is_some() {
+        return run_bitemporal_diff(args);
+    }
+
     println!(
         "{} Computing differences between '{}' and '{}'...",
         "►".cyan().bold(),
@@ -267,6 +289,149 @@ fn display_taxonomy_diff(_from: &SEQUOIARepository, _to: &SEQUOIARepository) -> 
     println!("{} Taxonomy comparison not yet implemented", "⚠".yellow().bold());
 
     Ok(())
+}
+
+fn run_bitemporal_diff(args: DiffArgs) -> anyhow::Result<()> {
+    use talaria_sequoia::{SEQUOIAStorage, BiTemporalDatabase};
+    use std::sync::Arc;
+    use chrono::Utc;
+
+    println!(
+        "{} Computing bi-temporal differences...",
+        "►".cyan().bold()
+    );
+
+    // Parse database path from the first argument
+    let (db_path, _) = parse_spec(&args.from)?;
+
+    // Parse times for first coordinate
+    let sequence_time1 = if let Some(date_str) = &args.sequence_date {
+        parse_time_input(date_str)?
+    } else {
+        Utc::now()
+    };
+
+    let taxonomy_time1 = if let Some(date_str) = &args.taxonomy_date {
+        parse_time_input(date_str)?
+    } else {
+        sequence_time1
+    };
+
+    // Parse times for second coordinate
+    let sequence_time2 = if let Some(date_str) = &args.vs_sequence_date {
+        parse_time_input(date_str)?
+    } else {
+        Utc::now()
+    };
+
+    let taxonomy_time2 = if let Some(date_str) = &args.vs_taxonomy_date {
+        parse_time_input(date_str)?
+    } else {
+        sequence_time2
+    };
+
+    println!("  First point:  sequence={}, taxonomy={}",
+             sequence_time1.format("%Y-%m-%d"),
+             taxonomy_time1.format("%Y-%m-%d"));
+    println!("  Second point: sequence={}, taxonomy={}",
+             sequence_time2.format("%Y-%m-%d"),
+             taxonomy_time2.format("%Y-%m-%d"));
+
+    // Open SEQUOIA storage and bi-temporal database
+    let storage = Arc::new(SEQUOIAStorage::open(&db_path)?);
+    let mut bi_temporal_db = BiTemporalDatabase::new(storage)?;
+
+    // Create coordinates
+    let coord1 = talaria_sequoia::BiTemporalCoordinate {
+        sequence_time: sequence_time1,
+        taxonomy_time: taxonomy_time1,
+    };
+
+    let coord2 = talaria_sequoia::BiTemporalCoordinate {
+        sequence_time: sequence_time2,
+        taxonomy_time: taxonomy_time2,
+    };
+
+    // Compute diff
+    let diff = bi_temporal_db.diff(coord1.clone(), coord2.clone())?;
+
+    // Display results
+    println!("\n{}", "═".repeat(60));
+    println!("{}", "BI-TEMPORAL DIFF RESULTS".bold());
+    println!("{}", "═".repeat(60));
+
+    println!("\n{}", "Sequence Changes:".bold());
+    println!("  {} Sequences added:   {}", "+".green().bold(), diff.sequences_added);
+    println!("  {} Sequences removed: {}", "-".red().bold(), diff.sequences_removed);
+
+    if args.taxonomy && !diff.taxonomic_changes.is_empty() {
+        println!("\n{}", "Taxonomy Changes:".bold());
+        for change in diff.taxonomic_changes.iter().take(10) {
+            match change.change_type {
+                talaria_sequoia::TaxonomicChangeType::Reclassified => {
+                    println!("  {} TaxID {} reclassified from {:?} to {:?}",
+                             "↻".yellow(),
+                             change.taxon_id.0,
+                             change.old_parent.map(|t| t.0),
+                             change.new_parent.map(|t| t.0));
+                }
+                talaria_sequoia::TaxonomicChangeType::New => {
+                    println!("  {} TaxID {} newly added",
+                             "+".green(),
+                             change.taxon_id.0);
+                }
+                talaria_sequoia::TaxonomicChangeType::Deprecated => {
+                    println!("  {} TaxID {} deprecated",
+                             "✗".red(),
+                             change.taxon_id.0);
+                }
+                _ => {}
+            }
+        }
+        if diff.taxonomic_changes.len() > 10 {
+            println!("  ... and {} more changes", diff.taxonomic_changes.len() - 10);
+        }
+    }
+
+    // Export if requested
+    if let Some(export_path) = &args.export {
+        let export_data = serde_json::json!({
+            "coord1": {
+                "sequence_time": coord1.sequence_time.to_rfc3339(),
+                "taxonomy_time": coord1.taxonomy_time.to_rfc3339(),
+            },
+            "coord2": {
+                "sequence_time": coord2.sequence_time.to_rfc3339(),
+                "taxonomy_time": coord2.taxonomy_time.to_rfc3339(),
+            },
+            "sequences_added": diff.sequences_added,
+            "sequences_removed": diff.sequences_removed,
+            "taxonomic_changes": diff.taxonomic_changes.len(),
+        });
+
+        std::fs::write(export_path, serde_json::to_string_pretty(&export_data)?)?;
+        println!("\n{} Diff exported to: {}", "✓".green().bold(), export_path.display());
+    }
+
+    Ok(())
+}
+
+fn parse_time_input(input: &str) -> anyhow::Result<chrono::DateTime<chrono::Utc>> {
+    use chrono::{DateTime, NaiveDate, Utc};
+
+    // Try parsing as full RFC3339 timestamp first
+    if let Ok(dt) = DateTime::parse_from_rfc3339(input) {
+        return Ok(dt.with_timezone(&Utc));
+    }
+
+    // Try parsing as date only (assume 00:00:00 UTC)
+    if let Ok(dt) = NaiveDate::parse_from_str(input, "%Y-%m-%d") {
+        let time = dt.and_hms_opt(0, 0, 0)
+            .ok_or_else(|| anyhow::anyhow!("Invalid time"))?;
+        return Ok(DateTime::from_naive_utc_and_offset(time, Utc));
+    }
+
+    anyhow::bail!("Invalid time format '{}'. Use YYYY-MM-DD or RFC3339 format.", input)
 }
 
 fn export_diff(diff: &DiffResult, path: &Path) -> anyhow::Result<()> {

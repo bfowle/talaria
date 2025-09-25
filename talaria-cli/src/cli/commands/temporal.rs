@@ -1,8 +1,8 @@
-use talaria_sequoia::retroactive::RetroactiveAnalyzer;
-use talaria_sequoia::traits::renderable::*;
+use talaria_sequoia::RetroactiveAnalyzer;
 use talaria_sequoia::traits::temporal::*;
-use talaria_sequoia::types::{BiTemporalCoordinate, TaxonId};
-use crate::cli::output::*;
+use talaria_sequoia::traits::renderable::{EvolutionRenderable, DiffRenderable, TemporalRenderable};
+use talaria_sequoia::{BiTemporalCoordinate, TaxonId};
+use crate::cli::formatting::output::*;
 use anyhow::Result;
 use chrono::{DateTime, NaiveDate, Utc};
 /// Temporal query commands for bi-temporal database operations
@@ -434,7 +434,7 @@ fn run_diff(args: DiffArgs) -> Result<()> {
 
 fn create_analyzer(database: &Option<String>) -> Result<RetroactiveAnalyzer> {
     use talaria_sequoia::SEQUOIARepository;
-    use talaria_core::paths::talaria_home;
+    use talaria_core::system::paths::talaria_home;
 
     let base_path = if let Some(db) = database {
         talaria_home().join("databases").join("data").join(db)
@@ -466,7 +466,7 @@ fn parse_taxon_filter(taxon_str: &str) -> Result<Vec<TaxonId>> {
 
     // Otherwise treat as taxon name and look up
     // For now, return empty vec - would need taxonomy lookup
-    use crate::cli::output::warning;
+    use crate::cli::formatting::output::warning;
     warning(&format!(
         "Taxon name lookup not yet implemented for '{}'",
         taxon_str

@@ -101,9 +101,9 @@ sequenceDiagram
 │       └── swissprot/
 │           ├── 2024-03-15_123456/      # Timestamped version
 │           │   ├── manifest.tal         # Binary manifest (500KB)
-│           │   └── version.json         # Version metadata
+│           │   └── version.tal          # Version metadata
 │           └── current -> 2024-03-15_123456  # Symlink
-└── manifest.json                        # Repository manifest
+└── manifest.tal                         # Repository manifest
 ```
 
 #### Key Points
@@ -132,7 +132,7 @@ sequenceDiagram
 
     CLI->>Local: Load local manifest
     Local-->>CLI: manifest.tal (SHA: abc123...)
-    CLI->>Server: HEAD /manifest.json<br/>If-None-Match: "abc123"
+    CLI->>Server: HEAD /manifest.tal<br/>If-None-Match: "abc123"
     Server-->>CLI: 304 Not Modified
     CLI-->>CLI: ✓ Database is up to date
 ```
@@ -161,9 +161,9 @@ sequenceDiagram
 
     CLI->>Local: Load local manifest
     Local-->>CLI: manifest.tal (SHA: abc123...)
-    CLI->>Server: HEAD /manifest.json<br/>If-None-Match: "abc123"
+    CLI->>Server: HEAD /manifest.tal<br/>If-None-Match: "abc123"
     Server-->>CLI: 200 OK, ETag: "def456"
-    CLI->>Server: GET /manifest.json
+    CLI->>Server: GET /manifest.tal
     Server-->>CLI: New manifest data
     CLI->>CLI: Compute diff
     Note over CLI: New: 42 chunks<br/>Modified: 18 chunks<br/>Removed: 3 chunks
@@ -225,7 +225,7 @@ sequenceDiagram
 
     User->>CLI: talaria database update
     CLI->>CLI: Check for updates
-    CLI->>Server: GET /manifest.json
+    CLI->>Server: GET /manifest.tal
     Server-->>CLI: New manifest
     CLI->>CLI: Compute diff
 
@@ -293,7 +293,7 @@ sequenceDiagram
 │           ├── 2024-03-15_123456/      # Previous version
 │           ├── 2024-04-01_094523/      # New version
 │           │   ├── manifest.tal
-│           │   └── version.json
+│           │   └── version.tal
 │           └── current -> 2024-04-01_094523  # Updated symlink
 ```
 

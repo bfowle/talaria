@@ -5,7 +5,7 @@ use clap::Args;
 use colored::*;
 use std::path::PathBuf;
 use chrono::{DateTime, Utc};
-use talaria_sequoia::temporal::VersionInfo;
+use talaria_sequoia::VersionInfo;
 
 #[derive(Args)]
 pub struct HistoryArgs {
@@ -52,9 +52,9 @@ pub struct HistoryArgs {
 
 pub fn run(args: HistoryArgs) -> Result<()> {
     use talaria_sequoia::SEQUOIARepository;
-    use talaria_sequoia::temporal::TemporalIndex;
-    use crate::utils::progress::create_spinner;
-    use crate::cli::output::*;
+    use talaria_sequoia::TemporalIndex;
+    use crate::cli::progress::create_spinner;
+    use crate::cli::formatting::output::*;
 
     section_header("Version History");
 
@@ -62,7 +62,7 @@ pub fn run(args: HistoryArgs) -> Result<()> {
     let sequoia_path = if let Some(path) = args.path.clone() {
         path
     } else {
-        use talaria_core::paths;
+        use talaria_core::system::paths;
         paths::talaria_databases_dir()
     };
 
@@ -77,7 +77,7 @@ pub fn run(args: HistoryArgs) -> Result<()> {
 
     // Initialize temporal tracking for existing data if needed
     {
-        use crate::core::database_manager::DatabaseManager as SEQUOIADatabaseManager;
+        use crate::core::database::database_manager::DatabaseManager as SEQUOIADatabaseManager;
         let mut manager = SEQUOIADatabaseManager::new(Some(sequoia_path.to_string_lossy().to_string()))?;
         let _ = manager.init_temporal_for_existing();
     }
@@ -107,7 +107,7 @@ pub fn run(args: HistoryArgs) -> Result<()> {
 }
 
 fn generate_text_report(
-    temporal_index: &talaria_sequoia::temporal::TemporalIndex,
+    temporal_index: &talaria_sequoia::TemporalIndex,
     repository: &talaria_sequoia::SEQUOIARepository,
     args: &HistoryArgs,
 ) -> Result<String> {
@@ -222,7 +222,7 @@ fn generate_text_report(
 }
 
 fn generate_json_report(
-    temporal_index: &talaria_sequoia::temporal::TemporalIndex,
+    temporal_index: &talaria_sequoia::TemporalIndex,
     _repository: &talaria_sequoia::SEQUOIARepository,
     args: &HistoryArgs,
 ) -> Result<String> {
@@ -244,7 +244,7 @@ fn generate_json_report(
 }
 
 fn generate_markdown_report(
-    temporal_index: &talaria_sequoia::temporal::TemporalIndex,
+    temporal_index: &talaria_sequoia::TemporalIndex,
     _repository: &talaria_sequoia::SEQUOIARepository,
     args: &HistoryArgs,
 ) -> Result<String> {
@@ -314,7 +314,7 @@ fn generate_markdown_report(
 }
 
 fn generate_html_report(
-    temporal_index: &talaria_sequoia::temporal::TemporalIndex,
+    temporal_index: &talaria_sequoia::TemporalIndex,
     _repository: &talaria_sequoia::SEQUOIARepository,
     args: &HistoryArgs,
 ) -> Result<String> {
@@ -519,7 +519,7 @@ fn compare_versions(
     output: &mut String,
     version1: &str,
     version2: &str,
-    temporal_index: &talaria_sequoia::temporal::TemporalIndex,
+    temporal_index: &talaria_sequoia::TemporalIndex,
     _repository: &talaria_sequoia::SEQUOIARepository,
 ) -> Result<()> {
     use std::fmt::Write;

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::cli::output::*;
+use crate::cli::formatting::output::*;
 use clap::Args;
 use colored::*;
 use std::path::PathBuf;
@@ -40,8 +40,8 @@ pub enum SortField {
 }
 
 pub fn run(args: ListArgs) -> anyhow::Result<()> {
-    use crate::core::database_manager::DatabaseManager;
-    use crate::utils::progress::create_spinner;
+    use crate::core::database::database_manager::DatabaseManager;
+    use crate::cli::progress::create_spinner;
     use humansize::{format_size, BINARY};
 
     section_header("Database Repository");

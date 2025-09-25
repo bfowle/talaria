@@ -2,6 +2,31 @@
 
 This guide explains the fundamental concepts behind SEQUOIA in plain language. No PhD required!
 
+## Canonical Sequences
+
+### The Problem: Same Sequence, Different Headers
+```
+UniProt:  >sp|P0DSX6|MCEL_VARV OS=Variola virus GN=mcel
+NCBI:     >gi|15618988|ref|NP_042163.1| mRNA capping enzyme
+Custom:   >P0DSX6 Methyltransferase/RNA capping enzyme
+```
+
+All three are the SAME biological sequence with different headers!
+
+### SEQUOIA's Solution: Canonical Storage
+```
+Sequence: MSKGEELFTGVVPILVELDGDVNGH...
+Hash: SHA256(sequence only) = abc123...
+
+Stored once as: abc123.seq
+With representations:
+  - UniProt header
+  - NCBI header
+  - Custom header
+```
+
+**Key Innovation**: Separate identity (the sequence) from representation (headers/metadata)
+
 ## Content Addressing
 
 ### Traditional Approach: Names Point to Data
@@ -17,31 +42,50 @@ Problems:
 
 ### SEQUOIA Approach: Content Defines the Name
 ```
-SHA256(data) = abc123... → [data that never changes]
+SHA256(sequence) = abc123... → [sequence that never changes]
 ```
 
 Benefits:
-- Content creates its own unique ID
+- Sequence content creates its own unique ID
 - Any change creates a new ID
 - Can verify data independently
-- Perfect deduplication
+- **Perfect cross-database deduplication**
 
-**Simple Analogy**: It's like using fingerprints instead of names. A fingerprint uniquely identifies a person and can't be faked.
+**Simple Analogy**: It's like using DNA fingerprints - the same person has the same DNA regardless of what name they use.
 
-## Chunks
+## Chunk Manifests
 
-Instead of treating a database as one giant file, SEQUOIA breaks it into manageable pieces called chunks.
+Instead of storing sequences in chunks, SEQUOIA uses **chunk manifests** that reference canonical sequences.
 
-### What's in a Chunk?
-- Related sequences (often from the same organism or family)
-- Typically 50-500 MB in size
-- Each has its own unique hash ID
+### Old Way: Chunks Contain Sequences
+```
+Chunk 1: [Seq A, Seq B, Seq C] - 100 MB
+Chunk 2: [Seq A, Seq D, Seq E] - 120 MB
+// Seq A stored twice!
+```
 
-### Why Chunks?
-- **Efficient Updates**: Only download changed chunks
-- **Parallel Processing**: Work on multiple chunks simultaneously
-- **Better Caching**: Keep frequently used chunks in memory
-- **Fault Tolerance**: One corrupted chunk doesn't affect others
+### New Way: Manifests Reference Sequences
+```
+Canonical Storage:
+  Seq A: hash_A (stored once)
+  Seq B: hash_B
+  Seq C: hash_C
+  Seq D: hash_D
+  Seq E: hash_E
+
+Manifest 1: [hash_A, hash_B, hash_C] - 1 KB
+Manifest 2: [hash_A, hash_D, hash_E] - 1 KB
+// Seq A referenced twice, stored once!
+```
+
+### Why Chunk Manifests?
+- **True Deduplication**: Each sequence stored exactly once
+- **Efficient Updates**: Only download new sequences
+- **Cross-Database Sharing**: Same sequences referenced by multiple databases
+- **Tiny Manifests**: KB instead of MB/GB
+- **Parallel Processing**: Work on multiple manifests simultaneously
+- **Better Caching**: Keep frequently used sequences in memory
+- **Fault Tolerance**: One corrupted manifest doesn't affect others
 
 ```mermaid
 graph LR

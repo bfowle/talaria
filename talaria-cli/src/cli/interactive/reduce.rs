@@ -209,7 +209,7 @@ pub fn run_reduce_wizard<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<(
             terminal.draw(|f| draw_wizard(f, &mut wizard))?;
 
             // Load sequences
-            match talaria_bio::fasta::parse_fasta(&input_path) {
+            match talaria_bio::parse_fasta(&input_path) {
                 Ok(sequences) => {
                     wizard.progress = 0.3;
                     wizard.message = format!("Loaded {} sequences, reducing...", sequences.len());
@@ -255,7 +255,7 @@ pub fn run_reduce_wizard<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<(
                             terminal.draw(|f| draw_wizard(f, &mut wizard))?;
 
                             // Write output
-                            match talaria_bio::fasta::write_fasta(&output_path, &references) {
+                            match talaria_bio::write_fasta(&output_path, &references) {
                                 Ok(_) => {
                                     wizard.progress = 1.0;
                                     wizard.message = format!(

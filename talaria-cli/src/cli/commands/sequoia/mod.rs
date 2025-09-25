@@ -2,6 +2,7 @@
 
 pub mod history;
 pub mod sync;
+pub mod time_travel;
 
 use clap::{Args, Subcommand};
 
@@ -24,6 +25,9 @@ pub enum SequoiaCommands {
 
     /// Show SEQUOIA repository statistics
     Stats(StatsArgs),
+
+    /// Query database at specific time points (bi-temporal)
+    TimeTravel(time_travel::TimeTravelArgs),
 }
 
 #[derive(Args)]
@@ -46,6 +50,7 @@ pub fn run(args: SequoiaArgs) -> anyhow::Result<()> {
         SequoiaCommands::History(args) => history::run(args),
         SequoiaCommands::Init(args) => run_init(args),
         SequoiaCommands::Stats(args) => run_stats(args),
+        SequoiaCommands::TimeTravel(args) => time_travel::run(args),
     }
 }
 
@@ -56,7 +61,7 @@ fn run_init(args: InitArgs) -> anyhow::Result<()> {
     let path = if let Some(p) = args.path {
         p
     } else {
-        use talaria_core::paths;
+        use talaria_core::system::paths;
         paths::talaria_databases_dir()
     };
 
@@ -81,14 +86,14 @@ fn run_init(args: InitArgs) -> anyhow::Result<()> {
 }
 
 fn run_stats(args: StatsArgs) -> anyhow::Result<()> {
-    use crate::core::database_manager::DatabaseManager as SEQUOIADatabaseManager;
-    use crate::utils::progress::create_spinner;
+    use crate::core::database::database_manager::DatabaseManager as SEQUOIADatabaseManager;
+    use crate::cli::progress::create_spinner;
     use colored::*;
 
     let path = if let Some(p) = args.path {
         p
     } else {
-        use talaria_core::paths;
+        use talaria_core::system::paths;
         paths::talaria_databases_dir()
     };
 

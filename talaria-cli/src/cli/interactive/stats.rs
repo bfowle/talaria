@@ -50,7 +50,7 @@ impl StatsViewer {
         self.file_path = Some(path.clone());
 
         // Try to load and parse the FASTA file
-        match talaria_bio::fasta::parse_fasta(&path) {
+        match talaria_bio::parse_fasta(&path) {
             Ok(sequences) => {
                 self.stats = Self::calculate_stats(&sequences);
             }

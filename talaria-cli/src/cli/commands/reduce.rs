@@ -1,9 +1,9 @@
-use crate::cli::formatter::{
-    self, format_bytes, info_box, print_error, print_success, print_tip, TaskList, TaskStatus,
+use crate::cli::formatting::{
+    format_bytes, info_box, print_error, print_success, print_tip, TaskList, TaskStatus,
 };
-use crate::cli::output::*;
+use crate::cli::formatting::output::*;
 use crate::cli::TargetAligner;
-use crate::utils::sequoia_workspace::SequoiaWorkspaceManager;
+use crate::core::workspace::sequoia_workspace::SequoiaWorkspaceManager;
 use clap::Args;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::path::PathBuf;
@@ -236,10 +236,10 @@ mod tests {
 }
 
 pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
-    use talaria_utils::format::get_file_size;
+    use talaria_utils::display::format::get_file_size;
 
     // Initialize formatter
-    formatter::init();
+    crate::cli::formatting::formatter::init();
 
     // Initialize SEQUOIA workspace manager
     let mut sequoia_manager = SequoiaWorkspaceManager::new()?;
@@ -262,7 +262,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     }
 
     // Validate database exists
-    use crate::core::database_manager::DatabaseManager;
+    use crate::core::database::database_manager::DatabaseManager;
     let db_manager = DatabaseManager::new(None)?;
 
     // Parse database reference
@@ -324,9 +324,9 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         println!("Database assembled successfully");
     } else {
         // For custom databases, assemble from chunks referenced in manifest
-        use talaria_sequoia::assembler::FastaAssembler;
-        use talaria_sequoia::types::TemporalManifest;
-        use talaria_core::paths;
+        use talaria_sequoia::operations::FastaAssembler;
+        use talaria_sequoia::TemporalManifest;
+        use talaria_core::system::paths;
         use std::fs;
         use std::io::Write;
 
@@ -591,7 +591,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     // Parse input FASTA
     task_list.update_task(load_task, TaskStatus::InProgress);
     task_list.set_task_message(load_task, "Reading FASTA file...");
-    let mut sequences = talaria_bio::fasta::parse_fasta(&actual_input)?;
+    let mut sequences = talaria_bio::parse_fasta(&actual_input)?;
 
     // Apply processing pipeline if batch processing or filtering is enabled
     if args.batch || args.low_complexity_filter {
@@ -793,7 +793,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         task_list.set_task_message(write_task, "Storing reduction in SEQUOIA repository...");
 
         let sequoia_path = args.sequoia_path.clone().unwrap_or_else(|| {
-            use talaria_core::paths;
+            use talaria_core::system::paths;
             paths::talaria_databases_dir()
         });
 
@@ -816,14 +816,14 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         task_list.update_task(write_task, TaskStatus::InProgress);
         task_list.set_task_message(write_task, "Writing output files...");
 
-        talaria_bio::fasta::write_fasta(&output_path, &references)?;
+        talaria_bio::write_fasta(&output_path, &references)?;
 
         // Get output file size
         let output_size = get_file_size(&output_path).unwrap_or(0);
 
         // Write deltas if they were computed
         if !args.no_deltas && !deltas.is_empty() {
-            talaria_storage::metadata::write_metadata(&metadata_path, &deltas)?;
+            talaria_storage::io::metadata::write_metadata(&metadata_path, &deltas)?;
             task_list.set_task_message(write_task, &format!("Saved deltas to {:?}", metadata_path));
         }
 
@@ -834,7 +834,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
 
     // Print statistics using the new stats display
     use crate::cli::charts::{create_length_histogram, create_reduction_summary_chart};
-    use crate::cli::stats_display::create_reduction_stats;
+    use crate::cli::formatting::stats_display::create_reduction_stats;
 
     let avg_deltas = if deltas.is_empty() {
         0.0
@@ -957,12 +957,12 @@ fn store_reduction_in_sequoia(
     dataset: &str,
     version: &str,
 ) -> anyhow::Result<u64> {
-    use talaria_sequoia::chunker::TaxonomicChunker;
-    use talaria_sequoia::types::SHA256Hash;
+    // use talaria_sequoia::chunker::TaxonomicChunker; // Disabled until reduce is updated
+    use talaria_sequoia::SHA256Hash;
     use talaria_sequoia::{
         delta::DeltaGeneratorConfig,
-        delta_generator::DeltaGenerator,
-        reduction::{DeltaChunkRef, ReductionManifest, ReductionParameters, ReferenceChunk},
+        DeltaGenerator,
+        operations::reduction::{DeltaChunkRef, ReductionManifest, ReductionParameters, ReferenceChunk},
         SEQUOIARepository,
     };
     use std::collections::HashMap;
@@ -979,8 +979,8 @@ fn store_reduction_in_sequoia(
 
     // Apply storage optimization if requested
     if args.optimize_for_memory {
-        use talaria_storage::optimizer::OptimizationOptions;
-        use talaria_storage::{StandardStorageOptimizer, StorageOptimizer, StorageStrategy};
+        use talaria_storage::optimization::{OptimizationOptions, StandardStorageOptimizer, StorageOptimizer};
+        use talaria_storage::StorageStrategy;
 
         let mut optimizer = StandardStorageOptimizer::new(sequoia_path.clone());
         let options = OptimizationOptions {
@@ -1044,7 +1044,7 @@ fn store_reduction_in_sequoia(
 
     // Get actual source manifest if input was from SEQUOIA
     // Check if the path is within a Talaria databases directory
-    let databases_dir = talaria_core::paths::talaria_databases_dir();
+    let databases_dir = talaria_core::system::paths::talaria_databases_dir();
     let source_manifest_hash = if input_path.starts_with(&databases_dir) {
         // Try to find manifest.json in the SEQUOIA structure
         let mut current = input_path.clone();
@@ -1073,21 +1073,32 @@ fn store_reduction_in_sequoia(
         parameters,
     );
 
-    // Chunk and store reference sequences
+    // Chunk and store reference sequences using canonical storage
     action("Chunking reference sequences...");
-    use talaria_sequoia::types::ChunkingStrategy;
-    let strategy = ChunkingStrategy {
-        target_chunk_size: 1024 * 1024,   // 1MB
-        max_chunk_size: 10 * 1024 * 1024, // 10MB
-        min_sequences_per_chunk: 1,
-        taxonomic_coherence: 0.8,
-        special_taxa: Vec::new(),
-    };
-    let chunker = TaxonomicChunker::new(strategy);
-    let ref_chunks = chunker.chunk_sequences_into_taxonomy_aware(references.to_vec())?;
+
+    use talaria_sequoia::storage::SequenceStorage;
+    use talaria_sequoia::chunker::TaxonomicChunker;
+    use talaria_sequoia::ChunkingStrategy;
+
+    // Initialize canonical sequence storage
+    let sequences_path = sequoia.storage.base_path.join("sequences");
+    let sequence_storage = SequenceStorage::new(&sequences_path)?;
+
+    // Create database source for chunker
+    let db_source = talaria_core::DatabaseSourceInfo::new(source, dataset);
+
+    // Create chunker with canonical storage
+    let mut chunker = TaxonomicChunker::new(
+        ChunkingStrategy::default(),
+        sequence_storage,
+        db_source,
+    );
+
+    // Process references and get chunk manifests
+    let chunk_manifests = chunker.chunk_sequences_canonical(references.to_vec())?;
 
     // Add progress bar for chunk storage
-    let chunk_progress = ProgressBar::new(ref_chunks.len() as u64);
+    let chunk_progress = ProgressBar::new(chunk_manifests.len() as u64);
     chunk_progress.set_style(
         ProgressStyle::default_bar()
             .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} chunks stored")
@@ -1099,28 +1110,34 @@ fn store_reduction_in_sequoia(
     let mut reference_chunk_refs = Vec::new();
     let mut ref_chunk_map = HashMap::new();
 
-    for chunk in ref_chunks {
-        let chunk_hash = sequoia.storage.store_taxonomy_chunk(&chunk)?;
+    for manifest in chunk_manifests {
+        // Store the manifest (not the chunk with data!)
+        let chunk_hash = sequoia.storage.store_chunk_manifest(&manifest)?;
+
+        // Get sequence IDs from the manifest's sequence_refs
+        let mut sequence_ids = Vec::new();
+        for seq_hash in &manifest.sequence_refs {
+            // Get sequence ID from the canonical storage
+            if let Ok(seq_info) = chunker.sequence_storage.get_sequence_info(seq_hash) {
+                sequence_ids.push(seq_info.id);
+            }
+        }
 
         // Create reference chunk metadata
         let ref_chunk = ReferenceChunk {
             chunk_hash: chunk_hash.clone(),
-            sequence_ids: chunk
-                .sequences
-                .iter()
-                .map(|s| s.sequence_id.clone())
-                .collect(),
-            sequence_count: chunk.sequences.len(),
-            size: chunk.size,
-            compressed_size: chunk.compressed_size,
-            taxon_ids: chunk.taxon_ids.clone(),
+            sequence_ids: sequence_ids.clone(),
+            sequence_count: manifest.sequence_count,
+            size: manifest.total_size,
+            compressed_size: Some(manifest.total_size),
+            taxon_ids: manifest.taxon_ids.clone(),
         };
 
         reference_chunk_refs.push(ref_chunk);
 
         // Map sequence IDs to chunk hash for delta processing
-        for seq_ref in &chunk.sequences {
-            ref_chunk_map.insert(seq_ref.sequence_id.clone(), chunk_hash.clone());
+        for seq_id in sequence_ids {
+            ref_chunk_map.insert(seq_id, chunk_hash.clone());
         }
 
         // Update progress

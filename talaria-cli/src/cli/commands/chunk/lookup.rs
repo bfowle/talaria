@@ -1,5 +1,5 @@
 use talaria_sequoia::SHA256Hash;
-use crate::cli::output::*;
+use crate::cli::formatting::output::*;
 use anyhow::{Context, Result};
 use clap::Args;
 use std::path::PathBuf;
@@ -72,17 +72,12 @@ pub struct LookupArgs {
     pub export_manifest: Option<PathBuf>,
 }
 
-#[derive(Clone, Debug, clap::ValueEnum)]
-pub enum OutputFormat {
-    Text,
-    Json,
-    Csv,
-    HashOnly,
-}
+// Use OutputFormat from talaria-core
+use talaria_core::OutputFormat;
 
-/// Information about a chunk
+/// Information about a chunk for display
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct ChunkInfo {
+pub struct ChunkDisplayInfo {
     pub hash: SHA256Hash,
     pub database: String,
     pub version: String,
@@ -105,14 +100,14 @@ pub struct TaxonomyInfo {
 
 #[derive(Debug)]
 pub struct ChunkMatch {
-    pub chunk: ChunkInfo,
+    pub chunk: ChunkDisplayInfo,
     pub match_reason: String,
     pub relevance_score: f32,
 }
 
 /// Index for fast chunk lookups
 pub struct ChunkIndex {
-    by_hash: std::collections::HashMap<SHA256Hash, ChunkInfo>,
+    by_hash: std::collections::HashMap<SHA256Hash, ChunkDisplayInfo>,
     by_taxid: std::collections::HashMap<u32, Vec<SHA256Hash>>,
     by_accession: std::collections::HashMap<String, SHA256Hash>,
     by_database: std::collections::HashMap<String, std::collections::HashSet<SHA256Hash>>,
@@ -249,7 +244,7 @@ impl ChunkLookupStrategy for DatabaseLookup {
     }
 }
 
-impl ChunkDisplay for ChunkInfo {
+impl ChunkDisplay for ChunkDisplayInfo {
     fn display(&self, detailed: bool) {
         section_header("Chunk Information");
 
@@ -441,6 +436,15 @@ pub fn run(args: LookupArgs) -> Result<()> {
                 println!("{}", m.chunk.hash);
             }
         }
+        OutputFormat::Yaml | OutputFormat::Tsv | OutputFormat::Fasta | OutputFormat::Summary | OutputFormat::Detailed => {
+            // Default to text output for unsupported formats
+            for (i, m) in matches.iter().enumerate() {
+                if i > 0 {
+                    println!();
+                }
+                m.display(args.detailed);
+            }
+        }
     }
 
     // Export manifest if requested
@@ -457,7 +461,7 @@ fn build_chunk_index_for_version(
     version: Option<&str>,
 ) -> Result<ChunkIndex> {
     use talaria_sequoia::Manifest;
-    use talaria_core::paths;
+    use talaria_core::system::paths;
     use glob::glob;
 
     let databases_dir = paths::talaria_databases_dir();
@@ -530,7 +534,7 @@ fn build_chunk_index_for_version(
                             if let Some(temporal_manifest) = manifest.get_data() {
                                 for chunk_meta in &temporal_manifest.chunk_index {
                                     // Create ChunkInfo from metadata
-                                    let chunk_info = ChunkInfo {
+                                    let chunk_info = ChunkDisplayInfo {
                                         hash: chunk_meta.hash.clone(),
                                         database: database_name.clone(),
                                         version: temporal_manifest.version.clone(),
@@ -548,7 +552,7 @@ fn build_chunk_index_for_version(
                                         } else {
                                             1.0
                                         },
-                                        reference_sequences: Vec::new(), // Not available in ChunkMetadata
+                                        reference_sequences: Vec::new(), // Not available in ManifestMetadata
                                         created_at: temporal_manifest.created_at.to_rfc3339(),
                                     };
 
@@ -590,7 +594,7 @@ fn build_chunk_index_for_version(
 
 fn build_chunk_index() -> Result<ChunkIndex> {
     use talaria_sequoia::Manifest;
-    use talaria_core::paths;
+    use talaria_core::system::paths;
     use glob::glob;
 
     let databases_dir = paths::talaria_databases_dir();
@@ -630,7 +634,7 @@ fn build_chunk_index() -> Result<ChunkIndex> {
                             if let Some(temporal_manifest) = manifest.get_data() {
                                 for chunk_meta in &temporal_manifest.chunk_index {
                                     // Create ChunkInfo from metadata
-                                    let chunk_info = ChunkInfo {
+                                    let chunk_info = ChunkDisplayInfo {
                                         hash: chunk_meta.hash.clone(),
                                         database: database_name.clone(),
                                         version: temporal_manifest.version.clone(),
@@ -648,7 +652,7 @@ fn build_chunk_index() -> Result<ChunkIndex> {
                                         } else {
                                             1.0
                                         },
-                                        reference_sequences: Vec::new(), // Not available in ChunkMetadata
+                                        reference_sequences: Vec::new(), // Not available in ManifestMetadata
                                         created_at: temporal_manifest.created_at.to_rfc3339(),
                                     };
 
@@ -716,7 +720,7 @@ fn extract_database_name(path: &std::path::Path) -> String {
     "unknown".to_string()
 }
 
-fn extract_taxonomy_info(chunk_meta: &talaria_sequoia::ChunkMetadata) -> Vec<TaxonomyInfo> {
+fn extract_taxonomy_info(chunk_meta: &talaria_sequoia::ManifestMetadata) -> Vec<TaxonomyInfo> {
     let mut taxonomy = Vec::new();
 
     // Extract unique taxon IDs from chunk

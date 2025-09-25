@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use talaria_sequoia::types::TemporalManifest;
+use talaria_sequoia::TemporalManifest;
 use crate::download::DatabaseSource;
 
 /// A migration plan describing how to migrate between versions

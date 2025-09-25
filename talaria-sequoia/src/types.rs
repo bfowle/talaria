@@ -1,8 +1,9 @@
 /// Core types for the SEQUOIA system
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use std::fmt;
+
+// Re-export only primitive types from talaria-core
+pub use talaria_core::types::{SHA256Hash, TaxonId};
 
 // Custom serialization module for DateTime to handle MessagePack
 mod datetime_serde {
@@ -28,61 +29,29 @@ mod datetime_serde {
     }
 }
 
-/// SHA256 hash type
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct SHA256Hash(#[serde(with = "serde_bytes")] pub [u8; 32]);
+// Additional methods for SHA256Hash (extending talaria-core's implementation)
+use sha2::{Digest, Sha256};
 
-impl SHA256Hash {
-    pub fn compute(data: &[u8]) -> Self {
-        let mut hasher = Sha256::new();
-        hasher.update(data);
-        let result = hasher.finalize();
-        let mut hash = [0u8; 32];
-        hash.copy_from_slice(&result);
-        Self(hash)
-    }
+pub trait SHA256HashExt {
+    fn zero() -> SHA256Hash;
+    fn is_zero(&self) -> bool;
+    fn from_bytes(bytes: &[u8]) -> SHA256Hash;
+}
 
-    pub fn from_hex(hex: &str) -> Result<Self, hex::FromHexError> {
-        let bytes = hex::decode(hex)?;
-        if bytes.len() != 32 {
-            return Err(hex::FromHexError::InvalidStringLength);
-        }
-        let mut hash = [0u8; 32];
-        hash.copy_from_slice(&bytes);
-        Ok(Self(hash))
-    }
-
-    pub fn from_bytes(bytes: &[u8]) -> Self {
-        let mut hasher = Sha256::new();
-        hasher.update(bytes);
-        let result = hasher.finalize();
-        let mut hash = [0u8; 32];
-        hash.copy_from_slice(&result);
-        Self(hash)
-    }
-
-    pub fn to_hex(&self) -> String {
-        hex::encode(self.0)
-    }
-
-    pub fn as_bytes(&self) -> &[u8; 32] {
-        &self.0
-    }
-
+impl SHA256HashExt for SHA256Hash {
     /// Create a zero hash (all zeros)
-    pub fn zero() -> Self {
-        Self([0u8; 32])
+    fn zero() -> Self {
+        Self::default()
     }
 
     /// Check if hash is zero (uninitialized)
-    pub fn is_zero(&self) -> bool {
-        self.0.iter().all(|&b| b == 0)
+    fn is_zero(&self) -> bool {
+        self.as_ref().iter().all(|&b| b == 0)
     }
-}
 
-impl fmt::Display for SHA256Hash {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_hex())
+    /// Create hash from bytes by hashing them
+    fn from_bytes(bytes: &[u8]) -> Self {
+        Self::compute(bytes)
     }
 }
 
@@ -134,15 +103,7 @@ impl BiTemporalCoordinate {
     }
 }
 
-/// Taxonomic identifier
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct TaxonId(pub u32);
-
-impl fmt::Display for TaxonId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "taxid:{}", self.0)
-    }
-}
+// TaxonId is now imported from talaria_core::types
 
 /// Reference to a sequence within a chunk
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -151,23 +112,6 @@ pub struct SequenceRef {
     pub offset: usize,
     pub length: usize,
     pub sequence_id: String,
-}
-
-/// A chunk containing sequences with taxonomic context
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TaxonomyAwareChunk {
-    pub content_hash: SHA256Hash,
-    pub taxonomy_version: MerkleHash,
-    pub sequence_version: MerkleHash,
-    pub taxon_ids: Vec<TaxonId>,
-    pub sequences: Vec<SequenceRef>,
-    #[serde(with = "serde_bytes")]
-    pub sequence_data: Vec<u8>, // The actual FASTA-format sequence data
-    pub created_at: DateTime<Utc>,
-    pub valid_from: DateTime<Utc>,
-    pub valid_until: Option<DateTime<Utc>>,
-    pub size: usize,
-    pub compressed_size: Option<usize>,
 }
 
 /// Discrepancy between taxonomy annotations
@@ -219,15 +163,15 @@ pub struct TemporalManifest {
     /// Source database identifier
     pub source_database: Option<String>,
 
-    pub chunk_index: Vec<ChunkMetadata>,
+    pub chunk_index: Vec<ManifestMetadata>,
     pub discrepancies: Vec<TaxonomicDiscrepancy>,
     pub etag: String,
     pub previous_version: Option<String>,
 }
 
-/// Metadata for a single chunk
+/// Manifest metadata for tracking chunks with detailed statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChunkMetadata {
+pub struct ManifestMetadata {
     pub hash: SHA256Hash,
     pub taxon_ids: Vec<TaxonId>,
     pub sequence_count: usize,
@@ -355,6 +299,18 @@ pub struct ChunkingStrategy {
     pub special_taxa: Vec<SpecialTaxon>, // Special handling
 }
 
+impl Default for ChunkingStrategy {
+    fn default() -> Self {
+        Self {
+            target_chunk_size: 10 * 1024 * 1024,  // 10MB
+            max_chunk_size: 50 * 1024 * 1024,     // 50MB
+            min_sequences_per_chunk: 10,
+            taxonomic_coherence: 0.8,
+            special_taxa: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpecialTaxon {
     pub taxon_id: TaxonId,
@@ -369,29 +325,12 @@ pub enum ChunkStrategy {
     GroupAtLevel(u8),  // Group at specific taxonomic level
 }
 
-/// Update check result
-#[derive(Debug)]
-pub struct UpdateStatus {
-    pub updates_available: bool,
-    pub current_version: String,
-    pub latest_version: String,
-    pub changes_summary: String,
-    pub estimated_download_size: usize,
-}
+// Re-export from talaria-core
+pub use talaria_core::types::UpdateStatus;
 
-/// Information about a stored chunk
-#[derive(Debug, Clone)]
-pub struct ChunkInfo {
-    pub hash: SHA256Hash,
-    pub path: std::path::PathBuf,
-    pub size: usize,
-    pub compressed: bool,
-    pub format: ChunkFormat,
-}
-
-/// Type of chunk content
+/// Classification of chunk content with embedded metrics
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum ChunkType {
+pub enum ChunkClassification {
     /// Full sequence data in FASTA format
     Full,
     /// Delta-compressed sequences referencing other chunks
@@ -421,11 +360,8 @@ pub enum ChunkFormat {
 impl ChunkFormat {
     /// Get the file extension for this format
     pub fn extension(&self) -> &str {
-        match self {
-            ChunkFormat::JsonGzip => ".json.gz",
-            ChunkFormat::Binary => ".bin.zst",
-            ChunkFormat::BinaryDict { .. } => ".dict.zst",
-        }
+        // All formats use .tal extension for consistency
+        ".tal"
     }
 
     /// Detect format from file contents
@@ -454,13 +390,13 @@ impl ChunkFormat {
 
 /// Delta chunk containing compressed sequence differences
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeltaChunk {
+pub struct TemporalDeltaChunk {
     /// Hash of this delta chunk
     pub content_hash: SHA256Hash,
     /// Reference to the base chunk this delta is computed from
     pub reference_hash: SHA256Hash,
     /// Type of chunk
-    pub chunk_type: ChunkType,
+    pub chunk_type: ChunkClassification,
     /// Taxonomy information
     pub taxonomy_version: MerkleHash,
     pub taxon_ids: Vec<TaxonId>,
@@ -511,7 +447,7 @@ pub enum SeqEdit {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtendedChunkMetadata {
     pub hash: SHA256Hash,
-    pub chunk_type: ChunkType,
+    pub chunk_type: ChunkClassification,
     pub taxon_ids: Vec<TaxonId>,
     pub sequence_count: usize,
     pub size: usize,
@@ -521,3 +457,275 @@ pub struct ExtendedChunkMetadata {
     /// Compression statistics
     pub compression_ratio: Option<f32>,
 }
+
+// ============================================================================
+// CANONICAL SEQUENCE ARCHITECTURE - True Content-Addressed Storage
+// ============================================================================
+
+/// Trait for content that can be addressed by its hash
+pub trait ContentAddressable {
+    /// Compute the content hash for this item
+    fn content_hash(&self) -> SHA256Hash;
+
+    /// Serialize to bytes for storage
+    fn to_bytes(&self) -> Result<Vec<u8>, anyhow::Error>;
+
+    /// Deserialize from bytes
+    fn from_bytes(bytes: &[u8]) -> Result<Self, anyhow::Error>
+    where
+        Self: Sized;
+}
+
+/// Trait for sequences that can have multiple representations
+pub trait Representable {
+    /// Get all representations for this item
+    fn representations(&self) -> &[SequenceRepresentation];
+
+    /// Add a new representation
+    fn add_representation(&mut self, repr: SequenceRepresentation);
+
+    /// Get representation for a specific source
+    fn get_representation(&self, source: &DatabaseSource) -> Option<&SequenceRepresentation>;
+}
+
+/// Trait for items that can be indexed
+pub trait Indexable {
+    /// Get indexable keys (e.g., accessions)
+    fn index_keys(&self) -> Vec<String>;
+
+    /// Get taxonomic classification
+    fn taxon_id(&self) -> Option<TaxonId>;
+}
+
+/// Trait for verifiable data structures
+pub trait MerkleVerifiable {
+    /// Compute Merkle root hash
+    fn merkle_root(&self) -> MerkleHash;
+
+    /// Verify inclusion proof
+    fn verify_proof(&self, item_hash: &SHA256Hash, proof: &[SHA256Hash]) -> bool;
+}
+
+// Import SequenceType from talaria-core
+pub use talaria_core::SequenceType;
+
+// DatabaseSource is now imported from talaria-core
+pub use talaria_core::types::database::DatabaseSourceInfo as DatabaseSource;
+
+/// Canonical sequence - the pure biological sequence data
+/// This is what gets deduplicated across all databases
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CanonicalSequence {
+    /// Hash of the sequence content ONLY (not headers)
+    pub sequence_hash: SHA256Hash,
+
+    /// The actual sequence data (amino acids or nucleotides)
+    #[serde(with = "serde_bytes")]
+    pub sequence: Vec<u8>,
+
+    /// Length of the sequence
+    pub length: usize,
+
+    /// Type of sequence
+    pub sequence_type: SequenceType,
+
+    /// CRC64 checksum for quick validation
+    pub checksum: u64,
+
+    /// When this sequence was first seen (across all databases)
+    #[serde(with = "datetime_serde")]
+    pub first_seen: DateTime<Utc>,
+
+    /// When this sequence was last seen
+    #[serde(with = "datetime_serde")]
+    pub last_seen: DateTime<Utc>,
+}
+
+impl ContentAddressable for CanonicalSequence {
+    fn content_hash(&self) -> SHA256Hash {
+        self.sequence_hash.clone()
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, anyhow::Error> {
+        Ok(rmp_serde::to_vec(self)?)
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Result<Self, anyhow::Error> {
+        Ok(rmp_serde::from_slice(bytes)?)
+    }
+}
+
+/// Database-specific representation of a sequence
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SequenceRepresentation {
+    /// Which database this representation comes from
+    pub source: DatabaseSource,
+
+    /// Original FASTA header from this database
+    pub header: String,
+
+    /// Extracted accession numbers
+    pub accessions: Vec<String>,
+
+    /// Description parsed from header
+    pub description: Option<String>,
+
+    /// Taxonomic ID (may differ between databases!)
+    pub taxon_id: Option<TaxonId>,
+
+    /// Database-specific metadata
+    pub metadata: HashMap<String, String>,
+
+    /// When we last saw this representation
+    #[serde(with = "datetime_serde")]
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Collection of all representations for a canonical sequence
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SequenceRepresentations {
+    /// Hash of the canonical sequence this represents
+    pub canonical_hash: SHA256Hash,
+
+    /// All known representations
+    pub representations: Vec<SequenceRepresentation>,
+}
+
+impl Representable for SequenceRepresentations {
+    fn representations(&self) -> &[SequenceRepresentation] {
+        &self.representations
+    }
+
+    fn add_representation(&mut self, repr: SequenceRepresentation) {
+        // Check if we already have a representation from this source
+        if let Some(existing) = self.representations.iter_mut()
+            .find(|r| r.source == repr.source && r.header == repr.header) {
+            // Update timestamp
+            existing.timestamp = repr.timestamp;
+        } else {
+            self.representations.push(repr);
+        }
+    }
+
+    fn get_representation(&self, source: &DatabaseSource) -> Option<&SequenceRepresentation> {
+        self.representations.iter()
+            .find(|r| r.source == *source)
+    }
+}
+
+impl Indexable for SequenceRepresentations {
+    fn index_keys(&self) -> Vec<String> {
+        self.representations.iter()
+            .flat_map(|r| r.accessions.clone())
+            .collect()
+    }
+
+    fn taxon_id(&self) -> Option<TaxonId> {
+        // Return the most common taxon_id from all representations
+        let mut taxon_counts: HashMap<TaxonId, usize> = HashMap::new();
+        for repr in &self.representations {
+            if let Some(taxon) = repr.taxon_id {
+                *taxon_counts.entry(taxon).or_default() += 1;
+            }
+        }
+        taxon_counts.into_iter()
+            .max_by_key(|(_, count)| *count)
+            .map(|(taxon, _)| taxon)
+    }
+}
+
+/// Chunk manifest - references to canonical sequences instead of containing them
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChunkManifest {
+    /// Hash of this manifest (computed from sequence_refs)
+    pub chunk_hash: SHA256Hash,
+
+    /// References to canonical sequences
+    pub sequence_refs: Vec<SHA256Hash>,
+
+    /// Taxonomic scope of this chunk
+    pub taxon_ids: Vec<TaxonId>,
+
+    /// Organization strategy
+    pub chunk_type: ChunkClassification,
+
+    /// Statistics
+    pub total_size: usize,
+    pub sequence_count: usize,
+
+    /// Temporal metadata
+    #[serde(with = "datetime_serde")]
+    pub created_at: DateTime<Utc>,
+
+    /// Version information
+    pub taxonomy_version: SHA256Hash,
+    pub sequence_version: SHA256Hash,
+}
+
+impl ContentAddressable for ChunkManifest {
+    fn content_hash(&self) -> SHA256Hash {
+        // Hash is computed from the sorted sequence references
+        let mut refs = self.sequence_refs.clone();
+        refs.sort();
+        let data: Vec<u8> = refs.iter()
+            .flat_map(|h| h.as_bytes().iter())
+            .copied()
+            .collect();
+        SHA256Hash::compute(&data)
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, anyhow::Error> {
+        Ok(rmp_serde::to_vec(self)?)
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Result<Self, anyhow::Error> {
+        Ok(rmp_serde::from_slice(bytes)?)
+    }
+}
+
+impl MerkleVerifiable for ChunkManifest {
+    fn merkle_root(&self) -> MerkleHash {
+        // Build Merkle tree from sequence references
+        if self.sequence_refs.is_empty() {
+            return SHA256Hash::zero();
+        }
+
+        // Simple Merkle tree implementation
+        let mut level = self.sequence_refs.clone();
+        while level.len() > 1 {
+            let mut next_level = Vec::new();
+            for chunk in level.chunks(2) {
+                let combined = if chunk.len() == 2 {
+                    let mut data = Vec::new();
+                    data.extend(chunk[0].as_bytes());
+                    data.extend(chunk[1].as_bytes());
+                    SHA256Hash::compute(&data)
+                } else {
+                    chunk[0].clone()
+                };
+                next_level.push(combined);
+            }
+            level = next_level;
+        }
+        level[0].clone()
+    }
+
+    fn verify_proof(&self, item_hash: &SHA256Hash, proof: &[SHA256Hash]) -> bool {
+        let mut current = item_hash.clone();
+        for sibling in proof {
+            let mut data = Vec::new();
+            // Order matters in Merkle proof
+            if current < *sibling {
+                data.extend(current.as_bytes());
+                data.extend(sibling.as_bytes());
+            } else {
+                data.extend(sibling.as_bytes());
+                data.extend(current.as_bytes());
+            }
+            current = SHA256Hash::compute(&data);
+        }
+        current == self.merkle_root()
+    }
+}
+
+use std::collections::HashMap;

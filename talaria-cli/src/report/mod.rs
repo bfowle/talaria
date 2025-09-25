@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::core::database_diff::ComparisonResult;
+use crate::core::database::database_diff::ComparisonResult;
 use anyhow::Result;
 
 pub mod html;

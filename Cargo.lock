@@ -607,6 +607,12 @@ dependencies = [
 
 [[package]]
 name = "bit-vec"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02b4ff8b16e6076c3e14220b39fbc1fabb6737522281a388998046859400895f"
+
+[[package]]
+name = "bit-vec"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "349f9b6a179ed607305526ca489b34ad0a41aed5f7980fa90eb03160b69598fb"
@@ -649,6 +655,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
 dependencies = [
  "generic-array",
+]
+
+[[package]]
+name = "bloom"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d00ac8e5056d6d65376a3c1aa5c7c34850d6949ace17f0266953a254eb3d6fe8"
+dependencies = [
+ "bit-vec 0.4.4",
 ]
 
 [[package]]
@@ -4113,6 +4128,7 @@ dependencies = [
  "num_cpus",
  "petgraph",
  "pretty_assertions",
+ "rand 0.8.5",
  "ratatui 0.24.0",
  "rayon",
  "regex",
@@ -4152,13 +4168,16 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "clap",
  "dashmap",
  "dirs",
+ "hex 0.4.3",
  "indicatif",
  "once_cell",
  "rayon",
  "semver 1.0.27",
  "serde",
+ "serde_bytes",
  "serde_json",
  "sha2",
  "tempfile",
@@ -4178,6 +4197,7 @@ dependencies = [
  "bincode",
  "bit-vec 0.6.3",
  "blake3",
+ "bloom",
  "chrono",
  "comfy-table",
  "criterion",
@@ -4212,6 +4232,7 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+ "walkdir",
  "xxhash-rust",
  "zstd 0.12.4",
 ]
@@ -4284,12 +4305,16 @@ name = "talaria-utils"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "colored",
  "comfy-table",
  "console",
+ "crypto-hash",
+ "hex 0.4.3",
  "indicatif",
  "num_cpus",
  "rayon",
+ "regex",
  "serde",
  "serde_json",
  "talaria-core",

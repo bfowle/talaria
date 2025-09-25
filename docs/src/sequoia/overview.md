@@ -260,7 +260,7 @@ Think of a manifest like a restaurant menu. You don't need to order every dish t
 - **MessagePack-based** with custom 4-byte header (`TAL\x01`) for format identification
 - **Faster parsing** - binary deserialization vs text parsing
 - **Type-safe** - preserves exact numeric types
-- **Format support** - reads .tal (primary format) and .json (opt-in for human readability)
+- **Format support** - reads .tal (primary format), .msgpack and .json for backwards compatibility
 
 This transforms the update problem:
 

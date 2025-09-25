@@ -121,12 +121,8 @@ pub trait ProcessingPipeline: Send + Sync {
 
 // Supporting types
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SequenceType {
-    Protein,
-    Nucleotide,
-    Unknown,
-}
+// Import and re-export SequenceType from talaria-core
+pub use talaria_core::SequenceType;
 
 #[derive(Debug, Clone)]
 pub struct ProcessorConfig {

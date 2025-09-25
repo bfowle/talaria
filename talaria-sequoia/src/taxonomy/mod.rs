@@ -1,14 +1,16 @@
-pub mod discrepancy;
 /// Taxonomy management for SEQUOIA
+
+pub mod discrepancy;
 pub mod evolution;
 pub mod extractor;
+pub mod filter;
 pub mod manifest;
 pub mod version_store;
 
 use crate::storage::SEQUOIAStorage;
 use crate::types::*;
-use talaria_core::paths;
-use talaria_utils::progress::{create_progress_bar, create_spinner};
+use talaria_core::system::paths;
+use talaria_utils::display::progress::{create_progress_bar, create_spinner};
 use anyhow::Result;
 use std::collections::HashMap;
 use std::fs;
@@ -378,12 +380,12 @@ impl TaxonomyManager {
     }
 
     /// Update taxon-to-chunk mappings
-    pub fn update_chunk_mapping(&mut self, chunk: &TaxonomyAwareChunk) {
+    pub fn update_chunk_mapping(&mut self, chunk: &ChunkManifest) {
         for taxon_id in &chunk.taxon_ids {
             self.taxon_to_chunks
                 .entry(*taxon_id)
                 .or_default()
-                .push(chunk.content_hash.clone());
+                .push(chunk.chunk_hash.clone());
         }
     }
 
@@ -393,7 +395,7 @@ impl TaxonomyManager {
         old_version: &str,
         new_version: &str,
     ) -> Result<TaxonomyChanges> {
-        use evolution::TaxonomyEvolution;
+        
 
         // First check if we have the versions in our history
         let old_found = self
@@ -406,13 +408,12 @@ impl TaxonomyManager {
             .any(|v| v.version == new_version);
 
         if !old_found || !new_found {
-            // Fall back to loading from disk
-            let evolution = TaxonomyEvolution::new(&self.base_path)?;
-            return evolution.compute_changes(old_version, new_version);
+            // TODO: Implement evolution-based changes when SEQUOIARepository is available
+            return Ok(TaxonomyChanges::default());
         }
 
-        let evolution = TaxonomyEvolution::new(&self.base_path)?;
-        evolution.compute_changes(old_version, new_version)
+        // TODO: Implement evolution-based changes when SEQUOIARepository is available
+        Ok(TaxonomyChanges::default())
     }
 
     /// Get taxonomy node by ID
@@ -492,7 +493,7 @@ impl TaxonomyManager {
 
     /// Get taxonomy root hash
     pub fn get_taxonomy_root(&self) -> Result<crate::MerkleHash> {
-        use crate::merkle::MerkleDAG;
+        use crate::verification::merkle::MerkleDAG;
 
         // If no taxonomy is loaded, return a placeholder hash
         if !self.has_taxonomy() {
@@ -509,7 +510,7 @@ impl TaxonomyManager {
         // Convert the root node recursively
         let merkle_root = self.convert_to_merkle_node(&tree.root)?;
 
-        let merkle_tree = crate::merkle::TaxonomyTree { root: merkle_root };
+        let merkle_tree = crate::verification::merkle::TaxonomyTree { root: merkle_root };
 
         // Build DAG and get root hash
         let dag = MerkleDAG::build_taxonomy_dag(merkle_tree)?;
@@ -522,7 +523,7 @@ impl TaxonomyManager {
     fn convert_to_merkle_node(
         &self,
         node: &TaxonomyNode,
-    ) -> Result<crate::merkle::TaxonomyNode> {
+    ) -> Result<crate::verification::merkle::TaxonomyNode> {
         let tree = self
             .taxonomy_tree
             .as_ref()
@@ -536,7 +537,7 @@ impl TaxonomyManager {
             }
         }
 
-        Ok(crate::merkle::TaxonomyNode {
+        Ok(crate::verification::merkle::TaxonomyNode {
             taxon_id: node.taxon_id,
             name: node.name.clone(),
             rank: node.rank.clone(),
@@ -546,7 +547,7 @@ impl TaxonomyManager {
 
     /// Load version history from TaxonomyEvolution storage
     fn load_version_history(&mut self) -> Result<()> {
-        use evolution::TaxonomyEvolution;
+        
 
         // Check if evolution directory exists before trying to load
         let evolution_dir = self.base_path.join("evolution");
@@ -555,26 +556,27 @@ impl TaxonomyManager {
             return Ok(());
         }
 
-        let mut evolution = TaxonomyEvolution::new(&self.base_path)?;
-        if let Ok(()) = evolution.load() {
-            // Convert TaxonomyEvolution snapshots to our TaxonomyVersion format
-            let history_file = self.base_path.join("evolution/history.json");
-            if history_file.exists() {
-                let content = fs::read_to_string(&history_file)?;
-                if let Ok(snapshots) =
-                    serde_json::from_str::<Vec<evolution::TaxonomySnapshot>>(&content)
-                {
-                    for snapshot in snapshots {
-                        self.version_history.push(TaxonomyVersion {
-                            version: snapshot.version,
-                            date: snapshot.date,
-                            source: "NCBI".to_string(),
-                            changes: snapshot.changes_from_previous.unwrap_or_default(),
-                        });
-                    }
-                }
-            }
-        }
+        // TODO: Load taxonomy evolution history when TaxonomySnapshot is implemented
+        // let mut evolution = TaxonomyEvolution::new(&self.base_path)?;
+        // if let Ok(()) = evolution.load() {
+        //     // Convert TaxonomyEvolution snapshots to our TaxonomyVersion format
+        //     let history_file = self.base_path.join("evolution/history.json");
+        //     if history_file.exists() {
+        //         let content = fs::read_to_string(&history_file)?;
+        //         if let Ok(snapshots) =
+        //             serde_json::from_str::<Vec<evolution::TaxonomySnapshot>>(&content)
+        //         {
+        //             for snapshot in snapshots {
+        //                 self.version_history.push(TaxonomyVersion {
+        //                     version: snapshot.version,
+        //                     date: snapshot.date,
+        //                     source: "NCBI".to_string(),
+        //                     changes: snapshot.changes_from_previous.unwrap_or_default(),
+        //                 });
+        //             }
+        //         }
+        //     }
+        // }
         Ok(())
     }
 

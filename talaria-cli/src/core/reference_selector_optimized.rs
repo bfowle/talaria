@@ -5,7 +5,7 @@
 /// Formula: Centrality Score = α·Degree + β·Betweenness + γ·Coverage
 /// where α=0.5, β=0.3, γ=0.2
 use talaria_bio::sequence::Sequence;
-use super::memory_estimator::MemoryEstimator;
+use super::execution::memory_estimator::MemoryEstimator;
 use super::phylogenetic_clusterer::{ClusteringConfig, PhylogeneticClusterer};
 use talaria_tools::Aligner;
 use talaria_utils::workspace::TempWorkspace;
@@ -264,7 +264,7 @@ impl OptimizedReferenceSelector {
         };
 
         // Write all sequences to single file
-        talaria_bio::fasta::write_fasta(&all_sequences_path, &sequences)?;
+        talaria_bio::write_fasta(&all_sequences_path, &sequences)?;
 
         // Note: Index building would be done internally by the aligner
         // when search() is called, if needed

@@ -1,4 +1,4 @@
-use talaria_bio::stats::SequenceStats;
+use talaria_bio::sequence::stats::SequenceStats;
 use crate::cli::visualize::{ascii_histogram, progress_bar};
 use clap::Args;
 use colored::*;
@@ -44,7 +44,7 @@ pub fn run(args: StatsArgs) -> anyhow::Result<()> {
     loading_pb.set_message(format!("Loading {}...", args.input.display()));
 
     // Parse input FASTA
-    let sequences = talaria_bio::fasta::parse_fasta(&args.input)?;
+    let sequences = talaria_bio::parse_fasta(&args.input)?;
     loading_pb.finish_and_clear();
     println!("Loaded {} sequences", sequences.len());
 
@@ -76,7 +76,7 @@ pub fn run(args: StatsArgs) -> anyhow::Result<()> {
 }
 
 fn print_text_stats(stats: &SequenceStats, detailed: bool) -> anyhow::Result<()> {
-    use crate::cli::output::*;
+    use crate::cli::formatting::output::*;
 
     section_header_with_line("FASTA Statistics Report");
 
@@ -191,7 +191,7 @@ fn print_text_stats(stats: &SequenceStats, detailed: bool) -> anyhow::Result<()>
 }
 
 fn print_visual_stats(stats: &SequenceStats, detailed: bool) -> anyhow::Result<()> {
-    use crate::cli::output::*;
+    use crate::cli::formatting::output::*;
 
     section_header_with_line("FASTA Statistics Report");
 
@@ -392,11 +392,11 @@ fn print_reduction_stats(
     sequences: &[talaria_bio::sequence::Sequence],
     delta_path: &std::path::Path,
 ) -> anyhow::Result<()> {
-    use crate::cli::output::*;
+    use crate::cli::formatting::output::*;
 
     section_header_with_line("Reduction Statistics");
 
-    let deltas = talaria_storage::metadata::load_metadata(delta_path)?;
+    let deltas = talaria_storage::io::metadata::load_metadata(delta_path)?;
     let num_references = sequences.len();
     let num_deltas = deltas.len();
     let total = num_references + num_deltas;

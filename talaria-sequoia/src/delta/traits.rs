@@ -1,6 +1,6 @@
 /// Traits for delta encoding and reconstruction
 use talaria_bio::sequence::Sequence;
-use crate::types::{DeltaChunk, SHA256Hash};
+use crate::types::{TemporalDeltaChunk, SHA256Hash};
 use anyhow::Result;
 
 /// Configuration for delta generation
@@ -41,7 +41,7 @@ pub trait DeltaGenerator: Send + Sync {
         sequences: &[Sequence],
         references: &[Sequence],
         reference_hash: SHA256Hash,
-    ) -> Result<Vec<DeltaChunk>>;
+    ) -> Result<Vec<TemporalDeltaChunk>>;
 
     /// Set configuration
     fn set_config(&mut self, config: DeltaGeneratorConfig);
@@ -55,7 +55,7 @@ pub trait DeltaReconstructor: Send + Sync {
     /// Reconstruct sequences from delta chunks
     fn reconstruct(
         &self,
-        delta_chunks: &[DeltaChunk],
+        delta_chunks: &[TemporalDeltaChunk],
         reference_sequences: &[Sequence],
     ) -> Result<Vec<Sequence>>;
 

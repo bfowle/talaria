@@ -347,43 +347,33 @@ impl NCBIDownloader {
                 "NCBI Nucleotide Accession to TaxID Mapping\n\
                  Maps nucleotide accessions to their taxonomic identifiers"
             }
+            NCBIDatabase::RefSeq => {
+                "NCBI RefSeq Database\n\
+                 Curated non-redundant sequence database of genomic, transcript, and protein sequences"
+            }
         };
 
         Ok(info.to_string())
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum NCBIDatabase {
-    NR,
-    NT,
-    RefSeqProtein,
-    RefSeqGenomic,
-    Taxonomy,
-    ProtAccession2TaxId,
-    NuclAccession2TaxId,
+// Import NCBIDatabase from talaria-core
+pub use talaria_core::NCBIDatabase;
+
+// Extension trait for NCBIDatabase with CLI-specific methods
+#[allow(dead_code)]
+pub trait NCBIDatabaseExt {
+    fn description(&self) -> &str;
+    fn typical_size(&self) -> &str;
 }
 
-impl std::fmt::Display for NCBIDatabase {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            NCBIDatabase::NR => write!(f, "NR (Non-Redundant Protein)"),
-            NCBIDatabase::NT => write!(f, "NT (Nucleotide)"),
-            NCBIDatabase::RefSeqProtein => write!(f, "RefSeq Protein"),
-            NCBIDatabase::RefSeqGenomic => write!(f, "RefSeq Genomic"),
-            NCBIDatabase::Taxonomy => write!(f, "NCBI Taxonomy"),
-            NCBIDatabase::ProtAccession2TaxId => write!(f, "Protein Accession2TaxId"),
-            NCBIDatabase::NuclAccession2TaxId => write!(f, "Nucleotide Accession2TaxId"),
-        }
-    }
-}
-
-impl NCBIDatabase {
+impl NCBIDatabaseExt for NCBIDatabase {
     #[allow(dead_code)]
-    pub fn description(&self) -> &str {
+    fn description(&self) -> &str {
         match self {
             NCBIDatabase::NR => "Non-redundant protein sequences",
             NCBIDatabase::NT => "Nucleotide sequences from multiple sources",
+            NCBIDatabase::RefSeq => "RefSeq curated sequences",
             NCBIDatabase::RefSeqProtein => "Curated protein sequences",
             NCBIDatabase::RefSeqGenomic => "Complete genomic sequences",
             NCBIDatabase::Taxonomy => "Taxonomic classification database",
@@ -393,10 +383,11 @@ impl NCBIDatabase {
     }
 
     #[allow(dead_code)]
-    pub fn typical_size(&self) -> &str {
+    fn typical_size(&self) -> &str {
         match self {
             NCBIDatabase::NR => "~90 GB compressed",
             NCBIDatabase::NT => "~70 GB compressed",
+            NCBIDatabase::RefSeq => "~180 GB compressed",
             NCBIDatabase::RefSeqProtein => "~30 GB compressed",
             NCBIDatabase::RefSeqGenomic => "~150 GB compressed",
             NCBIDatabase::Taxonomy => "~50 MB compressed",

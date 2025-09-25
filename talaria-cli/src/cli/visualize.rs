@@ -43,7 +43,7 @@ pub fn ascii_histogram_normalized(
             label,
             bar,
             empty,
-            crate::cli::formatter::format_number(*value),
+            crate::cli::formatting::format_number(*value),
             percentage,
             width = max_label_len
         ));
@@ -162,7 +162,7 @@ pub fn ascii_histogram_categorized(
             "{:>width$} {} {:>7} ({:5.1}%)\n",
             label,
             bar,
-            crate::cli::formatter::format_number(bucket_total),
+            crate::cli::formatting::format_number(bucket_total),
             percentage,
             width = max_label_len
         ));

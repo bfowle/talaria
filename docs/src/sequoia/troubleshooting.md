@@ -237,13 +237,13 @@ Warning: Manifest not found
 ```bash
 # Check manifest location (should be database-specific)
 ls ${TALARIA_HOME}/databases/manifests/
-# Should see: uniprot-swissprot.json, ncbi-nr.json, etc.
+# Should see: uniprot-swissprot.tal, ncbi-nr.tal, etc.
 
 # Re-download database to fix manifest
 talaria database download uniprot -d swissprot
 
-# Check manifest format
-cat ${TALARIA_HOME}/databases/manifests/uniprot-swissprot.json | python -m json.tool | head -20
+# Check manifest exists and is valid
+ls -la ${TALARIA_HOME}/databases/manifests/uniprot-swissprot.tal
 ```
 
 ### 9. List Sequences Issues

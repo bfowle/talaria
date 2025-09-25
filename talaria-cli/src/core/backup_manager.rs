@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use talaria_core::paths;
-use talaria_sequoia::types::{TemporalManifest, SHA256Hash};
+use talaria_core::system::paths;
+use talaria_sequoia::{TemporalManifest, SHA256Hash};
 
 /// Manages database backups and restore operations
 pub struct BackupManager {

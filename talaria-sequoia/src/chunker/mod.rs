@@ -1,10 +1,8 @@
-// Re-export the existing TaxonomicChunker
-pub mod hierarchical_taxonomic;
-mod taxonomic;
-mod traits;
+// The one and only chunker
+pub mod canonical_taxonomic;
 
-pub use hierarchical_taxonomic::{
-    HierarchicalTaxonomicChunker, OrganismImportance, TaxonomicLevel,
-};
-pub use taxonomic::TaxonomicChunker;
-pub use traits::{Chunker, ChunkingStats, TaxonomyAwareChunker};
+// Re-export
+pub use canonical_taxonomic::TaxonomicChunker;
+
+// Re-export ChunkingStrategy from types
+pub use crate::types::ChunkingStrategy;

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::core::database_diff::{ComparisonResult, SequenceChange};
+use crate::core::database::database_diff::{ComparisonResult, SequenceChange};
 use crate::report::ReportOptions;
 use anyhow::Result;
 use comfy_table::{modifiers, presets, Attribute, Cell, Color, ContentArrangement, Table};

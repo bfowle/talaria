@@ -129,7 +129,7 @@ impl Reducer {
 
         // Step 0: Sanitize sequences by removing those with ambiguous residues
         let (sanitized_sequences, removed_count) = if !self.silent {
-            use crate::cli::output::*;
+            use crate::cli::formatting::output::*;
             action("Sanitizing sequences (removing ambiguous residues)...");
             talaria_bio::sequence::sanitize_sequences(sequences)
         } else {
@@ -152,7 +152,7 @@ impl Reducer {
                 drop(ws); // Release lock before writing
 
                 // write_fasta will show its own progress for large files
-                talaria_bio::fasta::write_fasta(&sanitized_path, &sanitized_sequences).ok();
+                talaria_bio::write_fasta(&sanitized_path, &sanitized_sequences).ok();
             }
         }
 
@@ -200,7 +200,7 @@ impl Reducer {
             }
 
             if !self.silent {
-                use crate::cli::output::*;
+                use crate::cli::formatting::output::*;
                 info("Using LAMBDA aligner for intelligent auto-detection...");
             }
 
@@ -235,7 +235,7 @@ impl Reducer {
         let deltas = if self.no_deltas {
             // Skip delta encoding entirely
             if !self.silent {
-                use crate::cli::output::*;
+                use crate::cli::formatting::output::*;
                 info("Skipping delta encoding (--no-deltas flag)");
             }
             Vec::new()
@@ -246,7 +246,7 @@ impl Reducer {
 
             // Print informative message about delta encoding
             if !self.silent && total_before_filter > 0 {
-                use crate::cli::output::*;
+                use crate::cli::formatting::output::*;
                 section_header(&format!(
                     "Delta Encoding ({} sequences)",
                     format_number(total_before_filter)
@@ -297,7 +297,7 @@ impl Reducer {
             }
 
             if !self.silent && total_children > 0 {
-                use crate::cli::output::*;
+                use crate::cli::formatting::output::*;
                 action(&format!(
                     "Processing {} sequences for delta encoding...",
                     format_number(total_children)
@@ -418,7 +418,7 @@ impl Reducer {
         }
 
         if skipped_count > 0 && !self.silent {
-            use crate::cli::output::*;
+            use crate::cli::formatting::output::*;
             let filter_items = vec![
                 ("Filtered sequences", format_number(skipped_count)),
                 (

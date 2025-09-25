@@ -10,7 +10,7 @@ name = "talaria"
 path = "src/main.rs"
 
 [dependencies]
-talaria-core = { path = "../talaria-core" }
+talaria-core = { path = "../talaria-core", features = ["cli"] }
 talaria-bio = { path = "../talaria-bio" }
 talaria-storage = { path = "../talaria-storage" }
 talaria-sequoia = { path = "../talaria-sequoia" }
@@ -28,6 +28,7 @@ indicatif = { workspace = true }
 colored = { workspace = true }
 rayon = { workspace = true }
 chrono = { workspace = true }
+rand = "0.8"
 num_cpus = "1.16"
 tempfile = { workspace = true }
 dirs = "5.0"

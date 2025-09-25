@@ -20,7 +20,7 @@ pub struct UpdateTaxonomyArgs {
 }
 
 pub fn run(args: UpdateTaxonomyArgs) -> Result<()> {
-    use crate::core::database_manager::{DatabaseManager, TaxonomyUpdateResult};
+    use crate::core::database::database_manager::{DatabaseManager, TaxonomyUpdateResult};
 
     println!("{} Checking for taxonomy updates...", "►".cyan().bold());
 

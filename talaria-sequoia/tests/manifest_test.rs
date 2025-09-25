@@ -109,8 +109,7 @@ fn test_manifest_diff() {
     new_manifest.etag = "v2".to_string();
     new_manifest.previous_version = Some("v1".to_string());
 
-    let _old_wrapper = Manifest::new();
-    let _new_wrapper = Manifest::new();
+    // These lines were removed as they're not used and have incorrect signatures
 
     // Create diff manually (since Manifest::diff needs full implementation)
     let old_chunks: HashSet<_> = old_manifest.chunk_index.iter().map(|c| &c.hash).collect();

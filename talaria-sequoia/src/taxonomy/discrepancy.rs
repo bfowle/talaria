@@ -15,6 +15,7 @@ impl Default for DiscrepancyDetector {
     }
 }
 
+#[allow(dead_code)]
 impl DiscrepancyDetector {
     pub fn new() -> Self {
         Self {
@@ -27,24 +28,29 @@ impl DiscrepancyDetector {
         self.taxonomy_mappings = mappings;
     }
 
-    /// Detect discrepancies in a chunk (simplified version for CLI)
-    pub fn detect(&self, chunk: &TaxonomyAwareChunk) -> Vec<TaxonomicDiscrepancy> {
+
+    /// Detect discrepancies from manifest and sequences (new approach)
+    pub fn detect_from_manifest(
+        &self,
+        manifest: &ChunkManifest,
+        sequences: Vec<(String, String)>, // (sequence_id, fasta_data)
+    ) -> Vec<TaxonomicDiscrepancy> {
         let mut discrepancies = Vec::new();
 
-        for seq_ref in &chunk.sequences {
+        for (sequence_id, _fasta_data) in sequences {
             // Extract claimed taxon from sequence ID/header
-            let header_taxon = self.extract_taxon_from_header(&seq_ref.sequence_id);
+            let header_taxon = self.extract_taxon_from_header(&sequence_id);
 
             // Look up in accession mapping
-            let accession = self.extract_accession(&seq_ref.sequence_id);
+            let accession = self.extract_accession(&sequence_id);
             let mapped_taxon = self.taxonomy_mappings.get(&accession).cloned();
 
-            // Infer from chunk context
-            let inferred_taxon = self.infer_taxon_from_chunk(&chunk.taxon_ids);
+            // Infer from chunk context (using manifest's taxon_ids)
+            let inferred_taxon = self.infer_taxon_from_chunk(&manifest.taxon_ids);
 
             // Check for discrepancies
             if let Some(discrepancy) = self.check_simple_discrepancy(
-                &seq_ref.sequence_id,
+                &sequence_id,
                 header_taxon,
                 mapped_taxon,
                 inferred_taxon,
@@ -135,8 +141,8 @@ impl DiscrepancyDetector {
             // Try to load as taxonomy-aware chunk
             match storage.get_chunk(&chunk_info.hash) {
                 Ok(data) => {
-                    // Try to deserialize as TaxonomyAwareChunk
-                    if let Ok(chunk) = serde_json::from_slice::<TaxonomyAwareChunk>(&data) {
+                    // Try to deserialize as ChunkManifest
+                    if let Ok(chunk) = serde_json::from_slice::<ChunkManifest>(&data) {
                         // Detect discrepancies in this chunk
                         match self.detect_in_chunk(&chunk, storage) {
                             Ok(mut chunk_discrepancies) => {
@@ -150,7 +156,7 @@ impl DiscrepancyDetector {
                             }
                         }
                     }
-                    // If not a TaxonomyAwareChunk, skip it (could be delta chunk, manifest, etc.)
+                    // If not a ChunkManifest, skip it (could be delta chunk, etc.)
                 }
                 Err(e) => {
                     eprintln!("Failed to read chunk {}: {}", chunk_info.hash, e);
@@ -165,33 +171,56 @@ impl DiscrepancyDetector {
     /// Detect discrepancies in a specific chunk
     pub fn detect_in_chunk(
         &self,
-        chunk: &TaxonomyAwareChunk,
+        chunk: &ChunkManifest,
         storage: &SEQUOIAStorage,
     ) -> Result<Vec<TaxonomicDiscrepancy>> {
         let mut discrepancies = Vec::new();
 
-        for seq_ref in &chunk.sequences {
-            // Get sequence data
-            let seq_data = storage.get_chunk(&seq_ref.chunk_hash)?;
+        // For ChunkManifest, we only have sequence hashes, not full metadata
+        // We need to load representations to get accession info
+        for seq_hash in &chunk.sequence_refs {
+            // Try to load representations to get accession
+            if let Ok(representations) = storage.sequence_storage.load_representations(seq_hash) {
+                for repr in &representations.representations {
+                    // Get first accession if available
+                    if let Some(accession) = repr.accessions.first() {
+                        // Look up in accession mapping
+                        let mapped_taxon = self.taxonomy_mappings.get(accession).cloned();
 
-            // Parse sequence header
-            let header = self.parse_fasta_header(&seq_data, seq_ref.offset)?;
+                        // Check for discrepancies between repr taxon and chunk taxon
+                        if let Some(repr_taxon) = repr.taxon_id {
+                            // Check if the taxon in representation matches chunk taxons
+                            if !chunk.taxon_ids.contains(&repr_taxon) && !chunk.taxon_ids.is_empty() {
+                                discrepancies.push(TaxonomicDiscrepancy {
+                                    sequence_id: accession.clone(),
+                                    header_taxon: Some(repr_taxon),
+                                    mapped_taxon: mapped_taxon,
+                                    inferred_taxon: chunk.taxon_ids.first().cloned(),
+                                    confidence: 0.8,
+                                    detection_date: chrono::Utc::now(),
+                                    discrepancy_type: DiscrepancyType::Conflict,
+                                });
+                            }
+                        }
 
-            // Extract claimed taxon from header
-            let header_taxon = self.extract_taxon_from_header(&header);
-
-            // Look up in accession mapping
-            let accession = self.extract_accession(&seq_ref.sequence_id);
-            let mapped_taxon = self.taxonomy_mappings.get(&accession).cloned();
-
-            // Check for discrepancies
-            if let Some(discrepancy) = self.check_discrepancy(
-                &seq_ref.sequence_id,
-                header_taxon,
-                mapped_taxon,
-                &chunk.taxon_ids,
-            ) {
-                discrepancies.push(discrepancy);
+                        // Check mapping vs representation taxon
+                        if let Some(mapped) = mapped_taxon {
+                            if let Some(repr_taxon) = repr.taxon_id {
+                                if mapped != repr_taxon {
+                                    discrepancies.push(TaxonomicDiscrepancy {
+                                        sequence_id: accession.clone(),
+                                        header_taxon: Some(repr_taxon),
+                                        mapped_taxon: Some(mapped),
+                                        inferred_taxon: None,
+                                        confidence: 0.9,
+                                        detection_date: chrono::Utc::now(),
+                                        discrepancy_type: DiscrepancyType::Conflict,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 

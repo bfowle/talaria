@@ -8,9 +8,9 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
 
-pub use ncbi::{NCBIDatabase, NCBIDownloader};
+pub use ncbi::NCBIDownloader;
 pub use progress::DownloadProgress;
-pub use uniprot::{UniProtDatabase, UniProtDownloader};
+pub use uniprot::UniProtDownloader;
 
 /// Verify file checksum
 #[allow(dead_code)]
@@ -106,26 +106,12 @@ pub fn get_database_configs() -> Vec<DatabaseConfig> {
     ]
 }
 
-#[derive(Clone, Debug)]
-pub enum DatabaseSource {
-    UniProt(UniProtDatabase),
-    NCBI(NCBIDatabase),
-    Custom(String),
-}
+// Import DatabaseSource from talaria-core
+pub use talaria_core::{DatabaseSource, UniProtDatabase, NCBIDatabase};
 
-impl std::fmt::Display for DatabaseSource {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DatabaseSource::UniProt(db) => write!(f, "UniProt: {}", db),
-            DatabaseSource::NCBI(db) => write!(f, "NCBI: {}", db),
-            DatabaseSource::Custom(path) => write!(f, "Custom: {}", path),
-        }
-    }
-}
-
-impl DatabaseSource {
-    /// Parse a database name string into a DatabaseSource
-    pub fn from_string(name: &str) -> anyhow::Result<Self> {
+// Additional helper functions for DatabaseSource
+/// Parse a database name string into a DatabaseSource
+pub fn parse_database_source(name: &str) -> anyhow::Result<DatabaseSource> {
         // Handle source/dataset format (e.g., "ncbi/taxonomy", "uniprot/swissprot")
         if name.contains('/') {
             let parts: Vec<&str> = name.split('/').collect();
@@ -206,9 +192,8 @@ impl DatabaseSource {
             return Ok(DatabaseSource::NCBI(NCBIDatabase::Taxonomy));
         }
 
-        // Default to Custom
-        Ok(DatabaseSource::Custom(name.to_string()))
-    }
+    // Default to Custom
+    Ok(DatabaseSource::Custom(name.to_string()))
 }
 
 pub async fn download_database(
@@ -348,6 +333,18 @@ pub async fn download_database_with_full_options(
                         downloader
                             .download_nucl_accession2taxid(output_path, progress)
                             .await
+                    }
+                }
+                NCBIDatabase::RefSeq => {
+                    // RefSeq is a combination of RefSeqProtein and RefSeqGenomic
+                    // For now, download the protein version
+                    if resume {
+                        let url = "https://ftp.ncbi.nlm.nih.gov/refseq/release/complete/complete.protein.faa.gz".to_string();
+                        downloader
+                            .download_and_extract_with_resume(&url, output_path, progress, resume)
+                            .await
+                    } else {
+                        downloader.download_refseq_protein(output_path, progress).await
                     }
                 }
             }

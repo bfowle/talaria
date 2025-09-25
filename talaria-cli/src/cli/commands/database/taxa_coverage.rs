@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
-use talaria_bio::fasta;
+use talaria_bio::formats::fasta;
 use talaria_bio::taxonomy::{ncbi, TaxonomyDB};
-use talaria_bio::taxonomy_stats::{format_tree, TaxonomyCoverage};
+use talaria_bio::taxonomy::stats::{format_tree, TaxonomyCoverage};
 use anyhow::{Context, Result};
 use clap::Args;
 use colored::*;
@@ -118,7 +118,7 @@ fn load_taxonomy(taxonomy_path: &Option<PathBuf>) -> Result<TaxonomyDB> {
         path.clone()
     } else {
         // Use the proper versioned taxonomy location from databases
-        use talaria_core::paths;
+        use talaria_core::system::paths;
         let taxonomy_current = paths::talaria_taxonomy_current_dir();
         let default_path = taxonomy_current.join("tree");
 
@@ -440,6 +440,12 @@ fn export_database_to_temp(database_ref: &str) -> Result<PathBuf> {
         with_taxonomy: true,
         quiet: true,
         stream: true,
+        sequence_date: None,
+        taxonomy_date: None,
+        taxonomy_filter: None,
+        redundancy: None,
+        max_sequences: None,
+        sample: None,
     };
 
     crate::cli::commands::database::export::run(export_args)

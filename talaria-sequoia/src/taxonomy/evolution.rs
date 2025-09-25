@@ -1,379 +1,421 @@
-/// Track taxonomy evolution and changes over time
-use crate::types::*;
-use anyhow::{Context, Result};
+use crate::traits::temporal::*;
+use crate::types::{BiTemporalCoordinate, TaxonId};
+use crate::SEQUOIARepository;
+/// Tracks evolution of taxonomic classifications over time
+///
+/// Provides detailed tracking of how taxonomic assignments change,
+/// including merges, splits, reclassifications, and deletions.
+use anyhow::Result;
 use chrono::{DateTime, Utc};
-use std::collections::{HashMap, HashSet};
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
-pub struct TaxonomyEvolution {
-    base_path: PathBuf,
-    versions: Vec<TaxonomySnapshot>,
+/// Tracks detailed evolution of taxonomic classifications
+pub struct TaxonomyEvolutionTracker {
+    repository: SEQUOIARepository,
+    /// Cache of evolution histories by entity
+    evolution_cache: HashMap<String, EvolutionHistory>,
+    /// Index of reclassification events by date
+    reclassification_index: BTreeMap<DateTime<Utc>, Vec<ReclassificationEvent>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct TaxonomySnapshot {
-    pub version: String,
-    pub date: DateTime<Utc>,
-    pub taxa_count: usize,
-    pub root_hash: MerkleHash,
-    pub changes_from_previous: Option<TaxonomyChanges>,
+#[allow(dead_code)] // Fields are preserved for future use
+struct ReclassificationEvent {
+    date: DateTime<Utc>,
+    sequence_id: String,
+    old_taxon: Option<TaxonId>,
+    new_taxon: Option<TaxonId>,
+    reason: String,
 }
 
-impl TaxonomyEvolution {
-    pub fn new(base_path: &Path) -> Result<Self> {
-        let evolution_dir = base_path.join("evolution");
-        fs::create_dir_all(&evolution_dir)?;
-
-        Ok(Self {
-            base_path: evolution_dir,
-            versions: Vec::new(),
-        })
-    }
-
-    /// Load evolution history
-    pub fn load(&mut self) -> Result<()> {
-        let history_file = self.base_path.join("history.json");
-        if history_file.exists() {
-            let content = fs::read_to_string(&history_file)?;
-            self.versions = serde_json::from_str(&content)?;
-        }
-        Ok(())
-    }
-
-    /// Save evolution history
-    pub fn save(&self) -> Result<()> {
-        let history_file = self.base_path.join("history.json");
-        let content = serde_json::to_string_pretty(&self.versions)?;
-        fs::write(history_file, content)?;
-        Ok(())
-    }
-
-    /// Add a new taxonomy version
-    pub fn add_version(&mut self, version: String, taxonomy_data: &TaxonomyData) -> Result<()> {
-        let changes = if let Some(last) = self.versions.last() {
-            Some(self.compute_changes_from_data(&last.version, &version, taxonomy_data)?)
-        } else {
-            None
-        };
-
-        let snapshot = TaxonomySnapshot {
-            version: version.clone(),
-            date: Utc::now(),
-            taxa_count: taxonomy_data.taxa.len(),
-            root_hash: taxonomy_data.compute_hash(),
-            changes_from_previous: changes,
-        };
-
-        self.versions.push(snapshot);
-        self.save()?;
-
-        // Store the actual taxonomy data
-        let version_file = self.base_path.join(format!("{}.json", version));
-        let content = serde_json::to_string_pretty(taxonomy_data)?;
-        fs::write(version_file, content)?;
-
-        Ok(())
-    }
-
-    /// Compute changes between two versions
-    pub fn compute_changes(&self, old_version: &str, new_version: &str) -> Result<TaxonomyChanges> {
-        let _old_data = self.load_version(old_version)?;
-        let new_data = self.load_version(new_version)?;
-
-        // Compare old and new data
-        self.compute_changes_from_data(old_version, new_version, &new_data)
-    }
-
-    fn compute_changes_from_data(
-        &self,
-        _old_version: &str,
-        _new_version: &str,
-        new_data: &TaxonomyData,
-    ) -> Result<TaxonomyChanges> {
-        let old_data = if let Some(last) = self.versions.last() {
-            self.load_version(&last.version)?
-        } else {
-            // No previous version
-            return Ok(TaxonomyChanges {
-                reclassifications: Vec::new(),
-                new_taxa: new_data.taxa.keys().cloned().collect(),
-                deprecated_taxa: Vec::new(),
-                merged_taxa: Vec::new(),
-            });
-        };
-
-        let mut reclassifications = Vec::new();
-        let mut new_taxa = Vec::new();
-        let mut deprecated_taxa = Vec::new();
-        let mut merged_taxa = Vec::new();
-
-        // Find new taxa
-        for taxon_id in new_data.taxa.keys() {
-            if !old_data.taxa.contains_key(taxon_id) {
-                new_taxa.push(*taxon_id);
-            }
-        }
-
-        // Find deprecated taxa
-        for taxon_id in old_data.taxa.keys() {
-            if !new_data.taxa.contains_key(taxon_id) {
-                // Check if it was merged
-                if let Some(merge_target) = new_data.merges.get(taxon_id) {
-                    merged_taxa.push((*taxon_id, *merge_target));
-                } else {
-                    deprecated_taxa.push(*taxon_id);
-                }
-            }
-        }
-
-        // Find reclassifications
-        for (taxon_id, new_info) in &new_data.taxa {
-            if let Some(old_info) = old_data.taxa.get(taxon_id) {
-                if old_info.parent_id != new_info.parent_id {
-                    reclassifications.push(Reclassification {
-                        taxon_id: *taxon_id,
-                        old_parent: old_info.parent_id.unwrap_or(TaxonId(0)),
-                        new_parent: new_info.parent_id.unwrap_or(TaxonId(0)),
-                        reason: self.infer_reclassification_reason(old_info, new_info),
-                    });
-                }
-            }
-        }
-
-        Ok(TaxonomyChanges {
-            reclassifications,
-            new_taxa,
-            deprecated_taxa,
-            merged_taxa,
-        })
-    }
-
-    fn infer_reclassification_reason(&self, old: &TaxonInfo, new: &TaxonInfo) -> String {
-        if old.rank != new.rank {
-            format!("Rank change: {} -> {}", old.rank, new.rank)
-        } else if old.name != new.name {
-            format!("Name change: {} -> {}", old.name, new.name)
-        } else {
-            "Taxonomic revision".to_string()
+impl TaxonomyEvolutionTracker {
+    pub fn new(repository: SEQUOIARepository) -> Self {
+        Self {
+            repository,
+            evolution_cache: HashMap::new(),
+            reclassification_index: BTreeMap::new(),
         }
     }
 
-    fn load_version(&self, version: &str) -> Result<TaxonomyData> {
-        let version_file = self.base_path.join(format!("{}.json", version));
-        let content = fs::read_to_string(&version_file)
-            .with_context(|| format!("Failed to load version {}", version))?;
-        Ok(serde_json::from_str(&content)?)
-    }
-
-    /// Track the evolution of a specific taxon
-    pub fn track_taxon(&self, taxon_id: &TaxonId) -> Result<TaxonEvolution> {
-        let mut history = Vec::new();
-
-        for snapshot in &self.versions {
-            let data = self.load_version(&snapshot.version)?;
-            if let Some(info) = data.taxa.get(taxon_id) {
-                history.push(TaxonHistoryEntry {
-                    version: snapshot.version.clone(),
-                    date: snapshot.date,
-                    info: info.clone(),
-                    status: TaxonStatus::Active,
-                });
-            } else if let Some(merge_target) = data.merges.get(taxon_id) {
-                history.push(TaxonHistoryEntry {
-                    version: snapshot.version.clone(),
-                    date: snapshot.date,
-                    info: TaxonInfo {
-                        taxon_id: *taxon_id,
-                        parent_id: None,
-                        name: format!("Merged into {}", merge_target),
-                        rank: "merged".to_string(),
-                    },
-                    status: TaxonStatus::Merged(*merge_target),
-                });
-            }
+    /// Track evolution of a specific entity (sequence or taxon)
+    pub fn track_entity(
+        &mut self,
+        entity_id: &str,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<EvolutionHistory> {
+        // Check cache first
+        let cache_key = format!("{}_{}_{}", entity_id, from.timestamp(), to.timestamp());
+        if let Some(cached) = self.evolution_cache.get(&cache_key) {
+            return Ok(cached.clone());
         }
 
-        Ok(TaxonEvolution {
-            taxon_id: *taxon_id,
-            history,
-        })
-    }
-
-    /// Generate a timeline of major changes
-    pub fn generate_timeline(&self) -> Timeline {
         let mut events = Vec::new();
+        let mut current_taxon: Option<u32> = None;
+        let mut first_seen = true;
 
-        for snapshot in &self.versions {
-            if let Some(ref changes) = snapshot.changes_from_previous {
-                // Major reclassifications
-                for reclassification in &changes.reclassifications {
-                    events.push(TimelineEvent {
-                        date: snapshot.date,
-                        version: snapshot.version.clone(),
-                        event_type: EventType::Reclassification,
+        // Get all temporal snapshots in range
+        let snapshots = self.get_snapshots_in_range(from, to)?;
+
+        for snapshot_date in snapshots {
+            let coordinate = BiTemporalCoordinate::at(snapshot_date);
+
+            // Try to find the entity in this snapshot
+            if let Some(sequence) = self.find_sequence_at_time(entity_id, &coordinate)? {
+                if first_seen {
+                    events.push(EvolutionEvent {
+                        timestamp: snapshot_date,
+                        event_type: EventType::Created,
                         description: format!(
-                            "Taxon {} reclassified: {}",
-                            reclassification.taxon_id, reclassification.reason
+                            "First appeared with TaxID {}",
+                            sequence
+                                .taxon_id
+                                .map(|t| t.to_string())
+                                .unwrap_or_else(|| "unknown".to_string())
                         ),
-                        affected_taxa: vec![reclassification.taxon_id],
+                        metadata: serde_json::json!({}),
                     });
-                }
+                    current_taxon = sequence.taxon_id;
+                    first_seen = false;
+                } else if current_taxon != sequence.taxon_id {
+                    // Taxonomic reclassification
+                    let old = current_taxon
+                        .map(|t| t.to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    let new = sequence
+                        .taxon_id
+                        .map(|t| t.to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
 
-                // New discoveries
-                if !changes.new_taxa.is_empty() {
-                    events.push(TimelineEvent {
-                        date: snapshot.date,
-                        version: snapshot.version.clone(),
-                        event_type: EventType::NewTaxa,
-                        description: format!("{} new taxa added", changes.new_taxa.len()),
-                        affected_taxa: changes.new_taxa.clone(),
+                    events.push(EvolutionEvent {
+                        timestamp: snapshot_date,
+                        event_type: EventType::Reclassified,
+                        description: format!("Reclassified from TaxID {} to {}", old, new),
+                        metadata: serde_json::json!({
+                            "old_taxon": old,
+                            "new_taxon": new,
+                        }),
                     });
-                }
 
-                // Merges
-                for (old, new) in &changes.merged_taxa {
-                    events.push(TimelineEvent {
-                        date: snapshot.date,
-                        version: snapshot.version.clone(),
-                        event_type: EventType::Merge,
-                        description: format!("Taxon {} merged into {}", old, new),
-                        affected_taxa: vec![*old, *new],
+                    // Track reclassification event
+                    self.reclassification_index
+                        .entry(snapshot_date)
+                        .or_default()
+                        .push(ReclassificationEvent {
+                            date: snapshot_date,
+                            sequence_id: entity_id.to_string(),
+                            old_taxon: current_taxon.map(TaxonId),
+                            new_taxon: sequence.taxon_id.map(TaxonId),
+                            reason: "Taxonomy update".to_string(),
+                        });
+
+                    current_taxon = sequence.taxon_id;
+                }
+            } else if !first_seen {
+                // Entity disappeared
+                events.push(EvolutionEvent {
+                    timestamp: snapshot_date,
+                    event_type: EventType::Deleted,
+                    description: "Removed from database".to_string(),
+                    metadata: serde_json::json!({}),
+                });
+                break;
+            }
+        }
+
+        let history = EvolutionHistory {
+            entity_id: entity_id.to_string(),
+            events,
+            from_date: from,
+            to_date: to,
+        };
+
+        // Cache the result
+        self.evolution_cache.insert(cache_key, history.clone());
+
+        Ok(history)
+    }
+
+    /// Find all entities that underwent a specific type of change
+    pub fn find_changes_of_type(
+        &mut self,
+        event_type: EventType,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<Vec<String>> {
+        let mut affected_entities = HashSet::new();
+
+        // Scan through temporal index for changes
+        let snapshots = self.get_snapshots_in_range(from, to)?;
+
+        for i in 1..snapshots.len() {
+            let prev_coord = BiTemporalCoordinate::at(snapshots[i - 1]);
+            let curr_coord = BiTemporalCoordinate::at(snapshots[i]);
+
+            let changes = self.compute_changes(&prev_coord, &curr_coord)?;
+
+            match event_type {
+                EventType::Created => {
+                    affected_entities.extend(changes.added_sequences);
+                }
+                EventType::Deleted => {
+                    affected_entities.extend(changes.removed_sequences);
+                }
+                EventType::Reclassified => {
+                    affected_entities.extend(changes.reclassified_sequences);
+                }
+                EventType::Modified => {
+                    affected_entities.extend(changes.modified_sequences);
+                }
+                _ => {}
+            }
+        }
+
+        Ok(affected_entities.into_iter().collect())
+    }
+
+    /// Get mass reclassification events (affecting many sequences)
+    pub fn find_mass_reclassifications(
+        &mut self,
+        threshold: usize,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<Vec<MassReclassification>> {
+        let mut mass_events = Vec::new();
+
+        for (date, events) in self.reclassification_index.range(from..=to) {
+            // Group by old -> new taxon transitions
+            let mut transitions: HashMap<(Option<TaxonId>, Option<TaxonId>), Vec<String>> =
+                HashMap::new();
+
+            for event in events {
+                let key = (event.old_taxon, event.new_taxon);
+                transitions
+                    .entry(key)
+                    .or_default()
+                    .push(event.sequence_id.clone());
+            }
+
+            // Find transitions affecting many sequences
+            for ((old, new), sequences) in transitions {
+                if sequences.len() >= threshold {
+                    mass_events.push(MassReclassification {
+                        date: *date,
+                        old_taxon: old,
+                        new_taxon: new,
+                        affected_sequences: sequences,
+                        reason: "Taxonomic revision".to_string(),
                     });
                 }
             }
         }
 
-        Timeline { events }
+        Ok(mass_events)
     }
 
-    /// Find all taxa affected by changes between versions
-    pub fn find_affected_taxa(
-        &self,
-        old_version: &str,
-        new_version: &str,
-    ) -> Result<HashSet<TaxonId>> {
-        let changes = self.compute_changes(old_version, new_version)?;
-        let mut affected = HashSet::new();
+    /// Generate evolution report for a taxonomic group
+    pub fn generate_taxon_report(
+        &mut self,
+        taxon_id: TaxonId,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<TaxonEvolutionReport> {
+        let mut sequences_added = Vec::new();
+        let mut sequences_removed = Vec::new();
+        let mut sequences_stable = Vec::new();
+        let mut size_timeline = Vec::new();
 
-        for reclassification in changes.reclassifications {
-            affected.insert(reclassification.taxon_id);
+        let snapshots = self.get_snapshots_in_range(from, to)?;
+        let mut prev_sequences = HashSet::new();
+
+        for snapshot_date in snapshots {
+            let coordinate = BiTemporalCoordinate::at(snapshot_date);
+            let sequences = self.get_taxon_sequences_at_time(taxon_id, &coordinate)?;
+            let current_set: HashSet<String> = sequences.iter().map(|s| s.id.clone()).collect();
+
+            // Track additions and removals
+            let added: Vec<String> = current_set.difference(&prev_sequences).cloned().collect();
+            let removed: Vec<String> = prev_sequences.difference(&current_set).cloned().collect();
+
+            sequences_added.extend(added);
+            sequences_removed.extend(removed);
+
+            // Track size over time
+            size_timeline.push((snapshot_date, current_set.len()));
+
+            prev_sequences = current_set;
         }
 
-        affected.extend(changes.new_taxa);
-        affected.extend(changes.deprecated_taxa);
-
-        for (old, new) in changes.merged_taxa {
-            affected.insert(old);
-            affected.insert(new);
+        // Sequences that remained throughout
+        for seq_id in &prev_sequences {
+            if !sequences_removed.contains(seq_id) {
+                sequences_stable.push(seq_id.clone());
+            }
         }
 
-        Ok(affected)
-    }
-}
+        let total_turnover = sequences_added.len() + sequences_removed.len();
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct TaxonomyData {
-    pub taxa: HashMap<TaxonId, TaxonInfo>,
-    pub merges: HashMap<TaxonId, TaxonId>,
-}
-
-impl TaxonomyData {
-    pub fn compute_hash(&self) -> MerkleHash {
-        let serialized = serde_json::to_vec(self).unwrap();
-        SHA256Hash::compute(&serialized)
-    }
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct TaxonInfo {
-    pub taxon_id: TaxonId,
-    pub parent_id: Option<TaxonId>,
-    pub name: String,
-    pub rank: String,
-}
-
-#[derive(Debug)]
-pub struct TaxonEvolution {
-    pub taxon_id: TaxonId,
-    pub history: Vec<TaxonHistoryEntry>,
-}
-
-#[derive(Debug)]
-pub struct TaxonHistoryEntry {
-    pub version: String,
-    pub date: DateTime<Utc>,
-    pub info: TaxonInfo,
-    pub status: TaxonStatus,
-}
-
-#[derive(Debug)]
-pub enum TaxonStatus {
-    Active,
-    Deprecated,
-    Merged(TaxonId),
-}
-
-#[derive(Debug)]
-pub struct Timeline {
-    pub events: Vec<TimelineEvent>,
-}
-
-#[derive(Debug)]
-pub struct TimelineEvent {
-    pub date: DateTime<Utc>,
-    pub version: String,
-    pub event_type: EventType,
-    pub description: String,
-    pub affected_taxa: Vec<TaxonId>,
-}
-
-#[derive(Debug)]
-pub enum EventType {
-    Reclassification,
-    NewTaxa,
-    Deprecation,
-    Merge,
-}
-
-// Implement serialization for TaxonomySnapshot
-impl serde::Serialize for TaxonomySnapshot {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("TaxonomySnapshot", 5)?;
-        state.serialize_field("version", &self.version)?;
-        state.serialize_field("date", &self.date)?;
-        state.serialize_field("taxa_count", &self.taxa_count)?;
-        state.serialize_field("root_hash", &self.root_hash)?;
-        state.serialize_field("changes_from_previous", &self.changes_from_previous)?;
-        state.end()
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for TaxonomySnapshot {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(serde::Deserialize)]
-        struct Helper {
-            version: String,
-            date: DateTime<Utc>,
-            taxa_count: usize,
-            root_hash: MerkleHash,
-            changes_from_previous: Option<TaxonomyChanges>,
-        }
-
-        let helper = Helper::deserialize(deserializer)?;
-        Ok(TaxonomySnapshot {
-            version: helper.version,
-            date: helper.date,
-            taxa_count: helper.taxa_count,
-            root_hash: helper.root_hash,
-            changes_from_previous: helper.changes_from_previous,
+        Ok(TaxonEvolutionReport {
+            taxon_id,
+            from_date: from,
+            to_date: to,
+            sequences_added,
+            sequences_removed,
+            sequences_stable,
+            size_timeline,
+            total_turnover,
         })
     }
+
+    // Helper methods
+
+    fn get_snapshots_in_range(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<Vec<DateTime<Utc>>> {
+        // Query temporal index for available snapshots
+        self.repository.temporal.get_snapshots_between(from, to)
+    }
+
+    fn find_sequence_at_time(
+        &self,
+        sequence_id: &str,
+        coordinate: &BiTemporalCoordinate,
+    ) -> Result<Option<talaria_bio::sequence::Sequence>> {
+        // Query specific sequence at temporal coordinate
+        let chunks = self.repository.temporal.get_chunks_at_time(coordinate)?;
+
+        for chunk_meta in chunks {
+            if let Ok(sequences) = self
+                .repository
+                .storage
+                .load_sequences_from_chunk(&chunk_meta.hash)
+            {
+                for seq in sequences {
+                    if seq.id == sequence_id {
+                        return Ok(Some(seq));
+                    }
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn get_taxon_sequences_at_time(
+        &self,
+        taxon_id: TaxonId,
+        coordinate: &BiTemporalCoordinate,
+    ) -> Result<Vec<talaria_bio::sequence::Sequence>> {
+        let chunks = self.repository.temporal.get_chunks_at_time(coordinate)?;
+        let mut sequences = Vec::new();
+
+        for chunk_meta in chunks {
+            if chunk_meta.taxon_ids.contains(&taxon_id) {
+                if let Ok(chunk_sequences) = self
+                    .repository
+                    .storage
+                    .load_sequences_from_chunk(&chunk_meta.hash)
+                {
+                    for seq in chunk_sequences {
+                        if seq.taxon_id == Some(taxon_id.0) {
+                            sequences.push(seq);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(sequences)
+    }
+
+    fn compute_changes(
+        &self,
+        prev: &BiTemporalCoordinate,
+        curr: &BiTemporalCoordinate,
+    ) -> Result<ChangeSet> {
+        let prev_chunks = self.repository.temporal.get_chunks_at_time(prev)?;
+        let curr_chunks = self.repository.temporal.get_chunks_at_time(curr)?;
+
+        let mut prev_sequences = HashMap::new();
+        let mut curr_sequences = HashMap::new();
+
+        // Load previous state
+        for chunk_meta in prev_chunks {
+            if let Ok(sequences) = self
+                .repository
+                .storage
+                .load_sequences_from_chunk(&chunk_meta.hash)
+            {
+                for seq in sequences {
+                    prev_sequences.insert(seq.id.clone(), seq.taxon_id);
+                }
+            }
+        }
+
+        // Load current state
+        for chunk_meta in curr_chunks {
+            if let Ok(sequences) = self
+                .repository
+                .storage
+                .load_sequences_from_chunk(&chunk_meta.hash)
+            {
+                for seq in sequences {
+                    curr_sequences.insert(seq.id.clone(), seq.taxon_id);
+                }
+            }
+        }
+
+        let mut changes = ChangeSet::default();
+
+        // Find additions
+        for id in curr_sequences.keys() {
+            if !prev_sequences.contains_key(id) {
+                changes.added_sequences.push(id.clone());
+            }
+        }
+
+        // Find removals and reclassifications
+        for (id, prev_taxon) in &prev_sequences {
+            if let Some(curr_taxon) = curr_sequences.get(id) {
+                if prev_taxon != curr_taxon {
+                    changes.reclassified_sequences.push(id.clone());
+                }
+            } else {
+                changes.removed_sequences.push(id.clone());
+            }
+        }
+
+        Ok(changes)
+    }
+}
+
+#[derive(Debug, Default)]
+struct ChangeSet {
+    added_sequences: Vec<String>,
+    removed_sequences: Vec<String>,
+    modified_sequences: Vec<String>,
+    reclassified_sequences: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MassReclassification {
+    pub date: DateTime<Utc>,
+    pub old_taxon: Option<TaxonId>,
+    pub new_taxon: Option<TaxonId>,
+    pub affected_sequences: Vec<String>,
+    pub reason: String,
+}
+
+#[derive(Debug)]
+pub struct TaxonEvolutionReport {
+    pub taxon_id: TaxonId,
+    pub from_date: DateTime<Utc>,
+    pub to_date: DateTime<Utc>,
+    pub sequences_added: Vec<String>,
+    pub sequences_removed: Vec<String>,
+    pub sequences_stable: Vec<String>,
+    pub size_timeline: Vec<(DateTime<Utc>, usize)>,
+    pub total_turnover: usize,
 }

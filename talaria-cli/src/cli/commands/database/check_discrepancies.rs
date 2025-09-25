@@ -5,10 +5,10 @@ use colored::Colorize;
 use std::collections::HashMap;
 
 use talaria_sequoia::taxonomy::discrepancy::DiscrepancyDetector;
-use talaria_sequoia::types::{DiscrepancyType, TaxonId, TaxonomicDiscrepancy};
+use talaria_sequoia::{DiscrepancyType, TaxonId, TaxonomicDiscrepancy};
 use crate::cli::global_config;
-use crate::core::database_manager::DatabaseManager;
-use crate::utils::progress::create_spinner;
+use crate::core::database::database_manager::DatabaseManager;
+use crate::cli::progress::create_spinner;
 
 #[derive(Args)]
 pub struct CheckDiscrepanciesArgs {
@@ -30,14 +30,14 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
     let manager = DatabaseManager::new(None)?;
 
     // Parse database reference to check for profile
-    let db_ref = crate::utils::database_ref::parse_database_reference(&args.database)?;
+    let db_ref = crate::core::database::database_ref::parse_database_reference(&args.database)?;
 
     // Load appropriate manifest based on whether profile is specified
     let (chunk_metadata, _total_sequences) = if let Some(profile) = &db_ref.profile {
         // Load reduction manifest for profile
         spinner.set_message(format!("Loading reduction profile: {}...", profile));
 
-        let versions_dir = talaria_core::paths::talaria_databases_dir().join("versions");
+        let versions_dir = talaria_core::system::paths::talaria_databases_dir().join("versions");
         let version = db_ref.version.as_deref().unwrap_or("current");
         let profile_path = versions_dir
             .join(&db_ref.source)
@@ -56,13 +56,13 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
             content = content[4..].to_vec();
         }
 
-        let reduction_manifest: talaria_sequoia::reduction::ReductionManifest =
+        let reduction_manifest: talaria_sequoia::ReductionManifest =
             rmp_serde::from_slice(&content)?;
 
         // Convert reference chunks to chunk metadata format
         let mut chunk_metadata = Vec::new();
         for ref_chunk in &reduction_manifest.reference_chunks {
-            chunk_metadata.push(talaria_sequoia::types::ChunkMetadata {
+            chunk_metadata.push(talaria_sequoia::ManifestMetadata {
                 hash: ref_chunk.chunk_hash.clone(),
                 taxon_ids: ref_chunk.taxon_ids.clone(),
                 sequence_count: ref_chunk.sequence_count,
@@ -114,13 +114,26 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
     for chunk_meta in &chunk_metadata {
         chunk_count += 1;
 
-        // Load the actual chunk data
-        if let Ok(chunk_data) = manager.load_chunk(&chunk_meta.hash) {
-            sequence_count += chunk_data.sequences.len();
+        // Try new manifest-based approach
+        match manager.load_manifest(&chunk_meta.hash) {
+            Ok(manifest) => {
+                // Load sequences from canonical storage
+                match manager.load_sequences_from_manifest(&manifest, None, usize::MAX) {
+                    Ok(sequences) => {
+                        sequence_count += sequences.len();
 
-            // Detect discrepancies in this chunk
-            let chunk_discrepancies = detector.detect(&chunk_data);
-            all_discrepancies.extend(chunk_discrepancies);
+                        // Detect discrepancies using the new method
+                        let chunk_discrepancies = detector.detect_from_manifest(&manifest, sequences);
+                        all_discrepancies.extend(chunk_discrepancies);
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to load sequences for chunk {}: {}", chunk_meta.hash, e);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to load manifest for chunk {}: {}", chunk_meta.hash, e);
+            }
         }
     }
 

@@ -34,6 +34,7 @@
 ## SEQUOIA Internals
 
 - [Storage Overview](./sequoia/overview.md)
+- [Packed Storage Backend](./sequoia/packed-storage.md)
 - [Smart Chunking](./sequoia/chunking.md)
 - [Manifest Format](./sequoia/manifest.md)
 - [Merkle DAG & Proofs](./sequoia/merkle.md)

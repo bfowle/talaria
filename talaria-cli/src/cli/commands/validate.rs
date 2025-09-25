@@ -36,16 +36,16 @@ pub struct ValidateArgs {
 
 /// Validate database reduction from SEQUOIA system
 fn validate_from_sequoia(_db_ref_str: &str, profile: String) -> Result<()> {
-    use talaria_sequoia::storage::SEQUOIAStorage;
-    use talaria_sequoia::{StandardTemporalManifestValidator, ValidationOptions};
-    use crate::cli::output::*;
-    use talaria_utils::format::format_bytes;
-    use crate::utils::progress::create_spinner;
+    use talaria_sequoia::SEQUOIAStorage;
+    use talaria_sequoia::{Validator, verification::validator::{ValidationOptions, TemporalManifestValidator}};
+    use crate::cli::formatting::output::*;
+    use talaria_utils::display::format::format_bytes;
+    use crate::cli::progress::create_spinner;
 
     let pb = create_spinner("Initializing SEQUOIA storage...");
 
     // Initialize SEQUOIA storage
-    let sequoia_path = talaria_core::paths::talaria_databases_dir();
+    let sequoia_path = talaria_core::system::paths::talaria_databases_dir();
     let storage = SEQUOIAStorage::open(&sequoia_path)?;
 
     pb.set_message("Loading reduction manifest...");
@@ -57,7 +57,7 @@ fn validate_from_sequoia(_db_ref_str: &str, profile: String) -> Result<()> {
 
     // Get the temporal manifest from the manifest file
     let manifest_path = sequoia_path.join("manifest.json");
-    let temporal_manifest: talaria_sequoia::types::TemporalManifest = if manifest_path.exists() {
+    let temporal_manifest: talaria_sequoia::TemporalManifest = if manifest_path.exists() {
         let data = std::fs::read_to_string(&manifest_path)?;
         serde_json::from_str(&data)?
     } else {
@@ -68,7 +68,7 @@ fn validate_from_sequoia(_db_ref_str: &str, profile: String) -> Result<()> {
 
     // Create validator and validation options
     let chunks_dir = sequoia_path.join("chunks");
-    let validator = StandardTemporalManifestValidator::new(chunks_dir);
+    let validator = Validator::new(chunks_dir);
     let options = ValidationOptions {
         verify_hashes: true,
         check_storage: true,
@@ -80,7 +80,6 @@ fn validate_from_sequoia(_db_ref_str: &str, profile: String) -> Result<()> {
     };
 
     // Perform validation
-    use talaria_sequoia::validator::TemporalManifestValidator;
     let validation_result =
         futures::executor::block_on(validator.validate(&temporal_manifest, options))?;
 
@@ -168,9 +167,9 @@ fn validate_from_sequoia(_db_ref_str: &str, profile: String) -> Result<()> {
 }
 
 pub fn run(args: ValidateArgs) -> anyhow::Result<()> {
-    use crate::cli::output::*;
-    use talaria_utils::format::{format_bytes, get_file_size};
-    use crate::utils::progress::create_spinner;
+    use crate::cli::formatting::output::*;
+    use talaria_utils::display::format::{format_bytes, get_file_size};
+    use crate::cli::progress::create_spinner;
 
     section_header("Validation Report");
 
@@ -235,7 +234,7 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<()> {
 
     // Load sequences
     pb.set_message("Loading original FASTA file...");
-    let original_seqs = talaria_bio::fasta::parse_fasta(&original_path)?;
+    let original_seqs = talaria_bio::parse_fasta(&original_path)?;
     pb.set_message(format!(
         "Loaded {} original sequences ({})",
         original_seqs.len(),
@@ -243,7 +242,7 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<()> {
     ));
 
     pb.set_message("Loading reduced FASTA file...");
-    let reduced_seqs = talaria_bio::fasta::parse_fasta(&reduced_path)?;
+    let reduced_seqs = talaria_bio::parse_fasta(&reduced_path)?;
     pb.set_message(format!(
         "Loaded {} reference sequences ({})",
         reduced_seqs.len(),
@@ -251,7 +250,7 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<()> {
     ));
 
     pb.set_message("Loading delta metadata...");
-    let deltas = talaria_storage::metadata::load_metadata(&deltas_path)?;
+    let deltas = talaria_storage::io::metadata::load_metadata(&deltas_path)?;
     pb.set_message(format!("Loaded {} delta records", deltas.len()));
 
     // Calculate coverage metrics

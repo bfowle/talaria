@@ -1,16 +1,20 @@
 #![allow(dead_code)]
 
-pub mod add;
+pub mod add;  // Canonical sequence-based add (the ONLY add)
 pub mod backup;
 pub mod check_discrepancies;
+pub mod check_updates;
 pub mod clean;
 pub mod diff;
 pub mod download;
 pub mod download_impl;
 pub mod export;
+pub mod gc;      // Garbage collection
 pub mod info;
 pub mod list;
 pub mod list_sequences;
+pub mod mirror;  // Database mirroring
+pub mod optimize; // Database optimization
 pub mod taxa_coverage;
 pub mod update;
 pub mod update_taxonomy;
@@ -38,6 +42,9 @@ pub enum DatabaseCommands {
 
     /// Update existing databases (check for new versions)
     Update(update::UpdateArgs),
+
+    /// Check for available database updates
+    CheckUpdates(check_updates::CheckUpdatesArgs),
 
     /// Add a custom database from a local FASTA file
     Add(add::AddArgs),
@@ -77,6 +84,15 @@ pub enum DatabaseCommands {
 
     /// Manage database backups
     Backup(backup::BackupCommand),
+
+    /// Optimize database storage and performance
+    Optimize(optimize::OptimizeCmd),
+
+    /// Run garbage collection to remove unreferenced data
+    Gc(gc::GcCmd),
+
+    /// Setup and manage database mirrors
+    Mirror(mirror::MirrorCmd),
 }
 
 pub fn run(args: DatabaseArgs) -> anyhow::Result<()> {
@@ -85,6 +101,7 @@ pub fn run(args: DatabaseArgs) -> anyhow::Result<()> {
         DatabaseCommands::Info(args) => info::run(args),
         DatabaseCommands::Download(args) => download::run(args),
         DatabaseCommands::Update(args) => update::run(args),
+        DatabaseCommands::CheckUpdates(args) => check_updates::run(args),
         DatabaseCommands::Add(args) => add::run(args),
         DatabaseCommands::Export(args) => export::run(args),
         DatabaseCommands::Versions(args) => versions::run(args),
@@ -98,12 +115,24 @@ pub fn run(args: DatabaseArgs) -> anyhow::Result<()> {
         DatabaseCommands::Clean(args) => clean::run(args),
         DatabaseCommands::Diff(args) => diff::run(args),
         DatabaseCommands::Backup(args) => backup::execute(&args),
+        DatabaseCommands::Optimize(args) => {
+            let runtime = tokio::runtime::Runtime::new()?;
+            runtime.block_on(args.run())
+        }
+        DatabaseCommands::Gc(args) => {
+            let runtime = tokio::runtime::Runtime::new()?;
+            runtime.block_on(args.run())
+        }
+        DatabaseCommands::Mirror(args) => {
+            let runtime = tokio::runtime::Runtime::new()?;
+            runtime.block_on(args.run())
+        }
     }
 }
 
 fn run_init() -> anyhow::Result<()> {
     use talaria_sequoia::SEQUOIARepository;
-    use talaria_core::paths;
+    use talaria_core::system::paths;
     use colored::*;
 
     let path = paths::talaria_databases_dir();
@@ -132,8 +161,8 @@ fn run_init() -> anyhow::Result<()> {
 }
 
 fn run_stats() -> anyhow::Result<()> {
-    use crate::core::database_manager::DatabaseManager;
-    use crate::utils::progress::create_spinner;
+    use crate::core::database::database_manager::DatabaseManager;
+    use crate::cli::progress::create_spinner;
     use colored::*;
 
     let spinner = create_spinner("Loading repository statistics...");

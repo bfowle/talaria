@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-use crate::cli::output::*;
-use crate::utils::progress::create_spinner;
+use crate::cli::formatting::output::*;
+use crate::cli::progress::create_spinner;
 use anyhow::Result;
 use clap::Args;
 use colored::*;
@@ -30,8 +30,8 @@ pub struct UpdateArgs {
 }
 
 pub fn run(args: UpdateArgs) -> Result<()> {
-    use crate::cli::output::format_number;
-    use crate::core::database_manager::DatabaseManager;
+    use crate::cli::formatting::output::format_number;
+    use crate::core::database::database_manager::DatabaseManager;
 
     // Header based on mode
     if args.dry_run {
@@ -180,12 +180,12 @@ enum UpdateStatus {
 }
 
 fn check_database_update(
-    manager: &mut crate::core::database_manager::DatabaseManager,
+    manager: &mut crate::core::database::database_manager::DatabaseManager,
     database: &str,
     force: bool,
 ) -> Result<UpdateStatus> {
     use crate::download::{DatabaseSource, NCBIDatabase, UniProtDatabase};
-    use crate::utils::database_ref::parse_database_ref;
+    use crate::core::database::database_ref::parse_database_ref;
 
     // Parse database reference to get source
     let (source_str, dataset) = parse_database_ref(database)?;
@@ -219,7 +219,7 @@ fn check_database_update(
             // Check for actual updates
             let progress = |_msg: &str| {};
             match manager.check_for_updates(&source, progress).await {
-                Ok(crate::core::database_manager::DownloadResult::UpToDate) => {
+                Ok(crate::core::database::database_manager::DownloadResult::UpToDate) => {
                     Ok(UpdateStatus::UpToDate {
                         version: manager
                             .get_current_version_info(&source)
@@ -227,13 +227,13 @@ fn check_database_update(
                             .unwrap_or_else(|_| "unknown".to_string()),
                     })
                 }
-                Ok(crate::core::database_manager::DownloadResult::Updated { .. }) => {
+                Ok(crate::core::database::database_manager::DownloadResult::Updated { .. }) => {
                     Ok(UpdateStatus::UpdateAvailable {
                         current: "current".to_string(),
                         latest: "new version available".to_string(),
                     })
                 }
-                Ok(crate::core::database_manager::DownloadResult::InitialDownload) => {
+                Ok(crate::core::database::database_manager::DownloadResult::InitialDownload) => {
                     Ok(UpdateStatus::NotFound)
                 }
                 Err(_) => Ok(UpdateStatus::NotFound),
@@ -245,7 +245,7 @@ fn check_database_update(
 }
 
 fn check_taxonomy_update(
-    manager: &mut crate::core::database_manager::DatabaseManager,
+    manager: &mut crate::core::database::database_manager::DatabaseManager,
     force: bool,
 ) -> Result<UpdateStatus> {
     // Get current taxonomy version
@@ -274,37 +274,14 @@ fn check_taxonomy_update(
 fn perform_update(database: &str) -> Result<()> {
     // Use the download command with appropriate flags
     use crate::cli::commands::database::download::DownloadArgs;
-    use crate::utils::database_ref::parse_database_ref;
+    use crate::core::database::database_ref::parse_database_ref;
 
     // Parse database reference
     let (_source, _dataset) = parse_database_ref(database)?;
 
     // Create download args for update (not dry-run, not force)
-    let download_args = DownloadArgs {
-        database: Some(database.to_string()),
-        output: std::path::PathBuf::from("."),
-        taxonomy: false,
-        complete: false,
-        resume: true,
-        interactive: false,
-        skip_verify: false,
-        list_datasets: false,
-        json: false,
-        manifest_server: None,
-        talaria_home: None,
-        preserve_lambda_on_failure: false,
-        dry_run: false,
-        force: false,
-        taxids: None,
-        taxid_list: None,
-        reference_proteomes: false,
-        max_sequences: None,
-        description: None,
-        at_time: None,
-        sequence_version: None,
-        taxonomy_version: None,
-        show_versions: false,
-    };
+    let mut download_args = DownloadArgs::default_with_database(database.to_string());
+    download_args.resume = true;
 
     // Run download which will handle update if needed
     crate::cli::commands::database::download::run(download_args)

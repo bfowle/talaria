@@ -3,7 +3,7 @@ use crate::alignment::scoring::ScoringMatrix;
 use crate::sequence::{Sequence, SequenceType};
 
 #[derive(Debug, Clone)]
-pub struct AlignmentResult {
+pub struct DetailedAlignment {
     pub score: i32,
     pub ref_aligned: Vec<u8>,
     pub query_aligned: Vec<u8>,
@@ -34,7 +34,7 @@ enum Traceback {
 pub struct Alignment;
 
 impl Alignment {
-    pub fn global(ref_seq: &Sequence, query_seq: &Sequence) -> AlignmentResult {
+    pub fn global(ref_seq: &Sequence, query_seq: &Sequence) -> DetailedAlignment {
         if ref_seq.detect_type() == SequenceType::Protein {
             let aligner = NeedlemanWunsch::new(crate::alignment::scoring::BLOSUM62::new());
             aligner.align(&ref_seq.sequence, &query_seq.sequence)
@@ -51,7 +51,7 @@ impl<S: ScoringMatrix> NeedlemanWunsch<S> {
         Self { scoring }
     }
 
-    pub fn align(&self, ref_seq: &[u8], query_seq: &[u8]) -> AlignmentResult {
+    pub fn align(&self, ref_seq: &[u8], query_seq: &[u8]) -> DetailedAlignment {
         let ref_len = ref_seq.len();
         let query_len = query_seq.len();
 
@@ -81,7 +81,7 @@ impl<S: ScoringMatrix> NeedlemanWunsch<S> {
         let total_positions = alignment_string.len().max(1);
         let identity = matches as f64 / total_positions as f64;
 
-        AlignmentResult {
+        DetailedAlignment {
             score: score_matrix[end_i][end_j],
             ref_aligned,
             query_aligned,

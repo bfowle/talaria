@@ -2,80 +2,12 @@
 
 /// Trait for flexible database path resolution and reference parsing
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use crate::download::DatabaseSource;
 
-/// Database reference with version and profile information
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DatabaseReference {
-    /// Source system (e.g., "uniprot", "ncbi", "custom")
-    pub source: String,
-    /// Dataset within source (e.g., "swissprot", "nr")
-    pub dataset: String,
-    /// Version identifier (e.g., "20250915_053033", "2024_04", "current")
-    pub version: Option<String>,
-    /// Profile/subset identifier (e.g., "50-percent", "bacteria-only")
-    pub profile: Option<String>,
-}
-
-impl DatabaseReference {
-    /// Parse a reference string like "uniprot/swissprot@2024_04:50-percent"
-    pub fn parse(reference: &str) -> Result<Self> {
-        let mut parts = reference.split(':');
-        let base_with_version = parts.next().unwrap_or(reference);
-        let profile = parts.next().map(|s| s.to_string());
-
-        let mut version_parts = base_with_version.split('@');
-        let base = version_parts.next().unwrap_or(base_with_version);
-        let version = version_parts.next().map(|s| s.to_string());
-
-        let mut path_parts = base.split('/');
-        let source = path_parts
-            .next()
-            .ok_or_else(|| anyhow::anyhow!("Invalid reference: missing source"))?
-            .to_string();
-        let dataset = path_parts
-            .next()
-            .ok_or_else(|| anyhow::anyhow!("Invalid reference: missing dataset"))?
-            .to_string();
-
-        Ok(Self {
-            source,
-            dataset,
-            version,
-            profile,
-        })
-    }
-
-    /// Convert back to string representation
-    pub fn to_string(&self) -> String {
-        let mut result = format!("{}/{}", self.source, self.dataset);
-
-        if let Some(ref version) = self.version {
-            result.push('@');
-            result.push_str(version);
-        }
-
-        if let Some(ref profile) = self.profile {
-            result.push(':');
-            result.push_str(profile);
-        }
-
-        result
-    }
-
-    /// Get version or "current" if not specified
-    pub fn version_or_current(&self) -> &str {
-        self.version.as_deref().unwrap_or("current")
-    }
-
-    /// Get profile or "default" if not specified
-    pub fn profile_or_default(&self) -> &str {
-        self.profile.as_deref().unwrap_or("default")
-    }
-}
+// Re-export DatabaseReference from talaria-core
+pub use talaria_core::types::DatabaseReference;
 
 /// Paths for a database in the filesystem
 #[derive(Debug, Clone)]
@@ -137,7 +69,7 @@ impl StandardDatabaseResolver {
     }
 
     fn get_version_dir(&self, reference: &DatabaseReference) -> PathBuf {
-        let version = reference.version_or_current();
+        let version = reference.version_or_default();
 
         self.base_path
             .join("versions")
@@ -202,6 +134,7 @@ impl DatabaseResolver for StandardDatabaseResolver {
             DatabaseSource::UniProt(UniProtDatabase::IdMapping) => ("uniprot", "idmapping"),
             DatabaseSource::NCBI(NCBIDatabase::NR) => ("ncbi", "nr"),
             DatabaseSource::NCBI(NCBIDatabase::NT) => ("ncbi", "nt"),
+            DatabaseSource::NCBI(NCBIDatabase::RefSeq) => ("ncbi", "refseq"),
             DatabaseSource::NCBI(NCBIDatabase::RefSeqProtein) => ("ncbi", "refseq-protein"),
             DatabaseSource::NCBI(NCBIDatabase::RefSeqGenomic) => ("ncbi", "refseq-genomic"),
             DatabaseSource::NCBI(NCBIDatabase::Taxonomy) => ("ncbi", "taxonomy"),

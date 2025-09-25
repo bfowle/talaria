@@ -74,7 +74,7 @@ pub fn run(args: SyncArgs) -> Result<()> {
     let local_path = if let Some(path) = args.local_path {
         path
     } else {
-        use talaria_core::paths;
+        use talaria_core::system::paths;
         paths::talaria_databases_dir()
     };
 

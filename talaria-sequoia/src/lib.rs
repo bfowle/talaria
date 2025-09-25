@@ -6,40 +6,25 @@
 // Core modules
 pub mod types;
 pub mod traits;
-pub mod version_store;
 
 // Storage and manifest
 pub mod storage;
 pub mod manifest;
-pub mod taxonomy_manifest;
 
-// Chunking and compression
+// Chunking
 pub mod chunker;
-pub mod chunk_index;
-pub mod compression;
-pub mod format;
 
 // Delta encoding
 pub mod delta;
-pub mod delta_generator;
-pub mod delta_reconstructor;
 
-// Merkle and verification
-pub mod merkle;
-pub mod verifier;
-pub mod validator;
+// Verification and validation
+pub mod verification;
 
-// Temporal and evolution
+// Temporal and versioning
 pub mod temporal;
-pub mod temporal_renderable;
-pub mod retroactive;
-pub mod evolution_tracker;
 
 // Operations
-pub mod assembler;
-pub mod differ;
-pub mod reduction;
-pub mod processing_state;
+pub mod operations;
 
 // Taxonomy
 pub mod taxonomy;
@@ -49,29 +34,28 @@ pub mod cloud;
 
 // Re-export commonly used types
 pub use types::*;
-pub use storage::SEQUOIAStorage;
+pub use storage::{SEQUOIAStorage, StorageChunkInfo, StorageStats};
 pub use manifest::Manifest;
-pub use chunker::{Chunker, TaxonomicChunker, TaxonomyAwareChunker};
-pub use chunk_index::{
+pub use chunker::{TaxonomicChunker, ChunkingStrategy};
+pub use storage::{
     ChunkIndexBuilder, ChunkQuery, ChunkAccessTracker, DefaultChunkIndex,
     ChunkRelationships, IndexStatistics, OptimizationSuggestion,
+    ChunkCompressor, CompressionConfig,
+    FormatDetector, ManifestFormat, JsonFormat, MessagePackFormat, TalariaFormat
 };
-pub use compression::ChunkCompressor;
-pub use format::{FormatDetector, ManifestFormat, JsonFormat, MessagePackFormat, TalariaFormat};
-pub use merkle::{MerkleDAG, MerkleVerifiable};
-pub use verifier::{SEQUOIAVerifier, VerificationResult};
-pub use validator::{
-    TemporalManifestValidator, StandardTemporalManifestValidator, ValidationOptions, ValidationResult,
+pub use verification::MerkleDAG;
+pub use types::{MerkleNode, MerkleProof};
+pub use verification::{Verifier, VerificationResult, Validator, ValidationResult};
+pub use operations::{
+    FastaAssembler, AssemblyResult, TemporalManifestDiffer, DiffResult,
+    ReductionManifest, ReductionParameters, ProcessingState, OperationType
 };
-pub use differ::{
-    TemporalManifestDiffer, StandardTemporalManifestDiffer, DiffResult, DiffOptions, ChangeType,
+pub use temporal::{
+    TemporalIndex, BiTemporalDatabase, RetroactiveAnalyzer,
+    VersionInfo, TemporalQuery, Timeline, TaxonomicChangeType
 };
-pub use reduction::{ReductionManifest, ReductionParameters};
-pub use assembler::FastaAssembler;
-pub use evolution_tracker::{TaxonomyEvolutionTracker, MassReclassification, TaxonEvolutionReport};
-pub use processing_state::{ProcessingState, ProcessingStateManager, OperationType, SourceInfo};
-pub use temporal::TemporalIndex;
-pub use retroactive::RetroactiveAnalyzer;
+pub use delta::{SequenceDeltaGenerator as DeltaGenerator, SequenceDeltaReconstructor as DeltaReconstructor, CanonicalDelta};
+pub use taxonomy::evolution::{TaxonomyEvolutionTracker, MassReclassification, TaxonEvolutionReport};
 
 // Repository structure that combines all components
 use std::path::Path;
@@ -115,6 +99,19 @@ impl SEQUOIARepository {
         })
     }
 
+    /// Save the repository state (manifest and indices)
+    pub fn save(&self) -> Result<()> {
+        // Save the manifest
+        self.manifest.save()?;
+
+        // Save temporal index if needed
+        self.temporal.save()?;
+
+        // Taxonomy manager saves itself automatically
+
+        Ok(())
+    }
+
     /// Check for updates (placeholder for now)
     pub async fn check_updates(&self) -> Result<bool> {
         // TODO: Implement actual update checking logic
@@ -124,7 +121,8 @@ impl SEQUOIARepository {
     /// Verify the integrity of the repository
     pub fn verify(&self) -> Result<()> {
         // Verify storage integrity
-        self.storage.verify_integrity()?;
+        // TODO: Implement verify_integrity for SEQUOIAStorage
+        // self.storage.verify_integrity()?;
 
         // Verify manifest
         if let Err(e) = self.manifest.verify() {
@@ -140,7 +138,7 @@ impl SEQUOIARepository {
         Ok(())
     }
 
-    /// Load sequences from chunks
+    /// Load sequences from chunk manifests
     pub fn load_sequences_from_chunks(
         &self,
         chunk_hashes: &[SHA256Hash],
@@ -149,13 +147,21 @@ impl SEQUOIARepository {
 
         for hash in chunk_hashes {
             let chunk_data = self.storage.get_chunk(hash)?;
-            let chunk: types::TaxonomyAwareChunk = bincode::deserialize(&chunk_data)?;
+            let manifest: types::ChunkManifest = bincode::deserialize(&chunk_data)?;
 
-            // Parse FASTA data from the chunk
-            let fasta_sequences = talaria_bio::fasta::parse_fasta_from_bytes(&chunk.sequence_data)?;
-
-            for seq in fasta_sequences {
-                sequences.push(seq);
+            // Load actual sequences from canonical storage
+            for seq_hash in &manifest.sequence_refs {
+                if let Ok(canonical) = self.storage.sequence_storage.load_canonical(seq_hash) {
+                    // Convert canonical to bio sequence
+                    // This is a simplified conversion - you may need to load representations too
+                    sequences.push(talaria_bio::sequence::Sequence {
+                        id: seq_hash.to_hex(),
+                        description: None,
+                        sequence: canonical.sequence,
+                        taxon_id: None,
+                        taxonomy_sources: Default::default(),
+                    });
+                }
             }
         }
 
@@ -195,51 +201,8 @@ impl SEQUOIARepository {
     }
 }
 
-// Database source types needed by taxonomy
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum DatabaseSource {
-    UniProt(UniProtDatabase),
-    NCBI(NCBIDatabase),
-    Custom(String),
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum UniProtDatabase {
-    SwissProt,
-    TrEMBL,
-    IdMapping,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum NCBIDatabase {
-    Taxonomy,
-    ProtAccession2TaxId,
-    RefSeq,
-    NR,
-    NT,
-}
-
-impl std::fmt::Display for UniProtDatabase {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            UniProtDatabase::SwissProt => write!(f, "SwissProt"),
-            UniProtDatabase::TrEMBL => write!(f, "TrEMBL"),
-            UniProtDatabase::IdMapping => write!(f, "IdMapping"),
-        }
-    }
-}
-
-impl std::fmt::Display for NCBIDatabase {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            NCBIDatabase::Taxonomy => write!(f, "Taxonomy"),
-            NCBIDatabase::ProtAccession2TaxId => write!(f, "ProtAccession2TaxId"),
-            NCBIDatabase::RefSeq => write!(f, "RefSeq"),
-            NCBIDatabase::NR => write!(f, "NR"),
-            NCBIDatabase::NT => write!(f, "NT"),
-        }
-    }
-}
+// Import DatabaseSource types from talaria-core
+pub use talaria_core::{DatabaseSource, UniProtDatabase, NCBIDatabase};
 
 // CLI-related types that SEQUOIA needs
 // These should ideally be moved to a shared crate

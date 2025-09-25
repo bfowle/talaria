@@ -98,9 +98,71 @@ pub struct DownloadArgs {
     #[arg(long, value_name = "VERSION")]
     pub taxonomy_version: Option<String>,
 
+    // wget/rsync-like options
+    /// Limit download rate in KB/s (e.g., 500 for 500KB/s)
+    #[arg(long, value_name = "RATE")]
+    pub limit_rate: Option<u32>,
+
+    /// Continue partial download (alias for --resume)
+    #[arg(short = 'c', long)]
+    pub continue_download: bool,
+
+    /// Quiet mode - suppress progress output
+    #[arg(short = 'q', long)]
+    pub quiet: bool,
+
+    /// Number of retry attempts on failure
+    #[arg(long, default_value = "3")]
+    pub retries: u32,
+
+    /// Mirror mode - maintain exact database structure
+    #[arg(long)]
+    pub mirror: bool,
+
+    /// Output filename (for single file downloads)
+    #[arg(short = 'O', long)]
+    pub output_document: Option<PathBuf>,
+
     /// Show available versions for the database
     #[arg(long)]
     pub show_versions: bool,
+}
+
+impl DownloadArgs {
+    /// Create default args for internal use
+    pub fn default_with_database(database: String) -> Self {
+        Self {
+            database: Some(database),
+            output: PathBuf::from("."),
+            taxonomy: false,
+            complete: false,
+            resume: false,
+            interactive: false,
+            skip_verify: false,
+            list_datasets: false,
+            json: false,
+            manifest_server: None,
+            talaria_home: None,
+            preserve_lambda_on_failure: false,
+            dry_run: false,
+            force: false,
+            taxids: None,
+            taxid_list: None,
+            reference_proteomes: false,
+            max_sequences: None,
+            description: None,
+            at_time: None,
+            sequence_version: None,
+            taxonomy_version: None,
+            limit_rate: None,
+            continue_download: false,
+            quiet: false,
+            retries: 3,
+            mirror: false,
+            output_document: None,
+            show_versions: false,
+        }
+    }
 }
 
 pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
@@ -118,55 +180,57 @@ pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
         run_interactive_download(args)
     } else {
         // Parse and validate the database reference
-        use crate::utils::database_ref::parse_database_ref;
+        use crate::core::database::database_ref::parse_database_ref;
         let (source, dataset) = parse_database_ref(args.database.as_ref().unwrap())?;
 
-        // Print header and SEQUOIA info
-        use crate::cli::formatter::info_box;
-        use crate::cli::output::section_header;
-        use colored::Colorize;
+        // Print header and SEQUOIA info (unless quiet mode)
+        if !args.quiet {
+            use crate::cli::formatting::info_box;
+            use crate::cli::formatting::output::section_header;
+            use colored::Colorize;
 
-        // Format the display name nicely
-        let source_name = match source.as_str() {
-            "uniprot" => "UniProt",
-            "ncbi" => "NCBI",
-            _ => &source,
-        };
-        let dataset_name = match dataset.as_str() {
-            "swissprot" => "SwissProt",
-            "trembl" => "TrEMBL",
-            "uniref50" => "UniRef50",
-            "uniref90" => "UniRef90",
-            "uniref100" => "UniRef100",
-            "idmapping" => "IdMapping",
-            "nr" => "NR",
-            "nt" => "NT",
-            "refseq-protein" => "RefSeq Proteins",
-            "refseq-genomic" => "RefSeq Genomes",
-            "taxonomy" => "Taxonomy",
-            "prot-accession2taxid" => "Protein Accession2TaxId",
-            "nucl-accession2taxid" => "Nucleotide Accession2TaxId",
-            _ => &dataset,
-        };
+            // Format the display name nicely
+            let source_name = match source.as_str() {
+                "uniprot" => "UniProt",
+                "ncbi" => "NCBI",
+                _ => &source,
+            };
+            let dataset_name = match dataset.as_str() {
+                "swissprot" => "SwissProt",
+                "trembl" => "TrEMBL",
+                "uniref50" => "UniRef50",
+                "uniref90" => "UniRef90",
+                "uniref100" => "UniRef100",
+                "idmapping" => "IdMapping",
+                "nr" => "NR",
+                "nt" => "NT",
+                "refseq-protein" => "RefSeq Proteins",
+                "refseq-genomic" => "RefSeq Genomes",
+                "taxonomy" => "Taxonomy",
+                "prot-accession2taxid" => "Protein Accession2TaxId",
+                "nucl-accession2taxid" => "Nucleotide Accession2TaxId",
+                _ => &dataset,
+            };
 
-        println!();
-        section_header(&format!(
-            "▶ Database Download: {}: {}",
-            source_name, dataset_name
-        ));
-        println!("{}", "═".repeat(80).dimmed());
-        println!();
+            println!();
+            section_header(&format!(
+                "▶ Database Download: {}: {}",
+                source_name, dataset_name
+            ));
+            println!("{}", "═".repeat(80).dimmed());
+            println!();
 
-        info_box(
-            "Content-Addressed Storage (SEQUOIA)",
-            &[
-                "Automatic deduplication",
-                "Incremental updates",
-                "Cryptographic verification",
-                "Bandwidth-efficient downloads",
-            ],
-        );
-        println!();
+            info_box(
+                "Content-Addressed Storage (SEQUOIA)",
+                &[
+                    "Automatic deduplication",
+                    "Incremental updates",
+                    "Cryptographic verification",
+                    "Bandwidth-efficient downloads",
+                ],
+            );
+            println!();
+        }
 
         // Handle custom databases (with taxids) vs regular databases
         if source == "custom" {
@@ -174,9 +238,9 @@ pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
         } else {
             // Use SEQUOIA for regular database downloads
             use super::download_impl::run_database_download;
-            use crate::download::DatabaseSource;
+            
 
-            let database_source = DatabaseSource::from_string(&format!("{}/{}", source, dataset))?;
+            let database_source = crate::download::parse_database_source(&format!("{}/{}", source, dataset))?;
             run_database_download(args, database_source)
         }
     }
@@ -184,7 +248,7 @@ pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
 
 fn run_complete_taxonomy_download(args: DownloadArgs) -> anyhow::Result<()> {
     use super::download_impl::run_database_download;
-    use crate::download::DatabaseSource;
+    
     use colored::Colorize;
 
     println!();
@@ -212,7 +276,7 @@ fn run_complete_taxonomy_download(args: DownloadArgs) -> anyhow::Result<()> {
     for (source_str, name) in components {
         println!("{}  Downloading {}...", "►".cyan().bold(), name);
 
-        match DatabaseSource::from_string(source_str) {
+        match crate::download::parse_database_source(source_str) {
             Ok(database_source) => {
                 // Clone args for each component
                 let component_args = DownloadArgs {
@@ -238,6 +302,12 @@ fn run_complete_taxonomy_download(args: DownloadArgs) -> anyhow::Result<()> {
                     at_time: args.at_time.clone(),
                     sequence_version: args.sequence_version.clone(),
                     taxonomy_version: args.taxonomy_version.clone(),
+                    limit_rate: args.limit_rate,
+                    continue_download: args.continue_download,
+                    quiet: args.quiet,
+                    retries: args.retries,
+                    mirror: args.mirror,
+                    output_document: args.output_document.clone(),
                     show_versions: args.show_versions,
                 };
 
@@ -440,9 +510,9 @@ fn list_available_datasets() {
 
 fn run_custom_download(args: DownloadArgs, db_name: String) -> anyhow::Result<()> {
     use talaria_bio::taxonomy::SequenceProvider;
-    use talaria_bio::uniprot::CustomDatabaseProvider;
-    use crate::cli::output::{info, section_header, success};
-    use crate::core::database_manager::DatabaseManager;
+    use talaria_bio::providers::uniprot::CustomDatabaseProvider;
+    use crate::cli::formatting::output::{info, section_header, success};
+    use crate::core::database::database_manager::DatabaseManager;
     use crate::download::DatabaseSource;
 
     // Parse TaxIDs
@@ -573,35 +643,13 @@ fn download_uniprot_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
     let database_ref = format!("uniprot/{}", dataset_id);
 
     // Create args with the new format
-    let args = DownloadArgs {
-        database: Some(database_ref.clone()),
-        output: output_dir.clone(),
-        taxonomy: download_taxonomy,
-        complete: false,
-        resume: false,
-        interactive: false,
-        skip_verify: false,
-        list_datasets: false,
-        json: false,
-        manifest_server: None,
-        talaria_home: None,
-        preserve_lambda_on_failure: false,
-        dry_run: false,
-        force: false,
-        taxids: None,
-        taxid_list: None,
-        reference_proteomes: false,
-        max_sequences: None,
-        description: None,
-        at_time: None,
-        sequence_version: None,
-        taxonomy_version: None,
-        show_versions: false,
-    };
+    let mut args = DownloadArgs::default_with_database(database_ref.clone());
+    args.output = output_dir.clone();
+    args.taxonomy = download_taxonomy;
 
     // Print header and SEQUOIA info
-    use crate::cli::formatter::info_box;
-    use crate::cli::output::section_header;
+    use crate::cli::formatting::info_box;
+    use crate::cli::formatting::output::section_header;
     use colored::Colorize;
 
     println!();
@@ -622,9 +670,9 @@ fn download_uniprot_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
 
     // Use the unified SEQUOIA download
     use super::download_impl::run_database_download;
-    use crate::download::DatabaseSource;
+    
 
-    let database_source = DatabaseSource::from_string(&format!("uniprot/{}", dataset_id))?;
+    let database_source = crate::download::parse_database_source(&format!("uniprot/{}", dataset_id))?;
     run_database_download(args, database_source)?;
 
     show_success(&format!("{} download complete!", name));
@@ -681,35 +729,12 @@ fn download_ncbi_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
     let database_ref = format!("ncbi/{}", dataset_id);
 
     // Create args with the new format
-    let args = DownloadArgs {
-        database: Some(database_ref.clone()),
-        output: output_dir.clone(),
-        taxonomy: false,
-        complete: false,
-        resume: false,
-        interactive: false,
-        skip_verify: false,
-        list_datasets: false,
-        json: false,
-        manifest_server: None,
-        talaria_home: None,
-        preserve_lambda_on_failure: false,
-        dry_run: false,
-        force: false,
-        taxids: None,
-        taxid_list: None,
-        reference_proteomes: false,
-        max_sequences: None,
-        description: None,
-        at_time: None,
-        sequence_version: None,
-        taxonomy_version: None,
-        show_versions: false,
-    };
+    let mut args = DownloadArgs::default_with_database(database_ref.clone());
+    args.output = output_dir.clone();
 
     // Print header and SEQUOIA info
-    use crate::cli::formatter::info_box;
-    use crate::cli::output::section_header;
+    use crate::cli::formatting::info_box;
+    use crate::cli::formatting::output::section_header;
     use colored::Colorize;
 
     println!();
@@ -730,9 +755,9 @@ fn download_ncbi_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
 
     // Use the unified SEQUOIA download
     use super::download_impl::run_database_download;
-    use crate::download::DatabaseSource;
+    
 
-    let database_source = DatabaseSource::from_string(&format!("ncbi/{}", dataset_id))?;
+    let database_source = crate::download::parse_database_source(&format!("ncbi/{}", dataset_id))?;
     run_database_download(args, database_source)?;
 
     show_success(&format!("{} download complete!", name));

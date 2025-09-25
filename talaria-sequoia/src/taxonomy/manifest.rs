@@ -1,4 +1,4 @@
-use crate::types::{SHA256Hash, TaxonId};
+use crate::types::{SHA256Hash, SHA256HashExt, TaxonId};
 /// Taxonomy manifest for versioned taxonomy databases
 ///
 /// This manifest tracks taxonomy database versions and their content hashes,
@@ -41,7 +41,7 @@ pub struct TaxonomyManifest {
     pub chunk_index: Vec<TaxonomyChunkMetadata>,
 
     /// Statistics about this taxonomy version
-    pub stats: TaxonomyStats,
+    pub stats: TaxonomyVersionStats,
 
     /// ETag for change detection
     pub etag: Option<String>,
@@ -99,7 +99,7 @@ pub enum TaxonomyDataType {
 
 /// Statistics about a taxonomy version
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct TaxonomyStats {
+pub struct TaxonomyVersionStats {
     pub total_taxa: usize,
     pub species_count: usize,
     pub genus_count: usize,
@@ -122,7 +122,7 @@ impl TaxonomyManifest {
             accession2taxid_root: None,
             idmapping_root: None,
             chunk_index: Vec::new(),
-            stats: TaxonomyStats::default(),
+            stats: TaxonomyVersionStats::default(),
             etag: None,
             previous_version: None,
         }

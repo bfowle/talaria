@@ -6,7 +6,7 @@ use tempfile::TempDir;
 /// Test that we can parse TaxIDs correctly
 #[test]
 fn test_parse_taxids() {
-    use talaria_bio::uniprot::parse_taxids;
+    use talaria_bio::providers::uniprot::parse_taxids;
 
     // Test single TaxID
     let taxids = parse_taxids("9606").unwrap();

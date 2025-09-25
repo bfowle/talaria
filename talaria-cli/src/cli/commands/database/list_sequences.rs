@@ -33,19 +33,14 @@ pub struct ListSequencesArgs {
     pub format: OutputFormat,
 }
 
-#[derive(Clone, Debug, clap::ValueEnum)]
-pub enum OutputFormat {
-    Text,
-    Fasta,
-    Json,
-    Tsv,
-}
+// Use OutputFormat from talaria-core
+use talaria_core::OutputFormat;
 
 pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
-    use crate::core::database_manager::DatabaseManager;
-    use crate::utils::progress::create_spinner;
+    use crate::core::database::database_manager::DatabaseManager;
+    use crate::cli::progress::create_spinner;
     use std::io::Write;
-    use talaria_sequoia::reduction::ReductionManifest;
+    use talaria_sequoia::ReductionManifest;
 
     // Show loading spinner while initializing
     let spinner = create_spinner("Loading database information...");
@@ -56,12 +51,12 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
     spinner.finish_and_clear();
 
     // Parse database reference to check for profile
-    let db_ref = crate::utils::database_ref::parse_database_reference(&args.database)?;
+    let db_ref = crate::core::database::database_ref::parse_database_reference(&args.database)?;
 
     // Load appropriate manifest based on whether profile is specified
     let (chunk_metadata, total_sequences, db_display_name) = if let Some(profile) = &db_ref.profile {
         // Load reduction manifest for profile
-        let versions_dir = talaria_core::paths::talaria_databases_dir().join("versions");
+        let versions_dir = talaria_core::system::paths::talaria_databases_dir().join("versions");
         let version = db_ref.version.as_deref().unwrap_or("current");
         let profile_path = versions_dir
             .join(&db_ref.source)
@@ -85,7 +80,7 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
         // Convert reference chunks to chunk metadata format
         let mut chunk_metadata = Vec::new();
         for ref_chunk in &reduction_manifest.reference_chunks {
-            chunk_metadata.push(talaria_sequoia::types::ChunkMetadata {
+            chunk_metadata.push(talaria_sequoia::ManifestMetadata {
                 hash: ref_chunk.chunk_hash.clone(),
                 taxon_ids: ref_chunk.taxon_ids.clone(),
                 sequence_count: ref_chunk.sequence_count,
@@ -114,41 +109,53 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
 
     // Collect sequence information from chunks
     let mut all_sequences = Vec::new();
-    let pb = crate::utils::progress::create_progress_bar(
+    let pb = crate::cli::progress::create_progress_bar(
         chunk_metadata.len() as u64,
         "Reading chunks",
     );
 
     let mut missing_chunks = 0;
+    let mut sequences_loaded = 0;
+
     for chunk_info in &chunk_metadata {
         pb.inc(1);
 
-        // Load chunk using manager's method which handles binary format
-        match manager.load_chunk(&chunk_info.hash) {
-            Ok(chunk) => {
-                // Apply filter if specified
-                let sequences: Vec<_> = if let Some(filter) = &args.filter {
-                    chunk
-                        .sequences
-                        .into_iter()
-                        .filter(|seq| seq.sequence_id.contains(filter))
-                        .collect()
-                } else {
-                    chunk.sequences
-                };
+        // Load using manifest-based approach (SEQUOIA way)
+        match manager.load_manifest(&chunk_info.hash) {
+            Ok(manifest) => {
+                // Load sequences from canonical storage
+                let remaining = args.limit.saturating_sub(sequences_loaded);
+                match manager.load_sequences_from_manifest(&manifest, args.filter.as_deref(), remaining) {
+                    Ok(sequences) => {
+                        for (seq_id, _fasta_data) in sequences {
+                            all_sequences.push(talaria_sequoia::SequenceRef {
+                                sequence_id: seq_id.clone(),
+                                chunk_hash: chunk_info.hash.clone(),
+                                offset: 0,  // Not used in new format
+                                length: 0,  // Not used in new format
+                            });
+                            sequences_loaded += 1;
 
-                all_sequences.extend(sequences);
-
-                // Check limit
-                if all_sequences.len() >= args.limit {
-                    all_sequences.truncate(args.limit);
-                    break;
+                            if sequences_loaded >= args.limit {
+                                break;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to load sequences from chunk {}: {}", chunk_info.hash, e);
+                        missing_chunks += 1;
+                    }
                 }
             }
-            Err(_) => {
+            Err(e) => {
+                eprintln!("Warning: Failed to load manifest for chunk {}: {}", chunk_info.hash, e);
                 missing_chunks += 1;
-                // Continue processing other chunks
             }
+        }
+
+        if sequences_loaded >= args.limit {
+            all_sequences.truncate(args.limit);
+            break;
         }
     }
 
@@ -211,6 +218,12 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
                     "{}\t{}\t{}\t{}",
                     seq_ref.sequence_id, seq_ref.chunk_hash, seq_ref.offset, seq_ref.length
                 )?;
+            }
+        }
+        OutputFormat::Yaml | OutputFormat::Csv | OutputFormat::Summary | OutputFormat::Detailed | OutputFormat::HashOnly => {
+            // Default to text for unsupported formats
+            for seq_ref in &all_sequences {
+                writeln!(writer, "{}", seq_ref.sequence_id)?;
             }
         }
     }

@@ -1,4 +1,4 @@
-use crate::cli::output::*;
+use crate::cli::formatting::output::*;
 use clap::Args;
 use std::path::PathBuf;
 
@@ -56,7 +56,7 @@ pub struct ReconstructArgs {
 }
 
 pub fn run(args: ReconstructArgs) -> anyhow::Result<()> {
-    use talaria_utils::format::{format_bytes, get_file_size};
+    use talaria_utils::display::format::{format_bytes, get_file_size};
     use indicatif::{ProgressBar, ProgressStyle};
 
     // Handle bi-temporal version queries
@@ -114,7 +114,7 @@ pub fn run(args: ReconstructArgs) -> anyhow::Result<()> {
         return Ok(());
     } else if let Some(db_ref_str) = &args.database {
         // Parse database reference with profile using the proper utility
-        use crate::utils::database_ref::parse_database_reference;
+        use crate::core::database::database_ref::parse_database_reference;
         let db_ref = parse_database_reference(db_ref_str)?;
 
         // Profile is required for reconstruction
@@ -179,7 +179,7 @@ pub fn run(args: ReconstructArgs) -> anyhow::Result<()> {
 
     // Load reference sequences
     pb.set_message("Loading reference sequences...");
-    let references = talaria_bio::fasta::parse_fasta(&references_path)?;
+    let references = talaria_bio::parse_fasta(&references_path)?;
     pb.set_message(format!(
         "Loaded {} reference sequences ({})",
         references.len(),
@@ -188,7 +188,7 @@ pub fn run(args: ReconstructArgs) -> anyhow::Result<()> {
 
     // Load delta metadata
     pb.set_message("Loading delta metadata...");
-    let deltas = talaria_storage::metadata::load_metadata(&deltas_path)?;
+    let deltas = talaria_storage::io::metadata::load_metadata(&deltas_path)?;
     pb.set_message(format!(
         "Loaded {} delta records ({})",
         deltas.len(),
@@ -272,7 +272,7 @@ pub fn run(args: ReconstructArgs) -> anyhow::Result<()> {
 
     // Write output
     pb.set_message("Writing reconstructed FASTA...");
-    talaria_bio::fasta::write_fasta(&output_path, &reconstructed)?;
+    talaria_bio::write_fasta(&output_path, &reconstructed)?;
 
     // Get output file size
     let output_size = get_file_size(&output_path).unwrap_or(0);
@@ -335,13 +335,13 @@ fn reconstruct_from_sequoia(
     pb: indicatif::ProgressBar,
 ) -> anyhow::Result<()> {
     use talaria_sequoia::{
-        assembler::FastaAssembler, delta_reconstructor::DeltaReconstructor, storage::SEQUOIAStorage,
+        FastaAssembler, DeltaReconstructor, SEQUOIAStorage,
     };
 
     use std::collections::HashSet;
 
     let sequoia_path = sequoia_path.clone().unwrap_or_else(|| {
-        use talaria_core::paths;
+        use talaria_core::system::paths;
         paths::talaria_databases_dir()
     });
 
@@ -413,7 +413,7 @@ fn reconstruct_from_sequoia(
         "Writing {} sequences to output...",
         all_sequences.len()
     ));
-    talaria_bio::fasta::write_fasta(output_path, &all_sequences)?;
+    talaria_bio::write_fasta(output_path, &all_sequences)?;
 
     pb.finish_with_message(format!(
         "✓ Reconstructed {} sequences from SEQUOIA profile '{}' to {}",
@@ -445,21 +445,21 @@ fn reconstruct_from_sequoia(
 
 /// Reconstruct sequences from SEQUOIA database profile
 fn reconstruct_from_sequoia_database(
-    db_ref: &crate::utils::database_ref::DatabaseReference,
+    db_ref: &crate::core::database::database_ref::DatabaseReference,
     profile: &str,
     sequoia_path: &Option<PathBuf>,
     output_path: &PathBuf,
     sequence_filter: Vec<String>,
     pb: indicatif::ProgressBar,
 ) -> anyhow::Result<()> {
-    use talaria_sequoia::reduction::ReductionManifest;
+    use talaria_sequoia::ReductionManifest;
     use talaria_sequoia::{
-        assembler::FastaAssembler, delta_reconstructor::DeltaReconstructor, storage::SEQUOIAStorage,
+        FastaAssembler, DeltaReconstructor, SEQUOIAStorage,
     };
     use std::collections::HashSet;
 
     let sequoia_path = sequoia_path.clone().unwrap_or_else(|| {
-        use talaria_core::paths;
+        use talaria_core::system::paths;
         paths::talaria_databases_dir()
     });
 
@@ -558,7 +558,7 @@ fn reconstruct_from_sequoia_database(
         "Writing {} sequences to output...",
         all_sequences.len()
     ));
-    talaria_bio::fasta::write_fasta(output_path, &all_sequences)?;
+    talaria_bio::write_fasta(output_path, &all_sequences)?;
 
     pb.finish_with_message(format!(
         "✓ Reconstructed {} sequences from profile '{}':{} to {}",
@@ -593,8 +593,8 @@ fn reconstruct_from_sequoia_database(
 
 /// Show version history for a database
 fn show_version_history(args: &ReconstructArgs) -> anyhow::Result<()> {
-    use talaria_sequoia::temporal::TemporalIndex;
-    use talaria_core::paths;
+    use talaria_sequoia::TemporalIndex;
+    use talaria_core::system::paths;
 
     println!("🕐 Bi-temporal Version History");
     println!("─────────────────────────────");

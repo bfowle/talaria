@@ -1,4 +1,4 @@
-use crate::cli::output::*;
+use crate::cli::formatting::output::*;
 use talaria_tools::ToolManager;
 use clap::Args;
 

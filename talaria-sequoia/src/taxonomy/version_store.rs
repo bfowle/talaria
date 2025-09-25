@@ -10,8 +10,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::taxonomy::manifest::{TaxonomyManifest, TaxonomySource as ManifestTaxonomySource};
-use crate::types::SHA256Hash;
-use crate::version_store::{ListOptions, Version, VersionStore};
+use crate::types::{SHA256Hash, SHA256HashExt};
+use crate::temporal::version_store::{ListOptions, Version, VersionStore};
 use crate::DatabaseSource;
 
 /// Taxonomy-specific version store that wraps the base VersionStore
@@ -98,7 +98,7 @@ impl TaxonomyVersionStore {
         source: TaxonomySource,
         data_path: &Path,
     ) -> Result<TaxonomyManifest> {
-        use crate::taxonomy::manifest::TaxonomyStats;
+        use crate::taxonomy::manifest::TaxonomyVersionStats;
 
         // Calculate hashes for taxonomy files
         let nodes_path = data_path.join("nodes.dmp");
@@ -145,7 +145,7 @@ impl TaxonomyVersionStore {
             accession2taxid_root: None, // Will be set when processing accession files
             idmapping_root: None,       // Will be set for UniProt sources
             chunk_index: Vec::new(),    // Will be populated during chunking
-            stats: TaxonomyStats {
+            stats: TaxonomyVersionStats {
                 total_taxa: taxa_count,
                 species_count: 0, // Would need to parse nodes.dmp for rank info
                 genus_count: 0,
@@ -222,7 +222,7 @@ impl TaxonomyVersionStore {
 
     /// Get the previous version for a taxonomy source
     async fn get_previous_version(&self, source: &TaxonomySource) -> Result<String> {
-        let db_source = DatabaseSource::from_taxonomy_source(source);
+        let db_source = database_source_from_taxonomy(source);
         let versions = self
             .base_store
             .list_versions(
@@ -426,15 +426,13 @@ impl From<TaxonomySource> for ManifestTaxonomySource {
     }
 }
 
-impl DatabaseSource {
-    /// Create a DatabaseSource from a TaxonomySource
-    pub fn from_taxonomy_source(source: &TaxonomySource) -> Self {
-        use crate::{NCBIDatabase, UniProtDatabase};
+/// Create a DatabaseSource from a TaxonomySource
+pub fn database_source_from_taxonomy(source: &TaxonomySource) -> talaria_core::DatabaseSource {
+    use talaria_core::{NCBIDatabase, UniProtDatabase, DatabaseSource};
 
-        match source {
-            TaxonomySource::NCBI { .. } => DatabaseSource::NCBI(NCBIDatabase::Taxonomy),
-            TaxonomySource::UniProt { .. } => DatabaseSource::UniProt(UniProtDatabase::IdMapping),
-            TaxonomySource::Custom { name, .. } => DatabaseSource::Custom(name.clone()),
-        }
+    match source {
+        TaxonomySource::NCBI { .. } => DatabaseSource::NCBI(NCBIDatabase::Taxonomy),
+        TaxonomySource::UniProt { .. } => DatabaseSource::UniProt(UniProtDatabase::IdMapping),
+        TaxonomySource::Custom { name, .. } => DatabaseSource::Custom(name.clone()),
     }
 }

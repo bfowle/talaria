@@ -24,17 +24,14 @@ pub struct InfoArgs {
     pub show_reductions: bool,
 }
 
-#[derive(Clone, Debug, clap::ValueEnum)]
-pub enum OutputFormat {
-    Text,
-    Json,
-}
+// Use OutputFormat from talaria-core
+use talaria_core::OutputFormat;
 
 pub fn run(args: InfoArgs) -> anyhow::Result<()> {
-    use crate::cli::output::*;
-    use crate::core::database_manager::DatabaseManager;
-    use crate::utils::database_ref::parse_database_reference;
-    use crate::utils::progress::create_spinner;
+    use crate::cli::formatting::output::*;
+    use crate::core::database::database_manager::DatabaseManager;
+    use crate::core::database::database_ref::parse_database_reference;
+    use crate::cli::progress::create_spinner;
     use humansize::{format_size, BINARY};
 
     // Parse the database reference to separate database and profile
@@ -163,12 +160,12 @@ pub fn run(args: InfoArgs) -> anyhow::Result<()> {
 }
 
 fn show_profile_info(
-    manager: &crate::core::database_manager::DatabaseManager,
-    db_ref: &crate::utils::database_ref::DatabaseReference,
+    manager: &crate::core::database::database_manager::DatabaseManager,
+    db_ref: &crate::core::database::database_ref::DatabaseReference,
     profile: &str,
-    databases: &[crate::core::database_manager::DatabaseInfo],
+    databases: &[crate::core::database::database_manager::DatabaseInfo],
 ) -> anyhow::Result<()> {
-    use crate::cli::output::*;
+    use crate::cli::formatting::output::*;
     use humansize::{format_size, BINARY};
 
     let base_name = db_ref.base_ref();

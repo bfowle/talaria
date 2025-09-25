@@ -1,0 +1,83 @@
+cff-version: 1.2.0
+title: "Talaria: High-Performance Biological Sequence Database Reduction"
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - given-names: Brett
+    family-names:
+    affiliation: Talaria Project
+    orcid:
+  - name: "Talaria Contributors"
+identifiers:
+  - type: url
+    value: "https://github.com/talaria/talaria"
+    description: "GitHub Repository"
+repository-code: "https://github.com/talaria/talaria"
+url: "https://talaria.bioinformatics.io"
+repository-artifact: "https://github.com/talaria/talaria/releases"
+abstract: >-
+  Talaria is a high-performance bioinformatics tool that intelligently reduces
+  biological sequence databases (FASTA files) to optimize them for indexing with
+  various aligners. By leveraging content-addressed storage, Merkle DAGs, and
+  bi-temporal versioning through the SEQUOIA architecture, Talaria achieves
+  60-70% size reduction while maintaining biological coverage. It provides
+  optimized output for LAMBDA, BLAST, DIAMOND, MMseqs2, Kraken, and other
+  popular alignment tools.
+keywords:
+  - bioinformatics
+  - sequence-reduction
+  - database-compression
+  - fasta
+  - protein-sequences
+  - content-addressed-storage
+  - merkle-dag
+  - rust
+  - alignment
+  - lambda
+  - blast
+  - diamond
+  - mmseqs2
+  - kraken
+  - metagenomics
+  - proteomics
+license: MIT
+commit:
+version: 0.1.0
+date-released: 2024-01-15
+contact:
+  - affiliation: "Talaria Project"
+    email: talaria-dev@lists.example.org
+    name: "Talaria Development Team"
+references:
+  - type: software
+    title: "LAMBDA: Local Aligner for Massive Biological Data"
+    authors:
+      - family-names: Hauswedell
+        given-names: Hannes
+    year: 2014
+    url: "https://github.com/seqan/lambda"
+  - type: article
+    title: "The UniProt Consortium"
+    journal: "Nucleic Acids Research"
+    year: 2021
+    doi: "10.1093/nar/gkaa1100"
+  - type: software
+    title: "BLAST+: Basic Local Alignment Search Tool"
+    institution: "National Center for Biotechnology Information"
+    url: "https://blast.ncbi.nlm.nih.gov/"
+  - type: software
+    title: "DIAMOND: Fast and sensitive protein alignment"
+    authors:
+      - family-names: Buchfink
+        given-names: Benjamin
+    year: 2015
+    doi: "10.1038/nmeth.3176"
+  - type: software
+    title: "MMseqs2: Ultra fast and sensitive sequence search"
+    authors:
+      - family-names: Steinegger
+        given-names: Martin
+      - family-names: Söding
+        given-names: Johannes
+    year: 2017
+    doi: "10.1038/nbt.3988"

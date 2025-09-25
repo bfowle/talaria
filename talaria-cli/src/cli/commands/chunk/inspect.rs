@@ -7,11 +7,11 @@ use std::path::Path;
 
 use talaria_bio::taxonomy::{ncbi, TaxonomyDB};
 use talaria_sequoia::manifest::Manifest;
-use talaria_sequoia::types::{ChunkMetadata, TaxonId, TemporalManifest};
-use crate::cli::formatter::format_number;
+use talaria_sequoia::{ManifestMetadata, TaxonId, TemporalManifest};
+use crate::cli::formatting::format_number;
 use crate::cli::visualize::{ascii_histogram_categorized, sparkline, CategoryCounts};
-use crate::core::database_manager::DatabaseManager;
-use crate::utils::progress::create_spinner;
+use crate::core::database::database_manager::DatabaseManager;
+use crate::cli::progress::create_spinner;
 
 /// Trait for inspecting manifest contents
 pub trait ManifestInspector {
@@ -35,7 +35,7 @@ impl ManifestInspector for TemporalManifest {
         output.push_str(&format!("{}\n", "─".repeat(40)));
 
         // Group chunks by taxonomy level (keeping both name and ID)
-        let mut taxonomy_groups: BTreeMap<(String, TaxonId), Vec<&ChunkMetadata>> = BTreeMap::new();
+        let mut taxonomy_groups: BTreeMap<(String, TaxonId), Vec<&ManifestMetadata>> = BTreeMap::new();
 
         // Try to load taxonomy database for better display
         let taxonomy_db = load_taxonomy_db().ok();
@@ -95,7 +95,7 @@ impl ManifestInspector for TemporalManifest {
         // Helper to format each category entry
         let format_category_entry = |name: &str,
                                      taxon_id: &TaxonId,
-                                     chunks: &[&ChunkMetadata],
+                                     chunks: &[&ManifestMetadata],
                                      total_sequences: usize,
                                      total_size: usize|
          -> String {
@@ -225,7 +225,7 @@ impl ManifestInspector for TemporalManifest {
         output.push_str(&format!("{}\n", "─".repeat(40)));
 
         // Load taxonomy database for categorization
-        let taxonomy_path = talaria_core::paths::talaria_databases_dir().join("taxonomy/current");
+        let taxonomy_path = talaria_core::system::paths::talaria_databases_dir().join("taxonomy/current");
         let names_path = taxonomy_path.join("names.dmp");
         let nodes_path = taxonomy_path.join("nodes.dmp");
 
@@ -492,14 +492,14 @@ impl ManifestInspector for TemporalManifest {
     }
 }
 
-impl ManifestInspector for talaria_sequoia::reduction::ReductionManifest {
+impl ManifestInspector for talaria_sequoia::ReductionManifest {
     fn inspect_taxonomy(&self, max_depth: usize) -> Result<String> {
         let mut output = String::new();
         output.push_str(&format!("{}\n", "Taxonomic Organization:".bold().green()));
         output.push_str(&format!("{}\n", "─".repeat(40)));
 
         // Group reference chunks by taxonomy
-        let mut taxonomy_groups: BTreeMap<(String, TaxonId), Vec<&talaria_sequoia::reduction::ReferenceChunk>> = BTreeMap::new();
+        let mut taxonomy_groups: BTreeMap<(String, TaxonId), Vec<&talaria_sequoia::operations::ReferenceChunk>> = BTreeMap::new();
 
         // Try to load taxonomy database for better display
         let taxonomy_db = load_taxonomy_db().ok();
@@ -554,7 +554,7 @@ impl ManifestInspector for talaria_sequoia::reduction::ReductionManifest {
         }
 
         // Helper to format entries
-        let format_entry = |name: &str, taxon_id: &TaxonId, chunks: &[&talaria_sequoia::reduction::ReferenceChunk], total_sequences: usize, total_size: usize| -> String {
+        let format_entry = |name: &str, taxon_id: &TaxonId, chunks: &[&talaria_sequoia::operations::ReferenceChunk], total_sequences: usize, total_size: usize| -> String {
             let display_name = if name.starts_with("TaxID") {
                 name.to_string()
             } else {
@@ -837,12 +837,8 @@ pub struct InspectArgs {
     pub talaria_home: Option<String>,
 }
 
-#[derive(Clone, Debug, clap::ValueEnum)]
-pub enum OutputFormat {
-    Summary,
-    Json,
-    Detailed,
-}
+// Use OutputFormat from talaria-core
+use talaria_core::OutputFormat;
 
 pub fn run(args: InspectArgs) -> Result<()> {
     // Parse database, version, and profile
@@ -871,7 +867,7 @@ pub fn run(args: InspectArgs) -> Result<()> {
     };
 
     // Get database path from versions directory
-    let base_path = talaria_core::paths::talaria_databases_dir();
+    let base_path = talaria_core::system::paths::talaria_databases_dir();
     let db_path = if let Some(ver) = &version {
         // Version specified
         base_path.join("versions").join(source).join(dataset).join(ver)
@@ -958,6 +954,10 @@ pub fn run(args: InspectArgs) -> Result<()> {
             );
         }
         OutputFormat::Json => display_json(&db_path, &database, version.as_deref())?,
+        OutputFormat::Text | OutputFormat::Yaml | OutputFormat::Csv | OutputFormat::Tsv | OutputFormat::Fasta | OutputFormat::HashOnly => {
+            // Default to summary display for unsupported formats
+            display_summary(&db_path, &database, version.as_deref(), profile.as_deref())?;
+        }
     }
 
     Ok(())
@@ -972,7 +972,7 @@ fn handle_profile_manifest(
     profile: &str,
     args: &InspectArgs,
 ) -> Result<()> {
-    use talaria_sequoia::reduction::ReductionManifest;
+    use talaria_sequoia::ReductionManifest;
     use anyhow::Context;
 
     // Load the reduction manifest
@@ -1077,6 +1077,15 @@ fn handle_profile_manifest(
             println!();
             println!("{}", reduction_manifest.inspect_temporal_timeline(&db_path, database)?);
         }
+        OutputFormat::Text | OutputFormat::Yaml | OutputFormat::Csv | OutputFormat::Tsv | OutputFormat::Fasta | OutputFormat::HashOnly => {
+            // Default to summary display for unsupported formats
+            println!("{}", "Reduction Profile Information:".bold().green());
+            println!("  Profile: {}", profile.cyan());
+            println!("  Database: {}", reduction_manifest.source_database);
+            if let Some(v) = version {
+                println!("  Version: {}", v);
+            }
+        }
     }
 
     Ok(())
@@ -1109,7 +1118,7 @@ fn display_summary(db_path: &Path, database: &str, version: Option<&str>, profil
     let version_json = db_path.join("version.json");
 
     // Global database directories
-    let base_path = talaria_core::paths::talaria_databases_dir();
+    let base_path = talaria_core::system::paths::talaria_databases_dir();
     let chunks_dir = base_path.join("chunks");
     let temporal_dir = base_path.join("temporal");
 
@@ -1128,7 +1137,7 @@ fn display_summary(db_path: &Path, database: &str, version: Option<&str>, profil
     if manifest_path.exists() {
         println!("  {} Manifest found", "✓".green());
         let size = std::fs::metadata(&manifest_path)?.len();
-        println!("    Size: {}", talaria_utils::format::format_bytes(size));
+        println!("    Size: {}", talaria_utils::display::format::format_bytes(size));
     } else {
         println!("  {} No manifest found", "✗".red());
     }
@@ -1200,7 +1209,7 @@ fn display_detailed(
 ) -> Result<()> {
     display_summary(db_path, database, version, profile)?;
 
-    let base_path = talaria_core::paths::talaria_databases_dir();
+    let base_path = talaria_core::system::paths::talaria_databases_dir();
     let chunks_dir = base_path.join("chunks");
     if !chunks_dir.exists() {
         return Ok(());
@@ -1244,7 +1253,7 @@ fn display_detailed(
 fn display_json(db_path: &Path, database: &str, version: Option<&str>) -> Result<()> {
     use serde_json::json;
 
-    let base_path = talaria_core::paths::talaria_databases_dir();
+    let base_path = talaria_core::system::paths::talaria_databases_dir();
     let chunks_dir = base_path.join("chunks");
     let manifest_path = db_path.join("manifest.tal");
     let version_json_path = db_path.join("version.json");
@@ -1269,7 +1278,7 @@ fn display_json(db_path: &Path, database: &str, version: Option<&str>) -> Result
         output["manifest"] = json!({
             "exists": true,
             "size_bytes": size,
-            "size": talaria_utils::format::format_bytes(size),
+            "size": talaria_utils::display::format::format_bytes(size),
         });
     }
 
@@ -1281,7 +1290,7 @@ fn display_json(db_path: &Path, database: &str, version: Option<&str>) -> Result
         output["chunks"] = json!({
             "count": chunk_files.len(),
             "total_size_bytes": total_size,
-            "total_size": talaria_utils::format::format_bytes(total_size),
+            "total_size": talaria_utils::display::format::format_bytes(total_size),
         });
 
         // Include hash distribution
@@ -1446,7 +1455,7 @@ fn is_environmental(taxon_id: TaxonId, name: &str) -> bool {
 }
 
 /// Calculate estimated centrality score
-fn calculate_estimated_centrality(chunk: &ChunkMetadata, avg_sequences: f64) -> f64 {
+fn calculate_estimated_centrality(chunk: &ManifestMetadata, avg_sequences: f64) -> f64 {
     let alpha = 0.5; // Degree weight
     let beta = 0.3; // Betweenness weight
     let gamma = 0.2; // Coverage weight
@@ -1466,7 +1475,7 @@ fn calculate_estimated_centrality(chunk: &ChunkMetadata, avg_sequences: f64) -> 
 /// Load full taxonomy database from NCBI dump files
 fn load_taxonomy_db() -> Result<TaxonomyDB> {
     // Use the standard taxonomy location
-    let taxonomy_dir = talaria_core::paths::talaria_databases_dir()
+    let taxonomy_dir = talaria_core::system::paths::talaria_databases_dir()
         .join("taxonomy")
         .join("current")
         .join("tree");
@@ -1499,7 +1508,7 @@ fn get_taxonomy_name(taxon_id: TaxonId, taxonomy_db: &Option<TaxonomyDB>) -> Str
 #[cfg(test)]
 mod tests {
     use super::*;
-    use talaria_sequoia::types::TaxonId;
+    use talaria_sequoia::TaxonId;
 
     #[test]
     fn test_is_model_organism() {

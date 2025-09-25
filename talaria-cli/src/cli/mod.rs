@@ -1,10 +1,9 @@
 pub mod charts;
 pub mod commands;
-pub mod formatter;
+pub mod formatting;
 pub mod global_config;
 pub mod interactive;
-pub mod output;
-pub mod stats_display;
+pub mod progress;
 pub mod visualize;
 
 use clap::{Parser, Subcommand};
