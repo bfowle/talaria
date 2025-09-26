@@ -1,6 +1,6 @@
 mod manifest_test;
 // mod reconstruction_test;  // TODO: Re-enable when reconstruction is implemented
-mod resume_test;
+// mod resume_test;  // This is a standalone integration test file
 mod update_test;
 mod version_identification_test;
 

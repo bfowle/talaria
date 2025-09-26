@@ -232,3 +232,234 @@ impl ChunkIndex for InMemoryChunkIndex {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio;
+
+    fn create_test_metadata(hash: SHA256Hash, size: usize, taxon_ids: Vec<TaxonId>) -> ChunkMetadata {
+        ChunkMetadata {
+            hash,
+            size,
+            sequence_count: 100,
+            taxon_ids,
+            compressed_size: Some(size / 2),
+            compression_ratio: Some(0.5),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_add_and_retrieve_chunk() {
+        let mut index = InMemoryChunkIndex::new();
+        let hash = SHA256Hash::compute(b"test");
+        let metadata = create_test_metadata(hash, 1000, vec![TaxonId(1), TaxonId(2)]);
+
+        // Add chunk
+        index.add_chunk(metadata.clone()).await.unwrap();
+
+        // Retrieve metadata
+        let retrieved = index.get_metadata(&hash).await.unwrap();
+        assert!(retrieved.is_some());
+        let retrieved = retrieved.unwrap();
+        assert_eq!(retrieved.hash, hash);
+        assert_eq!(retrieved.size, 1000);
+        assert_eq!(retrieved.taxon_ids, vec![TaxonId(1), TaxonId(2)]);
+    }
+
+    #[tokio::test]
+    async fn test_remove_chunk() {
+        let mut index = InMemoryChunkIndex::new();
+        let hash = SHA256Hash::compute(b"test");
+        let metadata = create_test_metadata(hash, 1000, vec![TaxonId(1)]);
+
+        // Add and then remove
+        index.add_chunk(metadata).await.unwrap();
+        assert!(index.exists(&hash).await);
+
+        index.remove_chunk(&hash).await.unwrap();
+        assert!(!index.exists(&hash).await);
+
+        // Verify taxon index is also updated
+        let taxon_results = index.find_by_taxon(TaxonId(1)).await.unwrap();
+        assert!(taxon_results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_find_by_taxon() {
+        let mut index = InMemoryChunkIndex::new();
+
+        // Add chunks with different taxons
+        let hash1 = SHA256Hash::compute(b"chunk1");
+        let hash2 = SHA256Hash::compute(b"chunk2");
+        let hash3 = SHA256Hash::compute(b"chunk3");
+
+        index.add_chunk(create_test_metadata(hash1, 100, vec![TaxonId(1), TaxonId(2)])).await.unwrap();
+        index.add_chunk(create_test_metadata(hash2, 200, vec![TaxonId(2), TaxonId(3)])).await.unwrap();
+        index.add_chunk(create_test_metadata(hash3, 300, vec![TaxonId(3)])).await.unwrap();
+
+        // Find by single taxon
+        let results = index.find_by_taxon(TaxonId(1)).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results.contains(&hash1));
+
+        let results = index.find_by_taxon(TaxonId(2)).await.unwrap();
+        assert_eq!(results.len(), 2);
+        assert!(results.contains(&hash1));
+        assert!(results.contains(&hash2));
+
+        let results = index.find_by_taxon(TaxonId(99)).await.unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_find_by_multiple_taxons() {
+        let mut index = InMemoryChunkIndex::new();
+
+        let hash1 = SHA256Hash::compute(b"chunk1");
+        let hash2 = SHA256Hash::compute(b"chunk2");
+        let hash3 = SHA256Hash::compute(b"chunk3");
+
+        index.add_chunk(create_test_metadata(hash1, 100, vec![TaxonId(1)])).await.unwrap();
+        index.add_chunk(create_test_metadata(hash2, 200, vec![TaxonId(2)])).await.unwrap();
+        index.add_chunk(create_test_metadata(hash3, 300, vec![TaxonId(3)])).await.unwrap();
+
+        // Find by multiple taxons
+        let results = index.find_by_taxons(&[TaxonId(1), TaxonId(3)]).await.unwrap();
+        assert_eq!(results.len(), 2);
+        assert!(results.contains(&hash1));
+        assert!(results.contains(&hash3));
+    }
+
+    #[tokio::test]
+    async fn test_query_with_filters() {
+        let mut index = InMemoryChunkIndex::new();
+
+        // Add various chunks
+        let hash1 = SHA256Hash::compute(b"small");
+        let hash2 = SHA256Hash::compute(b"medium");
+        let hash3 = SHA256Hash::compute(b"large");
+
+        index.add_chunk(create_test_metadata(hash1, 100, vec![TaxonId(1)])).await.unwrap();
+        index.add_chunk(create_test_metadata(hash2, 500, vec![TaxonId(2)])).await.unwrap();
+        index.add_chunk(create_test_metadata(hash3, 1000, vec![TaxonId(1), TaxonId(2)])).await.unwrap();
+
+        // Query with size filter
+        let query = ChunkQuery {
+            size_range: Some((200, 600)),
+            ..Default::default()
+        };
+        let results = index.query(query).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].size, 500);
+
+        // Query with taxon filter
+        let query = ChunkQuery {
+            taxon_ids: Some(vec![TaxonId(1)]),
+            ..Default::default()
+        };
+        let results = index.query(query).await.unwrap();
+        assert_eq!(results.len(), 2);
+
+        // Query with limit
+        let query = ChunkQuery {
+            limit: Some(2),
+            ..Default::default()
+        };
+        let results = index.query(query).await.unwrap();
+        assert_eq!(results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_stats() {
+        let mut index = InMemoryChunkIndex::new();
+
+        // Add chunks
+        let hash1 = SHA256Hash::compute(b"chunk1");
+        let hash2 = SHA256Hash::compute(b"chunk2");
+
+        index.add_chunk(create_test_metadata(hash1, 100, vec![TaxonId(1), TaxonId(2)])).await.unwrap();
+        index.add_chunk(create_test_metadata(hash2, 200, vec![TaxonId(2), TaxonId(3)])).await.unwrap();
+
+        let stats = index.get_stats().await.unwrap();
+        assert_eq!(stats.total_chunks, 2);
+        assert_eq!(stats.total_size, 300);
+        assert_eq!(stats.unique_taxons, 3);
+        assert_eq!(stats.avg_chunk_size, 150);
+    }
+
+    #[tokio::test]
+    async fn test_list_all() {
+        let mut index = InMemoryChunkIndex::new();
+
+        let hash1 = SHA256Hash::compute(b"chunk1");
+        let hash2 = SHA256Hash::compute(b"chunk2");
+        let hash3 = SHA256Hash::compute(b"chunk3");
+
+        index.add_chunk(create_test_metadata(hash1, 100, vec![])).await.unwrap();
+        index.add_chunk(create_test_metadata(hash2, 200, vec![])).await.unwrap();
+        index.add_chunk(create_test_metadata(hash3, 300, vec![])).await.unwrap();
+
+        let all = index.list_all().await.unwrap();
+        assert_eq!(all.len(), 3);
+        assert!(all.contains(&hash1));
+        assert!(all.contains(&hash2));
+        assert!(all.contains(&hash3));
+    }
+
+    #[tokio::test]
+    async fn test_clear() {
+        let mut index = InMemoryChunkIndex::new();
+
+        // Add some data
+        let hash = SHA256Hash::compute(b"test");
+        index.add_chunk(create_test_metadata(hash, 100, vec![TaxonId(1)])).await.unwrap();
+
+        // Clear
+        index.clear().await.unwrap();
+
+        // Verify everything is gone
+        assert!(!index.exists(&hash).await);
+        let all = index.list_all().await.unwrap();
+        assert!(all.is_empty());
+        let taxon_results = index.find_by_taxon(TaxonId(1)).await.unwrap();
+        assert!(taxon_results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_operations() {
+        use tokio::task;
+        use std::sync::Arc;
+
+        let index = Arc::new(tokio::sync::RwLock::new(InMemoryChunkIndex::new()));
+        let mut handles = vec![];
+
+        // Spawn concurrent add operations
+        for i in 0..10 {
+            let index_clone = Arc::clone(&index);
+            let handle = task::spawn(async move {
+                let hash = SHA256Hash::compute(format!("chunk{}", i).as_bytes());
+                let metadata = create_test_metadata(hash, i * 100, vec![TaxonId(i as u32)]);
+                index_clone.write().await.add_chunk(metadata).await.unwrap();
+                hash
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all operations
+        let hashes: Vec<_> = futures::future::join_all(handles)
+            .await
+            .into_iter()
+            .map(|r| r.unwrap())
+            .collect();
+
+        // Verify all chunks are present
+        let index = index.read().await;
+        for hash in &hashes {
+            assert!(index.exists(hash).await);
+        }
+
+        let all = index.list_all().await.unwrap();
+        assert_eq!(all.len(), 10);
+    }
+}

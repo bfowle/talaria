@@ -6,6 +6,8 @@
 pub mod database;
 pub mod display;
 pub mod parallel;
+pub mod performance;
+pub mod report;
 pub mod workspace;
 
 // Re-export commonly used types for backward compatibility
@@ -40,4 +42,13 @@ pub use workspace::{
     WorkspaceStatus, WorkspaceStats,
     list_workspaces, find_workspace,
     SequoiaWorkspaceManager, SequoiaStatistics, SequoiaTransaction,
+};
+
+// Performance utilities
+pub use performance::{MemoryEstimator};
+
+// Report utilities
+pub use report::{
+    ReportGenerator, ReportOptions, Format, Reporter,
+    ComparisonResult, SequenceInfo,
 };

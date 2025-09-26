@@ -266,3 +266,314 @@ impl Aligner for LambdaAligner {
         self.binary_path.exists()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::fs::File;
+    use std::io::Write;
+    use std::sync::atomic::Ordering;
+
+    fn create_test_sequence(id: &str, seq: &str) -> Sequence {
+        Sequence {
+            id: id.to_string(),
+            description: Some(format!("{} Test sequence", id)),
+            sequence: seq.as_bytes().to_vec(),
+            taxon_id: None,
+            taxonomy_sources: Default::default(),
+        }
+    }
+
+    fn create_mock_binary() -> (PathBuf, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let binary_path = temp_dir.path().join("lambda");
+
+        // Create a mock executable file
+        File::create(&binary_path).unwrap();
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&binary_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&binary_path, perms).unwrap();
+        }
+
+        (binary_path, temp_dir)
+    }
+
+    #[test]
+    fn test_new_aligner_creation() {
+        let (binary_path, _temp_dir) = create_mock_binary();
+
+        let aligner = LambdaAligner::new(binary_path.clone());
+        assert!(aligner.is_ok());
+
+        let aligner = aligner.unwrap();
+        assert_eq!(aligner.binary_path, binary_path);
+        assert_eq!(aligner.batch_size, 50_000_000);
+        assert!(!aligner.batch_enabled);
+    }
+
+    #[test]
+    fn test_new_aligner_missing_binary() {
+        let result = LambdaAligner::new(PathBuf::from("/nonexistent/lambda"));
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(e.to_string().contains("LAMBDA binary not found"));
+        }
+    }
+
+    #[test]
+    fn test_taxonomy_file_detection() {
+        // This tests the static method
+        let (acc_tax_map, tax_dump_dir) = LambdaAligner::find_taxonomy_files();
+
+        // The actual result depends on the environment
+        // We just verify the function doesn't panic
+        if let Some(tax_dir) = tax_dump_dir {
+            // If a directory is returned, it should exist
+            assert!(tax_dir.exists() || tax_dir.parent().map_or(false, |p| p.exists()));
+        }
+
+        // acc_tax_map is currently always None in the implementation
+        assert!(acc_tax_map.is_none());
+    }
+
+    #[test]
+    fn test_batch_settings_configuration() {
+        let (binary_path, _temp_dir) = create_mock_binary();
+        let aligner = LambdaAligner::new(binary_path).unwrap();
+
+        let aligner = aligner.with_batch_settings(true, 100_000_000);
+        assert!(aligner.batch_enabled);
+        assert_eq!(aligner.batch_size, 100_000_000);
+    }
+
+    #[test]
+    fn test_taxonomy_configuration() {
+        let (binary_path, _temp_dir) = create_mock_binary();
+        let aligner = LambdaAligner::new(binary_path).unwrap();
+
+        let acc_tax_path = PathBuf::from("/path/to/acc_tax.tsv");
+        let tax_dump_path = PathBuf::from("/path/to/taxdump");
+
+        let aligner = aligner.with_taxonomy(Some(acc_tax_path.clone()), Some(tax_dump_path.clone()));
+        assert_eq!(aligner.acc_tax_map, Some(acc_tax_path));
+        assert_eq!(aligner.tax_dump_dir, Some(tax_dump_path));
+    }
+
+    #[test]
+    fn test_workspace_integration() {
+        let (binary_path, _temp_dir) = create_mock_binary();
+        let mut aligner = LambdaAligner::new(binary_path).unwrap();
+
+        // Create a mock workspace
+        let temp_workspace = TempWorkspace::new("test_lambda").unwrap();
+        let workspace = Arc::new(Mutex::new(temp_workspace));
+
+        aligner = aligner.with_workspace(workspace.clone());
+
+        // Verify temp_dir is set correctly
+        let ws = workspace.lock().unwrap();
+        let expected_dir = ws.root.join("lambda");
+        drop(ws); // Release lock
+
+        assert_eq!(aligner.temp_dir, expected_dir);
+        assert!(aligner.workspace.is_some());
+    }
+
+    #[test]
+    fn test_initialize_temp_dir_without_workspace() {
+        let (binary_path, _temp_dir) = create_mock_binary();
+        let mut aligner = LambdaAligner::new(binary_path).unwrap();
+
+        aligner.initialize_temp_dir();
+
+        // Should create a temp dir with process ID
+        assert!(aligner.temp_dir.to_string_lossy().contains("talaria-lambda"));
+        assert!(aligner.temp_dir.to_string_lossy().contains(&std::process::id().to_string()));
+    }
+
+    #[test]
+    fn test_parse_accession_from_header() {
+        // UniProt format
+        let header = ">sp|P12345|PROT1_HUMAN Protein description";
+        let acc = LambdaAligner::parse_accession_from_header(header);
+        assert_eq!(acc, Some("P12345".to_string()));
+
+        // TrEMBL format
+        let header = ">tr|Q12345|PROT2_MOUSE Description";
+        let acc = LambdaAligner::parse_accession_from_header(header);
+        assert_eq!(acc, Some("Q12345".to_string()));
+
+        // NCBI ref format
+        let header = ">gi|123456|ref|NP_123456.1| protein";
+        let acc = LambdaAligner::parse_accession_from_header(header);
+        assert_eq!(acc, Some("NP_123456".to_string()));
+
+        // Simple format
+        let header = ">NP_987654 some protein";
+        let acc = LambdaAligner::parse_accession_from_header(header);
+        assert_eq!(acc, Some("NP_987654".to_string()));
+
+        // Simple format with version
+        let header = ">XP_123456.2 hypothetical protein";
+        let acc = LambdaAligner::parse_accession_from_header(header);
+        assert_eq!(acc, Some("XP_123456".to_string()));
+
+        // Invalid format
+        let header = ">|||";
+        let acc = LambdaAligner::parse_accession_from_header(header);
+        assert_eq!(acc, None);
+    }
+
+    #[test]
+    fn test_extract_accessions_from_fasta() {
+        let temp_dir = TempDir::new().unwrap();
+        let fasta_path = temp_dir.path().join("test.fasta");
+
+        // Write test FASTA file
+        let mut file = File::create(&fasta_path).unwrap();
+        writeln!(file, ">sp|P12345|PROT1 Description").unwrap();
+        writeln!(file, "ACDEFGHIKLMNPQRSTVWY").unwrap();
+        writeln!(file, ">tr|Q67890|PROT2 Another protein").unwrap();
+        writeln!(file, "MKLMNPQRSTVWYACDEFGH").unwrap();
+        writeln!(file, ">NP_123456 RefSeq protein").unwrap();
+        writeln!(file, "STVWYACDEFGHIKLMNPQR").unwrap();
+
+        let (binary_path, _temp_dir) = create_mock_binary();
+        let aligner = LambdaAligner::new(binary_path).unwrap();
+
+        let accessions = aligner.extract_accessions_from_fasta(&fasta_path).unwrap();
+
+        assert_eq!(accessions.len(), 3);
+        assert!(accessions.contains("P12345"));
+        assert!(accessions.contains("Q67890"));
+        assert!(accessions.contains("NP_123456"));
+    }
+
+    #[test]
+    fn test_search_returns_empty_results() {
+        let (binary_path, _temp_dir) = create_mock_binary();
+        let mut aligner = LambdaAligner::new(binary_path).unwrap();
+
+        let query = vec![create_test_sequence("Q1", "ACDEFG")];
+        let reference = vec![create_test_sequence("R1", "ACDEFG")];
+
+        let results = aligner.search(&query, &reference).unwrap();
+        assert_eq!(results.len(), 0); // Currently returns empty as it's not implemented
+    }
+
+    #[test]
+    fn test_search_all_vs_all() {
+        let (binary_path, _temp_dir) = create_mock_binary();
+        let mut aligner = LambdaAligner::new(binary_path).unwrap();
+
+        let sequences = vec![
+            create_test_sequence("S1", "ACDEFG"),
+            create_test_sequence("S2", "GHIJKL"),
+        ];
+
+        let results = aligner.search_all_vs_all(&sequences).unwrap();
+        assert_eq!(results.len(), 0); // Currently returns empty as it's not implemented
+    }
+
+    #[test]
+    fn test_create_index_for_sequences() {
+        let (binary_path, _temp_dir) = create_mock_binary();
+        let mut aligner = LambdaAligner::new(binary_path).unwrap();
+
+        let sequences = vec![create_test_sequence("S1", "ACDEFG")];
+
+        let index_path = aligner.create_index_for_sequences(&sequences).unwrap();
+        assert!(index_path.to_string_lossy().contains("lambda_index"));
+    }
+
+    #[test]
+    fn test_search_groups_parallel() {
+        let (binary_path, _temp_dir) = create_mock_binary();
+        let mut aligner = LambdaAligner::new(binary_path).unwrap();
+
+        let groups = vec![
+            vec![create_test_sequence("G1S1", "ACDEFG")],
+            vec![create_test_sequence("G2S1", "GHIJKL")],
+        ];
+
+        let index_path = PathBuf::from("/tmp/index");
+        let results = aligner.search_groups_parallel(groups, &index_path, 2).unwrap();
+        assert_eq!(results.len(), 0); // Currently returns empty as it's not implemented
+    }
+
+    #[test]
+    fn test_search_with_index_silent() {
+        let (binary_path, _temp_dir) = create_mock_binary();
+        let mut aligner = LambdaAligner::new(binary_path).unwrap();
+
+        let query = vec![create_test_sequence("Q1", "ACDEFG")];
+        let index_path = PathBuf::from("/tmp/index");
+
+        let results = aligner.search_with_index_silent(&query, &index_path).unwrap();
+        assert_eq!(results.len(), 0); // Currently returns empty as it's not implemented
+    }
+
+    #[test]
+    fn test_is_available() {
+        let (binary_path, _temp_dir) = create_mock_binary();
+        let aligner = LambdaAligner::new(binary_path).unwrap();
+
+        assert!(aligner.is_available());
+
+        // Test with non-existent binary
+        let mut aligner = aligner;
+        aligner.binary_path = PathBuf::from("/nonexistent/lambda");
+        assert!(!aligner.is_available());
+    }
+
+    #[test]
+    fn test_preserve_on_failure_flag() {
+        // Set environment variable
+        std::env::set_var("TALARIA_PRESERVE_LAMBDA_ON_FAILURE", "1");
+
+        let (binary_path, _temp_dir) = create_mock_binary();
+        let aligner = LambdaAligner::new(binary_path).unwrap();
+
+        assert!(aligner._preserve_on_failure);
+
+        // Clean up
+        std::env::remove_var("TALARIA_PRESERVE_LAMBDA_ON_FAILURE");
+    }
+
+    #[test]
+    fn test_failed_flag_atomic() {
+        let (binary_path, _temp_dir) = create_mock_binary();
+        let aligner = LambdaAligner::new(binary_path).unwrap();
+
+        // Initially should be false
+        assert!(!aligner._failed.load(Ordering::Relaxed));
+
+        // Set to true
+        aligner._failed.store(true, Ordering::Relaxed);
+        assert!(aligner._failed.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn test_recommended_batch_size() {
+        let (binary_path, _temp_dir) = create_mock_binary();
+        let aligner = LambdaAligner::new(binary_path).unwrap();
+
+        // Test default implementation from trait
+        assert_eq!(aligner.recommended_batch_size(), 1000);
+    }
+
+    #[test]
+    fn test_supports_protein_and_nucleotide() {
+        let (binary_path, _temp_dir) = create_mock_binary();
+        let aligner = LambdaAligner::new(binary_path).unwrap();
+
+        // Test default implementations from trait
+        assert!(aligner.supports_protein());
+        assert!(aligner.supports_nucleotide());
+    }
+}

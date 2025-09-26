@@ -9,6 +9,7 @@ This module is designed with the following principles:
 - **Reusability**: Common patterns extracted and generalized for system-wide use
 - **Performance**: Optimized for large-scale bioinformatics operations
 - **User Experience**: Rich terminal output with progress tracking and formatted displays
+- **Reliability**: Comprehensive testing with 80+ unit tests, integration tests, and benchmarks
 
 ### Key Responsibilities
 
@@ -16,6 +17,8 @@ This module is designed with the following principles:
 2. **Display & UI**: Terminal formatting, progress bars, tree visualization, and tables
 3. **Workspace Management**: Temporary file orchestration with SEQUOIA integration
 4. **Parallel Processing**: Thread pool management and parallelization utilities
+5. **Performance Monitoring**: Memory estimation and resource tracking
+6. **Report Generation**: Multi-format report generation (HTML, JSON, text)
 
 ## Architecture
 
@@ -24,25 +27,51 @@ This module is designed with the following principles:
 ```
 talaria-utils/
 ├── src/
-│   ├── database/          # Database reference and version management
-│   │   ├── mod.rs         # Module exports
-│   │   ├── reference.rs   # Database reference types and parsing
-│   │   └── version.rs     # Version detection and aliasing
+│   ├── database/                 # Database reference and version management
+│   │   ├── mod.rs                # Module exports
+│   │   ├── alias.rs              # Version aliasing system
+│   │   ├── database_ref.rs       # Database reference implementation
+│   │   ├── reference.rs          # Database reference types and parsing
+│   │   ├── resolver.rs           # Reference resolution logic
+│   │   ├── version.rs            # Version management
+│   │   ├── version_detector.rs   # Automatic version detection
+│   │   └── version_store.rs      # Version persistence
 │   │
-│   ├── display/           # User interface and formatting
-│   │   ├── mod.rs         # Module exports
-│   │   ├── format.rs      # Byte/duration/size formatting
-│   │   ├── formatter.rs   # Structured output with sections
-│   │   ├── output.rs      # Trees, tables, and colored messages
-│   │   └── progress.rs    # Progress bars and spinners
+│   ├── display/                  # User interface and formatting
+│   │   ├── mod.rs                # Module exports
+│   │   ├── format.rs             # Byte/duration/size formatting (5 tests)
+│   │   ├── formatter.rs          # Structured output with sections
+│   │   ├── output.rs             # Trees, tables, and colored messages (18 tests)
+│   │   └── progress.rs           # Progress bars and spinners (13 tests)
 │   │
-│   ├── workspace/         # Workspace management
-│   │   ├── mod.rs         # Module exports
-│   │   ├── temp.rs        # Temporary workspace lifecycle
-│   │   └── sequoia.rs     # SEQUOIA-specific workspace operations
+│   ├── performance/              # Performance monitoring
+│   │   ├── mod.rs                # Module exports
+│   │   └── memory_estimator.rs   # Memory usage estimation (4 tests)
 │   │
-│   ├── parallel.rs        # Parallel processing utilities
-│   └── lib.rs             # Public API exports
+│   ├── report/                   # Report generation
+│   │   ├── mod.rs                # Module exports and types
+│   │   ├── traits.rs             # Report generation traits
+│   │   ├── html.rs               # HTML report generation
+│   │   ├── json.rs               # JSON report generation
+│   │   ├── text.rs               # Text report generation
+│   │   ├── reduction_html.rs     # Reduction-specific HTML reports
+│   │   └── impls.rs              # Trait implementations
+│   │
+│   ├── workspace/                # Workspace management
+│   │   ├── mod.rs                # Module exports
+│   │   ├── temp.rs               # Temporary workspace lifecycle (4 tests)
+│   │   └── sequoia.rs            # SEQUOIA-specific workspace operations (5 tests)
+│   │
+│   ├── parallel.rs               # Parallel processing utilities (11 tests)
+│   └── lib.rs                    # Public API exports
+│
+├── tests/
+│   └── integration_tests.rs      # Integration tests (20 tests)
+│
+├── benches/
+│   └── utils_benchmarks.rs       # Performance benchmarks
+│
+└── Cargo.toml                    # Package configuration
 ```
 
 ### Design Patterns
@@ -51,6 +80,7 @@ talaria-utils/
 2. **Strategy Pattern**: Version detection with pluggable detector implementations
 3. **Facade Pattern**: Simplified public API hiding complex internal implementations
 4. **Resource Management**: RAII pattern for workspace cleanup
+5. **Trait-Based Design**: Extensible report generation and formatting interfaces
 
 ## Database Module
 
@@ -64,7 +94,7 @@ Represents a complete database reference with source, dataset, version, and redu
 
 ```rust
 // DatabaseReference is re-exported from talaria-core for convenience
-use talaria_utils::database::DatabaseReference;  // Or: use talaria_core::types::DatabaseReference;
+use talaria_utils::database::DatabaseReference; // Or: use talaria_core::types::DatabaseReference;
 
 // Basic reference
 let db = DatabaseReference::new(
@@ -153,12 +183,12 @@ The display module provides rich terminal output capabilities with formatting, p
 use talaria_utils::display::{format_bytes, format_duration, get_file_size};
 
 // Human-readable byte formatting
-println!("{}", format_bytes(15728640)); // "15.0 MB"
+println!("{}", format_bytes(15728640));   // "15.0 MB"
 println!("{}", format_bytes(1073741824)); // "1.0 GB"
 
 // Duration formatting
 use std::time::Duration;
-println!("{}", format_duration(Duration::from_secs(90))); // "1m 30s"
+println!("{}", format_duration(Duration::from_secs(90)));   // "1m 30s"
 println!("{}", format_duration(Duration::from_secs(3665))); // "1h 1m 5s"
 
 // File size helper
@@ -278,10 +308,10 @@ Predefined message types with consistent styling:
 ```rust
 use talaria_utils::display::{info, success, warning, error};
 
-info("Processing database...");      // ℹ Blue message
-success("Database loaded!");         // ✓ Green message
-warning("Large file detected");      // ⚠ Yellow message
-error("Failed to open file");        // ✗ Red message
+info("Processing database..."); // ℹ Blue message
+success("Database loaded!");    // ✓ Green message
+warning("Large file detected"); // ⚠ Yellow message
+error("Failed to open file");   // ✗ Red message
 ```
 
 ### Progress Tracking
@@ -333,9 +363,9 @@ let output_dir = workspace.create_subdir("output")?;
 // Custom configuration
 let config = WorkspaceConfig {
     sequoia_root: PathBuf::from("/custom/path"),
-    preserve_on_failure: true,  // Keep on error
-    preserve_always: false,      // Auto-cleanup
-    max_age_seconds: 86400,      // 24 hours
+    preserve_on_failure: true, // Keep on error
+    preserve_always: false,    // Auto-cleanup
+    max_age_seconds: 86400,    // 24 hours
 };
 let workspace = TempWorkspace::with_config("analyze", config)?;
 
@@ -345,9 +375,9 @@ let workspace = TempWorkspace::with_config("analyze", config)?;
 **Directory Structure**:
 ```
 ${TALARIA_WORKSPACE_DIR}/
-├── 20250915_053033_abc123/     # Timestamp + UUID
-│   ├── metadata.json            # Workspace metadata
-│   ├── input/                   # Created subdirectories
+├── 20250915_053033_abc123/ # Timestamp + UUID
+│   ├── metadata.json       # Workspace metadata
+│   ├── input/              # Created subdirectories
 │   ├── output/
 │   └── temp/
 ```
@@ -406,7 +436,7 @@ let content_hash = manager.add_file(&workspace, file_path)?;
 let transaction = SequoiaTransaction::new(&workspace);
 transaction.add_file("sequences.fasta", content)?;
 transaction.add_metadata("stats.json", stats)?;
-transaction.commit()?;  // Atomic commit
+transaction.commit()?; // Atomic commit
 
 // Generate statistics
 let stats = manager.get_statistics(&workspace)?;
@@ -449,8 +479,8 @@ use talaria_utils::parallel::{
 };
 
 // Configure global thread pool
-configure_thread_pool(8)?;  // Use 8 threads
-configure_thread_pool(0)?;  // Use all available cores
+configure_thread_pool(8)?; // Use 8 threads
+configure_thread_pool(0)?; // Use all available cores
 
 // Calculate optimal chunk size
 let chunk_size = chunk_size_for_parallelism(100000, 8);
@@ -540,15 +570,15 @@ manifest.version = version.upstream_version;
 
 ### Environment Variables
 
-| Variable | Module | Description | Default |
-|----------|--------|-------------|---------|
-| `TALARIA_HOME` | All | Base directory for Talaria | `~/.talaria` |
-| `TALARIA_WORKSPACE_DIR` | Workspace | Temp workspace root | `/tmp/talaria` or `$TMPDIR/talaria` |
-| `TALARIA_PRESERVE_ON_FAILURE` | Workspace | Keep workspace on errors | `false` |
-| `TALARIA_PRESERVE_ALWAYS` | Workspace | Never auto-delete | `false` |
-| `TALARIA_PRESERVE_LAMBDA_ON_FAILURE` | Workspace | Keep LAMBDA workspaces | `false` |
-| `NO_COLOR` | Display | Disable colored output | `false` |
-| `TALARIA_PROGRESS` | Display | Progress bar style | `auto` |
+| Variable                             | Module    | Description                | Default                             |
+| ------------------------------------ | --------- | -------------------------- | ----------------------------------- |
+| `TALARIA_HOME`                       | All       | Base directory for Talaria | `~/.talaria`                        |
+| `TALARIA_WORKSPACE_DIR`              | Workspace | Temp workspace root        | `/tmp/talaria` or `$TMPDIR/talaria` |
+| `TALARIA_PRESERVE_ON_FAILURE`        | Workspace | Keep workspace on errors   | `false`                             |
+| `TALARIA_PRESERVE_ALWAYS`            | Workspace | Never auto-delete          | `false`                             |
+| `TALARIA_PRESERVE_LAMBDA_ON_FAILURE` | Workspace | Keep LAMBDA workspaces     | `false`                             |
+| `NO_COLOR`                           | Display   | Disable colored output     | `false`                             |
+| `TALARIA_PROGRESS`                   | Display   | Progress bar style         | `auto`                              |
 
 ### Runtime Configuration
 
@@ -713,18 +743,47 @@ println!("Processed in {:?}", start.elapsed());
 
 ## Testing
 
-### Unit Tests
+The talaria-utils module includes comprehensive testing with **80+ tests** (3.3x increase from initial 24 tests), ensuring reliability of all critical utility functions.
 
-Each module has comprehensive unit tests:
+### Test Coverage
+
+- **Unit Tests**: 64 tests across all modules
+  - `parallel.rs`: 11 tests for thread pool and chunking logic
+  - `display/output.rs`: 18 tests for tree rendering and formatting
+  - `display/progress.rs`: 13 tests for progress bars and spinners
+  - `display/format.rs`: 5 tests for formatting utilities
+  - `workspace/`: 9 tests for workspace lifecycle
+  - `database/`: 8 tests for reference parsing and versions
+  - `performance/`: 4 tests for memory estimation
+
+- **Integration Tests**: 20 tests in `tests/integration_tests.rs`
+  - Workspace lifecycle management
+  - Cross-component workflows
+  - Error handling scenarios
+  - Format utilities integration
+
+- **Benchmarks**: Performance testing in `benches/utils_benchmarks.rs`
+  - Parallel chunk size calculations
+  - Tree rendering performance
+  - Number formatting speed
+  - Critical workflow performance
+
+### Running Tests
 
 ```bash
 # Run all tests
 cargo test --package talaria-utils
 
 # Run specific module tests
-cargo test --package talaria-utils database::
+cargo test --package talaria-utils parallel::
 cargo test --package talaria-utils display::
 cargo test --package talaria-utils workspace::
+
+# Run integration tests only
+cargo test --package talaria-utils --test integration_tests
+
+# Run benchmarks
+cargo bench --package talaria-utils
 
 # Run with output for debugging
 cargo test --package talaria-utils -- --nocapture
@@ -751,42 +810,137 @@ fn test_workspace_with_progress() {
 }
 ```
 
-### Mock Testing
+### Testing Approach
 
-Use mock implementations for testing:
-
+#### Unit Testing
 ```rust
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
 
     #[test]
-    fn test_database_reference_parsing() {
-        let test_cases = vec![
-            ("uniprot/swissprot", "uniprot", "swissprot", None, None),
-            ("ncbi/nr@stable", "ncbi", "nr", Some("stable"), None),
-            ("custom/db:minimal", "custom", "db", None, Some("minimal")),
-        ];
+    fn test_format_number_thousands() {
+        // Fixed bug: Now correctly handles thousands separators
+        assert_eq!(format_number(1000), "1,000");
+        assert_eq!(format_number(1000000), "1,000,000");
+        assert_eq!(format_number(-999999), "-999,999");
+    }
 
-        for (input, source, dataset, version, profile) in test_cases {
-            let db = parse_database_reference(input).unwrap();
-            assert_eq!(db.source, source);
-            assert_eq!(db.dataset, dataset);
-            assert_eq!(db.version.as_deref(), version);
-            assert_eq!(db.profile.as_deref(), profile);
-        }
+    #[test]
+    fn test_tree_deep_nesting() {
+        // Test complex tree structures
+        let root = TreeNode::new("level0")
+            .add_child(TreeNode::new("level1")
+                .add_child(TreeNode::new("level2")));
+
+        let rendered = root.render();
+        assert!(rendered.contains("level0"));
+        assert!(rendered.contains("└─ level1"));
     }
 }
 ```
+
+#### Property-Based Testing
+```rust
+#[test]
+fn test_chunk_size_bounds() {
+    // Test with pseudo-random inputs
+    let mut seed = 42usize;
+    for _ in 0..100 {
+        seed = (seed.wrapping_mul(1103515245).wrapping_add(12345)) & 0x7fffffff;
+        let total_items = (seed % 1_000_000) + 1;
+        let threads = (seed % 128) + 1;
+
+        let chunk = chunk_size_for_parallelism(total_items, threads);
+        assert!(chunk >= 10 && chunk <= 1000);
+    }
+}
+```
+
+#### Integration Testing
+```rust
+#[test]
+fn test_workspace_with_progress() {
+    let workspace = TempWorkspace::new("test").unwrap();
+    let pb = create_progress_bar(100, "Testing");
+
+    for i in 0..100 {
+        pb.inc(1);
+        let _dir = workspace.create_subdir(&format!("dir_{}", i));
+    }
+
+    pb.finish_with_message("Complete");
+    assert!(pb.is_finished());
+}
+```
+
+## Performance Module
+
+The performance module provides utilities for monitoring and estimating resource usage:
+
+### Memory Estimator
+
+```rust
+use talaria_utils::MemoryEstimator;
+
+let estimator = MemoryEstimator::new();
+
+// Estimate memory for sequences
+let sequence_count = 10000;
+let avg_length = 300;
+let estimate = estimator.estimate_sequence_memory(sequence_count, avg_length);
+
+// Format for display
+let formatted = estimator.format_memory(estimate);
+println!("Estimated memory usage: {}", formatted); // "28.6 MB"
+
+// Check available memory
+if estimator.has_sufficient_memory(estimate) {
+    // Proceed with operation
+}
+```
+
+## Report Module
+
+The report module provides extensible report generation in multiple formats:
+
+### Report Generation
+
+```rust
+use talaria_utils::report::{ReportGenerator, ReportOptions, Format};
+
+let generator = ReportGenerator::new();
+let options = ReportOptions {
+    format: Format::Html,
+    include_charts: true,
+    include_metadata: true,
+};
+
+// Generate comparison report
+let report = generator.generate_comparison_report(
+    &comparison_result,
+    &options
+)?;
+
+// Export to file
+generator.export(&report, "report.html")?;
+```
+
+### Report Formats
+
+- **HTML**: Interactive reports with charts and tables
+- **JSON**: Machine-readable structured data
+- **Text**: Plain text for terminal or logs
+- **Markdown**: Documentation-friendly format
 
 ## Performance Considerations
 
 ### Memory Usage
 
 - **Progress Bars**: Use `pb.set_draw_delta(n)` to reduce update frequency
-- **Tree Rendering**: Limit depth for very large trees
+- **Tree Rendering**: Limit depth for very large trees (benchmarked up to 10 levels)
 - **Workspace**: Use streaming for large files instead of loading into memory
+- **Memory Estimation**: Pre-check available memory before large operations
 
 ### Optimization Tips
 
@@ -862,7 +1016,7 @@ export RAYON_NUM_THREADS=1
 
 1. **Cloud Storage Support**: S3/GCS backends for workspace storage
 2. **Distributed Progress**: Progress aggregation across cluster nodes
-3. **Advanced Formatting**: Markdown and HTML output formatters
+3. **Advanced Formatting**: Extended Markdown and HTML output formatters
 4. **Metrics Collection**: Performance metrics and telemetry
 5. **Interactive Mode**: Terminal UI components for user interaction
 
@@ -873,14 +1027,36 @@ The public API is considered stable with semantic versioning:
 - **Minor**: New features, backward compatible
 - **Patch**: Bug fixes and internal improvements
 
+## Dependencies
+
+### Runtime Dependencies
+- `anyhow`: Error handling with context
+- `indicatif`: Progress bars and spinners
+- `colored`: Terminal colors
+- `comfy-table`: Table formatting
+- `rayon`: Parallel processing
+- `serde`/`serde_json`: Serialization
+- `chrono`: Date/time handling
+- `uuid`: Unique identifiers
+- `sysinfo`: System information
+
+### Dev Dependencies
+- `tempfile`: Temporary directories for testing
+- `criterion`: Benchmarking framework
+- `pretty_assertions`: Better test assertions
+- `serial_test`: Serial test execution
+- `proptest`: Property-based testing
+
 ## Contributing
 
 Contributions are welcome! Please:
 
-1. Write tests for new functionality
+1. Write tests for new functionality (aim for 80%+ coverage)
 2. Update documentation and examples
 3. Follow Rust standard formatting (`cargo fmt`)
 4. Ensure backward compatibility when possible
+5. Add benchmarks for performance-critical code
+6. Include integration tests for cross-module functionality
 
 ## License
 

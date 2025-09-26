@@ -11,7 +11,7 @@ pub use config::{Config, load_config, save_config};
 
 // Re-export core types
 pub use types::{
-    SHA256Hash, TaxonId, TaxonomyDataSource,
+    SHA256Hash, TaxonId, TaxonomyDataSource, TargetAligner,
     ChunkInfo, ChunkMetadata, DeltaChunk, ChunkType,
     DatabaseSource, DatabaseSourceInfo, UniProtDatabase, NCBIDatabase,
     StorageStats, GCResult, GarbageCollectionStats, DetailedStorageStats,

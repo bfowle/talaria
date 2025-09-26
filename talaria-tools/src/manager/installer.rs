@@ -531,3 +531,386 @@ impl ToolManager {
         Ok(results)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::fs::File;
+
+    fn create_test_manager() -> (ToolManager, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let manager = ToolManager::with_directory(temp_dir.path());
+        (manager, temp_dir)
+    }
+
+    fn create_mock_tool_installation(
+        manager: &ToolManager,
+        tool: Tool,
+        version: &str,
+    ) -> Result<()> {
+        let version_dir = manager.tool_dir(tool).join(version);
+        fs::create_dir_all(&version_dir)?;
+
+        // Create mock binary
+        let binary_path = version_dir.join(tool.binary_name());
+        File::create(&binary_path)?;
+
+        #[cfg(unix)]
+        {
+            let mut perms = fs::metadata(&binary_path)?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&binary_path, perms)?;
+        }
+
+        // Create info.json
+        let info = ToolInfo {
+            tool: tool.name().to_string(),
+            version: version.to_string(),
+            installed_date: Utc::now(),
+            binary_path,
+            is_current: false,
+        };
+
+        let info_json = serde_json::to_string_pretty(&info)?;
+        fs::write(version_dir.join("info.json"), info_json)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_tool_manager_creation() {
+        let result = ToolManager::new();
+        assert!(result.is_ok());
+        let manager = result.unwrap();
+        assert!(manager.tools_dir.exists() || manager.tools_dir.parent().is_some());
+    }
+
+    #[test]
+    fn test_tool_manager_with_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let manager = ToolManager::with_directory(temp_dir.path());
+        assert_eq!(manager.tools_dir, temp_dir.path());
+    }
+
+    #[test]
+    fn test_tool_dir() {
+        let (manager, temp_dir) = create_test_manager();
+        let tool_dir = manager.tool_dir(Tool::Lambda);
+        assert_eq!(tool_dir, temp_dir.path().join("lambda"));
+    }
+
+    #[test]
+    fn test_is_installed_not_installed() {
+        let (manager, _temp_dir) = create_test_manager();
+        assert!(!manager.is_installed(Tool::Lambda));
+    }
+
+    #[test]
+    fn test_is_installed_with_installation() {
+        let (manager, _temp_dir) = create_test_manager();
+        create_mock_tool_installation(&manager, Tool::Lambda, "3.0.0").unwrap();
+        manager.set_current_version(Tool::Lambda, "3.0.0").unwrap();
+
+        assert!(manager.is_installed(Tool::Lambda));
+    }
+
+    #[test]
+    fn test_get_tool_path_not_installed() {
+        let (manager, _temp_dir) = create_test_manager();
+        assert!(manager.get_tool_path(Tool::Lambda).is_none());
+    }
+
+    #[test]
+    fn test_get_tool_path_installed() {
+        let (manager, _temp_dir) = create_test_manager();
+        create_mock_tool_installation(&manager, Tool::Lambda, "3.0.0").unwrap();
+        manager.set_current_version(Tool::Lambda, "3.0.0").unwrap();
+
+        let path = manager.get_tool_path(Tool::Lambda);
+        assert!(path.is_some());
+        assert!(path.unwrap().to_string_lossy().contains("lambda3"));
+    }
+
+    #[test]
+    fn test_current_dir() {
+        let (manager, _temp_dir) = create_test_manager();
+
+        // Initially no current dir
+        assert!(manager.current_dir(Tool::Lambda).is_none());
+
+        // After installation and setting current
+        create_mock_tool_installation(&manager, Tool::Lambda, "3.0.0").unwrap();
+        manager.set_current_version(Tool::Lambda, "3.0.0").unwrap();
+
+        let current = manager.current_dir(Tool::Lambda);
+        assert!(current.is_some());
+        assert!(current.unwrap().to_string_lossy().contains("3.0.0"));
+    }
+
+    #[test]
+    fn test_get_current_tool_path_error() {
+        let (manager, _temp_dir) = create_test_manager();
+        let result = manager.get_current_tool_path(Tool::Lambda);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("is not installed"));
+    }
+
+    #[test]
+    fn test_list_versions_empty() {
+        let (manager, _temp_dir) = create_test_manager();
+        let versions = manager.list_versions(Tool::Lambda).unwrap();
+        assert_eq!(versions.len(), 0);
+    }
+
+    #[test]
+    fn test_list_versions_multiple() {
+        let (manager, _temp_dir) = create_test_manager();
+
+        // Install multiple versions
+        create_mock_tool_installation(&manager, Tool::Lambda, "3.0.0").unwrap();
+        create_mock_tool_installation(&manager, Tool::Lambda, "3.1.0").unwrap();
+        manager.set_current_version(Tool::Lambda, "3.1.0").unwrap();
+
+        let versions = manager.list_versions(Tool::Lambda).unwrap();
+        assert_eq!(versions.len(), 2);
+
+        // Check current version is marked
+        let current = versions.iter().find(|v| v.is_current);
+        assert!(current.is_some());
+        assert_eq!(current.unwrap().version, "3.1.0");
+    }
+
+    #[test]
+    fn test_get_current_version() {
+        let (manager, _temp_dir) = create_test_manager();
+
+        // Initially none
+        assert!(manager.get_current_version(Tool::Lambda).unwrap().is_none());
+
+        // After setting
+        create_mock_tool_installation(&manager, Tool::Lambda, "3.0.0").unwrap();
+        manager.set_current_version(Tool::Lambda, "3.0.0").unwrap();
+
+        let version = manager.get_current_version(Tool::Lambda).unwrap();
+        assert_eq!(version, Some("3.0.0".to_string()));
+    }
+
+    #[test]
+    fn test_set_current_version_not_installed() {
+        let (manager, _temp_dir) = create_test_manager();
+        let result = manager.set_current_version(Tool::Lambda, "3.0.0");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("is not installed"));
+    }
+
+    #[test]
+    fn test_set_current_version_success() {
+        let (manager, _temp_dir) = create_test_manager();
+        create_mock_tool_installation(&manager, Tool::Lambda, "3.0.0").unwrap();
+
+        let result = manager.set_current_version(Tool::Lambda, "3.0.0");
+        assert!(result.is_ok());
+
+        // Verify symlink created
+        let current_link = manager.tool_dir(Tool::Lambda).join("current");
+        assert!(current_link.exists());
+    }
+
+    #[test]
+    fn test_verify_tool_installation_valid() {
+        let (manager, _temp_dir) = create_test_manager();
+        let version_dir = manager.tool_dir(Tool::Lambda).join("3.0.0");
+        fs::create_dir_all(&version_dir).unwrap();
+
+        // Create binary
+        let binary_path = version_dir.join(Tool::Lambda.binary_name());
+        File::create(&binary_path).unwrap();
+
+        #[cfg(unix)]
+        {
+            let mut perms = fs::metadata(&binary_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&binary_path, perms).unwrap();
+        }
+
+        // Create info.json
+        let info = ToolInfo {
+            tool: Tool::Lambda.name().to_string(),
+            version: "3.0.0".to_string(),
+            installed_date: Utc::now(),
+            binary_path: binary_path.clone(),
+            is_current: false,
+        };
+        fs::write(version_dir.join("info.json"), serde_json::to_string(&info).unwrap()).unwrap();
+
+        assert!(manager.verify_tool_installation(Tool::Lambda, &version_dir));
+    }
+
+    #[test]
+    fn test_verify_tool_installation_missing_binary() {
+        let (manager, _temp_dir) = create_test_manager();
+        let version_dir = manager.tool_dir(Tool::Lambda).join("3.0.0");
+        fs::create_dir_all(&version_dir).unwrap();
+
+        // Only create info.json, no binary
+        let info = ToolInfo {
+            tool: Tool::Lambda.name().to_string(),
+            version: "3.0.0".to_string(),
+            installed_date: Utc::now(),
+            binary_path: version_dir.join("lambda3"),
+            is_current: false,
+        };
+        fs::write(version_dir.join("info.json"), serde_json::to_string(&info).unwrap()).unwrap();
+
+        assert!(!manager.verify_tool_installation(Tool::Lambda, &version_dir));
+    }
+
+    #[test]
+    fn test_verify_tool_installation_missing_info() {
+        let (manager, _temp_dir) = create_test_manager();
+        let version_dir = manager.tool_dir(Tool::Lambda).join("3.0.0");
+        fs::create_dir_all(&version_dir).unwrap();
+
+        // Only create binary, no info.json
+        let binary_path = version_dir.join(Tool::Lambda.binary_name());
+        File::create(&binary_path).unwrap();
+
+        assert!(!manager.verify_tool_installation(Tool::Lambda, &version_dir));
+    }
+
+    #[test]
+    fn test_cleanup_temp_dirs() {
+        let (manager, _temp_dir) = create_test_manager();
+        let tool_dir = manager.tool_dir(Tool::Lambda);
+        fs::create_dir_all(&tool_dir).unwrap();
+
+        // Create temp directories
+        fs::create_dir_all(tool_dir.join(".tmp_3.0.0")).unwrap();
+        fs::create_dir_all(tool_dir.join(".tmp_3.1.0")).unwrap();
+        fs::create_dir_all(tool_dir.join("3.0.0")).unwrap(); // Regular dir should not be deleted
+
+        manager.cleanup_temp_dirs(Tool::Lambda).unwrap();
+
+        // Check temp dirs removed
+        assert!(!tool_dir.join(".tmp_3.0.0").exists());
+        assert!(!tool_dir.join(".tmp_3.1.0").exists());
+
+        // Regular dir should remain
+        assert!(tool_dir.join("3.0.0").exists());
+    }
+
+    #[test]
+    fn test_compare_versions() {
+        let (manager, _temp_dir) = create_test_manager();
+
+        // Basic semantic versioning
+        assert_eq!(manager.compare_versions("3.0.0", "3.0.0"), Ordering::Equal);
+        assert_eq!(manager.compare_versions("3.1.0", "3.0.0"), Ordering::Greater);
+        assert_eq!(manager.compare_versions("3.0.0", "3.1.0"), Ordering::Less);
+
+        // With prefixes
+        assert_eq!(manager.compare_versions("lambda-v3.1.0", "lambda-v3.0.0"), Ordering::Greater);
+        assert_eq!(manager.compare_versions("v3.1.0", "v3.0.0"), Ordering::Greater);
+
+        // Different lengths
+        assert_eq!(manager.compare_versions("3.1", "3.0.0"), Ordering::Greater);
+        assert_eq!(manager.compare_versions("3.0.0", "3.0"), Ordering::Equal);
+
+        // Major version differences
+        assert_eq!(manager.compare_versions("4.0.0", "3.9.9"), Ordering::Greater);
+        assert_eq!(manager.compare_versions("2.0.0", "10.0.0"), Ordering::Less);
+    }
+
+    #[test]
+    fn test_detect_platform() {
+        let (manager, _temp_dir) = create_test_manager();
+        let result = manager.detect_platform();
+
+        assert!(result.is_ok());
+        let (os, arch) = result.unwrap();
+
+        // Check that we get valid values
+        assert!(["linux", "macos", "windows"].contains(&os.as_str()));
+        assert!(["x86_64", "aarch64"].contains(&arch.as_str()));
+    }
+
+    #[test]
+    fn test_list_all_tools_empty() {
+        let (manager, _temp_dir) = create_test_manager();
+        let tools = manager.list_all_tools().unwrap();
+        assert_eq!(tools.len(), 0);
+    }
+
+    #[test]
+    fn test_list_all_tools_with_installations() {
+        let (manager, _temp_dir) = create_test_manager();
+
+        // Install Lambda and Diamond
+        create_mock_tool_installation(&manager, Tool::Lambda, "3.0.0").unwrap();
+        create_mock_tool_installation(&manager, Tool::Diamond, "2.0.0").unwrap();
+
+        let tools = manager.list_all_tools().unwrap();
+        assert_eq!(tools.len(), 2);
+
+        // Check we have both tools
+        let tool_types: Vec<Tool> = tools.iter().map(|(t, _)| *t).collect();
+        assert!(tool_types.contains(&Tool::Lambda));
+        assert!(tool_types.contains(&Tool::Diamond));
+    }
+
+    #[test]
+    fn test_extract_tar_gz() {
+        let (manager, temp_dir) = create_test_manager();
+
+        // Create a mock tar.gz file
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use tar::Builder;
+
+        let tar_gz_path = temp_dir.path().join("test.tar.gz");
+
+        // Create tar.gz file in a block to ensure it's properly flushed
+        {
+            let tar_gz = File::create(&tar_gz_path).unwrap();
+            let enc = GzEncoder::new(tar_gz, Compression::default());
+            let mut tar = Builder::new(enc);
+
+            // Add a file to the archive
+            let mut header = tar::Header::new_gnu();
+            header.set_path("test.txt").unwrap();
+            header.set_size(5);
+            header.set_mode(0o644);
+            header.set_cksum();
+            tar.append(&header, &b"hello"[..]).unwrap();
+
+            // Finish the tar builder and flush the encoder
+            let enc = tar.into_inner().unwrap();
+            enc.finish().unwrap();
+        }
+
+        // Extract
+        let extract_dir = temp_dir.path().join("extracted");
+        fs::create_dir_all(&extract_dir).unwrap();
+        manager.extract_tar_gz(&tar_gz_path, &extract_dir).unwrap();
+
+        // Verify extraction
+        let extracted_file = extract_dir.join("test.txt");
+        assert!(extracted_file.exists());
+        let content = fs::read_to_string(extracted_file).unwrap();
+        assert_eq!(content, "hello");
+    }
+
+    // Note: Tests for install_lambda, get_latest_lambda_version, and check_for_upgrade
+    // would require mocking HTTP requests and are better suited for integration tests
+    // with wiremock or similar mocking frameworks.
+
+    #[tokio::test]
+    async fn test_check_for_upgrade_not_installed() {
+        let (manager, _temp_dir) = create_test_manager();
+        let upgrade = manager.check_for_upgrade(Tool::Lambda).await.unwrap();
+        assert!(upgrade.is_none());
+    }
+
+    // Additional integration tests would go in tests/tool_integration.rs
+}

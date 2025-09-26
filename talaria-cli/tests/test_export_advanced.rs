@@ -74,8 +74,8 @@ ATGATGATGATGATGATGATGATGATGATGATGATGATGATGATG
     let output = fs::read_to_string(&output_path)?;
     let seq_count = output.lines().filter(|l| l.starts_with('>')).count();
 
-    // Should have reduced from 5 to approximately 2-3 sequences
-    assert!(seq_count <= 3, "Expected 3 or fewer sequences after 90% reduction, got {}", seq_count);
+    // Should have reduced from 5 to 4 sequences (seq1 and seq5 are identical)
+    assert_eq!(seq_count, 4, "Expected 4 sequences after deduplication (5 original, 2 identical), got {}", seq_count);
 
     Ok(())
 }

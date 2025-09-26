@@ -1,4 +1,4 @@
-use crate::output::TreeNode;
+use talaria_utils::display::TreeNode;
 /// Rendering traits for temporal data visualization
 ///
 /// These traits enable rich terminal visualization of temporal query results
@@ -50,14 +50,7 @@ fn render_tree_to_string(nodes: &[TreeNode], prefix: &str) -> String {
         let is_last = i == nodes.len() - 1;
         let connector = if is_last { "└─" } else { "├─" };
 
-        if let Some(value) = &node.value {
-            output.push_str(&format!(
-                "{}{} {}: {}\n",
-                prefix, connector, node.label, value
-            ));
-        } else {
-            output.push_str(&format!("{}{} {}\n", prefix, connector, node.label));
-        }
+        output.push_str(&format!("{}{} {}\n", prefix, connector, node.name));
 
         if !node.children.is_empty() {
             let child_prefix = if is_last {

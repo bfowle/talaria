@@ -1,17 +1,16 @@
 /// Tests for resumable processing operations in SEQUOIA
-use talaria_sequoia::processing_state::{
+use talaria_sequoia::operations::state::{
     OperationType, ProcessingState, ProcessingStateManager, SourceInfo,
 };
 use talaria_sequoia::storage::SEQUOIAStorage;
 use talaria_sequoia::types::SHA256Hash;
-use anyhow::Result;
+use talaria_test::{TestEnvironment, Result};
 use std::collections::HashSet;
-use tempfile::TempDir;
 
 #[test]
 fn test_resume_after_partial_download() -> Result<()> {
-    let temp_dir = TempDir::new()?;
-    let storage = SEQUOIAStorage::new(temp_dir.path())?;
+    let env = TestEnvironment::new()?;
+    let storage = SEQUOIAStorage::new(&env.sequences_dir())?;
 
     // Simulate starting a download operation
     let source_info = SourceInfo {
@@ -49,7 +48,7 @@ fn test_resume_after_partial_download() -> Result<()> {
 
     // Simulate interruption by creating a new storage instance
     drop(storage);
-    let storage2 = SEQUOIAStorage::open(temp_dir.path())?;
+    let storage2 = SEQUOIAStorage::open(&env.sequences_dir())?;
 
     // Check for resumable operation
     let resumable = storage2.check_resumable(
@@ -86,8 +85,8 @@ fn test_resume_after_partial_download() -> Result<()> {
 
 #[test]
 fn test_version_mismatch_prevents_resume() -> Result<()> {
-    let temp_dir = TempDir::new()?;
-    let storage = SEQUOIAStorage::new(temp_dir.path())?;
+    let env = TestEnvironment::new()?;
+    let storage = SEQUOIAStorage::new(&env.sequences_dir())?;
 
     let source_info = SourceInfo {
         database: "test_db".to_string(),
@@ -141,8 +140,8 @@ fn test_version_mismatch_prevents_resume() -> Result<()> {
 
 #[test]
 fn test_expired_state_cleanup() -> Result<()> {
-    let temp_dir = TempDir::new()?;
-    let state_manager = ProcessingStateManager::new(temp_dir.path())?;
+    let env = TestEnvironment::new()?;
+    let state_manager = ProcessingStateManager::new(&env.sequences_dir())?;
 
     // Create a state that appears expired (by setting old timestamps)
     let old_state = ProcessingState::new(
@@ -196,8 +195,8 @@ fn test_expired_state_cleanup() -> Result<()> {
 
 #[test]
 fn test_multiple_operations_tracking() -> Result<()> {
-    let temp_dir = TempDir::new()?;
-    let storage = SEQUOIAStorage::new(temp_dir.path())?;
+    let env = TestEnvironment::new()?;
+    let storage = SEQUOIAStorage::new(&env.sequences_dir())?;
 
     // Start multiple different operations
     let operations = vec![
@@ -240,8 +239,8 @@ fn test_multiple_operations_tracking() -> Result<()> {
 
 #[test]
 fn test_get_remaining_chunks() -> Result<()> {
-    let temp_dir = TempDir::new()?;
-    let storage = SEQUOIAStorage::new(temp_dir.path())?;
+    let env = TestEnvironment::new()?;
+    let storage = SEQUOIAStorage::new(&env.sequences_dir())?;
 
     let all_chunks: Vec<SHA256Hash> = (0..100).map(|i| SHA256Hash::compute(&[i])).collect();
 

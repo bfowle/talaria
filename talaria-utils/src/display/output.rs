@@ -59,16 +59,27 @@ impl TreeNode {
 /// Format a number with thousands separators
 pub fn format_number<T: Display>(n: T) -> String {
     let s = n.to_string();
+
+    // Handle negative numbers
+    let (is_negative, digits) = if s.starts_with('-') {
+        (true, &s[1..])
+    } else {
+        (false, s.as_str())
+    };
+
     let mut result = String::new();
     let mut count = 0;
 
-    for c in s.chars().rev() {
-        if count == 3 {
+    for c in digits.chars().rev() {
+        if count > 0 && count % 3 == 0 {
             result.push(',');
-            count = 0;
         }
         result.push(c);
         count += 1;
+    }
+
+    if is_negative {
+        result.push('-');
     }
 
     result.chars().rev().collect()
@@ -120,4 +131,184 @@ pub fn header_cell(text: &str) -> Cell {
     Cell::new(text)
         .set_alignment(CellAlignment::Center)
         .add_attribute(comfy_table::Attribute::Bold)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tree_node_creation() {
+        let node = TreeNode::new("root");
+        assert_eq!(node.name, "root");
+        assert!(node.children.is_empty());
+    }
+
+    #[test]
+    fn test_tree_node_add_child() {
+        let child1 = TreeNode::new("child1");
+        let child2 = TreeNode::new("child2");
+
+        let root = TreeNode::new("root")
+            .add_child(child1)
+            .add_child(child2);
+
+        assert_eq!(root.children.len(), 2);
+        assert_eq!(root.children[0].name, "child1");
+        assert_eq!(root.children[1].name, "child2");
+    }
+
+    #[test]
+    fn test_tree_node_render_single() {
+        let node = TreeNode::new("root");
+        let rendered = node.render();
+        assert_eq!(rendered, "root\n");
+    }
+
+    #[test]
+    fn test_tree_node_render_with_children() {
+        let root = TreeNode::new("root")
+            .add_child(TreeNode::new("child1"))
+            .add_child(TreeNode::new("child2"));
+
+        let rendered = root.render();
+        assert!(rendered.contains("root\n"));
+        assert!(rendered.contains("├─ child1\n"));
+        assert!(rendered.contains("└─ child2\n"));
+    }
+
+    #[test]
+    fn test_tree_node_render_nested() {
+        let grandchild = TreeNode::new("grandchild");
+        let child = TreeNode::new("child").add_child(grandchild);
+        let root = TreeNode::new("root").add_child(child);
+
+        let rendered = root.render();
+        assert!(rendered.contains("root\n"));
+        assert!(rendered.contains("└─ child\n"));
+        assert!(rendered.contains("   └─ grandchild\n"));
+    }
+
+    #[test]
+    fn test_tree_node_render_complex() {
+        let root = TreeNode::new("root")
+            .add_child(
+                TreeNode::new("branch1")
+                    .add_child(TreeNode::new("leaf1"))
+                    .add_child(TreeNode::new("leaf2"))
+            )
+            .add_child(
+                TreeNode::new("branch2")
+                    .add_child(TreeNode::new("leaf3"))
+            );
+
+        let rendered = root.render();
+        assert!(rendered.contains("root\n"));
+        assert!(rendered.contains("├─ branch1\n"));
+        assert!(rendered.contains("│  ├─ leaf1\n"));
+        assert!(rendered.contains("│  └─ leaf2\n"));
+        assert!(rendered.contains("└─ branch2\n"));
+        assert!(rendered.contains("   └─ leaf3\n"));
+    }
+
+    #[test]
+    fn test_format_number_small() {
+        assert_eq!(format_number(0), "0");
+        assert_eq!(format_number(999), "999");
+    }
+
+    #[test]
+    fn test_format_number_thousands() {
+        assert_eq!(format_number(1000), "1,000");
+        assert_eq!(format_number(10000), "10,000");
+        assert_eq!(format_number(999999), "999,999");
+    }
+
+    #[test]
+    fn test_format_number_millions() {
+        assert_eq!(format_number(1000000), "1,000,000");
+        assert_eq!(format_number(123456789), "123,456,789");
+    }
+
+    #[test]
+    fn test_format_number_negative() {
+        assert_eq!(format_number(-1000), "-1,000");
+        assert_eq!(format_number(-999999), "-999,999");
+    }
+
+    #[test]
+    fn test_create_standard_table() {
+        let _table = create_standard_table();
+        // Just verify it creates without panic
+        // Table is created successfully
+    }
+
+    #[test]
+    fn test_header_cell() {
+        let cell = header_cell("Test Header");
+        // Can't easily test Cell internals, but verify it doesn't panic
+        let _ = format!("{:?}", cell);
+    }
+
+    #[test]
+    fn test_message_functions() {
+        // These functions print to stderr, so we just verify they don't panic
+        warning("test warning");
+        info("test info");
+        success("test success");
+        error("test error");
+    }
+
+    #[test]
+    fn test_tree_section() {
+        let items = vec![
+            ("key1", "value1".to_string()),
+            ("key2", "value2".to_string()),
+        ];
+
+        // This prints to stdout, so just verify it doesn't panic
+        tree_section("Test Section", items.clone(), false);
+        tree_section("Test Section", items, true);
+    }
+
+    #[test]
+    fn test_tree_node_empty_name() {
+        let node = TreeNode::new("");
+        assert_eq!(node.render(), "\n");
+    }
+
+    #[test]
+    fn test_tree_node_special_characters() {
+        let node = TreeNode::new("Node with 特殊字符 and émojis 🌳");
+        let rendered = node.render();
+        assert!(rendered.contains("Node with 特殊字符 and émojis 🌳"));
+    }
+
+    #[test]
+    fn test_tree_deep_nesting() {
+        // Build a deeply nested tree
+        let mut root = TreeNode::new("level0");
+        let level1 = TreeNode::new("level1");
+        let level2 = TreeNode::new("level2");
+        let level3 = TreeNode::new("level3");
+        let level4 = TreeNode::new("level4");
+
+        // Create nested structure
+        root = root.add_child(
+            level1.add_child(
+                level2.add_child(
+                    level3.add_child(level4)
+                )
+            )
+        );
+
+        let rendered = root.render();
+
+        // Should handle deep nesting without stack overflow
+        assert!(rendered.contains("level0"));
+        assert!(rendered.contains("level1"));
+        assert!(rendered.contains("level2"));
+        assert!(rendered.contains("level3"));
+        assert!(rendered.contains("level4"));
+    }
 }

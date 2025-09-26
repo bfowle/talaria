@@ -260,30 +260,90 @@ impl DeltaReconstructor {
 
 /// Format deltas for output (similar to original .dat format)
 pub fn format_deltas_dat(delta_record: &DeltaRecord) -> String {
+    // Escape special characters in IDs to avoid parsing issues
+    let escape_id = |id: &str| -> String {
+        id.chars().map(|c| match c {
+            '\t' => "\\t".to_string(),
+            '\n' => "\\n".to_string(),
+            '\r' => "\\r".to_string(),
+            '\\' => "\\\\".to_string(),
+            ',' => "\\x2c".to_string(), // Escape comma to avoid format detection issues
+            '>' => "\\x3e".to_string(), // Escape > to avoid format detection issues
+            _ => c.to_string(),
+        }).collect()
+    };
+
     let mut parts = vec![
-        delta_record.child_id.clone(),
-        delta_record.reference_id.clone(), // Include reference_id in output
+        escape_id(&delta_record.child_id),
+        escape_id(&delta_record.reference_id),
     ];
 
+    // Include taxon_id if present
+    if let Some(taxon) = delta_record.taxon_id {
+        parts.push(format!("taxon:{}", taxon));
+    }
+
     for range in &delta_record.deltas {
+        // Escape special characters in substitution for safe serialization
+        let substitution_str: String = range.substitution.iter()
+            .map(|&b| {
+                match b {
+                    b'\n' => "\\n".to_string(),
+                    b'\t' => "\\t".to_string(),
+                    b'\r' => "\\r".to_string(),
+                    b'\\' => "\\\\".to_string(),
+                    b',' => "\\x2c".to_string(),  // Escape comma since it's our delimiter
+                    b if b.is_ascii_graphic() || b == b' ' => (b as char).to_string(),
+                    _ => format!("\\x{:02x}", b)
+                }
+            })
+            .collect();
+
         let delta_str = if range.is_single() {
-            format!(
-                "{},{}",
-                range.start,
-                String::from_utf8_lossy(&range.substitution)
-            )
+            format!("{},{}", range.start, substitution_str)
         } else {
-            format!(
-                "{}>{},{}",
-                range.start,
-                range.end,
-                String::from_utf8_lossy(&range.substitution)
-            )
+            format!("{}>{},{}", range.start, range.end, substitution_str)
         };
         parts.push(delta_str);
     }
 
     parts.join("\t")
+}
+
+/// Helper function to unescape substitution strings
+fn unescape_substitution(s: &str) -> Vec<u8> {
+    let mut result = Vec::new();
+    let mut chars = s.chars();
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            if let Some(next) = chars.next() {
+                match next {
+                    'n' => result.push(b'\n'),
+                    't' => result.push(b'\t'),
+                    'r' => result.push(b'\r'),
+                    '\\' => result.push(b'\\'),
+                    'x' => {
+                        // Read two hex digits
+                        let hex: String = chars.by_ref().take(2).collect();
+                        if let Ok(b) = u8::from_str_radix(&hex, 16) {
+                            result.push(b);
+                        }
+                    }
+                    _ => {
+                        result.push(c as u8);
+                        result.push(next as u8);
+                    }
+                }
+            } else {
+                result.push(c as u8);
+            }
+        } else {
+            result.push(c as u8);
+        }
+    }
+
+    result
 }
 
 /// Parse deltas from .dat format (supports both old and new formats)
@@ -293,18 +353,77 @@ pub fn parse_deltas_dat(line: &str) -> Result<DeltaRecord, talaria_core::Talaria
         return Err(talaria_core::TalariaError::Parse("Empty delta line".to_string()));
     }
 
-    let child_id = parts[0].to_string();
+    // Unescape special characters in IDs
+    let unescape_id = |id: &str| -> String {
+        let mut result = String::new();
+        let mut chars = id.chars();
+        while let Some(c) = chars.next() {
+            if c == '\\' {
+                if let Some(next) = chars.next() {
+                    match next {
+                        'n' => result.push('\n'),
+                        't' => result.push('\t'),
+                        'r' => result.push('\r'),
+                        '\\' => result.push('\\'),
+                        'x' => {
+                            // Read two hex digits
+                            let hex: String = chars.by_ref().take(2).collect();
+                            if let Ok(b) = u8::from_str_radix(&hex, 16) {
+                                result.push(b as char);
+                            } else {
+                                // If not valid hex, include the original chars
+                                result.push(c);
+                                result.push(next);
+                                result.push_str(&hex);
+                            }
+                        }
+                        _ => {
+                            result.push(c);
+                            result.push(next);
+                        }
+                    }
+                } else {
+                    result.push(c);
+                }
+            } else {
+                result.push(c);
+            }
+        }
+        result
+    };
 
-    // Detect format: if second field contains ',' or '>', it's a delta (old format)
-    // Otherwise it's a reference_id (new format)
+    let child_id = unescape_id(parts[0]);
+
+    // Improved format detection:
+    // A delta field must have the pattern: number[>number],data
+    // Anything else is treated as a reference_id
+    let is_delta_field = |field: &str| -> bool {
+        if field.starts_with("taxon:") {
+            return false;
+        }
+        // A delta field must have numeric start position followed by comma
+        if let Some(comma_pos) = field.find(',') {
+            let prefix = &field[..comma_pos];
+            // Check for range format: start>end
+            if let Some(gt_pos) = prefix.find('>') {
+                prefix[..gt_pos].parse::<usize>().is_ok() &&
+                prefix[gt_pos+1..].parse::<usize>().is_ok()
+            } else {
+                // Single position format
+                prefix.parse::<usize>().is_ok()
+            }
+        } else {
+            false
+        }
+    };
+
     let (reference_id, delta_start_idx) = if parts.len() > 1 {
-        let second_field = parts[1];
-        if second_field.contains(',') || second_field.contains('>') {
+        if is_delta_field(parts[1]) {
             // Old format: child_id followed directly by deltas
             (String::new(), 1)
         } else {
             // New format: child_id, reference_id, then deltas
-            (second_field.to_string(), 2)
+            (unescape_id(parts[1]), 2)
         }
     } else {
         // Only child_id, no deltas
@@ -312,9 +431,17 @@ pub fn parse_deltas_dat(line: &str) -> Result<DeltaRecord, talaria_core::Talaria
     };
 
     let mut deltas = Vec::new();
+    let mut taxon_id = None;
 
-    // Parse deltas starting from the determined index
+    // Parse deltas and taxon_id starting from the determined index
     for part in &parts[delta_start_idx..] {
+        // Check for taxon ID
+        if part.starts_with("taxon:") {
+            if let Ok(taxon) = part[6..].parse::<u32>() {
+                taxon_id = Some(taxon);
+            }
+            continue;
+        }
         if part.contains('>') {
             // Range format: start>end,substitution
             let range_parts: Vec<&str> = part.split(',').collect();
@@ -330,7 +457,8 @@ pub fn parse_deltas_dat(line: &str) -> Result<DeltaRecord, talaria_core::Talaria
             if let (Ok(start), Ok(end)) =
                 (pos_parts[0].parse::<usize>(), pos_parts[1].parse::<usize>())
             {
-                let substitution = range_parts[1].as_bytes().to_vec();
+                // Unescape the substitution string
+                let substitution = unescape_substitution(range_parts[1]);
                 deltas.push(DeltaRange::new(start, end, substitution));
             }
         } else {
@@ -341,7 +469,8 @@ pub fn parse_deltas_dat(line: &str) -> Result<DeltaRecord, talaria_core::Talaria
             }
 
             if let Ok(pos) = single_parts[0].parse::<usize>() {
-                let substitution = single_parts[1].as_bytes().to_vec();
+                // Unescape the substitution string
+                let substitution = unescape_substitution(single_parts[1]);
                 deltas.push(DeltaRange::new(pos, pos, substitution));
             }
         }
@@ -349,8 +478,8 @@ pub fn parse_deltas_dat(line: &str) -> Result<DeltaRecord, talaria_core::Talaria
 
     Ok(DeltaRecord {
         child_id,
-        reference_id, // Use the parsed reference_id
-        taxon_id: None,
+        reference_id,
+        taxon_id,  // Use the parsed taxon_id
         deltas,
         header_change: None, // No header change tracking in the old format
     })

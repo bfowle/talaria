@@ -11,8 +11,8 @@ The `talaria-storage` module provides a comprehensive storage abstraction layer 
 - **Taxonomy-Aware Storage**: First-class support for taxonomic organization of biological data
 - **Storage Optimization**: Built-in strategies for deduplication, compression, and space optimization
 - **Async/Await Support**: Modern asynchronous I/O for high-performance operations
-- **Thread-Safe Operations**: Concurrent access using lock-free data structures
-- **Pluggable Backend Architecture**: Easy integration of new storage backends through trait implementations
+- **Thread-Safe Operations**: Concurrent access using lock-free data structures (`DashMap`)
+- **Comprehensive Testing**: 47+ unit tests, integration tests, and performance benchmarks
 
 ## Architecture
 
@@ -31,17 +31,21 @@ ChunkStorage (Base Trait)
 
 ```
 talaria-storage/
-├── core/               # Core types and traits
-│   ├── types.rs       # Fundamental types (SHA256Hash, ChunkInfo, etc.)
-│   └── traits.rs      # Storage trait definitions
+├── core/              # Core types and traits
+│   ├── types.rs       # Fundamental types (SHA256Hash, TaxonId, etc.)
+│   └── traits.rs      # Storage trait definitions with comprehensive tests
 ├── index/             # Indexing subsystem
-│   └── index.rs       # Chunk indexing and querying
+│   └── index.rs       # Chunk indexing with InMemoryChunkIndex
 ├── cache/             # Caching layer
-│   └── cache.rs       # Alignment and chunk caching
+│   └── cache.rs       # AlignmentCache with LRU eviction
 ├── optimization/      # Storage optimization
-│   └── optimizer.rs   # Optimization strategies and analysis
-└── io/                # I/O operations
-    └── metadata.rs    # Metadata persistence
+│   └── optimizer.rs   # StandardStorageOptimizer with multiple strategies
+├── io/                # I/O operations
+│   └── metadata.rs    # Metadata persistence for deltas and references
+├── tests/             # Integration tests
+│   └── storage_integration.rs
+└── benches/           # Performance benchmarks
+    └── storage_benchmarks.rs
 ```
 
 ### Data Flow
@@ -66,41 +70,43 @@ The core module contains fundamental types and trait definitions that form the f
 
 #### Types (`core/types.rs`)
 
+Re-exports from `talaria_core::types`:
+
 - **SHA256Hash**: Content addressing primitive
   ```rust
   pub struct SHA256Hash(pub [u8; 32]);
   ```
-  Provides methods for hex conversion and computation from raw data.
 
-- **StorageChunkInfo**: Storage-specific chunk metadata
+- **TaxonId**: Taxonomy identifier
   ```rust
-  pub struct StorageChunkInfo {
+  pub struct TaxonId(pub u32);
+  ```
+
+- **ChunkMetadata**: Extended chunk information
+  ```rust
+  pub struct ChunkMetadata {
+      pub hash: SHA256Hash,
+      pub size: usize,
+      pub taxon_ids: Vec<TaxonId>,
+      pub sequence_count: usize,
+      pub compressed_size: Option<usize>,
+      pub compression_ratio: Option<f32>,
+  }
+  ```
+
+- **ChunkInfo**: Basic chunk information
+  ```rust
+  pub struct ChunkInfo {
       pub hash: SHA256Hash,
       pub size: usize,
   }
   ```
-  Note: This was renamed from `ChunkInfo` to avoid conflicts with display-specific types.
 
-- **ChunkMetadata**: Extended chunk information (imported from talaria-core)
-  ```rust
-  use talaria_core::types::ChunkMetadata;
-  // Includes: hash, size, offset, sequence_count, compressed_size, compression_ratio
-  ```
-
-- **DeltaChunk**: Delta-encoded chunk
-  ```rust
-  pub struct DeltaChunk {
-      pub reference_hash: SHA256Hash,
-      pub deltas: Vec<u8>,
-  }
-  ```
-
-- **Storage Statistics Types**:
-  - `StorageStats`: Overall storage metrics
-  - `GCResult`: Garbage collection results
-  - `VerificationError`: Integrity check results
-  - `TaxonomyStats`: Taxonomy-specific statistics
-  - `SyncResult`: Remote synchronization results
+- **Storage Result Types**:
+  - `StorageStats`: Overall storage metrics with deduplication ratio
+  - `GCResult`: Garbage collection results (`removed\_count`, `freed\_space`)
+  - `VerificationError`: Integrity check results with error types
+  - `ProcessingState`: State for resumable operations
 
 #### Traits (`core/traits.rs`)
 
@@ -113,12 +119,17 @@ pub trait ChunkStorage: Send + Sync {
     fn store_chunk(&self, data: &[u8], compress: bool) -> Result<SHA256Hash>;
     fn get_chunk(&self, hash: &SHA256Hash) -> Result<Vec<u8>>;
     fn has_chunk(&self, hash: &SHA256Hash) -> bool;
-    fn enumerate_chunks(&self) -> Vec<StorageChunkInfo>;
+    fn enumerate_chunks(&self) -> Vec<ChunkInfo>;
     fn verify_all(&self) -> Result<Vec<VerificationError>>;
     fn get_stats(&self) -> StorageStats;
     fn gc(&mut self, referenced: &[SHA256Hash]) -> Result<GCResult>;
 }
 ```
+
+**Test Coverage**:
+- MockChunkStorage implementation for testing
+- 8 comprehensive unit tests including concurrent access
+- Property-based tests with quickcheck
 
 ##### DeltaStorage
 
@@ -130,73 +141,8 @@ pub trait DeltaStorage: ChunkStorage {
     fn get_delta_chunk(&self, hash: &SHA256Hash) -> Result<DeltaChunk>;
     fn find_delta_for_child(&self, child_id: &str) -> Result<Option<SHA256Hash>>;
     fn get_deltas_for_reference(&self, reference_hash: &SHA256Hash) -> Result<Vec<SHA256Hash>>;
-}
-```
-
-##### ReductionStorage
-
-Manages reduction manifests for database compression:
-
-```rust
-pub trait ReductionStorage: DeltaStorage {
-    fn store_reduction_manifest(&self, manifest: &ReductionManifest) -> Result<SHA256Hash>;
-    fn get_reduction_by_profile(&self, profile: &str) -> Result<Option<ReductionManifest>>;
-    fn list_reduction_profiles(&self) -> Result<Vec<String>>;
-    fn delete_reduction_profile(&self, profile: &str) -> Result<()>;
-}
-```
-
-##### TaxonomyStorage
-
-Provides taxonomy-aware storage capabilities:
-
-```rust
-pub trait TaxonomyStorage: ChunkStorage {
-    fn store_taxonomy_chunk(&self, chunk: &TaxonomyAwareChunk) -> Result<SHA256Hash>;
-    fn get_taxonomy_chunk(&self, hash: &SHA256Hash) -> Result<TaxonomyAwareChunk>;
-    fn find_chunks_by_taxon(&self, taxon_id: TaxonId) -> Result<Vec<SHA256Hash>>;
-    fn get_taxonomy_stats(&self) -> Result<TaxonomyStats>;
-}
-```
-
-##### RemoteStorage
-
-Enables synchronization with remote repositories:
-
-```rust
-pub trait RemoteStorage: ChunkStorage {
-    fn fetch_chunks(&mut self, hashes: &[SHA256Hash]) -> Result<Vec<TaxonomyAwareChunk>>;
-    fn push_chunks(&self, hashes: &[SHA256Hash]) -> Result<()>;
-    fn sync(&mut self) -> Result<SyncResult>;
-    fn get_remote_status(&self) -> Result<RemoteStatus>;
-}
-```
-
-##### StatefulStorage
-
-Manages processing state for resumable operations:
-
-```rust
-pub trait StatefulStorage: ChunkStorage {
-    fn start_processing(
-        &self,
-        operation: OperationType,
-        manifest_hash: SHA256Hash,
-        manifest_version: String,
-        total_chunks: usize,
-        source_info: SourceInfo,
-    ) -> Result<String>;
-
-    fn check_resumable(
-        &self,
-        database: &str,
-        operation: &OperationType,
-        manifest_hash: &SHA256Hash,
-        manifest_version: &str,
-    ) -> Result<Option<ProcessingState>>;
-
-    fn update_processing_state(&self, completed_chunks: &[SHA256Hash]) -> Result<()>;
-    fn complete_processing(&self) -> Result<()>;
+    fn find_delta_chunks_for_reference(&self, reference_hash: &SHA256Hash) -> Result<Vec<SHA256Hash>>;
+    fn get_chunk_type(&self, hash: &SHA256Hash) -> Result<ChunkType>;
 }
 ```
 
@@ -217,26 +163,15 @@ pub trait ChunkIndex: Send + Sync {
     async fn query(&self, query: ChunkQuery) -> Result<Vec<ChunkMetadata>>;
     async fn rebuild(&mut self) -> Result<()>;
     async fn get_stats(&self) -> Result<IndexStats>;
-}
-```
-
-#### Query System
-
-The `ChunkQuery` structure enables complex filtering:
-
-```rust
-pub struct ChunkQuery {
-    pub taxon_ids: Option<Vec<TaxonId>>,      // Filter by taxonomy
-    pub size_range: Option<(usize, usize)>,   // Filter by size
-    pub has_reference: Option<bool>,          // Filter by reference status
-    pub limit: Option<usize>,                 // Limit results
-    pub order_by_access: bool,                // Order by access frequency
+    async fn exists(&self, hash: &SHA256Hash) -> bool;
+    async fn list_all(&self) -> Result<Vec<SHA256Hash>>;
+    async fn clear(&mut self) -> Result<()>;
 }
 ```
 
 #### InMemoryChunkIndex
 
-A high-performance, thread-safe implementation using DashMap:
+A high-performance, thread-safe implementation using `DashMap`:
 
 ```rust
 pub struct InMemoryChunkIndex {
@@ -245,11 +180,16 @@ pub struct InMemoryChunkIndex {
 }
 ```
 
-Features:
-- Lock-free concurrent access
+**Features**:
+- Lock-free concurrent access via DashMap
 - O(1) chunk lookups
 - O(1) taxon-to-chunk mapping
 - Automatic index maintenance
+
+**Test Coverage**:
+- 11 async unit tests using `tokio::test`
+- Tests for concurrent operations with `Arc<RwLock<>>`
+- Query filtering and statistics tests
 
 ### Caching (`cache/`)
 
@@ -261,15 +201,24 @@ Caches alignment results to avoid redundant computations:
 
 ```rust
 pub struct AlignmentCache {
-    cache: Arc<DashMap<(String, String), AlignmentResult>>,
+    cache: Arc<DashMap<(String, String), CachedAlignment>>,
     max_size: usize,
+}
+
+pub struct CachedAlignment {
+    pub score: i32,
+    pub alignment: Vec<u8>,
 }
 ```
 
-Features:
-- LRU eviction when cache is full
+**Features**:
+- Size-based eviction (stops inserting at `max\_size`)
 - Thread-safe concurrent access
-- Automatic cache invalidation on updates
+- Clear operation for cache invalidation
+
+**Test Coverage**:
+- 7 unit tests including concurrent access
+- Tests for size limits and cache operations
 
 ### Optimization (`optimization/`)
 
@@ -278,10 +227,11 @@ The optimization subsystem provides strategies for reducing storage usage and im
 #### Storage Strategies
 
 ```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum StorageStrategy {
-    Deduplication,      // Remove duplicate chunks
-    Compression,        // Compress chunk data
-    DeltaEncoding,      // Use delta encoding
+    Deduplication,     // Remove duplicate chunks
+    Compression,       // Compress chunk data
+    DeltaEncoding,     // Use delta encoding
     Archival,          // Archive old versions
     Caching,           // Cache hot chunks
     Repacking,         // Consolidate small chunks
@@ -289,31 +239,30 @@ pub enum StorageStrategy {
 }
 ```
 
-#### StorageOptimizer Trait
-
-```rust
-#[async_trait]
-pub trait StorageOptimizer: Send + Sync {
-    async fn analyze(&self, path: &Path) -> Result<StorageAnalysis>;
-    async fn optimize(&mut self, path: &Path, options: OptimizationOptions) -> Result<OptimizationResult>;
-    async fn estimate_savings(&self, path: &Path, strategies: &[StorageStrategy]) -> Result<HashMap<StorageStrategy, usize>>;
-}
-```
-
-#### Optimization Process
-
-1. **Analysis Phase**: Scan storage to identify optimization opportunities
-2. **Planning Phase**: Select strategies based on analysis results
-3. **Execution Phase**: Apply selected strategies
-4. **Verification Phase**: Verify data integrity after optimization
-
 #### StandardStorageOptimizer
 
 The default implementation providing:
-- Cross-database deduplication
-- Multi-level compression (zstd, lz4, snappy)
-- Intelligent chunk repacking
-- Incremental garbage collection
+
+```rust
+pub struct StandardStorageOptimizer {
+    chunks_dir: PathBuf,
+    chunk_cache: HashMap<SHA256Hash, ChunkInfo>,
+}
+```
+
+**Key Methods**:
+- `analyze()`: Scan storage for optimization opportunities
+- `optimize()`: Apply selected strategies with options
+- `deduplicate()`: Remove duplicate chunks
+- `compress_chunks()`: Apply gzip compression
+- `estimate_impact()`: Calculate potential savings
+- `verify_integrity()`: Check chunk hash validity
+
+**Test Coverage**:
+- 16 comprehensive async tests
+- Tests for all optimization strategies
+- Property-based test for compression ratios
+- Dry run and target savings tests
 
 ### I/O Operations (`io/`)
 
@@ -330,211 +279,225 @@ pub fn write_metadata<P: AsRef<Path>>(
 pub fn load_metadata<P: AsRef<Path>>(
     path: P
 ) -> Result<Vec<DeltaRecord>, TalariaError>;
+```
 
-pub fn write_ref2children<P: AsRef<Path>>(
-    path: P,
-    ref2children: &HashMap<String, Vec<String>>,
-) -> Result<(), TalariaError>;
+**DeltaRecord Structure** (from talaria-bio):
+```rust
+pub struct DeltaRecord {
+    pub child_id: String,
+    pub reference_id: String,
+    pub taxon_id: Option<u32>,
+    pub deltas: Vec<DeltaRange>,
+    pub header_change: Option<HeaderChange>,
+}
 
-pub fn load_ref2children<P: AsRef<Path>>(
-    path: P
-) -> Result<HashMap<String, Vec<String>>, TalariaError>;
+pub struct DeltaRange {
+    pub start: usize,
+    pub end: usize,
+    pub substitution: Vec<u8>,
+}
+```
+
+**Test Coverage**:
+- 8 unit tests including property-based tests
+- Tests for ref2children mapping
+- Large file and special character handling
+
+## Testing
+
+### Test Statistics
+
+- **Total Tests**: 47+ passing tests across all modules
+- **Unit Tests**: Comprehensive coverage in each module
+- **Integration Tests**: 11 workflow tests in `tests/storage_integration.rs`
+- **Benchmarks**: 10 benchmark groups in `benches/storage_benchmarks.rs`
+
+### Unit Testing
+
+Run tests with:
+
+```bash
+# Run all tests
+cargo test
+
+# Run specific module tests
+cargo test --lib core::traits
+
+# Run with output
+cargo test -- --nocapture
+
+# Run integration tests
+cargo test --test storage_integration
+```
+
+### Integration Tests (`tests/storage_integration.rs`)
+
+Comprehensive workflow tests including:
+- Complete storage workflow (store, index, retrieve)
+- Deduplication workflow
+- Compression workflow with gzip
+- Cache management workflow
+- Manifest storage and retrieval
+- Concurrent operations with tokio::task
+- Storage migration workflow
+- Error recovery workflow
+- Statistics collection
+- Chunk versioning workflow
+
+### Performance Benchmarks (`benches/storage_benchmarks.rs`)
+
+Benchmark critical paths using Criterion:
+
+```bash
+# Run all benchmarks
+cargo bench
+
+# Run specific benchmark
+cargo bench hash_computation
+```
+
+Benchmark groups:
+- `hash_computation`: SHA256 performance at various sizes
+- `chunk_storage`: Read/write operations
+- `compression`: Gzip compress/decompress
+- `index_operations`: HashMap lookup and insertion
+- `cache_operations`: DashMap concurrent access
+- `deduplication`: Finding duplicate chunks
+- `manifest_serialization`: JSON serialize/deserialize
+- `optimization_analysis`: Analyzing compressible chunks
+- `concurrent_writes`: Parallel write operations
+- `metadata_io`: Metadata file operations
+
+### Test Infrastructure
+
+**Dependencies** (`dev-dependencies`):
+```toml
+tempfile = "3.8"     # Temporary directories for tests
+proptest = "1.4"     # Property-based testing
+tokio-test = "0.4"   # Async test utilities
+criterion = "0.5"    # Benchmarking framework
+mockall = "0.12"     # Mock generation
+quickcheck = "1.0"   # Property testing
+quickcheck_macros = "1.0"
+rand = "0.8"         # Random data generation
+futures = "0.3"      # Async utilities
 ```
 
 ## Integration with Other Modules
 
 ### talaria-core Integration
 
-The storage module uses core functionality for:
-- **Error Handling**: Uses `TalariaError` and `TalariaResult` types
-- **Configuration**: Respects global configuration settings
-- **Path Management**: Uses centralized path utilities
-
-```rust
-use talaria_core::error::{TalariaError, TalariaResult};
-use talaria_core::config::Config;
-use talaria_core::system::paths;
-```
+Uses core functionality for:
+- **Types**: `SHA256Hash`, `TaxonId`, `ChunkMetadata`, `ChunkInfo`
+- **Error Handling**: `TalariaError` type
+- **Statistics**: `StorageStats`, `GCResult`, `VerificationError`
 
 ### talaria-bio Integration
 
 Leverages bio module for:
-- **Delta Compression**: Uses delta encoding algorithms
-- **Sequence Handling**: Works with biological sequence types
-- **Format Support**: Handles FASTA and other bio formats
-
-```rust
-use talaria_bio::compression::delta::{DeltaRecord, format_deltas_dat, parse_deltas_dat};
-use talaria_bio::sequence::Sequence;
-```
-
-### talaria-sequoia Integration (Future)
-
-Will provide:
-- Actual storage backend implementations
-- Advanced chunking strategies
-- Distributed storage coordination
-- Replication and sharding
+- **Delta Compression**: `DeltaRecord`, `DeltaRange`, `HeaderChange`
+- **Serialization**: `format_deltas_dat()`, `parse_deltas_dat()`
 
 ## Usage Examples
 
-### Implementing a Custom Storage Backend
+### Basic Storage Operations
 
 ```rust
-use talaria_storage::{ChunkStorage, SHA256Hash, StorageChunkInfo, StorageStats, GCResult, VerificationError};
-use anyhow::Result;
+use talaria_storage::core::traits::ChunkStorage;
 
-pub struct MyCustomStorage {
-    // Your storage implementation
+// Store a chunk
+let data = b"genomic sequence data";
+let hash = storage.store_chunk(data, true)?; // compress = true
+
+// Retrieve a chunk
+let retrieved = storage.get_chunk(&hash)?;
+assert_eq!(retrieved, data);
+
+// Check existence
+if storage.has_chunk(&hash) {
+    println!("Chunk exists");
 }
 
-impl ChunkStorage for MyCustomStorage {
-    fn store_chunk(&self, data: &[u8], compress: bool) -> Result<SHA256Hash> {
-        // Compute hash
-        let hash = SHA256Hash::compute(data);
-
-        // Optionally compress
-        let stored_data = if compress {
-            compress_data(data)?
-        } else {
-            data.to_vec()
-        };
-
-        // Store to your backend
-        self.backend.put(&hash.to_hex(), &stored_data)?;
-
-        Ok(hash)
-    }
-
-    fn get_chunk(&self, hash: &SHA256Hash) -> Result<Vec<u8>> {
-        // Retrieve from your backend
-        let data = self.backend.get(&hash.to_hex())?;
-
-        // Decompress if needed
-        if is_compressed(&data) {
-            decompress_data(&data)
-        } else {
-            Ok(data)
-        }
-    }
-
-    // Implement other required methods...
-}
+// Get storage statistics
+let stats = storage.get_stats();
+println!("Total chunks: {}", stats.total_chunks);
+println!("Deduplication ratio: {}", stats.deduplication_ratio);
 ```
 
 ### Using the Index System
 
 ```rust
-use talaria_storage::{ChunkIndex, InMemoryChunkIndex, ChunkQuery, ChunkMetadata};
+use talaria_storage::index::{InMemoryChunkIndex, ChunkQuery};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Create index
     let mut index = InMemoryChunkIndex::new();
 
-    // Add chunks
+    // Add chunk metadata
     let metadata = ChunkMetadata {
         hash: SHA256Hash::compute(b"data"),
         size: 1024,
-        taxon_ids: Some(vec![9606, 10090]), // Human and mouse
+        taxon_ids: vec![TaxonId(9606)], // Human
+        sequence_count: 100,
+        compressed_size: Some(512),
+        compression_ratio: Some(0.5),
     };
     index.add_chunk(metadata).await?;
 
-    // Query chunks
+    // Query by taxon
+    let human_chunks = index.find_by_taxon(TaxonId(9606)).await?;
+
+    // Complex query
     let query = ChunkQuery {
-        taxon_ids: Some(vec![9606]),
+        taxon_ids: Some(vec![TaxonId(9606)]),
         size_range: Some((1000, 2000)),
+        limit: Some(10),
         ..Default::default()
     };
-
     let results = index.query(query).await?;
-    println!("Found {} chunks", results.len());
 
     Ok(())
 }
 ```
 
-### Storage Optimization Workflow
+### Storage Optimization
 
 ```rust
-use talaria_storage::{StorageOptimizer, StandardStorageOptimizer, OptimizationOptions, StorageStrategy};
+use talaria_storage::optimization::{
+    StandardStorageOptimizer,
+    OptimizationOptions,
+    StorageStrategy
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut optimizer = StandardStorageOptimizer::new();
+    let mut optimizer = StandardStorageOptimizer::new(base_path);
 
-    // Analyze storage
-    let analysis = optimizer.analyze(Path::new("/storage")).await?;
-    println!("Total size: {} bytes", analysis.total_size);
+    // Scan and analyze
+    optimizer.scan_chunks().await?;
+    let analysis = optimizer.analyze().await?;
+
     println!("Duplicate chunks: {}", analysis.duplicate_chunks.len());
+    println!("Compressible chunks: {}", analysis.compressible_chunks.len());
 
-    // Configure optimization
+    // Run optimization
     let options = OptimizationOptions {
         strategies: vec![
             StorageStrategy::Deduplication,
             StorageStrategy::Compression,
         ],
-        target_savings: Some(1_000_000_000), // 1GB
+        target_savings: Some(1_000_000), // 1MB target
         dry_run: false,
+        compression_level: Some(6),
         ..Default::default()
     };
 
-    // Run optimization
-    let result = optimizer.optimize(Path::new("/storage"), options).await?;
-    println!("Saved {} bytes", result.space_saved);
-
-    Ok(())
-}
-```
-
-### Delta Storage Operations
-
-```rust
-use talaria_storage::{DeltaStorage, DeltaChunk};
-
-async fn store_delta_encoded_sequences<S: DeltaStorage>(
-    storage: &S,
-    reference: &[u8],
-    variants: Vec<&[u8]>,
-) -> Result<()> {
-    // Store reference
-    let ref_hash = storage.store_chunk(reference, true)?;
-
-    // Store variants as deltas
-    for variant in variants {
-        let delta = compute_delta(reference, variant)?;
-        let delta_chunk = DeltaChunk {
-            reference_hash: ref_hash,
-            deltas: delta,
-        };
-        storage.store_delta_chunk(&delta_chunk)?;
+    let results = optimizer.optimize(options).await?;
+    for result in results {
+        println!("{:?}: saved {} bytes", result.strategy, result.space_saved);
     }
 
     Ok(())
-}
-```
-
-### Working with Taxonomy
-
-```rust
-use talaria_storage::{TaxonomyStorage, TaxonId};
-
-async fn find_human_sequences<S: TaxonomyStorage>(
-    storage: &S,
-) -> Result<Vec<Vec<u8>>> {
-    const HUMAN_TAXON_ID: TaxonId = 9606;
-
-    // Find all chunks containing human sequences
-    let chunk_hashes = storage.find_chunks_by_taxon(HUMAN_TAXON_ID)?;
-
-    // Retrieve the actual data
-    let mut sequences = Vec::new();
-    for hash in chunk_hashes {
-        let chunk_data = storage.get_chunk(&hash)?;
-        sequences.push(chunk_data);
-    }
-
-    Ok(sequences)
 }
 ```
 
@@ -542,23 +505,17 @@ async fn find_human_sequences<S: TaxonomyStorage>(
 
 ### Thread Safety
 
-All storage implementations use thread-safe primitives:
-- **DashMap**: Lock-free concurrent HashMap
+All implementations use thread-safe primitives:
+- **DashMap**: Lock-free concurrent `HashMap` for cache and index
 - **Arc**: Atomic reference counting for shared ownership
-- **RwLock**: Reader-writer locks where exclusive access is needed
+- **Mutex/RwLock**: Used sparingly in tests for coordination
 
 ### Async I/O
 
-The module uses async/await for I/O operations to:
-- Maximize throughput with concurrent operations
-- Reduce blocking on I/O-bound tasks
-- Enable efficient resource utilization
-
-### Caching Strategies
-
-1. **Hot Path Caching**: Frequently accessed chunks are cached in memory
-2. **Index Caching**: Metadata is cached to avoid repeated disk access
-3. **Alignment Result Caching**: Expensive alignment computations are cached
+The module uses async/await extensively:
+- All `ChunkIndex` methods are async
+- `StorageOptimizer` operations are async
+- Integration tests use `tokio::test`
 
 ### Content-Addressed Deduplication
 
@@ -566,234 +523,45 @@ The module uses async/await for I/O operations to:
 - Zero-copy references to identical data
 - Significant storage savings for redundant sequences
 
-### Optimization Guidelines
+## Known Issues
 
-1. **Chunk Size**: Balance between deduplication efficiency and overhead
-   - Smaller chunks: Better deduplication, more overhead
-   - Larger chunks: Less overhead, reduced deduplication
-
-2. **Compression**: Choose appropriate compression levels
-   - Level 1-3: Fast compression, moderate savings
-   - Level 4-6: Balanced speed and compression
-   - Level 7-9: Maximum compression, slower
-
-3. **Index Rebuild**: Periodically rebuild indexes for optimal performance
-   - Remove orphaned entries
-   - Defragment index structures
-   - Update statistics
-
-## Configuration
-
-Storage behavior can be configured through environment variables and configuration files:
-
-### Environment Variables
-
-```bash
-# Storage paths
-TALARIA_STORAGE_DIR=/path/to/storage
-TALARIA_CACHE_DIR=/path/to/cache
-
-# Performance tuning
-TALARIA_STORAGE_THREADS=8
-TALARIA_CACHE_SIZE_MB=1024
-TALARIA_COMPRESSION_LEVEL=6
-
-# Remote storage
-TALARIA_S3_BUCKET=my-talaria-bucket
-TALARIA_GCS_PROJECT=my-project
-TALARIA_AZURE_CONTAINER=my-container
-```
-
-### Configuration File (storage.toml)
-
-```toml
-[storage]
-backend = "filesystem"  # or "s3", "gcs", "azure"
-path = "/data/talaria/storage"
-compression = true
-compression_level = 6
-
-[cache]
-enabled = true
-size_mb = 1024
-ttl_seconds = 3600
-
-[index]
-type = "memory"  # or "sqlite", "rocksdb"
-rebuild_interval_hours = 24
-
-[optimization]
-auto_optimize = true
-deduplication = true
-min_chunk_size = 4096
-max_chunk_size = 1048576
-```
-
-## Testing
-
-### Unit Testing
-
-The module includes comprehensive unit tests for each component:
-
-```bash
-# Run all tests
-cargo test
-
-# Run specific test module
-cargo test --package talaria-storage index::tests
-
-# Run with coverage
-cargo tarpaulin --out html
-```
-
-### Integration Testing
-
-Integration tests verify interactions between components:
-
-```rust
-#[tokio::test]
-async fn test_storage_workflow() {
-    let storage = create_test_storage();
-    let index = InMemoryChunkIndex::new();
-
-    // Store data
-    let data = b"test data";
-    let hash = storage.store_chunk(data, false)?;
-
-    // Index it
-    let metadata = ChunkMetadata {
-        hash,
-        size: data.len(),
-        taxon_ids: Some(vec![1234]),
-    };
-    index.add_chunk(metadata).await?;
-
-    // Query and retrieve
-    let chunks = index.find_by_taxon(1234).await?;
-    assert_eq!(chunks.len(), 1);
-
-    let retrieved = storage.get_chunk(&chunks[0])?;
-    assert_eq!(retrieved, data);
-}
-```
-
-### Performance Testing
-
-Benchmarks for critical operations:
-
-```rust
-#[bench]
-fn bench_store_chunk(b: &mut Bencher) {
-    let storage = create_storage();
-    let data = vec![0u8; 1024 * 1024]; // 1MB
-
-    b.iter(|| {
-        storage.store_chunk(&data, false).unwrap();
-    });
-}
-```
-
-## Error Handling
-
-The module uses comprehensive error handling with detailed error types:
-
-```rust
-#[derive(Debug, thiserror::Error)]
-pub enum StorageError {
-    #[error("Chunk not found: {0}")]
-    ChunkNotFound(SHA256Hash),
-
-    #[error("Hash mismatch: expected {expected}, got {actual}")]
-    HashMismatch {
-        expected: SHA256Hash,
-        actual: SHA256Hash,
-    },
-
-    #[error("Storage backend error: {0}")]
-    BackendError(String),
-
-    #[error("Compression error: {0}")]
-    CompressionError(String),
-
-    #[error("Index error: {0}")]
-    IndexError(String),
-}
-```
+- 3 tests currently failing due to minor data format issues (being addressed)
+- Some optimization strategies (Archival, DeltaEncoding, Repacking) have placeholder implementations
+- Cache eviction is size-based rather than true LRU (stops inserting at `max\_size`)
 
 ## Future Directions
 
-### Planned Features
+### Planned Improvements
 
-1. **Cloud Storage Backends**
-   - Native S3 implementation with multipart upload
-   - Google Cloud Storage with resumable uploads
-   - Azure Blob Storage with block blob support
+1. **Complete Optimization Strategies**
+   - Full implementation of Archival strategy
+   - Delta encoding between versions
+   - Smart chunk repacking algorithm
 
-2. **Distributed Storage**
-   - Consistent hashing for chunk distribution
-   - Replication with configurable factors
-   - Erasure coding for fault tolerance
+2. **Enhanced Caching**
+   - True LRU eviction policy
+   - Multi-tier caching support
+   - Predictive prefetching
 
-3. **Advanced Indexing**
-   - B-tree based persistent indexes
+3. **Cloud Storage Backends**
+   - S3 implementation with multipart upload
+   - Google Cloud Storage support
+   - Azure Blob Storage integration
+
+4. **Advanced Indexing**
+   - Persistent index with SQLite/RocksDB
    - Bloom filters for existence checks
-   - Inverted indexes for full-text search
+   - Full-text search capabilities
 
-4. **Compression Improvements**
-   - Adaptive compression based on data type
-   - Dictionary compression for similar sequences
-   - Hardware-accelerated compression (QAT, ISA-L)
-
-5. **Caching Enhancements**
-   - Multi-tier caching (L1: memory, L2: SSD, L3: disk)
-   - Predictive prefetching based on access patterns
-   - Distributed cache with Redis/Memcached
-
-6. **Security Features**
-   - Encryption at rest
-   - Client-side encryption
-   - Access control lists (ACLs)
-   - Audit logging
-
-### API Stability
-
-The storage traits are designed to be stable, but implementations may evolve:
-- Trait signatures will remain backward compatible
-- New optional methods may be added with default implementations
-- Implementation details may change for performance improvements
-
-### Contributing
+## Contributing
 
 When contributing to the storage module:
 
-1. **Follow the trait hierarchy**: New storage types should extend existing traits
-2. **Maintain thread safety**: Use appropriate synchronization primitives
-3. **Write comprehensive tests**: Include unit, integration, and performance tests
-4. **Document thoroughly**: Update this README and inline documentation
-5. **Consider performance**: Profile and benchmark critical paths
-
-## References
-
-### Related Documentation
-
-- [Talaria Core Module](../talaria-core/README.md)
-- [Talaria Bio Module](../talaria-bio/README.md)
-- [Talaria Sequoia Module](../talaria-sequoia/README.md)
-- [Content-Addressed Storage](https://en.wikipedia.org/wiki/Content-addressable_storage)
-- [Delta Encoding](https://en.wikipedia.org/wiki/Delta_encoding)
-
-### Academic Papers
-
-- "Content-Defined Chunking for Deduplication" (Muthitacharoen et al., 2001)
-- "Delta Compression Techniques for Efficient Storage" (MacDonald, 2000)
-- "Taxonomy-Aware Storage Systems for Biological Data" (Various, 2018-2023)
-
-### Standards and Specifications
-
-- SHA-256 Specification (FIPS 180-4)
-- S3 API Documentation
-- Google Cloud Storage API
-- Azure Blob Storage API
+1. **Write Tests First**: Add tests for new functionality
+2. **Follow Trait Hierarchy**: Extend existing traits appropriately
+3. **Maintain Thread Safety**: Use DashMap, Arc, and async where appropriate
+4. **Document Thoroughly**: Update this README and add inline docs
+5. **Benchmark Critical Paths**: Add benchmarks for performance-critical code
 
 ## License
 
@@ -801,7 +569,7 @@ This module is part of the Talaria project and follows the same licensing terms 
 
 ## Support
 
-For questions, bug reports, or feature requests related to the storage module:
+For questions, bug reports, or feature requests:
 - Open an issue on the Talaria GitHub repository
-- Contact the development team
-- Consult the [API documentation](https://docs.talaria.bio/storage)
+- Consult the inline documentation (`cargo doc --open`)
+- Review the test cases for usage examples

@@ -255,7 +255,7 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<()> {
 
     // Calculate coverage metrics
     pb.set_message("Calculating validation metrics...");
-    let validator = crate::core::validator::ValidatorImpl::new();
+    let validator = talaria_sequoia::operations::validator::ValidatorImpl::new();
     let metrics = validator.calculate_metrics(
         &original_seqs,
         &reduced_seqs,
@@ -330,8 +330,8 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<()> {
 
     if let Some(report_path) = args.report {
         // Use Reporter trait based on file extension
-        use crate::report::create_reporter_from_path;
-        use crate::report::traits::{
+        use talaria_utils::report::create_reporter_from_path;
+        use talaria_utils::report::traits::{
             ReportData, ReportSection, ReportStatistics, SectionContent, StatValue,
         };
 

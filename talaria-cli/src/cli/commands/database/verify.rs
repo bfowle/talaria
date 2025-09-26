@@ -32,7 +32,7 @@ pub struct VerifyArgs {
 pub fn run(args: VerifyArgs) -> anyhow::Result<()> {
     let base_path = if let Some(db_ref) = &args.database {
         // Parse database reference to handle database[@version][:profile]
-        let db_ref_parsed = crate::core::database::database_ref::parse_database_reference(db_ref)?;
+        let db_ref_parsed = talaria_utils::database::database_ref::parse_database_reference(db_ref)?;
 
         // Build the path to the database version directory
         let versions_dir = paths::talaria_databases_dir().join("versions");

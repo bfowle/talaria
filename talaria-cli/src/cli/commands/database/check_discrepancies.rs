@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use talaria_sequoia::taxonomy::discrepancy::DiscrepancyDetector;
 use talaria_sequoia::{DiscrepancyType, TaxonId, TaxonomicDiscrepancy};
 use crate::cli::global_config;
-use crate::core::database::database_manager::DatabaseManager;
+use talaria_sequoia::database::DatabaseManager;
 use crate::cli::progress::create_spinner;
 
 #[derive(Args)]
@@ -30,7 +30,7 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
     let manager = DatabaseManager::new(None)?;
 
     // Parse database reference to check for profile
-    let db_ref = crate::core::database::database_ref::parse_database_reference(&args.database)?;
+    let db_ref = talaria_utils::database::database_ref::parse_database_reference(&args.database)?;
 
     // Load appropriate manifest based on whether profile is specified
     let (chunk_metadata, _total_sequences) = if let Some(profile) = &db_ref.profile {

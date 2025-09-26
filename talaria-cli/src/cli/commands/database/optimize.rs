@@ -46,11 +46,13 @@ pub struct OptimizeCmd {
 
 impl OptimizeCmd {
     pub async fn run(&self) -> Result<()> {
-        let base_path = self.get_database_path()?;
+        // Verify database exists
+        let _db_path = self.get_database_path()?;
 
         println!("🔧 Optimizing SEQUOIA database: {}", self.database);
 
-        // Open repository
+        // Open repository at the root databases path
+        let base_path = talaria_home().join("databases");
         let mut repository = SEQUOIARepository::open(&base_path)?;
 
         // Get current statistics
@@ -119,7 +121,7 @@ impl OptimizeCmd {
 
         let path = talaria_home()
             .join("databases")
-            .join("sequences")
+            .join("versions")
             .join(parts[0])
             .join(parts[1])
             .join("current");

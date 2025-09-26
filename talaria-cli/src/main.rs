@@ -4,12 +4,6 @@ use std::process;
 use tracing_subscriber::EnvFilter;
 
 mod cli;
-mod core;
-mod download;
-mod index;
-mod processing;
-mod report;
-mod utils;
 
 use crate::cli::{Cli, Commands};
 use talaria_core::TalariaError;

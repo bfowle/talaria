@@ -5,7 +5,16 @@ pub mod evolution;
 pub mod extractor;
 pub mod filter;
 pub mod manifest;
+pub mod prerequisites;
+pub mod types;
 pub mod version_store;
+
+// Re-export commonly used types
+pub use types::{
+    VersionDecision, TaxonomyManifestFormat, InstalledComponent,
+    AuditEntry, TaxonomyManifest, TaxonomyVersionPolicy
+};
+pub use prerequisites::TaxonomyPrerequisites;
 
 use crate::storage::SEQUOIAStorage;
 use crate::types::*;
@@ -623,6 +632,40 @@ impl TaxonomyManager {
             });
         }
         Ok(())
+    }
+
+    /// Get default taxonomy components
+    pub fn default_components() -> Vec<String> {
+        vec![
+            "nodes.dmp".to_string(),
+            "names.dmp".to_string(),
+            "merged.dmp".to_string(),
+            "delnodes.dmp".to_string(),
+        ]
+    }
+
+    /// Detect file format from a taxonomy file
+    pub fn detect_file_format(path: &Path) -> Result<String> {
+        let filename = path.file_name()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| anyhow::anyhow!("Invalid filename"))?;
+
+        if filename.ends_with(".dmp") {
+            Ok("dmp".to_string())
+        } else if filename.ends_with(".tsv") || filename.ends_with(".tab") {
+            Ok("tsv".to_string())
+        } else if filename.ends_with(".csv") {
+            Ok("csv".to_string())
+        } else {
+            Ok("unknown".to_string())
+        }
+    }
+
+    /// Check if we should create a new taxonomy version
+    pub fn should_create_new_version(&self, _changes: &[String]) -> bool {
+        // For now, always return false to append to current version
+        // In the future, this could check the nature of changes
+        false
     }
 }
 

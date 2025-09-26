@@ -36,7 +36,14 @@ pub fn format_duration(secs: u64) -> String {
     } else if secs < 3600 {
         format!("{}m {}s", secs / 60, secs % 60)
     } else {
-        format!("{}h {}m", secs / 3600, (secs % 3600) / 60)
+        let hours = secs / 3600;
+        let minutes = (secs % 3600) / 60;
+        let seconds = secs % 60;
+        if seconds > 0 {
+            format!("{}h {}m {}s", hours, minutes, seconds)
+        } else {
+            format!("{}h {}m", hours, minutes)
+        }
     }
 }
 
@@ -58,6 +65,8 @@ mod tests {
     fn test_format_duration() {
         assert_eq!(format_duration(45), "45s");
         assert_eq!(format_duration(90), "1m 30s");
-        assert_eq!(format_duration(3665), "1h 1m");
+        assert_eq!(format_duration(3665), "1h 1m 5s");
+        assert_eq!(format_duration(3600), "1h 0m");
+        assert_eq!(format_duration(3661), "1h 1m 1s");
     }
 }

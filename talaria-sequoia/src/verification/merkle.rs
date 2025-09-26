@@ -109,6 +109,25 @@ impl MerkleDAG {
         }
     }
 
+    /// Generate proof for a leaf by its hash (for when we already have the hash)
+    pub fn generate_proof_by_hash(&self, leaf_hash: &SHA256Hash) -> Result<MerkleProof> {
+        let root = self
+            .root
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Empty Merkle tree"))?;
+
+        let mut path = Vec::new();
+        if self.find_path(root, leaf_hash, &mut path) {
+            Ok(MerkleProof {
+                leaf_hash: leaf_hash.clone(),
+                root_hash: root.hash.clone(),
+                path,
+            })
+        } else {
+            Err(anyhow::anyhow!("Leaf not found in tree"))
+        }
+    }
+
     /// Recursively find path to a leaf
     fn find_path(&self, node: &MerkleNode, target: &MerkleHash, path: &mut Vec<ProofStep>) -> bool {
         // Check if this is the target leaf

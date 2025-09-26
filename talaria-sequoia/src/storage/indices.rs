@@ -325,7 +325,7 @@ impl SequenceIndices {
         let database_path = self.base_path.join("database_index.tal");
         let database_data: HashMap<String, HashSet<SHA256Hash>> = self.database_to_sequences
             .iter()
-            .map(|e| (format!("{}/{}", e.key().source, e.key().dataset), e.value().clone()))
+            .map(|e| (format!("{}/{}", e.key().source_name(), e.key().dataset_name()), e.value().clone()))
             .collect();
         let database_bytes = serialize(&format, &database_data)?;
         fs::write(&database_path, database_bytes)?;
@@ -383,7 +383,22 @@ impl SequenceIndices {
                 // Parse "source/dataset" format
                 let parts: Vec<&str> = k.split('/').collect();
                 if parts.len() == 2 {
-                    let source = DatabaseSource::new(parts[0], parts[1]);
+                    // Parse source and dataset to create appropriate enum variant
+                    let source = match parts[0] {
+                        "uniprot" => match parts[1] {
+                            "swissprot" => DatabaseSource::UniProt(talaria_core::UniProtDatabase::SwissProt),
+                            "trembl" => DatabaseSource::UniProt(talaria_core::UniProtDatabase::TrEMBL),
+                            _ => DatabaseSource::Custom(format!("{}/{}", parts[0], parts[1])),
+                        },
+                        "ncbi" => match parts[1] {
+                            "nr" => DatabaseSource::NCBI(talaria_core::NCBIDatabase::NR),
+                            "nt" => DatabaseSource::NCBI(talaria_core::NCBIDatabase::NT),
+                            "refseq" => DatabaseSource::NCBI(talaria_core::NCBIDatabase::RefSeq),
+                            "genbank" => DatabaseSource::NCBI(talaria_core::NCBIDatabase::GenBank),
+                            _ => DatabaseSource::Custom(format!("{}/{}", parts[0], parts[1])),
+                        },
+                        _ => DatabaseSource::Custom(format!("{}/{}", parts[0], parts[1])),
+                    };
                     dash_map.insert(source, v);
                 }
             }
@@ -461,7 +476,7 @@ mod tests {
         let hash = SHA256Hash::compute(b"ACGTACGT");
         let accession = "NP_123456.1".to_string();
         let taxon_id = TaxonId(9606); // Human
-        let source = DatabaseSource::new("uniprot", "swissprot");
+        let source = DatabaseSource::UniProt(talaria_core::UniProtDatabase::SwissProt);
 
         // Add sequence
         indices.add_sequence(

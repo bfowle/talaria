@@ -1,5 +1,5 @@
-use talaria_sequoia::manifest::TALARIA_MAGIC;
-use talaria_sequoia::{ChunkMetadata, Manifest, SHA256Hash, TaxonId, TemporalManifest};
+use talaria_sequoia::TALARIA_MAGIC;
+use talaria_sequoia::{ManifestMetadata, Manifest, SHA256Hash, TaxonId, TemporalManifest};
 use chrono::Utc;
 use std::collections::HashSet;
 use std::fs;
@@ -32,14 +32,14 @@ fn test_manifest_serialization() {
     manifest.taxonomy_root = SHA256Hash::compute(b"taxonomy_root");
     manifest.sequence_root = SHA256Hash::compute(b"sequence_root");
     manifest.chunk_index = vec![
-        ChunkMetadata {
+        ManifestMetadata {
             hash: SHA256Hash::compute(b"chunk1"),
             taxon_ids: vec![TaxonId(562), TaxonId(563)],
             sequence_count: 1000,
             size: 52428800,
             compressed_size: Some(18350080),
         },
-        ChunkMetadata {
+        ManifestMetadata {
             hash: SHA256Hash::compute(b"chunk2"),
             taxon_ids: vec![TaxonId(9606)],
             sequence_count: 2000,
@@ -68,14 +68,14 @@ fn test_manifest_diff() {
     old_manifest.taxonomy_root = SHA256Hash::compute(b"tax1");
     old_manifest.sequence_root = SHA256Hash::compute(b"seq1");
     old_manifest.chunk_index = vec![
-        ChunkMetadata {
+        ManifestMetadata {
             hash: SHA256Hash::compute(b"chunk1"),
             taxon_ids: vec![TaxonId(1)],
             sequence_count: 100,
             size: 1000,
             compressed_size: None,
         },
-        ChunkMetadata {
+        ManifestMetadata {
             hash: SHA256Hash::compute(b"chunk2"),
             taxon_ids: vec![TaxonId(2)],
             sequence_count: 200,
@@ -90,14 +90,14 @@ fn test_manifest_diff() {
     new_manifest.taxonomy_root = SHA256Hash::compute(b"tax1");
     new_manifest.sequence_root = SHA256Hash::compute(b"seq2");
     new_manifest.chunk_index = vec![
-        ChunkMetadata {
+        ManifestMetadata {
             hash: SHA256Hash::compute(b"chunk1"), // Same
             taxon_ids: vec![TaxonId(1)],
             sequence_count: 100,
             size: 1000,
             compressed_size: None,
         },
-        ChunkMetadata {
+        ManifestMetadata {
             hash: SHA256Hash::compute(b"chunk3"), // New
             taxon_ids: vec![TaxonId(3)],
             sequence_count: 300,
@@ -192,7 +192,7 @@ fn test_version_chaining() {
 
 #[test]
 fn test_chunk_metadata_with_compression() {
-    let chunk = ChunkMetadata {
+    let chunk = ManifestMetadata {
         hash: SHA256Hash::compute(b"test_chunk"),
         taxon_ids: vec![TaxonId(562), TaxonId(563), TaxonId(564)],
         sequence_count: 15234,
@@ -308,7 +308,7 @@ fn test_tal_format_size_comparison() {
     // Add some chunks to make it more realistic
     let mut manifest = manifest;
     for i in 0..100 {
-        manifest.chunk_index.push(ChunkMetadata {
+        manifest.chunk_index.push(ManifestMetadata {
             hash: SHA256Hash::compute(&format!("chunk{}", i).into_bytes()),
             taxon_ids: vec![TaxonId(i as u32), TaxonId((i + 1) as u32)],
             sequence_count: 1000 + i,
@@ -337,7 +337,7 @@ fn test_manifest_roundtrip_tal_format() {
 
     // Create a complex manifest
     let mut manifest = create_test_manifest("20240315_143022", "2024.03.15", "2024.01.15");
-    manifest.chunk_index = vec![ChunkMetadata {
+    manifest.chunk_index = vec![ManifestMetadata {
         hash: SHA256Hash::compute(b"chunk1"),
         taxon_ids: vec![TaxonId(562), TaxonId(563)],
         sequence_count: 1000,
@@ -414,7 +414,7 @@ fn test_large_manifest_performance() {
     // Create a large manifest with many chunks
     let mut manifest = create_test_manifest("v1", "2024.01", "2024.01");
     for i in 0..10000 {
-        manifest.chunk_index.push(ChunkMetadata {
+        manifest.chunk_index.push(ManifestMetadata {
             hash: SHA256Hash::compute(&format!("chunk{}", i).into_bytes()),
             taxon_ids: vec![TaxonId(i % 1000)],
             sequence_count: 100,

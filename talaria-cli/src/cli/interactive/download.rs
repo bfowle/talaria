@@ -1,4 +1,4 @@
-use crate::download::{DatabaseSource, DownloadProgress, UniProtDatabase};
+use talaria_sequoia::download::{DatabaseSource, DownloadProgress, UniProtDatabase};
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::{
     backend::Backend,
@@ -172,6 +172,7 @@ pub fn run_download_wizard<B: Backend>(terminal: &mut Terminal<B>) -> io::Result
                     DatabaseSource::UniProt(db) => wizard.output_dir.join(format!("{}.fasta", db)),
                     DatabaseSource::NCBI(db) => wizard.output_dir.join(format!("{}.fasta", db)),
                     DatabaseSource::Custom(path) => PathBuf::from(path),
+                    DatabaseSource::Test => wizard.output_dir.join("test.fasta"),
                 };
 
                 wizard.message = format!("Downloading to {}...", output_file.display());
@@ -197,7 +198,7 @@ pub fn run_download_wizard<B: Backend>(terminal: &mut Terminal<B>) -> io::Result
                         }
                     }));
 
-                    crate::download::download_database(source_clone, &output_file, &mut progress)
+                    talaria_sequoia::download::download_database(source_clone, &output_file, &mut progress)
                         .await
                 });
 

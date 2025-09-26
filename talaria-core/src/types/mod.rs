@@ -1,4 +1,5 @@
 /// Core types shared across all Talaria modules
+pub mod aligner;
 pub mod hash;
 pub mod taxonomy;
 pub mod chunk;
@@ -9,6 +10,7 @@ pub mod sequence;
 pub mod version;
 
 // Re-export commonly used types at module level
+pub use aligner::TargetAligner;
 pub use hash::SHA256Hash;
 pub use taxonomy::{TaxonId, TaxonomyDataSource};
 pub use chunk::{ChunkInfo, ChunkMetadata, DeltaChunk, ChunkType};

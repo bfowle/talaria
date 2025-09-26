@@ -234,7 +234,7 @@ pub fn run_reduce_wizard<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<(
                         }
                     };
 
-                    let mut reducer = crate::core::reducer::Reducer::new(config)
+                    let mut reducer = talaria_sequoia::Reducer::new(config)
                         .with_progress_callback(progress_callback)
                         .with_silent(false);
 

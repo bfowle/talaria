@@ -52,6 +52,9 @@ pub trait SequenceStorageBackend: Send + Sync {
 
     /// Flush any pending writes to disk
     fn flush(&self) -> Result<()>;
+
+    /// Get a reference to self as Any for downcasting
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 // Use StorageStats from talaria-core
@@ -512,7 +515,7 @@ impl SequenceStorage {
             .collect();
 
         // Store all new canonical sequences in batch
-        for canonical in new_sequences {
+        for canonical in &new_sequences {
             self.backend.store_canonical(&canonical)?;
         }
 
@@ -665,6 +668,60 @@ impl SequenceStorage {
 
         // Remove from backend
         self.backend.remove_sequence(hash)
+    }
+
+    /// Rebuild all indices by scanning the backend storage
+    pub fn rebuild_index(&self) -> Result<()> {
+        println!("Rebuilding sequence storage indices...");
+
+        // First rebuild the backend's internal index
+        if let Some(packed) = self.backend.as_any().downcast_ref::<PackedSequenceStorage>() {
+            packed.rebuild_index()?;
+        }
+
+        // Clear existing secondary indices
+        {
+            let mut accession_idx = self.accession_index.write().unwrap();
+            accession_idx.entries.clear();
+        }
+        {
+            let mut taxonomy_idx = self.taxonomy_index.write().unwrap();
+            taxonomy_idx.taxonomy_map.clear();
+        }
+
+        // Rebuild secondary indices from backend data
+        let all_hashes = self.backend.list_all_hashes()?;
+        println!("  Rebuilding secondary indices for {} sequences", all_hashes.len());
+
+        for hash in &all_hashes {
+            // Load representations to rebuild indices
+            if let Ok(representations) = self.backend.load_representations(hash) {
+                // Update accession index
+                {
+                    let mut accession_idx = self.accession_index.write().unwrap();
+                    for repr in &representations.representations {
+                        // Process all accessions for this representation
+                        for accession in &repr.accessions {
+                            accession_idx.insert(accession.clone(), hash.clone(), repr.source.clone())?;
+                        }
+                    }
+                }
+
+                // Update taxonomy index - check each representation for taxon_id
+                for repr in &representations.representations {
+                    if let Some(taxon_id) = repr.taxon_id {
+                        let mut taxonomy_idx = self.taxonomy_index.write().unwrap();
+                        taxonomy_idx.insert(taxon_id, hash.clone())?;
+                    }
+                }
+            }
+        }
+
+        // Save rebuilt indices
+        self.save_indices()?;
+        println!("  Secondary indices rebuilt and saved");
+
+        Ok(())
     }
 
     /// Flush any pending writes to disk
@@ -876,7 +933,7 @@ mod tests {
         let sequence = "ACGTACGTACGT";
         let header1 = ">seq1 description1";
         let header2 = ">seq2 different description";
-        let source = DatabaseSource::new("custom", "test");
+        let source = DatabaseSource::Custom("custom/test".to_string());
 
         let hash1 = seq_storage.store_sequence(sequence, header1, source.clone()).unwrap();
         let hash2 = seq_storage.store_sequence(sequence, header2, source).unwrap();
@@ -900,7 +957,7 @@ mod tests {
         // Store a sequence
         let sequence = "ACGTACGTACGT";
         let header = ">test_seq test description";
-        let source = DatabaseSource::new("custom", "test");
+        let source = DatabaseSource::Custom("custom/test".to_string());
 
         let hash = seq_storage.store_sequence(sequence, header, source.clone()).unwrap();
         seq_storage.save_indices().unwrap();
@@ -931,12 +988,12 @@ mod tests {
         let sequence = "MVALPRWFDK";
 
         // Store from UniProt
-        let uniprot_source = DatabaseSource::new("uniprot", "swissprot");
+        let uniprot_source = DatabaseSource::UniProt(talaria_core::UniProtDatabase::SwissProt);
         let uniprot_header = ">sp|P12345|PROT_HUMAN Protein from human";
         let hash1 = seq_storage.store_sequence(sequence, uniprot_header, uniprot_source).unwrap();
 
         // Store from NCBI (same sequence)
-        let ncbi_source = DatabaseSource::new("ncbi", "nr");
+        let ncbi_source = DatabaseSource::NCBI(talaria_core::NCBIDatabase::NR);
         let ncbi_header = ">gi|123456789|ref|NP_123456.1| protein [Homo sapiens]";
         let hash2 = seq_storage.store_sequence(sequence, ncbi_header, ncbi_source).unwrap();
 
@@ -957,7 +1014,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let seq_storage = SequenceStorage::new(temp_dir.path()).unwrap();
 
-        let source = DatabaseSource::new("custom", "test");
+        let source = DatabaseSource::Custom("custom/test".to_string());
 
         // Store multiple sequences without saving indices each time
         for i in 0..100 {

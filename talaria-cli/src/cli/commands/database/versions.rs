@@ -9,8 +9,8 @@ use crate::cli::formatting::output::{
     info as print_info, success as print_success, tree_section, warning as print_warning,
 };
 use talaria_core::system::paths;
-use crate::core::database::database_ref::parse_database_reference;
-use crate::core::versioning::version_detector::{VersionDetector, VersionManager};
+use talaria_utils::database::database_ref::parse_database_reference;
+use talaria_utils::database::version_detector::{VersionDetector, VersionManager};
 
 #[derive(Args)]
 pub struct VersionsArgs {

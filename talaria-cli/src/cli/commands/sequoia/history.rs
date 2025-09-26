@@ -77,7 +77,7 @@ pub fn run(args: HistoryArgs) -> Result<()> {
 
     // Initialize temporal tracking for existing data if needed
     {
-        use crate::core::database::database_manager::DatabaseManager as SEQUOIADatabaseManager;
+        use talaria_sequoia::database::DatabaseManager as SEQUOIADatabaseManager;
         let mut manager = SEQUOIADatabaseManager::new(Some(sequoia_path.to_string_lossy().to_string()))?;
         let _ = manager.init_temporal_for_existing();
     }

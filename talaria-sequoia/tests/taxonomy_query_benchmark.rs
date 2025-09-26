@@ -8,7 +8,6 @@ use talaria_sequoia::{
     taxonomy_filter::TaxonomyFilter,
 };
 use std::time::Instant;
-use std::path::PathBuf;
 use tempfile::TempDir;
 
 #[test]
@@ -16,7 +15,7 @@ fn test_taxonomy_query_performance() {
     let temp_dir = TempDir::new().unwrap();
     let indices_path = temp_dir.path();
 
-    let mut indices = SequenceIndices::new(indices_path).unwrap();
+    let indices = SequenceIndices::new(indices_path).unwrap();
 
     // Simulate realistic database with taxonomic distribution
     // 1M sequences across different taxa
@@ -37,13 +36,13 @@ fn test_taxonomy_query_performance() {
             let hash = SHA256Hash::compute(format!("seq_{}_{}",taxon_id.0, i).as_bytes());
             let accession = format!("ACC_{:07}", sequence_count);
 
-            indices.add_sequence(hash, *taxon_id);
+            indices.add_sequence(hash.clone(), Some(accession.clone()), Some(*taxon_id), None);
 
             sequence_count += 1;
 
             // Also add E. coli sequences to Bacteria
             if *taxon_id == TaxonId(562) {
-                indices.add_sequence(hash, TaxonId(2));
+                indices.add_sequence(hash.clone(), Some(accession.clone()), Some(TaxonId(2)), None);
             }
         }
     }
@@ -95,7 +94,7 @@ fn test_taxonomy_query_performance() {
 
     let bloom_start = Instant::now();
     for _ in 0..100_000 {
-        let _ = indices.has_sequence(&test_hash);
+        let _ = indices.sequence_exists(&test_hash);
     }
     let bloom_time = bloom_start.elapsed();
 

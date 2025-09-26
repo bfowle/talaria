@@ -7,6 +7,7 @@
 // Modules
 pub mod aligners;
 pub mod manager;
+pub mod optimizers;
 pub mod testing;
 pub mod traits;
 pub mod types;

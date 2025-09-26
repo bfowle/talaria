@@ -1,4 +1,4 @@
-use talaria_sequoia::{ChunkMetadata, SHA256Hash, TaxonId, TemporalManifest};
+use talaria_sequoia::{ManifestMetadata, SHA256Hash, TaxonId, TemporalManifest};
 use anyhow::Result;
 use chrono::Utc;
 use std::collections::HashSet;
@@ -100,7 +100,7 @@ async fn test_sequence_only_update() {
     let mut old_manifest = create_test_manifest("v1", "2024.01", "2024.01");
     old_manifest.taxonomy_root = SHA256Hash::compute(b"tax_unchanged");
     old_manifest.sequence_root = SHA256Hash::compute(b"seq_old");
-    old_manifest.chunk_index = vec![ChunkMetadata {
+    old_manifest.chunk_index = vec![ManifestMetadata {
         hash: SHA256Hash::compute(b"chunk1"),
         taxon_ids: vec![TaxonId(562)],
         sequence_count: 100,
@@ -113,14 +113,14 @@ async fn test_sequence_only_update() {
     new_manifest.taxonomy_root = old_manifest.taxonomy_root.clone(); // Unchanged
     new_manifest.sequence_root = SHA256Hash::compute(b"seq_new"); // Changed
     new_manifest.chunk_index = vec![
-        ChunkMetadata {
+        ManifestMetadata {
             hash: SHA256Hash::compute(b"chunk1"), // Existing
             taxon_ids: vec![TaxonId(562)],
             sequence_count: 100,
             size: 1000,
             compressed_size: None,
         },
-        ChunkMetadata {
+        ManifestMetadata {
             hash: SHA256Hash::compute(b"chunk2"), // New chunk
             taxon_ids: vec![TaxonId(562)],
             sequence_count: 50,
@@ -150,7 +150,7 @@ async fn test_taxonomy_only_update() {
     let mut old_manifest = create_test_manifest("v1", "2024.01", "2024.01");
     old_manifest.taxonomy_root = SHA256Hash::compute(b"tax_old");
     old_manifest.sequence_root = SHA256Hash::compute(b"seq_unchanged");
-    old_manifest.chunk_index = vec![ChunkMetadata {
+    old_manifest.chunk_index = vec![ManifestMetadata {
         hash: SHA256Hash::compute(b"chunk1"),
         taxon_ids: vec![TaxonId(562)], // Will be reclassified
         sequence_count: 100,
@@ -162,7 +162,7 @@ async fn test_taxonomy_only_update() {
     let mut new_manifest = create_test_manifest("v2", "2024.01", "2024.02");
     new_manifest.taxonomy_root = SHA256Hash::compute(b"tax_new"); // Changed
     new_manifest.sequence_root = old_manifest.sequence_root.clone(); // Unchanged
-    new_manifest.chunk_index = vec![ChunkMetadata {
+    new_manifest.chunk_index = vec![ManifestMetadata {
         hash: SHA256Hash::compute(b"chunk1"), // Same chunk
         taxon_ids: vec![TaxonId(563)],        // Reclassified taxon
         sequence_count: 100,
@@ -194,7 +194,7 @@ async fn test_combined_update() {
     let mut old_manifest = create_test_manifest("v1", "2024.01", "2024.01");
     old_manifest.taxonomy_root = SHA256Hash::compute(b"tax_old");
     old_manifest.sequence_root = SHA256Hash::compute(b"seq_old");
-    old_manifest.chunk_index = vec![ChunkMetadata {
+    old_manifest.chunk_index = vec![ManifestMetadata {
         hash: SHA256Hash::compute(b"chunk1"),
         taxon_ids: vec![TaxonId(562)],
         sequence_count: 100,
@@ -206,7 +206,7 @@ async fn test_combined_update() {
     let mut new_manifest = create_test_manifest("v2", "2024.02", "2024.02");
     new_manifest.taxonomy_root = SHA256Hash::compute(b"tax_new"); // Changed
     new_manifest.sequence_root = SHA256Hash::compute(b"seq_new"); // Changed
-    new_manifest.chunk_index = vec![ChunkMetadata {
+    new_manifest.chunk_index = vec![ManifestMetadata {
         hash: SHA256Hash::compute(b"chunk2"), // All new chunks
         taxon_ids: vec![TaxonId(563)],
         sequence_count: 150,
@@ -266,21 +266,21 @@ fn test_partial_update_recovery() {
     manifest.taxonomy_root = SHA256Hash::compute(b"tax");
     manifest.sequence_root = SHA256Hash::compute(b"seq");
     manifest.chunk_index = vec![
-        ChunkMetadata {
+        ManifestMetadata {
             hash: SHA256Hash::compute(b"chunk1"),
             taxon_ids: vec![TaxonId(1)],
             sequence_count: 100,
             size: 1000,
             compressed_size: None,
         },
-        ChunkMetadata {
+        ManifestMetadata {
             hash: SHA256Hash::compute(b"chunk2"),
             taxon_ids: vec![TaxonId(2)],
             sequence_count: 200,
             size: 2000,
             compressed_size: None,
         },
-        ChunkMetadata {
+        ManifestMetadata {
             hash: SHA256Hash::compute(b"chunk3"),
             taxon_ids: vec![TaxonId(3)],
             sequence_count: 300,

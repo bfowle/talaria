@@ -1,6 +1,7 @@
 //! Bioinformatics utilities for Talaria
 
 pub mod alignment;
+pub mod clustering;
 pub mod compression;
 pub mod formats;
 pub mod providers;
@@ -15,3 +16,6 @@ pub use formats::fasta::{parse_fasta, write_fasta, parse_fasta_parallel, parse_f
 
 // Re-export commonly used taxonomy types
 pub use taxonomy::{TaxonomyDB, TaxonomyInfo, TaxonomySources};
+
+// Re-export clustering types
+pub use clustering::{PhylogeneticClusterer, TaxonomicCluster, ClusteringConfig, ClusteringRules, GroupingStrategy};

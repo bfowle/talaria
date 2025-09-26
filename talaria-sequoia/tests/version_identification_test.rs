@@ -187,7 +187,7 @@ pub enum VersionInfo {
 
 #[test]
 fn test_identify_exact_version() {
-    use talaria_sequoia::{ChunkMetadata, TemporalManifest};
+    use talaria_sequoia::{ManifestMetadata, TemporalManifest};
     use chrono::Utc;
 
     let sequences = vec![
@@ -224,7 +224,7 @@ fn test_identify_exact_version() {
         taxonomy_root: SHA256Hash::compute(b"tax"),
         sequence_root,
         chunk_merkle_tree: None,
-        chunk_index: vec![ChunkMetadata {
+        chunk_index: vec![ManifestMetadata {
             hash: chunk_hash,
             taxon_ids: vec![TaxonId(562)],
             sequence_count: 2,
@@ -259,7 +259,7 @@ fn test_identify_exact_version() {
 
 #[test]
 fn test_identify_modified_version() {
-    use talaria_sequoia::{ChunkMetadata, TemporalManifest};
+    use talaria_sequoia::{ManifestMetadata, TemporalManifest};
     use chrono::Utc;
 
     // Create enough sequences to form multiple chunks
@@ -318,14 +318,14 @@ fn test_identify_modified_version() {
         sequence_root,
         chunk_merkle_tree: None,
         chunk_index: vec![
-            ChunkMetadata {
+            ManifestMetadata {
                 hash: chunk1_hash,
                 taxon_ids: vec![TaxonId(562)],
                 sequence_count: 10,
                 size: 100,
                 compressed_size: None,
             },
-            ChunkMetadata {
+            ManifestMetadata {
                 hash: chunk2_hash,
                 taxon_ids: vec![TaxonId(562)],
                 sequence_count: 5,
@@ -389,7 +389,7 @@ fn test_identify_unknown_version() {
 
 #[test]
 fn test_multi_taxon_version_identification() {
-    use talaria_sequoia::{ChunkMetadata, TemporalManifest};
+    use talaria_sequoia::{ManifestMetadata, TemporalManifest};
     use chrono::Utc;
 
     let sequences = vec![
@@ -424,7 +424,7 @@ fn test_multi_taxon_version_identification() {
         taxonomy_root: SHA256Hash::compute(b"tax2"),
         sequence_root,
         chunk_merkle_tree: None,
-        chunk_index: vec![ChunkMetadata {
+        chunk_index: vec![ManifestMetadata {
             hash: chunk_hash,
             taxon_ids: vec![TaxonId(562), TaxonId(9606)],
             sequence_count: 2,

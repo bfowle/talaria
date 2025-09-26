@@ -19,7 +19,7 @@ pub struct VerifyArgs {
 pub fn run(args: VerifyArgs) -> Result<()> {
     use talaria_sequoia::SHA256Hash;
     use crate::cli::formatting::output::*;
-    use crate::core::database::database_manager::DatabaseManager;
+    use talaria_sequoia::database::DatabaseManager;
 
     // Initialize database manager
     let manager = DatabaseManager::new(None)?;

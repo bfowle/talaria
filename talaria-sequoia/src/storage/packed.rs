@@ -12,6 +12,7 @@ use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
+use tracing as log;  // Use tracing for logging
 
 const PACK_MAGIC: &[u8; 4] = b"PKSQ"; // Pack SeQuence
 const PACK_VERSION: u8 = 1;
@@ -112,6 +113,16 @@ impl PackWriter {
     }
 
     fn finalize(mut self) -> Result<()> {
+        // If no entries were written, remove the empty pack file
+        if self.entries.is_empty() {
+            drop(self.writer); // Close the writer first
+            // Remove the empty pack file
+            if self.path.exists() {
+                fs::remove_file(&self.path)?;
+            }
+            return Ok(());
+        }
+
         // Write footer with entry count
         let entry_count = self.entries.len() as u32;
         self.writer.write_all(&entry_count.to_le_bytes())?;
@@ -140,12 +151,22 @@ impl PackReader {
             return Err(anyhow!("Pack file not found: {:?}", path));
         };
 
+        // Skip empty or too-small files
+        if compressed_data.is_empty() {
+            return Err(anyhow!("Pack file is empty: {:?}", path));
+        }
+
         // Decompress if it's Zstandard compressed
         let data = if compressed_data.len() >= 4
             && compressed_data[0] == 0x28
             && compressed_data[1] == 0xb5 {
             // Zstandard magic bytes detected - decompress
-            zstd::decode_all(&compressed_data[..])?
+            match zstd::decode_all(&compressed_data[..]) {
+                Ok(d) => d,
+                Err(e) => {
+                    return Err(anyhow!("Failed to decompress pack file {:?}: {}", path, e));
+                }
+            }
         } else {
             // Not compressed (shouldn't happen in new files)
             compressed_data
@@ -157,6 +178,11 @@ impl PackReader {
         }
         if &data[0..4] != PACK_MAGIC {
             return Err(anyhow!("Invalid pack file magic bytes: {:?} at {:?}", &data[0..4], path));
+        }
+
+        // Verify there's at least a footer (entry count)
+        if data.len() < 13 {  // 9 bytes header + 4 bytes footer minimum
+            return Err(anyhow!("Pack file incomplete (no footer): {} bytes at {:?}", data.len(), path));
         }
 
         Ok(Self { data })
@@ -233,36 +259,64 @@ impl PackedSequenceStorage {
         let index_path = indices_dir.join("sequence_index.tal");
 
         if index_path.exists() {
-            // Load existing index (TALARIA format: MessagePack + Zstandard)
-            let compressed_data = fs::read(&index_path)?;
-
-            // Decompress if needed
-            let data = if compressed_data.len() >= 4
-                && compressed_data[0] == 0x28
-                && compressed_data[1] == 0xb5 {
-                // Zstandard compressed
-                zstd::decode_all(&compressed_data[..])?
-            } else {
-                // Legacy uncompressed (for backwards compatibility)
-                compressed_data
-            };
-
-            let index_map: std::collections::HashMap<SHA256Hash, PackLocation> =
-                rmp_serde::from_slice(&data)?;
-
-            let dash_map = DashMap::new();
-            for (k, v) in index_map {
-                dash_map.insert(k, v);
+            // Try to load existing index, but if it fails, start fresh
+            match Self::try_load_index(&index_path) {
+                Ok(index) => Ok(index),
+                Err(e) => {
+                    log::warn!("Failed to load existing index, starting fresh: {}", e);
+                    // Remove corrupt index file
+                    let _ = fs::remove_file(&index_path);
+                    Ok(DashMap::new())
+                }
             }
-            Ok(dash_map)
         } else {
             // Create new index
             Ok(DashMap::new())
         }
     }
 
+    fn try_load_index(index_path: &Path) -> Result<DashMap<SHA256Hash, PackLocation>> {
+        // Load existing index (TALARIA format: MessagePack + Zstandard)
+        let compressed_data = fs::read(index_path)?;
+
+        // Decompress if needed
+        let data = if compressed_data.len() >= 4
+            && compressed_data[0] == 0x28
+            && compressed_data[1] == 0xb5 {
+            // Zstandard compressed
+            zstd::decode_all(&compressed_data[..])?
+        } else {
+            // Legacy uncompressed (for backwards compatibility)
+            compressed_data
+        };
+
+        let index_map: std::collections::HashMap<SHA256Hash, PackLocation> =
+            rmp_serde::from_slice(&data)?;
+
+        let dash_map = DashMap::new();
+        for (k, v) in index_map {
+            dash_map.insert(k, v);
+        }
+        Ok(dash_map)
+    }
+
     fn save_index(&self) -> Result<()> {
         let index_path = self.indices_dir.join("sequence_index.tal");
+
+        // IMPORTANT: If our index is empty but a non-empty index exists on disk,
+        // don't overwrite it! This can happen when multiple instances are created.
+        if self.pack_index.is_empty() && index_path.exists() {
+            let file_size = fs::metadata(&index_path)?.len();
+            // A valid empty index compressed is ~10 bytes, anything larger means it has data
+            if file_size > 15 {
+                log::debug!("Skipping save of empty index - good index already exists on disk (size: {} bytes)", file_size);
+                return Ok(());
+            }
+        }
+
+        // Debug logging through tracing
+        log::debug!("Saving index with {} entries to {:?}",
+                  self.pack_index.len(), index_path);
 
         // Convert DashMap to HashMap for serialization
         let mut index_map = std::collections::HashMap::new();
@@ -286,8 +340,29 @@ impl PackedSequenceStorage {
                 let entry = entry?;
                 let name = entry.file_name();
                 let name_str = name.to_string_lossy();
+                let path = entry.path();
 
                 if name_str.starts_with("pack_") {
+                    // Check if the file is valid (not empty or incomplete)
+                    if let Ok(metadata) = fs::metadata(&path) {
+                        // Skip files that are too small to be valid packs
+                        // Minimum valid pack: compressed header (9 bytes) + footer (4 bytes) after compression
+                        // But compressed size can vary, so just check for non-empty
+                        if metadata.len() == 0 {
+                            // Remove empty pack files
+                            let _ = fs::remove_file(&path);
+                            continue;
+                        }
+
+                        // Try to validate the pack file is readable
+                        // If it fails, it's likely incomplete or corrupt, so skip it
+                        if PackReader::open(&path).is_err() {
+                            log::warn!("Removing invalid pack file: {:?}", path);
+                            let _ = fs::remove_file(&path);
+                            continue;
+                        }
+                    }
+
                     if let Some(id_str) = name_str.strip_prefix("pack_").and_then(|s| s.split('.').next()) {
                         if let Ok(id) = id_str.parse::<u32>() {
                             max_id = max_id.max(id);
@@ -351,7 +426,15 @@ impl PackedSequenceStorage {
             return Err(anyhow!("Pack file {} not found at {:?}", pack_id, pack_path));
         }
 
-        let reader = Arc::new(PackReader::open(&pack_path)?);
+        // Try to open the pack reader, handling incomplete files
+        let reader = match PackReader::open(&pack_path) {
+            Ok(r) => Arc::new(r),
+            Err(e) => {
+                // If the pack file is incomplete or corrupt, log and skip it
+                log::warn!("Failed to open pack file {:?}: {}", pack_path, e);
+                return Err(e);
+            }
+        };
         self.pack_readers.insert(pack_id, reader.clone());
 
         Ok(reader)
@@ -395,6 +478,9 @@ impl SequenceStorageBackend for PackedSequenceStorage {
             self.pack_index.insert(sequence.sequence_hash.clone(), location);
 
             // Don't save index here - it will be saved when pack is finalized or flushed
+        } else {
+            // This should never happen after get_or_create_pack()
+            return Err(anyhow!("Failed to get pack writer after creation"));
         }
 
         Ok(())
@@ -482,6 +568,14 @@ impl SequenceStorageBackend for PackedSequenceStorage {
     fn get_stats(&self) -> Result<StorageStats> {
         let total_sequences = self.pack_index.len();
 
+        // Calculate total representations by loading and counting
+        let mut total_representations = 0usize;
+        for hash in self.pack_index.iter() {
+            if let Ok(reprs) = self.load_representations(hash.key()) {
+                total_representations += reprs.representations.len();
+            }
+        }
+
         // Calculate total size from pack files
         let mut total_size = 0u64;
         for entry in fs::read_dir(&self.packs_dir)? {
@@ -491,11 +585,18 @@ impl SequenceStorageBackend for PackedSequenceStorage {
             }
         }
 
+        // Calculate deduplication ratio
+        let dedup_ratio = if total_sequences > 0 {
+            total_representations as f32 / total_sequences as f32
+        } else {
+            1.0
+        };
+
         Ok(StorageStats {
             total_sequences: Some(total_sequences),
-            total_representations: Some(total_sequences), // Assume 1:1 for now
+            total_representations: Some(total_representations),
             total_size: total_size as usize,
-            deduplication_ratio: 1.0, // No dedup metrics tracked currently
+            deduplication_ratio: dedup_ratio,
             total_chunks: 0, // Not used for sequence storage
             compressed_chunks: 0, // Not used for sequence storage
         })
@@ -535,6 +636,104 @@ impl SequenceStorageBackend for PackedSequenceStorage {
         self.save_index()?;
         Ok(())
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl PackedSequenceStorage {
+    /// Rebuild the sequence index by scanning all pack files
+    pub fn rebuild_index(&self) -> Result<()> {
+        println!("Rebuilding sequence index from pack files...");
+
+        // Clear existing index
+        self.pack_index.clear();
+
+        // Scan all pack files
+        let mut pack_count = 0;
+        let mut sequence_count = 0;
+
+        for entry in fs::read_dir(&self.packs_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            // Only process .tal pack files
+            if path.extension().and_then(|s| s.to_str()) != Some("tal") {
+                continue;
+            }
+
+            // Extract pack ID from filename (pack_XXXX.tal)
+            let filename = path.file_stem()
+                .and_then(|s| s.to_str())
+                .ok_or_else(|| anyhow!("Invalid pack filename"))?;
+
+            if !filename.starts_with("pack_") {
+                continue;
+            }
+
+            let pack_id: u32 = filename[5..].parse()
+                .context("Invalid pack ID in filename")?;
+
+            println!("  Scanning pack file: {}", filename);
+
+            // Open pack reader
+            let reader = PackReader::open(&path)?;
+
+            // Scan through the pack file to extract all entries
+            let mut offset = 9u64; // Skip header (MAGIC:4 + VERSION:1 + ID:4)
+
+            while offset < reader.data.len() as u64 {
+                // Read header length
+                if offset + 4 > reader.data.len() as u64 {
+                    break; // End of pack
+                }
+
+                let header_len = u32::from_le_bytes(
+                    reader.data[offset as usize..offset as usize + 4]
+                        .try_into()?
+                ) as usize;
+
+                // Read and parse header
+                let header_start = offset as usize + 4;
+                let header_end = header_start + header_len;
+
+                if header_end > reader.data.len() {
+                    break; // Incomplete entry
+                }
+
+                let header_data = &reader.data[header_start..header_end];
+                let entry: PackEntry = rmp_serde::from_slice(header_data)?;
+
+                // Record location in index
+                let length = 4 + header_len as u32 + entry.sequence_length + entry.representations_length;
+                let location = PackLocation {
+                    pack_id,
+                    offset,
+                    length,
+                    compressed: true, // All new packs are compressed
+                };
+
+                self.pack_index.insert(entry.hash.clone(), location);
+                sequence_count += 1;
+
+                // Move to next entry
+                offset += length as u64;
+            }
+
+            // Cache the reader for future use
+            self.pack_readers.insert(pack_id, Arc::new(reader));
+            pack_count += 1;
+        }
+
+        println!("  Found {} sequences in {} pack files", sequence_count, pack_count);
+
+        // Save the rebuilt index
+        self.save_index()?;
+        println!("  Index rebuilt and saved");
+
+        Ok(())
+    }
 }
 
 impl Drop for PackedSequenceStorage {
@@ -542,7 +741,15 @@ impl Drop for PackedSequenceStorage {
         // Finalize current pack if it exists
         let mut current_pack = self.current_pack.lock().unwrap();
         if let Some(pack) = current_pack.take() {
-            let _ = pack.finalize();
+            // Only finalize if there are entries, otherwise just drop it
+            if !pack.entries.is_empty() {
+                let _ = pack.finalize();
+            } else {
+                // Clean up empty pack file if it was created
+                if pack.path.exists() {
+                    let _ = fs::remove_file(&pack.path);
+                }
+            }
         }
 
         // Save index

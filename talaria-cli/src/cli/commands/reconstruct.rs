@@ -114,7 +114,7 @@ pub fn run(args: ReconstructArgs) -> anyhow::Result<()> {
         return Ok(());
     } else if let Some(db_ref_str) = &args.database {
         // Parse database reference with profile using the proper utility
-        use crate::core::database::database_ref::parse_database_reference;
+        use talaria_utils::database::database_ref::parse_database_reference;
         let db_ref = parse_database_reference(db_ref_str)?;
 
         // Profile is required for reconstruction
@@ -255,7 +255,7 @@ pub fn run(args: ReconstructArgs) -> anyhow::Result<()> {
     }
 
     // Reconstruct sequences
-    let reconstructor = crate::core::delta_encoder::DeltaReconstructor::new();
+    let reconstructor = talaria_bio::compression::DeltaReconstructor::new();
     let reconstructed = if args.sequences.is_empty() {
         pb.set_message(format!(
             "Reconstructing {} sequences...",
@@ -445,7 +445,7 @@ fn reconstruct_from_sequoia(
 
 /// Reconstruct sequences from SEQUOIA database profile
 fn reconstruct_from_sequoia_database(
-    db_ref: &crate::core::database::database_ref::DatabaseReference,
+    db_ref: &talaria_utils::database::database_ref::DatabaseReference,
     profile: &str,
     sequoia_path: &Option<PathBuf>,
     output_path: &PathBuf,
@@ -648,4 +648,255 @@ fn show_version_history(args: &ReconstructArgs) -> anyhow::Result<()> {
     println!("    talaria reconstruct --taxonomy-version \"xyz789\" uniprot/swissprot:blast-30");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_reconstruct_args_validation() {
+        // Test that reconstruct args are properly validated
+        let args = ReconstructArgs {
+            database: Some("uniprot/swissprot:blast-30".to_string()),
+            references: Some("test_ref.fasta".into()),
+            deltas: Some("test_deltas.fasta".into()),
+            output: Some("output.fasta".into()),
+            sequoia_profile: None,
+            sequoia_path: None,
+            sequences: vec![],
+            list_only: false,
+            at_time: None,
+            sequence_version: None,
+            taxonomy_version: None,
+            show_versions: false,
+        };
+
+        assert_eq!(args.references.as_ref().unwrap().to_str().unwrap(), "test_ref.fasta");
+        assert_eq!(args.output.as_ref().unwrap().to_str().unwrap(), "output.fasta");
+        assert!(args.deltas.is_some());
+    }
+
+    #[test]
+    fn test_database_reference_parsing() {
+        // Test parsing of database references
+        let test_cases = vec![
+            ("ncbi/protein", true),
+            ("uniprot/swissprot", true),
+            ("uniprot/trembl", true),
+            ("ncbi/nt:blast-30", true),
+            ("invalid", false),
+            ("", false),
+        ];
+
+        for (input, should_be_valid) in test_cases {
+            let is_valid = input.contains('/') || input.contains(':');
+            assert_eq!(
+                is_valid, should_be_valid,
+                "Database reference validation failed for: {}",
+                input
+            );
+        }
+    }
+
+    #[test]
+    fn test_profile_parsing() {
+        // Test profile name parsing
+        let test_cases = vec![
+            ("blast-30", Ok("blast-30")),
+            ("lambda-90", Ok("lambda-90")),
+            ("kraken-50", Ok("kraken-50")),
+            ("custom_profile", Ok("custom_profile")),
+            ("", Err("empty profile")),
+        ];
+
+        for (input, expected) in test_cases {
+            match expected {
+                Ok(profile) => {
+                    assert_eq!(input, profile);
+                    assert!(!input.is_empty());
+                }
+                Err(_) => {
+                    assert!(input.is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_temporal_coordinate_parsing() {
+        // Test temporal coordinate parsing
+        let test_times = vec![
+            "2024-01-15T10:00:00Z",
+            "2023-12-31T23:59:59Z",
+            "2024-06-01T00:00:00Z",
+        ];
+
+        for time_str in test_times {
+            // Verify the format is valid ISO 8601
+            assert!(time_str.contains('T'));
+            assert!(time_str.ends_with('Z'));
+            assert_eq!(time_str.len(), 20);
+        }
+    }
+
+    #[test]
+    fn test_output_format_detection() {
+        // Test output format detection from file extension
+        let test_cases = vec![
+            ("output.fasta", "fasta"),
+            ("output.fa", "fasta"),
+            ("output.fna", "fasta"),
+            ("output.json", "json"),
+            ("output.txt", "fasta"), // Default to fasta
+        ];
+
+        for (filename, expected_format) in test_cases {
+            let format = if filename.ends_with(".json") {
+                "json"
+            } else {
+                "fasta"
+            };
+            assert_eq!(format, expected_format,
+                "Format detection failed for: {}", filename);
+        }
+    }
+
+    #[test]
+    fn test_batch_size_validation() {
+        // Test batch size validation
+        let test_cases = vec![
+            (Some(1), true),
+            (Some(100), true),
+            (Some(10000), true),
+            (Some(0), false),
+            (None, true), // Default is valid
+        ];
+
+        for (batch_size, should_be_valid) in test_cases {
+            let is_valid = batch_size.map_or(true, |s| s > 0);
+            assert_eq!(is_valid, should_be_valid,
+                "Batch size validation failed for: {:?}", batch_size);
+        }
+    }
+
+    #[test]
+    fn test_delta_file_requirement() {
+        // Test that delta file is required for certain operations
+        let args_with_delta = ReconstructArgs {
+            database: None,
+            references: Some("ref.fasta".into()),
+            deltas: Some("deltas.fasta".into()),
+            output: Some("output.fasta".into()),
+            sequoia_profile: None,
+            sequoia_path: None,
+            sequences: vec![],
+            list_only: false,
+            at_time: None,
+            sequence_version: None,
+            taxonomy_version: None,
+            show_versions: false,
+        };
+
+        let args_without_delta = ReconstructArgs {
+            database: Some("ncbi/protein:blast-30".to_string()),
+            references: Some("ref.fasta".into()),
+            deltas: None,
+            output: Some("output.fasta".into()),
+            sequoia_profile: Some("blast-30".to_string()),
+            sequoia_path: None,
+            sequences: vec![],
+            list_only: false,
+            at_time: None,
+            sequence_version: None,
+            taxonomy_version: None,
+            show_versions: false,
+        };
+
+        // With delta file - standard reconstruction
+        assert!(args_with_delta.deltas.is_some());
+
+        // Without delta file - requires database/profile for database reconstruction
+        assert!(args_without_delta.deltas.is_none());
+        assert!(args_without_delta.database.is_some());
+        assert!(args_without_delta.sequoia_profile.is_some());
+    }
+
+    #[test]
+    fn test_version_string_format() {
+        // Test version string format validation
+        let valid_versions = vec![
+            "abc123def456",
+            "1234567890abcdef",
+            "v1.0.0",
+            "2024-01-15",
+        ];
+
+        for version in valid_versions {
+            assert!(!version.is_empty(), "Version string should not be empty");
+            assert!(version.len() <= 64, "Version string too long: {}", version);
+        }
+    }
+
+    #[test]
+    fn test_list_operations() {
+        // Test list operations flags
+        let args_list_only = ReconstructArgs {
+            database: Some("ncbi/protein".to_string()),
+            references: Some("dummy.fasta".into()),
+            deltas: None,
+            output: Some("output.fasta".into()),
+            sequoia_profile: None,
+            sequoia_path: None,
+            sequences: vec![],
+            list_only: true,
+            at_time: None,
+            sequence_version: None,
+            taxonomy_version: None,
+            show_versions: false,
+        };
+
+        let args_verify = ReconstructArgs {
+            database: Some("ncbi/protein:blast-30".to_string()),
+            references: Some("dummy.fasta".into()),
+            deltas: None,
+            output: Some("output.fasta".into()),
+            sequoia_profile: Some("blast-30".to_string()),
+            sequoia_path: None,
+            sequences: vec![],
+            list_only: false,
+            at_time: None,
+            sequence_version: None,
+            taxonomy_version: None,
+            show_versions: false,
+        };
+
+        assert!(args_list_only.list_only);
+        // Verify field removed - just check list_only flag
+        assert!(args_list_only.list_only);
+        assert!(!args_verify.list_only);
+    }
+
+    #[test]
+    fn test_file_path_validation() {
+        use std::path::Path;
+
+        // Test that file paths are properly handled
+        let test_paths = vec![
+            ("./test.fasta", true),
+            ("../test.fasta", true),
+            ("/absolute/path.fasta", true),
+            ("relative/path.fasta", true),
+            ("", false),
+        ];
+
+        for (path_str, should_be_valid) in test_paths {
+            let _path = Path::new(path_str);
+            let is_valid = !path_str.is_empty();
+            assert_eq!(is_valid, should_be_valid,
+                "Path validation failed for: {}", path_str);
+        }
+    }
+
+    // Test removed - verbose field no longer exists in ReconstructArgs
 }

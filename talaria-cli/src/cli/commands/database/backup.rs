@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
 
-use crate::core::backup_manager::BackupManager;
+use talaria_sequoia::backup::BackupManager;
 
 #[derive(Debug, Args)]
 pub struct BackupCommand {

@@ -314,3 +314,180 @@ impl TaxonomyEnrichable for Sequence {
         self.description.as_deref()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sequence_construction() {
+        let seq = Sequence::new("test_id".to_string(), b"ATGC".to_vec());
+        assert_eq!(seq.id, "test_id");
+        assert_eq!(seq.sequence, b"ATGC");
+        assert!(seq.description.is_none());
+        assert!(seq.taxon_id.is_none());
+    }
+
+    #[test]
+    fn test_sequence_builders() {
+        let seq = Sequence::new("test".to_string(), b"ATGC".to_vec())
+            .with_description("Test sequence".to_string())
+            .with_taxon(562);
+
+        assert_eq!(seq.description, Some("Test sequence".to_string()));
+        assert_eq!(seq.taxon_id, Some(562));
+    }
+
+    #[test]
+    fn test_sequence_type_detection() {
+        // Test protein detection - contains E, F, I, L, P, Q, X, Z
+        let protein_seqs = vec![
+            b"ACDEFGHIKLMNPQRSTVWY".to_vec(),
+            b"EFILPQXZ".to_vec(),
+            b"ATGCEF".to_vec(), // Mixed but contains E/F
+        ];
+
+        for seq_data in protein_seqs {
+            let seq = Sequence::new("prot".to_string(), seq_data);
+            assert_eq!(seq.detect_type(), SequenceType::Protein,
+                "Failed to detect protein for: {}", seq.to_string());
+        }
+
+        // Test nucleotide detection - only A, T, G, C, N
+        let nucleotide_seqs = vec![
+            b"ATGCATGC".to_vec(),
+            b"AAAAAAAAAA".to_vec(),
+            b"ATGCNNNNATGC".to_vec(),
+            b"ACGTACGTACGT".to_vec(),
+        ];
+
+        for seq_data in nucleotide_seqs {
+            let seq = Sequence::new("nucl".to_string(), seq_data);
+            assert_eq!(seq.detect_type(), SequenceType::Nucleotide,
+                "Failed to detect nucleotide for: {}", seq.to_string());
+        }
+    }
+
+    #[test]
+    fn test_ambiguous_residue_detection() {
+        // Test sequences with ambiguous amino acids
+        let ambiguous_seqs = vec![
+            (b"ATGXYZ".to_vec(), true),  // Contains X, Y, Z
+            (b"ABCDEFG".to_vec(), true),  // Contains B
+            (b"JKLMNO".to_vec(), true),   // Contains J, O
+            (b"ACDEFG".to_vec(), false),  // No ambiguous residues
+            (b"ATGC".to_vec(), false),    // DNA, no ambiguous
+        ];
+
+        for (seq_data, expected) in ambiguous_seqs {
+            let seq = Sequence::new("test".to_string(), seq_data.clone());
+            assert_eq!(seq.has_ambiguous_residues(), expected,
+                "Ambiguous detection failed for: {:?}", seq_data);
+        }
+    }
+
+    #[test]
+    fn test_sanitize_sequence() {
+        // Test removal of ambiguous residues
+        let test_cases = vec![
+            (b"ATGXBZ".to_vec(), b"ATG".to_vec(), 3),
+            (b"ABCJOXUZ".to_vec(), b"AC".to_vec(), 6),
+            (b"ACDEFG".to_vec(), b"ACDEFG".to_vec(), 0),
+            (b"xyzXYZ".to_vec(), b"yY".to_vec(), 4), // x,z,X,Z are ambiguous, y,Y remain
+        ];
+
+        for (input, expected, removed_count) in test_cases {
+            let mut seq = Sequence::new("test".to_string(), input);
+            let removed = seq.sanitize();
+            assert_eq!(removed, removed_count);
+            assert_eq!(seq.sequence, expected);
+        }
+    }
+
+    #[test]
+    fn test_header_generation() {
+        // Test basic header
+        let seq = Sequence::new("seq1".to_string(), b"ATGC".to_vec());
+        assert_eq!(seq.header(), ">seq1");
+
+        // Test header with description
+        let seq = Sequence::new("seq2".to_string(), b"ATGC".to_vec())
+            .with_description("Test protein".to_string());
+        assert_eq!(seq.header(), ">seq2 Test protein");
+
+        // Test header with taxon_id - should append TaxID
+        let seq = Sequence::new("seq3".to_string(), b"ATGC".to_vec())
+            .with_description("E. coli protein".to_string())
+            .with_taxon(562);
+        assert_eq!(seq.header(), ">seq3 E. coli protein TaxID=562");
+    }
+
+    #[test]
+    fn test_remove_taxid_from_description() {
+        // Test removal of TaxID patterns
+        let test_cases = vec![
+            ("Protein TaxID=562", "Protein"),
+            ("E. coli taxon:511145 strain", "E. coli strain"),
+            ("TaxID=9606 Human protein", "Human protein"),
+            ("Multi TaxID=562 and taxon:511145", "Multi and"),
+            ("No taxid here", "No taxid here"),
+        ];
+
+        for (input, expected) in test_cases {
+            let result = Sequence::remove_taxid_from_description(input);
+            assert_eq!(result, expected);
+        }
+    }
+
+    #[test]
+    fn test_header_with_existing_taxid() {
+        // Test that existing TaxID in description is replaced
+        let seq = Sequence::new("seq4".to_string(), b"ATGC".to_vec())
+            .with_description("E. coli TaxID=511145 K12".to_string())
+            .with_taxon(562);
+
+        // Should remove old TaxID and add new one
+        assert_eq!(seq.header(), ">seq4 E. coli K12 TaxID=562");
+    }
+
+    #[test]
+    fn test_sequence_length() {
+        let seq = Sequence::new("test".to_string(), b"ATGCATGC".to_vec());
+        assert_eq!(seq.len(), 8);
+        assert!(!seq.is_empty());
+
+        let empty_seq = Sequence::new("empty".to_string(), Vec::new());
+        assert_eq!(empty_seq.len(), 0);
+        assert!(empty_seq.is_empty());
+    }
+
+    #[test]
+    fn test_sequence_to_string() {
+        let seq = Sequence::new("test".to_string(), b"ATGC".to_vec());
+        assert_eq!(seq.to_string(), "ATGC");
+
+        // Test with non-ASCII (though this shouldn't happen in practice)
+        let seq = Sequence::new("test".to_string(), vec![65, 84, 71, 67]); // "ATGC"
+        assert_eq!(seq.to_string(), "ATGC");
+    }
+
+    #[test]
+    fn test_taxonomy_sources() {
+        let mut seq = Sequence::new("test".to_string(), b"ATGC".to_vec());
+
+        // Initially no taxonomy sources
+        assert!(seq.taxonomy_sources.api_provided.is_none());
+        assert!(seq.taxonomy_sources.user_specified.is_none());
+        assert!(seq.taxonomy_sources.header_parsed.is_none());
+
+        // Add taxonomy source via header parsing
+        seq.taxonomy_sources.header_parsed = Some(562);
+
+        // Check that it's been set
+        assert_eq!(seq.taxonomy_sources.header_parsed, Some(562));
+
+        // Can get all sources
+        let all_sources = seq.taxonomy_sources.all_sources();
+        assert_eq!(all_sources.len(), 1);
+    }
+}

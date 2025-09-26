@@ -161,7 +161,7 @@ fn run_init() -> anyhow::Result<()> {
 }
 
 fn run_stats() -> anyhow::Result<()> {
-    use crate::core::database::database_manager::DatabaseManager;
+    use talaria_sequoia::database::DatabaseManager;
     use crate::cli::progress::create_spinner;
     use colored::*;
 

@@ -30,3 +30,6 @@ cli = ["clap"]
 
 [dev-dependencies]
 tempfile = { workspace = true }
+talaria-test = { path = "../talaria-test" }
+criterion = "0.5"
+proptest = "1.0"

@@ -63,7 +63,7 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
         SHA256Hash, SHA256HashExt, SerializedMerkleTree, TemporalManifest,
     };
     use crate::cli::formatting::output::*;
-    use crate::core::database::database_manager::DatabaseManager;
+    use talaria_sequoia::database::DatabaseManager;
     use crate::cli::progress::{create_progress_bar, create_spinner};
     use chrono::Utc;
 
@@ -91,13 +91,15 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     let base_path = paths::talaria_databases_dir();
     let sequences_path = base_path.join("sequences");
 
-    // Initialize sequence storage (shared across all databases!)
+    // Create DatabaseManager first (it will initialize SEQUOIAStorage which creates a SequenceStorage)
+    let manager = DatabaseManager::new(Some(base_path.to_string_lossy().to_string()))?;
+
+    // Now create our own SequenceStorage for chunk processing
+    // This will reuse the existing PackedSequenceStorage index
     let sequence_storage = SequenceStorage::new(&sequences_path)?;
 
     // Get initial stats for deduplication tracking
     let initial_stats = sequence_storage.get_stats()?;
-
-    let manager = DatabaseManager::new(Some(base_path.to_string_lossy().to_string()))?;
 
     // Generate version timestamp
     let version = args
@@ -127,6 +129,12 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     action(&format!("Reading FASTA file: {:?}", args.input));
     let sequences = parse_fasta(&args.input)?;
     let sequence_count = sequences.len();
+
+    // Check for empty file
+    if sequence_count == 0 {
+        anyhow::bail!("Input file contains no sequences. Please provide a valid FASTA file.");
+    }
+
     tree_item(
         false,
         "Sequences read",
@@ -134,7 +142,7 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     );
 
     // Check taxonomy prerequisites
-    use crate::core::database::taxonomy_prerequisites::TaxonomyPrerequisites;
+    use talaria_sequoia::taxonomy::TaxonomyPrerequisites;
     let prereqs = TaxonomyPrerequisites::new();
     prereqs.display_status();
 
@@ -152,13 +160,11 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     } else {
         DatabaseSource::Custom(format!("{}/{}", args.source, dataset))
     };
-    // Convert enum to struct for internal use
-    let database_source: talaria_core::DatabaseSourceInfo = database_source_enum.clone().into();
     let strategy = ChunkingStrategy::default();
     let mut chunker = TaxonomicChunker::new(
         strategy,
         sequence_storage,
-        database_source.clone(),
+        database_source_enum.clone(),
     );
 
     // Process sequences with canonical storage
@@ -172,6 +178,10 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     let chunk_manifests = chunker.chunk_sequences_canonical(sequences)?;
 
     spinner.finish_and_clear();
+
+    // IMPORTANT: Flush sequence storage after processing
+    // This ensures the packed storage index is persisted to disk
+    chunker.sequence_storage.flush()?;
 
     // Get final stats for deduplication report
     let final_stats = chunker.sequence_storage.get_stats()?;
@@ -360,4 +370,4 @@ fn load_taxonomy_mappings() -> anyhow::Result<HashMap<String, talaria_sequoia::T
     Ok(mapping)
 }
 
-use crate::cli::formatting::format_bytes;
+use talaria_utils::display::format::format_bytes;

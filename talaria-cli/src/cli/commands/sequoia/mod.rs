@@ -3,6 +3,7 @@
 pub mod history;
 pub mod sync;
 pub mod time_travel;
+pub mod verify_storage;
 
 use clap::{Args, Subcommand};
 
@@ -28,6 +29,9 @@ pub enum SequoiaCommands {
 
     /// Query database at specific time points (bi-temporal)
     TimeTravel(time_travel::TimeTravelArgs),
+
+    /// Verify and repair SEQUOIA storage integrity
+    VerifyStorage(verify_storage::VerifyStorageArgs),
 }
 
 #[derive(Args)]
@@ -51,6 +55,7 @@ pub fn run(args: SequoiaArgs) -> anyhow::Result<()> {
         SequoiaCommands::Init(args) => run_init(args),
         SequoiaCommands::Stats(args) => run_stats(args),
         SequoiaCommands::TimeTravel(args) => time_travel::run(args),
+        SequoiaCommands::VerifyStorage(args) => verify_storage::run(args),
     }
 }
 
@@ -86,7 +91,7 @@ fn run_init(args: InitArgs) -> anyhow::Result<()> {
 }
 
 fn run_stats(args: StatsArgs) -> anyhow::Result<()> {
-    use crate::core::database::database_manager::DatabaseManager as SEQUOIADatabaseManager;
+    use talaria_sequoia::database::DatabaseManager as SEQUOIADatabaseManager;
     use crate::cli::progress::create_spinner;
     use colored::*;
 

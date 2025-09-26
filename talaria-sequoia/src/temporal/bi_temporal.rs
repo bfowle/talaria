@@ -375,12 +375,11 @@ pub enum TaxonomicChangeType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
 
     #[test]
     fn test_bi_temporal_empty_database() -> Result<()> {
-        let temp_dir = TempDir::new()?;
-        let storage = Arc::new(SEQUOIAStorage::new(temp_dir.path())?);
+        let env = talaria_test::TestEnvironment::new()?;
+        let storage = Arc::new(SEQUOIAStorage::new(&env.sequences_dir())?);
         let mut db = BiTemporalDatabase::new(storage)?;
 
         // Query at current time on empty database should fail gracefully

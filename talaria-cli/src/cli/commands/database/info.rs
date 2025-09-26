@@ -22,6 +22,14 @@ pub struct InfoArgs {
     /// Show reduction profiles if available
     #[arg(long)]
     pub show_reductions: bool,
+
+    /// Query at specific sequence date (e.g., "2020-01-01")
+    #[arg(long)]
+    pub sequence_date: Option<String>,
+
+    /// Query at specific taxonomy date (e.g., "2020-01-01")
+    #[arg(long)]
+    pub taxonomy_date: Option<String>,
 }
 
 // Use OutputFormat from talaria-core
@@ -29,10 +37,15 @@ use talaria_core::OutputFormat;
 
 pub fn run(args: InfoArgs) -> anyhow::Result<()> {
     use crate::cli::formatting::output::*;
-    use crate::core::database::database_manager::DatabaseManager;
-    use crate::core::database::database_ref::parse_database_reference;
+    use talaria_sequoia::database::DatabaseManager;
+    use talaria_utils::database::database_ref::parse_database_reference;
     use crate::cli::progress::create_spinner;
     use humansize::{format_size, BINARY};
+
+    // Check if we need bi-temporal info
+    if args.sequence_date.is_some() || args.taxonomy_date.is_some() {
+        return run_bitemporal_info(args);
+    }
 
     // Parse the database reference to separate database and profile
     let db_ref = parse_database_reference(&args.database)?;
@@ -49,7 +62,7 @@ pub fn run(args: InfoArgs) -> anyhow::Result<()> {
     // Check if a profile was specified
     if let Some(profile) = &db_ref.profile {
         // Show profile-specific information
-        return show_profile_info(&manager, &db_ref, profile, &databases);
+        return show_profile_info(&manager, &db_ref, profile, &[]);
     }
 
     // Find the requested database (handle both slash and hyphen formats)
@@ -159,11 +172,100 @@ pub fn run(args: InfoArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn run_bitemporal_info(args: InfoArgs) -> anyhow::Result<()> {
+    use crate::cli::formatting::output::*;
+    use talaria_sequoia::{BiTemporalDatabase, SEQUOIAStorage};
+    use chrono::{Utc, NaiveDate};
+    use std::sync::Arc;
+    use talaria_core::system::paths;
+
+    // Parse the database reference
+    let db_ref = talaria_utils::database::database_ref::parse_database_reference(&args.database)?;
+    let db_path = paths::talaria_databases_dir()
+        .join(&db_ref.source)
+        .join(&db_ref.dataset);
+
+    // Parse the dates
+    let sequence_date = if let Some(date_str) = &args.sequence_date {
+        NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
+            .map_err(|_| anyhow::anyhow!("Invalid sequence date format. Use YYYY-MM-DD"))?
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc()
+    } else {
+        Utc::now()
+    };
+
+    let taxonomy_date = if let Some(date_str) = &args.taxonomy_date {
+        NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
+            .map_err(|_| anyhow::anyhow!("Invalid taxonomy date format. Use YYYY-MM-DD"))?
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc()
+    } else {
+        sequence_date
+    };
+
+    // Create bi-temporal database
+    let storage = Arc::new(SEQUOIAStorage::new(&db_path)?);
+    let mut bitemporal_db = BiTemporalDatabase::new(storage)?;
+
+    // Query at specified dates
+    section_header("Bi-Temporal Database Information");
+
+    tree_item(false, "Database", Some(&args.database));
+    tree_item(false, "Sequence Date", Some(&sequence_date.format("%Y-%m-%d").to_string()));
+    tree_item(false, "Taxonomy Date", Some(&taxonomy_date.format("%Y-%m-%d").to_string()));
+
+    // Try to get snapshot at this time
+    match bitemporal_db.query_at(sequence_date, taxonomy_date) {
+        Ok(snapshot) => {
+            // Show snapshot info
+            let coord_items = vec![
+                ("Sequences", snapshot.sequence_count().to_string()),
+                ("Sequence Root", format!("{:8}...", &snapshot.sequence_root().to_string()[..8])),
+                ("Taxonomy Root", format!("{:8}...", &snapshot.taxonomy_root().to_string()[..8])),
+            ];
+            tree_section("Snapshot", coord_items, false);
+
+            // Show available coordinates
+            if let Ok(coords) = bitemporal_db.get_available_coordinates() {
+                if !coords.is_empty() {
+                    let coord_strings: Vec<String> = coords.iter()
+                        .take(5)  // Show first 5
+                        .map(|c| format!("Seq: {}, Tax: {}",
+                            c.sequence_time.format("%Y-%m-%d"),
+                            c.taxonomy_time.format("%Y-%m-%d")))
+                        .collect();
+
+                    let coord_items: Vec<(&str, String)> = coord_strings.iter().enumerate()
+                        .map(|(i, s)| {
+                            let label = Box::leak(format!("{}", i+1).into_boxed_str());
+                            (label as &str, s.clone())
+                        })
+                        .collect();
+                    tree_section("Available Coordinates", coord_items, true);
+
+                    if coords.len() > 5 {
+                        info(&format!("... and {} more coordinates", coords.len() - 5));
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            error(&format!("Cannot query at this coordinate: {}", e));
+            info("The database may not have data for these dates");
+        }
+    }
+
+    Ok(())
+}
+
 fn show_profile_info(
-    manager: &crate::core::database::database_manager::DatabaseManager,
-    db_ref: &crate::core::database::database_ref::DatabaseReference,
+    manager: &talaria_sequoia::database::DatabaseManager,
+    db_ref: &talaria_utils::database::database_ref::DatabaseReference,
     profile: &str,
-    databases: &[crate::core::database::database_manager::DatabaseInfo],
+    databases: &[talaria_sequoia::database::DatabaseInfo],
 ) -> anyhow::Result<()> {
     use crate::cli::formatting::output::*;
     use humansize::{format_size, BINARY};

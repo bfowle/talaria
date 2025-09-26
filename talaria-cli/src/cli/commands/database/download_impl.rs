@@ -2,10 +2,11 @@
 
 /// Database download implementation using content-addressed storage
 use crate::cli::commands::database::download::DownloadArgs;
-use crate::cli::formatting::{format_bytes, format_number, print_tip, TaskList, TaskStatus};
+use crate::cli::formatting::{format_number, print_tip, TaskList, TaskStatus};
+use talaria_utils::display::format::format_bytes;
 use crate::cli::formatting::output::*;
-use crate::core::database::database_manager::{DatabaseManager, DownloadResult};
-use crate::download::DatabaseSource;
+use talaria_sequoia::database::{DatabaseManager, DownloadResult};
+use talaria_sequoia::download::DatabaseSource;
 use crate::cli::progress::create_spinner;
 use anyhow::Result;
 use colored::Colorize;
@@ -25,7 +26,7 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
     }
 
     // Handle continue/resume flag alias
-    let _resume = args.resume || args.continue_download;
+    let resume = args.resume || args.continue_download;
 
     // Set verbosity level
     if args.quiet {
@@ -233,6 +234,11 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
     } else if args.force {
         // Force download even if up-to-date
         runtime.block_on(async { manager.force_download(&database_source, progress).await })?
+    } else if resume {
+        // Use resume-enabled download when --resume flag is set
+        // For now, just use regular download since resume is handled at a lower level
+        // TODO: Add explicit resume support to DatabaseManager
+        runtime.block_on(async { manager.download(&database_source, progress).await })?
     } else {
         // Normal download (idempotent)
         runtime.block_on(async { manager.download(&database_source, progress).await })?
@@ -251,7 +257,7 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
             DownloadResult::UpToDate => {
                 // Tasks already marked as skipped
             }
-            DownloadResult::Updated { .. } | DownloadResult::InitialDownload => {
+            DownloadResult::Updated { .. } | DownloadResult::InitialDownload { .. } | DownloadResult::Downloaded { .. } => {
                 tl.update_task(manifest_task, TaskStatus::Complete);
             }
         }
@@ -328,6 +334,7 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
         DownloadResult::Updated {
             chunks_added,
             chunks_removed,
+            ..
         } => {
             println!("{}", "─".repeat(80).dimmed());
             if args.dry_run {
@@ -356,7 +363,7 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
                 ));
             }
         }
-        DownloadResult::InitialDownload => {
+        DownloadResult::InitialDownload { .. } => {
             println!("{}", "─".repeat(80).dimmed());
             if args.dry_run {
                 warning("Initial download required - run without --dry-run to download");
@@ -377,6 +384,12 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
                 println!();
                 print_tip("Set TALARIA_MANIFEST_SERVER to enable incremental updates from a manifest server");
             }
+        }
+        DownloadResult::Downloaded { total_chunks, total_size } => {
+            println!("{}", "─".repeat(80).dimmed());
+            success("Database downloaded successfully!");
+            info(&format!("Downloaded {} chunks", total_chunks));
+            info(&format!("Total size: {} bytes", total_size));
         }
     }
 

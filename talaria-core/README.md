@@ -19,23 +19,28 @@
 ```
 talaria-core/
 ├── src/
-│   ├── lib.rs             # Module declarations and re-exports
-│   ├── types/             # Shared type definitions
-│   │   ├── mod.rs         # Type module exports
-│   │   ├── sequence.rs    # SequenceType enum
-│   │   ├── database.rs    # DatabaseReference, DatabaseSource
-│   │   ├── taxonomy.rs    # TaxonomyData, TaxonomyDataSource
-│   │   ├── version.rs     # Version info types
-│   │   └── storage.rs     # ChunkMetadata, StorageStats
-│   ├── config/            # Configuration management
-│   │   └── mod.rs         # Config structures and serialization
-│   ├── error/             # Error handling
-│   │   └── mod.rs         # TalariaError and Result types
-│   └── system/            # System utilities
-│       ├── mod.rs         # Re-exports for paths and version
-│       ├── paths.rs       # Path management with caching
-│       └── version.rs     # Version compatibility checking
-└── Cargo.toml             # Dependencies and metadata
+│   ├── lib.rs                # Module declarations and re-exports
+│   ├── types/                # Shared type definitions
+│   │   ├── mod.rs            # Type module exports
+│   │   ├── aligner.rs        # TargetAligner enum
+│   │   ├── chunk.rs          # ChunkInfo, ChunkMetadata, DeltaChunk, ChunkType
+│   │   ├── database.rs       # DatabaseReference, DatabaseSource, DatabaseSourceInfo
+│   │   ├── format.rs         # OutputFormat enum
+│   │   ├── hash.rs           # SHA256Hash type
+│   │   ├── sequence.rs       # SequenceType enum
+│   │   ├── stats.rs          # StorageStats, GCResult, DetailedStorageStats, etc.
+│   │   ├── taxonomy.rs       # TaxonId, TaxonomyDataSource
+│   │   └── version.rs        # Version info types
+│   ├── config/               # Configuration management
+│   │   └── mod.rs            # Config structures and serialization
+│   ├── error/                # Error handling
+│   │   ├── mod.rs            # TalariaError and Result types
+│   │   └── verification.rs   # VerificationError and VerificationErrorType
+│   └── system/               # System utilities
+│       ├── mod.rs            # Re-exports for paths and version
+│       ├── paths.rs          # Path management with caching
+│       └── version.rs        # Version compatibility checking
+└── Cargo.toml                # Dependencies and metadata
 ```
 
 ### Design Principles
@@ -66,9 +71,53 @@ pub enum SequenceType {
 }
 ```
 
+#### Hash Type
+
+```rust
+// SHA256 hash type used throughout the system
+pub type SHA256Hash = [u8; 32];
+
+impl SHA256Hash {
+    pub fn compute(data: &[u8]) -> Self;
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self>;
+    // Display implementation shows hex string
+}
+```
+
 #### Database Types
 
 ```rust
+// Database source identifier
+pub enum DatabaseSource {
+    UniProt(UniProtDatabase),
+    NCBI(NCBIDatabase),
+    Custom(String),
+    Test,
+}
+
+// UniProt database variants
+pub enum UniProtDatabase {
+    SwissProt,
+    TrEMBL,
+    UniRef50,
+    UniRef90,
+    UniRef100,
+    IdMapping,
+}
+
+// NCBI database variants
+pub enum NCBIDatabase {
+    Taxonomy,
+    ProtAccession2TaxId,
+    NuclAccession2TaxId,
+    RefSeq,
+    RefSeqProtein,
+    RefSeqGenomic,
+    NR,
+    NT,
+    GenBank,
+}
+
 // Database reference with version and profile support
 pub struct DatabaseReference {
     pub source: String,          // e.g., "uniprot", "ncbi", "custom"
@@ -78,18 +127,21 @@ pub struct DatabaseReference {
 }
 
 impl DatabaseReference {
-    pub fn new(source: String, dataset: String) -> Self
-    pub fn with_version(source: String, dataset: String, version: String) -> Self
-    pub fn with_all(source: String, dataset: String, version: Option<String>, profile: Option<String>) -> Self
-    pub fn parse(reference: &str) -> Result<Self> // Parse "source/dataset@version:profile"
-    pub fn version_or_default(&self) -> &str      // Returns version or "current"
-    pub fn profile_or_default(&self) -> &str      // Returns profile or "auto-detect"
+    pub fn new(source: String, dataset: String) -> Self;
+    pub fn with_all(source: String, dataset: String, version: Option<String>, profile: Option<String>) -> Self;
+    pub fn parse(reference: &str) -> Result<Self>; // Parse "source/dataset:version#profile"
+    pub fn version_or_default(&self) -> &str;      // Returns version or "current"
+    pub fn profile_or_default(&self) -> &str;      // Returns profile or "auto-detect"
+    pub fn matches(&self, other: &DatabaseReference) -> bool;
 }
 ```
 
 #### Taxonomy Types
 
 ```rust
+// Taxon identifier
+pub struct TaxonId(pub u32);
+
 // Data source for taxonomy information
 pub enum TaxonomyDataSource {
     Api,             // From NCBI/UniProt API
@@ -99,14 +151,81 @@ pub enum TaxonomyDataSource {
     Inherited,       // Inherited from parent
     Unknown,
 }
+```
 
-// Taxonomy metadata (existing in types/taxonomy.rs)
-pub struct TaxonomyData {
-    pub taxon_id: TaxonId,
-    pub source: TaxonomyDataSource,
-    pub scientific_name: Option<String>,
-    pub rank: Option<String>,
-    pub lineage: Option<Vec<TaxonId>>,
+#### Chunk Types
+
+```rust
+// Chunk type enumeration
+pub enum ChunkType {
+    Reference,
+    Delta,
+    Metadata,
+    Index,
+}
+
+// Chunk metadata for content-addressed storage
+pub struct ChunkMetadata {
+    pub hash: SHA256Hash,
+    pub size: usize,
+    pub sequence_count: usize,
+    pub taxon_ids: Vec<TaxonId>,
+    pub compressed_size: Option<usize>,
+}
+
+// Chunk information
+pub struct ChunkInfo {
+    pub hash: SHA256Hash,
+    pub size: usize,
+    pub chunk_type: ChunkType,
+    pub timestamp: i64,
+}
+
+// Delta-encoded chunk
+pub struct DeltaChunk {
+    pub reference_hash: SHA256Hash,
+    pub delta_data: Vec<u8>,
+    pub sequence_ids: Vec<String>,
+}
+```
+
+#### Target Aligner
+
+```rust
+// Supported alignment tools
+pub enum TargetAligner {
+    Lambda,
+    Diamond,
+    MMseqs2,
+    Blast,
+}
+```
+
+#### Storage Types
+
+```rust
+// Storage statistics
+pub struct StorageStats {
+    pub total_chunks: usize,
+    pub total_size: usize,
+    pub compressed_chunks: usize,
+    pub deduplication_ratio: f32,
+    pub total_sequences: Option<usize>,
+    pub total_representations: Option<usize>,
+}
+
+// Garbage collection result
+pub struct GCResult {
+    pub chunks_removed: usize,
+    pub bytes_freed: usize,
+    pub duration_ms: u64,
+}
+
+// Detailed storage statistics
+pub struct DetailedStorageStats {
+    pub storage_stats: StorageStats,
+    pub chunk_distribution: HashMap<ChunkType, usize>,
+    pub compression_stats: CompressionStats,
 }
 ```
 
@@ -142,27 +261,17 @@ pub struct UpdateStatus {
 }
 ```
 
-#### Storage Types
+#### Output Format
 
 ```rust
-// Chunk metadata for content-addressed storage
-pub struct ChunkMetadata {
-    pub hash: SHA256Hash,
-    pub size: usize,
-    pub offset: usize,
-    pub sequence_count: Option<usize>,
-    pub compressed_size: Option<usize>,
-    pub compression_ratio: Option<f32>,
-}
-
-// Storage statistics
-pub struct StorageStats {
-    pub total_chunks: usize,
-    pub total_size: usize,
-    pub unique_chunks: usize,
-    pub dedup_ratio: f64,
-    pub total_sequences: Option<usize>,
-    pub total_representations: Option<usize>,
+// Output format options
+pub enum OutputFormat {
+    Fasta,
+    FastaGz,
+    Json,
+    JsonGz,
+    Tsv,
+    TsvGz,
 }
 ```
 
@@ -234,7 +343,7 @@ pub struct DatabaseConfig {
     pub database_dir: Option<String>,     // Custom database directory
     pub retention_count: usize,           // Old versions to keep (default: 3)
     pub auto_update_check: bool,          // Auto-check for updates (default: false)
-    pub preferred_mirror: Option<String>, // Download mirror (default: "ebi")
+    pub preferred_mirror: Option<String>, // Download mirror (default: Some("ebi"))
 }
 ```
 
@@ -251,7 +360,7 @@ pub fn save_config<P: AsRef<Path>>(path: P, config: &Config) -> Result<(), Talar
 pub fn default_config() -> Config
 ```
 
-### 2. Error Handling (`error/`)
+### 3. Error Handling (`error/`)
 
 Comprehensive error type with automatic conversions:
 
@@ -305,6 +414,44 @@ pub enum TalariaError {
 pub type TalariaResult<T> = Result<T, TalariaError>;
 ```
 
+#### Verification Errors
+
+Specialized error types for data verification:
+
+```rust
+// Verification error with context
+pub struct VerificationError {
+    pub chunk_hash: SHA256Hash,
+    pub error_type: VerificationErrorType,
+    pub context: Option<String>,
+}
+
+// Specific verification error types
+pub enum VerificationErrorType {
+    HashMismatch {
+        expected: SHA256Hash,
+        actual: SHA256Hash,
+    },
+    ReadError(String),
+    CorruptedData(String),
+    MissingData(String),
+    InvalidFormat(String),
+    SizeMismatch {
+        expected: usize,
+        actual: usize,
+    },
+}
+
+impl VerificationError {
+    pub fn new(chunk_hash: SHA256Hash, error_type: VerificationErrorType) -> Self;
+    pub fn with_context(
+        chunk_hash: SHA256Hash,
+        error_type: VerificationErrorType,
+        context: impl Into<String>,
+    ) -> Self;
+}
+```
+
 #### Error Conversion
 
 Automatic conversion from common error types:
@@ -328,7 +475,7 @@ impl From<anyhow::Error> for TalariaError {
 }
 ```
 
-### 3. Path Management (`system/paths.rs`)
+### 4. Path Management (`system/paths.rs`)
 
 Sophisticated path management with environment variable support and caching:
 
@@ -347,6 +494,12 @@ pub fn talaria_workspace_dir() -> PathBuf // Temp workspace ($TALARIA_WORKSPACE_
 pub fn talaria_taxonomy_versions_dir() -> PathBuf             // All taxonomy versions
 pub fn talaria_taxonomy_current_dir() -> PathBuf              // Current taxonomy (symlink)
 pub fn talaria_taxonomy_version_dir(version: &str) -> PathBuf // Specific version
+
+// Canonical sequence paths
+pub fn canonical_sequence_storage_dir() -> PathBuf // Base sequence storage
+pub fn canonical_sequence_packs_dir() -> PathBuf   // Packed sequences
+pub fn canonical_sequence_indices_dir() -> PathBuf // Sequence indices
+pub fn canonical_sequence_index_path() -> PathBuf  // Main index file
 
 // Database paths
 pub fn database_path(source: &str, dataset: &str) -> PathBuf
@@ -383,7 +536,7 @@ pub fn talaria_home() -> PathBuf {
 }
 ```
 
-### 4. Version Management (`system/version.rs`)
+### 5. Version Management (`system/version.rs`)
 
 Semantic versioning with compatibility checking:
 
@@ -405,7 +558,7 @@ talaria-core respects the following environment variables:
 | Variable                | Description                                 | Default                             |
 | ----------------------- | ------------------------------------------- | ----------------------------------- |
 | `TALARIA_HOME`          | Base directory for all Talaria data         | `~/.talaria`                        |
-| `TALARIA_DATA_DIR`      | Data directory (overrides TALARIA\_HOME)    | `$TALARIA_HOME`                     |
+| `TALARIA_DATA_DIR`      | Data directory (overrides `TALARIA\_HOME`)  | `$TALARIA_HOME`                     |
 | `TALARIA_DATABASES_DIR` | Database storage directory                  | `$TALARIA_DATA_DIR/databases`       |
 | `TALARIA_TOOLS_DIR`     | External tools directory                    | `$TALARIA_DATA_DIR/tools`           |
 | `TALARIA_CACHE_DIR`     | Cache directory                             | `$TALARIA_DATA_DIR/cache`           |
@@ -429,45 +582,50 @@ Every Talaria module depends on talaria-core for:
 
 #### talaria-cli
 ```rust
-use talaria_core::{Config, TalariaError, paths};
+use talaria_core::{Config, TalariaError, talaria_databases_dir};
 
 // Load user configuration
 let config = load_config(&config_path)?;
 
 // Get database directory
-let db_dir = paths::talaria_databases_dir();
+let db_dir = talaria_databases_dir();
 ```
 
 #### talaria-bio
 ```rust
-use talaria_core::error::TalariaError;
+use talaria_core::{TalariaError, TalariaResult};
 
 // Use consistent error types
-pub fn parse_fasta(path: &Path) -> Result<Vec<Sequence>, TalariaError>
+pub fn parse_fasta(path: &Path) -> TalariaResult<Vec<Sequence>> {
+    // Implementation
+}
 ```
 
 #### talaria-sequoia
 ```rust
-use talaria_core::paths;
+use talaria_core::{storage_path, SHA256Hash};
 
 // Store chunks in standard location
-let storage = paths::storage_path();
+let storage = storage_path();
+
+// Use common hash type
+let hash = SHA256Hash::compute(&data);
 ```
 
 #### talaria-tools
 ```rust
-use talaria_core::paths;
+use talaria_core::talaria_tools_dir;
 
 // Find external tools
-let lambda_path = paths::talaria_tools_dir().join("lambda");
+let lambda_path = talaria_tools_dir().join("lambda");
 ```
 
 #### talaria-storage
 ```rust
-use talaria_core::error::TalariaError;
+use talaria_core::{TalariaError, ChunkMetadata};
 
-// Consistent error handling
-pub fn write_metadata(path: &Path) -> Result<(), TalariaError>
+// Consistent error handling and types
+pub fn write_metadata(path: &Path, metadata: &ChunkMetadata) -> Result<(), TalariaError>
 ```
 
 ## Usage Examples
@@ -475,13 +633,13 @@ pub fn write_metadata(path: &Path) -> Result<(), TalariaError>
 ### 1. Configuration Management
 
 ```rust
-use talaria_core::{Config, load_config, save_config, default_config};
+use talaria_core::{Config, load_config, save_config};
 
 // Load configuration from file
 let config = load_config("talaria.toml")?;
 
-// Modify configuration
-let mut config = default_config();
+// Use default configuration
+let mut config = Config::default();
 config.reduction.target_ratio = 0.5;
 config.performance.chunk_size = 20000;
 
@@ -514,10 +672,44 @@ fn process_database(name: &str) -> TalariaResult<()> {
 }
 ```
 
-### 3. Path Management
+### 3. Verification Error Handling
 
 ```rust
-use talaria_core::system::*;
+use talaria_core::{VerificationError, VerificationErrorType, SHA256Hash};
+
+fn verify_chunk(hash: SHA256Hash, data: &[u8]) -> Result<(), VerificationError> {
+    let actual = SHA256Hash::compute(data);
+
+    if actual != hash {
+        return Err(VerificationError::new(
+            hash,
+            VerificationErrorType::HashMismatch {
+                expected: hash,
+                actual,
+            }
+        ));
+    }
+
+    Ok(())
+}
+
+// With context
+fn verify_with_context(hash: SHA256Hash, data: &[u8], path: &Path) -> Result<(), VerificationError> {
+    verify_chunk(hash, data).map_err(|e| {
+        VerificationError::with_context(
+            hash,
+            e.error_type,
+            format!("Failed to verify chunk at {}", path.display())
+        )
+    })
+}
+```
+
+### 4. Path Management
+
+```rust
+use talaria_core::{talaria_home, talaria_databases_dir, database_path};
+use talaria_core::{is_custom_data_dir, describe_paths, generate_utc_timestamp};
 
 // Get standard paths
 let home = talaria_home();
@@ -528,7 +720,7 @@ let uniprot_path = database_path("uniprot", "swissprot");
 
 // Check if using custom configuration
 if is_custom_data_dir() {
-    println!("Using custom data directory: {}", talaria_data_dir().display());
+    println!("Using custom data directory");
 }
 
 // Generate versioned path
@@ -539,10 +731,11 @@ let version_dir = talaria_taxonomy_version_dir(&timestamp);
 println!("{}", describe_paths());
 ```
 
-### 4. Version Compatibility
+### 5. Version Compatibility
 
 ```rust
-use talaria_core::system::{parse_version, is_compatible, current_version};
+use talaria_core::{parse_version, is_compatible, current_version};
+use talaria_core::TalariaError;
 
 // Check if database version is compatible
 let db_version = parse_version("1.2.3")?;
@@ -556,11 +749,33 @@ if !is_compatible(&db_version, &current) {
 }
 ```
 
-### 5. Complete Example: Database Manager
+### 6. Working with Database Types
 
 ```rust
-use talaria_core::{Config, TalariaResult};
-use talaria_core::system::talaria_databases_dir;
+use talaria_core::{DatabaseSource, DatabaseReference, UniProtDatabase, NCBIDatabase};
+
+// Create database sources
+let uniprot = DatabaseSource::UniProt(UniProtDatabase::SwissProt);
+let ncbi = DatabaseSource::NCBI(NCBIDatabase::NR);
+let custom = DatabaseSource::Custom("mydb".to_string());
+
+// Parse database reference
+let db_ref = DatabaseReference::parse("uniprot/swissprot:2024_04#blast-30")?;
+assert_eq!(db_ref.source, "uniprot");
+assert_eq!(db_ref.dataset, "swissprot");
+assert_eq!(db_ref.version_or_default(), "2024_04");
+assert_eq!(db_ref.profile_or_default(), "blast-30");
+
+// Check if references match
+let ref1 = DatabaseReference::new("uniprot".to_string(), "swissprot".to_string());
+let ref2 = DatabaseReference::new("uniprot".to_string(), "swissprot".to_string());
+assert!(ref1.matches(&ref2));
+```
+
+### 7. Complete Example: Database Manager
+
+```rust
+use talaria_core::{Config, TalariaResult, talaria_databases_dir};
 use std::path::PathBuf;
 
 pub struct DatabaseManager {
@@ -603,17 +818,31 @@ impl DatabaseManager {
 ### Type API
 
 ```rust
+// Core types
+pub type SHA256Hash = [u8; 32];
+pub struct TaxonId(pub u32);
+
 // Sequence types
 pub enum SequenceType { Protein, DNA, RNA, Nucleotide, Unknown }
 
 // Database types
 pub struct DatabaseReference { ... }
-pub enum DatabaseSource { UniProt(..), NCBI(..), Custom(..) }
+pub struct DatabaseSourceInfo { ... }
+pub enum DatabaseSource { UniProt(..), NCBI(..), Custom(..), Test }
+pub enum UniProtDatabase { SwissProt, TrEMBL, UniRef50, UniRef90, UniRef100, IdMapping }
+pub enum NCBIDatabase { Taxonomy, ProtAccession2TaxId, NuclAccession2TaxId, RefSeq, RefSeqProtein, RefSeqGenomic, NR, NT, GenBank }
 
 // Taxonomy types
 pub enum TaxonomyDataSource { Api, User, Accession2Taxid, Header, Inherited, Unknown }
-pub struct TaxonomyData { ... }
-pub type TaxonId = u32;
+
+// Chunk types
+pub enum ChunkType { Reference, Delta, Metadata, Index }
+pub struct ChunkInfo { ... }
+pub struct ChunkMetadata { ... }
+pub struct DeltaChunk { ... }
+
+// Target aligners
+pub enum TargetAligner { Lambda, Diamond, MMseqs2, Blast }
 
 // Version types
 pub struct DatabaseVersionInfo { ... }
@@ -621,9 +850,12 @@ pub struct TemporalVersionInfo { ... }
 pub struct UpdateStatus { ... }
 
 // Storage types
-pub struct ChunkMetadata { ... }
 pub struct StorageStats { ... }
-pub type SHA256Hash = [u8; 32];
+pub struct GCResult { ... }
+pub struct DetailedStorageStats { ... }
+
+// Output format
+pub enum OutputFormat { Fasta, FastaGz, Json, JsonGz, Tsv, TsvGz }
 ```
 
 ### Configuration API
@@ -638,7 +870,7 @@ pub struct PerformanceConfig { ... }
 pub struct DatabaseConfig { ... }
 
 // Functions
-pub fn default_config() -> Config
+impl Default for Config { ... }
 pub fn load_config<P: AsRef<Path>>(path: P) -> Result<Config, TalariaError>
 pub fn save_config<P: AsRef<Path>>(path: P, config: &Config) -> Result<(), TalariaError>
 ```
@@ -649,6 +881,8 @@ pub fn save_config<P: AsRef<Path>>(path: P, config: &Config) -> Result<(), Talar
 // Types
 pub enum TalariaError { ... }
 pub type TalariaResult<T> = Result<T, TalariaError>;
+pub struct VerificationError { ... }
+pub enum VerificationErrorType { ... }
 
 // Trait implementations
 impl std::error::Error for TalariaError
@@ -656,6 +890,8 @@ impl std::fmt::Display for TalariaError
 impl From<std::io::Error> for TalariaError
 impl From<serde_json::Error> for TalariaError
 impl From<anyhow::Error> for TalariaError
+impl std::error::Error for VerificationError
+impl std::fmt::Display for VerificationError
 ```
 
 ### Path API
@@ -673,6 +909,12 @@ pub fn talaria_workspace_dir() -> PathBuf
 pub fn talaria_taxonomy_versions_dir() -> PathBuf
 pub fn talaria_taxonomy_current_dir() -> PathBuf
 pub fn talaria_taxonomy_version_dir(version: &str) -> PathBuf
+
+// Canonical sequence paths
+pub fn canonical_sequence_storage_dir() -> PathBuf
+pub fn canonical_sequence_packs_dir() -> PathBuf
+pub fn canonical_sequence_indices_dir() -> PathBuf
+pub fn canonical_sequence_index_path() -> PathBuf
 
 // Database paths
 pub fn database_path(source: &str, dataset: &str) -> PathBuf
@@ -694,9 +936,63 @@ pub fn is_compatible(v1: &Version, v2: &Version) -> bool
 pub fn current_version() -> Version
 
 // Constants
-pub const VERSION: &str       // From Cargo.toml
-pub const AUTHORS: &str       // From Cargo.toml
-pub const DESCRIPTION: &str   // From Cargo.toml
+pub const VERSION: &str     // From Cargo.toml
+pub const AUTHORS: &str     // From Cargo.toml
+pub const DESCRIPTION: &str // From Cargo.toml
+```
+
+## Testing
+
+### Unit Tests
+
+The module includes comprehensive unit tests for all components:
+
+#### Error Tests (`error/mod.rs`)
+- Error display formatting
+- Error conversions (IO, JSON, Anyhow)
+- Error result type usage
+- Error chaining and source preservation
+- Error type checking with pattern matching
+
+#### Configuration Tests (`tests/config_integration.rs`)
+- Loading from multiple sources
+- Environment variable handling
+- Migration compatibility
+- Validation of invalid configs
+- Serialization/deserialization preservation
+- Concurrent access safety
+- Format preservation
+
+#### Path Tests (`tests/path_integration.rs`)
+- Path construction consistency
+- Path descriptions
+- UTC timestamp generation
+- Workspace directory structure
+- Path hierarchy verification
+- Custom data directory detection
+- Manifest and database path formatting
+- Path separator consistency
+- Path length limits
+
+### Integration Tests
+
+```rust
+use talaria_core::{Config, load_config, save_config};
+use tempfile::TempDir;
+
+#[test]
+fn test_config_roundtrip() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_path = temp_dir.path().join("test.toml");
+
+    // Save config
+    let config = Config::default();
+    save_config(&config_path, &config).unwrap();
+
+    // Load and verify
+    let loaded = load_config(&config_path).unwrap();
+    assert_eq!(loaded.reduction.target_ratio, config.reduction.target_ratio);
+}
 ```
 
 ## Performance Considerations
@@ -728,7 +1024,7 @@ All components are thread-safe:
 
 ```rust
 // DO: Load configuration once at startup
-let config = load_config(&config_path).unwrap_or_else(|_| default_config());
+let config = load_config(&config_path).unwrap_or_else(|_| Config::default());
 
 // DON'T: Load configuration repeatedly
 for item in items {
@@ -744,6 +1040,12 @@ return Err(TalariaError::NotFound(format!("Database {} not found", name)));
 
 // DON'T: Use generic Other variant unnecessarily
 return Err(TalariaError::Other("Database not found".to_string()));
+
+// DO: Use verification errors for data integrity
+return Err(VerificationError::new(
+    hash,
+    VerificationErrorType::HashMismatch { expected, actual }
+));
 ```
 
 ### 3. Path Management
@@ -767,55 +1069,6 @@ let home = talaria_home(); // Will use /data/talaria
 let home1 = talaria_home();
 std::env::set_var("TALARIA_HOME", "/other/path");
 let home2 = talaria_home(); // Still returns original value (cached)
-```
-
-## Testing
-
-### Unit Tests
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_default_config() {
-        let config = default_config();
-        assert_eq!(config.reduction.target_ratio, 0.3);
-        assert_eq!(config.performance.chunk_size, 10000);
-    }
-
-    #[test]
-    fn test_version_compatibility() {
-        let v1 = parse_version("1.2.3").unwrap();
-        let v2 = parse_version("1.4.0").unwrap();
-        assert!(is_compatible(&v1, &v2));
-
-        let v3 = parse_version("2.0.0").unwrap();
-        assert!(!is_compatible(&v1, &v3));
-    }
-}
-```
-
-### Integration Tests
-
-```rust
-use talaria_core::{Config, load_config, save_config};
-use tempfile::TempDir;
-
-#[test]
-fn test_config_roundtrip() {
-    let temp_dir = TempDir::new().unwrap();
-    let config_path = temp_dir.path().join("test.toml");
-
-    // Save config
-    let config = Config::default();
-    save_config(&config_path, &config).unwrap();
-
-    // Load and verify
-    let loaded = load_config(&config_path).unwrap();
-    assert_eq!(loaded.reduction.target_ratio, config.reduction.target_ratio);
-}
 ```
 
 ## Dependencies

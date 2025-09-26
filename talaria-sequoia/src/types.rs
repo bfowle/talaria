@@ -509,8 +509,8 @@ pub trait MerkleVerifiable {
 // Import SequenceType from talaria-core
 pub use talaria_core::SequenceType;
 
-// DatabaseSource is now imported from talaria-core
-pub use talaria_core::types::database::DatabaseSourceInfo as DatabaseSource;
+// DatabaseSource from talaria-core
+pub use talaria_core::types::database::DatabaseSource;
 
 /// Canonical sequence - the pure biological sequence data
 /// This is what gets deduplicated across all databases

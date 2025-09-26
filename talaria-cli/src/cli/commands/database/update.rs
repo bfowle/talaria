@@ -31,7 +31,7 @@ pub struct UpdateArgs {
 
 pub fn run(args: UpdateArgs) -> Result<()> {
     use crate::cli::formatting::output::format_number;
-    use crate::core::database::database_manager::DatabaseManager;
+    use talaria_sequoia::database::DatabaseManager;
 
     // Header based on mode
     if args.dry_run {
@@ -180,12 +180,12 @@ enum UpdateStatus {
 }
 
 fn check_database_update(
-    manager: &mut crate::core::database::database_manager::DatabaseManager,
+    manager: &mut talaria_sequoia::database::DatabaseManager,
     database: &str,
     force: bool,
 ) -> Result<UpdateStatus> {
-    use crate::download::{DatabaseSource, NCBIDatabase, UniProtDatabase};
-    use crate::core::database::database_ref::parse_database_ref;
+    use talaria_sequoia::download::{DatabaseSource, NCBIDatabase, UniProtDatabase};
+    use talaria_utils::database::database_ref::parse_database_ref;
 
     // Parse database reference to get source
     let (source_str, dataset) = parse_database_ref(database)?;
@@ -219,7 +219,7 @@ fn check_database_update(
             // Check for actual updates
             let progress = |_msg: &str| {};
             match manager.check_for_updates(&source, progress).await {
-                Ok(crate::core::database::database_manager::DownloadResult::UpToDate) => {
+                Ok(talaria_sequoia::database::DownloadResult::UpToDate) => {
                     Ok(UpdateStatus::UpToDate {
                         version: manager
                             .get_current_version_info(&source)
@@ -227,14 +227,20 @@ fn check_database_update(
                             .unwrap_or_else(|_| "unknown".to_string()),
                     })
                 }
-                Ok(crate::core::database::database_manager::DownloadResult::Updated { .. }) => {
+                Ok(talaria_sequoia::database::DownloadResult::Updated { .. }) => {
                     Ok(UpdateStatus::UpdateAvailable {
                         current: "current".to_string(),
                         latest: "new version available".to_string(),
                     })
                 }
-                Ok(crate::core::database::database_manager::DownloadResult::InitialDownload) => {
+                Ok(talaria_sequoia::database::DownloadResult::InitialDownload { .. }) => {
                     Ok(UpdateStatus::NotFound)
+                }
+                Ok(talaria_sequoia::database::DownloadResult::Downloaded { .. }) => {
+                    Ok(UpdateStatus::UpdateAvailable {
+                        current: "none".to_string(),
+                        latest: "downloaded".to_string(),
+                    })
                 }
                 Err(_) => Ok(UpdateStatus::NotFound),
             }
@@ -245,7 +251,7 @@ fn check_database_update(
 }
 
 fn check_taxonomy_update(
-    manager: &mut crate::core::database::database_manager::DatabaseManager,
+    manager: &mut talaria_sequoia::database::DatabaseManager,
     force: bool,
 ) -> Result<UpdateStatus> {
     // Get current taxonomy version
@@ -274,7 +280,7 @@ fn check_taxonomy_update(
 fn perform_update(database: &str) -> Result<()> {
     // Use the download command with appropriate flags
     use crate::cli::commands::database::download::DownloadArgs;
-    use crate::core::database::database_ref::parse_database_ref;
+    use talaria_utils::database::database_ref::parse_database_ref;
 
     // Parse database reference
     let (_source, _dataset) = parse_database_ref(database)?;

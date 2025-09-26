@@ -27,7 +27,7 @@ pub struct CheckUpdatesArgs {
 use talaria_core::OutputFormat;
 
 pub fn run(args: CheckUpdatesArgs) -> Result<()> {
-    use crate::core::database::database_manager::DatabaseManager;
+    use talaria_sequoia::database::DatabaseManager;
     
 
     let start_time = Instant::now();
@@ -130,11 +130,11 @@ enum UpdateStatus {
 }
 
 fn check_single_database(
-    manager: &crate::core::database::database_manager::DatabaseManager,
+    manager: &talaria_sequoia::database::DatabaseManager,
     database: &str,
     check_remote: bool,
 ) -> Result<UpdateStatus> {
-    use crate::core::database::database_ref::parse_database_reference;
+    use talaria_utils::database::database_ref::parse_database_reference;
 
     let db_ref = parse_database_reference(database)?;
 
@@ -172,7 +172,7 @@ fn check_single_database(
 }
 
 fn fetch_remote_manifest(
-    db_ref: &crate::core::database::database_ref::DatabaseReference,
+    db_ref: &talaria_utils::database::database_ref::DatabaseReference,
 ) -> Result<talaria_sequoia::TemporalManifest> {
     // Check if TALARIA_MANIFEST_SERVER is set
     let manifest_url = if let Ok(server) = std::env::var("TALARIA_MANIFEST_SERVER") {
@@ -222,7 +222,7 @@ fn calculate_size_difference(
 }
 
 fn get_all_local_databases(
-    _manager: &crate::core::database::database_manager::DatabaseManager,
+    _manager: &talaria_sequoia::database::DatabaseManager,
 ) -> Result<Vec<String>> {
     use std::fs;
     use talaria_core::system::paths;

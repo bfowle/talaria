@@ -22,29 +22,39 @@ This module serves as the biological foundation layer that other Talaria compone
 ```
 talaria-bio/
 ├── src/
-│   ├── lib.rs              # Module declarations and re-exports
-│   ├── alignment/          # Sequence alignment algorithms
-│   │   ├── mod.rs          # Public alignment API
-│   │   ├── nw_aligner.rs   # Needleman-Wunsch implementation
-│   │   └── scoring.rs      # Scoring matrices (BLOSUM62, nucleotide)
-│   ├── compression/        # Delta encoding and compression
-│   │   ├── mod.rs          # Compression API
-│   │   └── delta.rs        # Delta encoder/decoder for sequences
-│   ├── formats/            # File format I/O
-│   │   ├── mod.rs          # Format API
-│   │   └── fasta.rs        # FASTA parser/writer (supports .gz)
-│   ├── providers/          # External database integration
-│   │   ├── mod.rs          # Provider traits
-│   │   └── uniprot.rs      # UniProt API client
-│   ├── sequence/           # Core sequence types
-│   │   ├── mod.rs          # Sequence API
-│   │   ├── types.rs        # Sequence struct and operations
-│   │   └── stats.rs        # Sequence statistics computation
-│   └── taxonomy/           # Taxonomy management
-│       ├── mod.rs          # Taxonomy API
-│       ├── core.rs         # TaxonomyDB, resolution, NCBI parser
-│       ├── formatter.rs    # Header formatting with TaxID
-│       └── stats.rs        # Taxonomic coverage analysis
+│   ├── lib.rs                     # Module declarations and re-exports
+│   ├── alignment/                 # Sequence alignment algorithms
+│   │   ├── mod.rs                 # Public alignment API
+│   │   ├── nw_aligner.rs          # Needleman-Wunsch implementation
+│   │   └── scoring.rs             # Scoring matrices (BLOSUM62, nucleotide)
+│   ├── clustering/                # Sequence clustering algorithms
+│   │   ├── mod.rs                 # Clustering API
+│   │   └── phylogenetic.rs        # Phylogenetic clustering implementation
+│   ├── compression/               # Delta encoding and compression
+│   │   ├── mod.rs                 # Compression API
+│   │   └── delta.rs               # Delta encoder/decoder for sequences
+│   ├── formats/                   # File format I/O
+│   │   ├── mod.rs                 # Format API
+│   │   └── fasta.rs               # FASTA parser/writer (supports .gz)
+│   ├── providers/                 # External database integration
+│   │   ├── mod.rs                 # Provider traits
+│   │   └── uniprot.rs             # UniProt API client
+│   ├── sequence/                  # Core sequence types
+│   │   ├── mod.rs                 # Sequence API
+│   │   ├── types.rs               # Sequence struct and operations
+│   │   └── stats.rs               # Sequence statistics computation
+│   └── taxonomy/                  # Taxonomy management
+│       ├── mod.rs                 # Taxonomy API
+│       ├── core.rs                # TaxonomyDB, resolution, NCBI parser
+│       ├── formatter.rs           # Header formatting with TaxID
+│       ├── stats.rs               # Taxonomic coverage analysis
+│       └── prerequisites.rs       # Taxonomy prerequisites checking
+├── tests/
+│   ├── alignment_integration.rs   # Comprehensive alignment tests
+│   └── fasta_integration.rs       # FASTA I/O integration tests
+└── benches/
+    ├── alignment_bench.rs         # Alignment performance benchmarks
+    └── fasta_bench.rs             # FASTA parsing benchmarks
 ```
 
 ## Core Components
@@ -59,21 +69,31 @@ pub struct Sequence {
     pub description: Option<String>,       // Optional description/header
     pub sequence: Vec<u8>,                 // Raw sequence data (amino acids/nucleotides)
     pub quality: Option<Vec<u8>>,          // Optional quality scores
-    pub taxon_id: Option<u32>,             // NCBI taxonomy ID
-    pub sequence_type: SequenceType,       // From talaria_core::types
+    pub taxon_id: Option<u32>,             // NCBI taxonomy ID (authoritative)
+    pub taxonomy_sources: TaxonomySources, // Multi-source taxonomy tracking
     pub metadata: HashMap<String, String>, // Additional metadata
 }
 
-// SequenceType is now imported from talaria_core::types
+// Multi-source taxonomy tracking for conflict resolution
+pub struct TaxonomySources {
+    pub api_provided: Option<u32>,   // From external API
+    pub user_specified: Option<u32>, // From user input
+    pub mapping_lookup: Option<u32>, // From accession2taxid
+    pub header_parsed: Option<u32>,  // Parsed from FASTA header
+    pub chunk_context: Option<u32>,  // From SEQUOIA chunk context
+}
+
+// SequenceType is imported from talaria_core::types
 use talaria_core::types::SequenceType;
 // Variants: Protein, DNA, RNA, Nucleotide, Unknown
 ```
 
 **Key Features:**
-- Automatic sequence type detection based on residue composition
-- Built-in sanitization to remove ambiguous residues
-- Taxonomy resolution from multiple sources (header, accession lookup)
-- Comprehensive statistics computation (length, composition, entropy)
+- Automatic sequence type detection (proteins detected by EFILPQXZ residues)
+- Built-in sanitization removes ambiguous residues: B, J, O, U, Z, X (and lowercase)
+- Multi-source taxonomy resolution with conflict detection
+- Comprehensive statistics: N50/N90, Shannon entropy, Simpson diversity, GC content
+- Case normalization for consistent processing
 
 ### 2. FASTA I/O (`formats/fasta.rs`)
 
@@ -84,7 +104,7 @@ High-performance FASTA parsing with multiple strategies:
 let sequences = parse_fasta("input.fasta")?;
 
 // Parallel parsing for large files
-let sequences = parse_fasta_parallel("huge.fasta", num_chunks)?;
+let sequences = parse_fasta_parallel("huge.fasta", chunk_size)?;  // chunk_size in bytes
 
 // Streaming parse from bytes
 let sequences = parse_fasta_from_bytes(&data)?;
@@ -126,23 +146,32 @@ pub struct DeltaRange {
 
 ### 4. Sequence Alignment (`alignment/`)
 
-Needleman-Wunsch global alignment implementation:
+Needleman-Wunsch global alignment with case normalization:
 
 ```rust
-let aligner = NeedlemanWunsch::new(gap_open, gap_extend);
-let alignment: DetailedAlignment = aligner.align(&seq1, &seq2, &scoring_matrix)?;
+// Simple API that auto-selects scoring matrix
+let alignment = Alignment::global(&ref_seq, &query_seq);
+
+// Or use specific aligner
+let aligner = NeedlemanWunsch::new(NucleotideMatrix::new());
+let alignment = aligner.align(&ref_seq, &query_seq);
 
 // DetailedAlignment contains:
-// - aligned_seq1, aligned_seq2: Sequences with gaps inserted
-// - score: Total alignment score
-// - identity: Percentage identity
-// - traceback: Path through the alignment matrix
+pub struct DetailedAlignment {
+    pub score: i32,                // Total alignment score
+    pub ref_aligned: Vec<u8>,      // Reference with gaps
+    pub query_aligned: Vec<u8>,    // Query with gaps
+    pub alignment_string: Vec<u8>, // '|' for match, 'X' for mismatch, ' ' for gap
+    pub deltas: Vec<Delta>,        // All differences including gaps
+    pub identity: f64,             // Sequence identity (0.0 to 1.0)
+}
 ```
 
-**Scoring Matrices:**
-- BLOSUM62 for proteins
-- Custom nucleotide matrices
-- Configurable gap penalties
+**Features:**
+- Automatic case normalization (sequences converted to uppercase)
+- BLOSUM62 for proteins, custom matrix for nucleotides
+- Delta extraction includes insertions, deletions, and substitutions
+- Configurable gap penalties (affine gap model)
 
 ### 5. Taxonomy Management (`taxonomy/`)
 
@@ -259,10 +288,10 @@ pub fn write_metadata(path: &Path, deltas: &[DeltaRecord])?;
 // Parse FASTA file (auto-detects compression)
 pub fn parse_fasta<P: AsRef<Path>>(path: P) -> Result<Vec<Sequence>>
 
-// Parse with parallel processing
+// Parse with parallel processing (memory-mapped)
 pub fn parse_fasta_parallel<P: AsRef<Path>>(
     path: P,
-    num_chunks: usize
+    chunk_size: usize // Size in bytes for each chunk
 ) -> Result<Vec<Sequence>>
 
 // Write sequences to FASTA
@@ -286,7 +315,7 @@ pub fn sanitize_sequences(
 impl Sequence {
     pub fn compute_stats(&self) -> SequenceStats
     pub fn detect_type(&self) -> SequenceType
-    pub fn gc_content(&self) -> f32  // For DNA/RNA
+    pub fn gc_content(&self) -> f32 // For DNA/RNA
 }
 ```
 
@@ -379,11 +408,11 @@ coverage.print_tree(max_depth);
 
 ### 4. Parallel FASTA Processing
 ```rust
-use talaria_bio::parse_fasta_parallel;
+use talaria_bio::formats::fasta::parse_fasta_parallel;
 use rayon::prelude::*;
 
-// Parse large file in parallel
-let sequences = parse_fasta_parallel("huge_database.fasta", 8)?;
+// Parse large file in parallel with 1MB chunks
+let sequences = parse_fasta_parallel("huge_database.fasta", 1024 * 1024)?;
 
 // Process in parallel
 let results: Vec<_> = sequences
@@ -446,66 +475,79 @@ let proteome = client.fetch_proteome("UP000005640").await?;
 
 ### Benchmarks
 
-| Operation              | 1GB FASTA | 10GB FASTA | Notes             |
-| ---------------------- | --------- | ---------- | ----------------- |
-| `parse_fasta`          | 2.3s      | 24s        | Single-threaded   |
-| `parse_fasta_parallel` | 0.6s      | 4.2s       | 8 threads         |
-| `write_fasta`          | 1.8s      | 18s        | Uncompressed      |
-| `write_fasta` (gz)     | 8.5s      | 85s        | Gzip level 6      |
-| Delta encoding         | 0.1ms/seq | -          | Per sequence pair |
-| Sequence stats         | 50μs/seq  | -          | All statistics    |
+| Operation              | Performance | Notes                      |
+| ---------------------- | ----------- | -------------------------- |
+| `parse_fasta`          | 2.3s/GB     | Single-threaded            |
+| `parse_fasta_parallel` | 0.6s/GB     | 8 threads, memory-mapped   |
+| `write_fasta`          | 1.8s/GB     | Uncompressed               |
+| `write_fasta` (gz)     | 8.5s/GB     | Gzip compression level 6   |
+| Memory-mapped parse    | 0.5s/GB     | Direct mmap access         |
+| NW alignment (DNA)     | 1ms/100bp   | Needleman-Wunsch           |
+| NW alignment (protein) | 2ms/100aa   | BLOSUM62 scoring           |
+| Delta encoding         | 0.1ms/seq   | Per sequence pair          |
+| Sequence stats         | 50μs/seq    | All statistics computed    |
+| GC content calc        | 10μs/seq    | Optimized counting         |
 
 ## Testing
 
-### Unit Tests
+### Comprehensive Test Suite
+- **53 Unit Tests**: Core functionality in `src/` modules
+- **29 Integration Tests**: Cross-module functionality
+  - 19 alignment tests (`tests/alignment_integration.rs`)
+  - 10 FASTA I/O tests (`tests/fasta_integration.rs`)
+- **Performance Benchmarks**: Using Criterion.rs
+  - FASTA parsing benchmarks (`benches/fasta_bench.rs`)
+  - Alignment benchmarks (`benches/alignment_bench.rs`)
+
+### Running Tests
 ```bash
-# Run unit tests
-cargo test --lib
+# Run all tests
+cargo test -p talaria-bio
 
-# Run specific test module
-cargo test sequence::tests
+# Run unit tests only
+cargo test -p talaria-bio --lib
 
-# Run with output
-cargo test -- --nocapture
-```
+# Run integration tests only
+cargo test -p talaria-bio --tests
 
-### Integration Tests
-```bash
-# Run integration tests
-cargo test --test '*'
+# Run specific test file
+cargo test -p talaria-bio --test alignment_integration
 
-# Test specific functionality
-cargo test fasta_parsing
-cargo test delta_encoding
-cargo test taxonomy_resolution
+# Run benchmarks
+cargo bench -p talaria-bio
+
+# Run with output for debugging
+cargo test -p talaria-bio -- --nocapture
 ```
 
 ### Test Coverage
 ```bash
 # Generate coverage report
-cargo tarpaulin --out html
+cargo tarpaulin -p talaria-bio --out html
 open tarpaulin-report.html
 ```
 
-### Example Test
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
+### Test Categories
 
-    #[test]
-    fn test_sequence_sanitization() {
-        let seq = Sequence::new(
-            "test".to_string(),
-            b"ACGTXN".to_vec()  // X and N are ambiguous
-        );
+**Unit Tests** (`src/*/tests`):
+- Sequence type detection and manipulation
+- Sanitization of ambiguous residues
+- Statistics computation (N50, entropy, diversity)
+- Taxonomy source tracking and resolution
+- FASTA parsing edge cases
 
-        let (clean, removed) = sanitize_sequences(vec![seq]);
-        assert_eq!(removed, 1);
-        assert_eq!(clean.len(), 0);
-    }
-}
-```
+**Integration Tests** (`tests/`):
+- FASTA round-trip I/O with various formats
+- Alignment with different sequence types
+- Compressed file handling (.gz)
+- Parallel processing validation
+- Large sequence performance
+
+**Benchmarks** (`benches/`):
+- FASTA parsing: serial vs parallel vs memory-mapped
+- Alignment: varying sequence lengths and similarity
+- Real-world sequence sizes (Illumina, Sanger, genes)
+- Worst-case scenarios (no matches, all gaps)
 
 ## Error Handling
 

@@ -20,7 +20,7 @@ pub struct UpdateTaxonomyArgs {
 }
 
 pub fn run(args: UpdateTaxonomyArgs) -> Result<()> {
-    use crate::core::database::database_manager::{DatabaseManager, TaxonomyUpdateResult};
+    use talaria_sequoia::database::{DatabaseManager, TaxonomyUpdateResult};
 
     println!("{} Checking for taxonomy updates...", "►".cyan().bold());
 
@@ -59,15 +59,16 @@ pub fn run(args: UpdateTaxonomyArgs) -> Result<()> {
             }
         }
         TaxonomyUpdateResult::Updated {
-            old_version,
-            new_version,
+            nodes_updated,
+            names_updated,
+            ..
         } => {
             println!("{} Taxonomy updated successfully!", "✓".green().bold());
-            if let Some(old) = old_version {
-                println!("  Previous version: {}", old.dimmed());
+            if nodes_updated {
+                println!("  ✓ Nodes updated");
             }
-            if let Some(new) = new_version {
-                println!("  New version: {}", new.green());
+            if names_updated {
+                println!("  ✓ Names updated");
             }
         }
     }

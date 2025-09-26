@@ -26,11 +26,23 @@ pub mod temporal;
 // Operations
 pub mod operations;
 
+// Processing pipelines
+pub mod processing;
+
 // Taxonomy
 pub mod taxonomy;
 
+// Database management
+pub mod database;
+
+// Backup functionality
+pub mod backup;
+
 // Cloud and sync
 pub mod cloud;
+
+// Download functionality
+pub mod download;
 
 // Re-export commonly used types
 pub use types::*;
@@ -41,14 +53,26 @@ pub use storage::{
     ChunkIndexBuilder, ChunkQuery, ChunkAccessTracker, DefaultChunkIndex,
     ChunkRelationships, IndexStatistics, OptimizationSuggestion,
     ChunkCompressor, CompressionConfig,
-    FormatDetector, ManifestFormat, JsonFormat, MessagePackFormat, TalariaFormat
+    FormatDetector, ManifestFormat, JsonFormat, MessagePackFormat, TalariaFormat,
+    ChunkMetadata
 };
+
+// Additional re-exports for tests
+pub use storage::indices as indices;
+pub use storage::packed::PackedSequenceStorage as packed_storage;
+pub use storage::sequence::SequenceStorage as sequence_storage;
+pub use storage::format as format;
+pub use operations::state::ProcessingState as processing_state;
+pub use taxonomy::filter as taxonomy_filter;
+pub use manifest::core::TALARIA_MAGIC;
 pub use verification::MerkleDAG;
 pub use types::{MerkleNode, MerkleProof};
 pub use verification::{Verifier, VerificationResult, Validator, ValidationResult};
 pub use operations::{
     FastaAssembler, AssemblyResult, TemporalManifestDiffer, DiffResult,
-    ReductionManifest, ReductionParameters, ProcessingState, OperationType
+    ReductionManifest, ReductionParameters, ProcessingState, OperationType,
+    Reducer, SelectionAlgorithm, ReferenceSelectorImpl, SelectionResult,
+    ReferenceSelector, AlignmentBasedSelector, TraitSelectionResult, SelectionStats
 };
 pub use temporal::{
     TemporalIndex, BiTemporalDatabase, RetroactiveAnalyzer,
@@ -202,63 +226,4 @@ impl SEQUOIARepository {
 }
 
 // Import DatabaseSource types from talaria-core
-pub use talaria_core::{DatabaseSource, UniProtDatabase, NCBIDatabase};
-
-// CLI-related types that SEQUOIA needs
-// These should ideally be moved to a shared crate
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum TargetAligner {
-    Lambda,
-    Blast,
-    Kraken,
-    Diamond,
-    MMseqs2,
-    Generic,
-}
-
-// Output-related stubs for SEQUOIA modules that need them
-pub mod output {
-    #[derive(Debug, Clone)]
-    pub struct TreeNode {
-        pub label: String,
-        pub value: Option<String>,
-        pub children: Vec<TreeNode>,
-    }
-
-    impl TreeNode {
-        pub fn new(label: &str) -> Self {
-            Self {
-                label: label.to_string(),
-                value: None,
-                children: Vec::new(),
-            }
-        }
-
-        pub fn with_value(mut self, value: String) -> Self {
-            self.value = Some(value);
-            self
-        }
-
-        pub fn with_children(mut self, children: Vec<TreeNode>) -> Self {
-            self.children = children;
-            self
-        }
-
-        pub fn add_child(mut self, child: TreeNode) -> Self {
-            self.children.push(child);
-            self
-        }
-    }
-
-    pub fn create_standard_table() -> comfy_table::Table {
-        comfy_table::Table::new()
-    }
-
-    pub fn format_number(n: usize) -> String {
-        n.to_string()
-    }
-
-    pub fn header_cell(s: &str) -> comfy_table::Cell {
-        comfy_table::Cell::new(s)
-    }
-}
+pub use talaria_core::{DatabaseSource, UniProtDatabase, NCBIDatabase, TargetAligner};

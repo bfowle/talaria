@@ -6,6 +6,7 @@ use crate::types::*;
 use crate::verification::Verifier as SEQUOIAVerifier;
 use anyhow::{Context, Result};
 use std::io::Write;
+use tracing as log;
 
 pub struct FastaAssembler<'a> {
     storage: &'a SEQUOIAStorage,
@@ -60,22 +61,36 @@ impl<'a> FastaAssembler<'a> {
 
     /// Extract sequences from a single chunk
     fn extract_sequences_from_chunk(&self, hash: &SHA256Hash) -> Result<Vec<Sequence>> {
-        // Get chunk data
+        // Get chunk data (already decompressed by storage layer)
         let chunk_data = self
             .storage
             .get_chunk(hash)
             .with_context(|| format!("Failed to retrieve chunk {}", hash))?;
 
-        // Try to deserialize as ChunkManifest (new format)
-        if let Ok(manifest) = serde_json::from_slice::<crate::ChunkManifest>(&chunk_data) {
+        // Debug: Check if this looks like FASTA or JSON
+        if chunk_data.is_empty() {
+            return Err(anyhow::anyhow!("Chunk {} is empty", hash));
+        }
+
+        // Check if it starts with FASTA header or looks like JSON
+        let is_fasta = chunk_data.get(0) == Some(&b'>');
+        let is_json = chunk_data.get(0) == Some(&b'{') || chunk_data.get(0) == Some(&b'[');
+
+        // Try to deserialize as ChunkManifest from MessagePack format first
+        if let Ok(manifest) = rmp_serde::from_slice::<crate::ChunkManifest>(&chunk_data) {
             // Load actual sequences from canonical storage
             let mut sequences = Vec::new();
 
-            for seq_hash in &manifest.sequence_refs {
+            for seq_hash in manifest.sequence_refs.iter() {
                 // Load canonical sequence from sequence storage
-                let canonical = self.storage.sequence_storage
-                    .load_canonical(seq_hash)
-                    .with_context(|| format!("Failed to load canonical sequence {}", seq_hash))?;
+                let canonical = match self.storage.sequence_storage.load_canonical(seq_hash) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        eprintln!("WARNING: Failed to load canonical sequence {}: {}", seq_hash, e);
+                        eprintln!("  This might indicate the sequence storage is not properly initialized.");
+                        return Err(anyhow::anyhow!("Failed to load canonical sequence {}: {}", seq_hash, e));
+                    }
+                };
 
                 // Load representations to get accession and description
                 let representations = self.storage.sequence_storage
@@ -113,48 +128,92 @@ impl<'a> FastaAssembler<'a> {
                 sequences.push(seq);
             }
 
-            return Ok(sequences);
+                return Ok(sequences);
         }
 
-        // Try to deserialize as ChunkManifest (new format)
-        if let Ok(manifest) = serde_json::from_slice::<crate::ChunkManifest>(&chunk_data) {
-            // Load actual sequences from canonical storage
-            let mut sequences = Vec::new();
-            for seq_hash in &manifest.sequence_refs {
-                if let Ok(canonical) = self.storage.sequence_storage.load_canonical(seq_hash) {
-                    // Convert canonical to bio sequence
-                    sequences.push(talaria_bio::sequence::Sequence {
-                        id: seq_hash.to_hex(),
-                        description: None,
+        // Try JSON format as fallback
+        if is_json {
+            if let Ok(manifest) = serde_json::from_slice::<crate::ChunkManifest>(&chunk_data) {
+                log::debug!("Successfully deserialized ChunkManifest from JSON");
+                eprintln!("  Sequence refs: {}", manifest.sequence_refs.len());
+
+                // Load actual sequences from canonical storage
+                let mut sequences = Vec::new();
+
+                for (idx, seq_hash) in manifest.sequence_refs.iter().enumerate() {
+                    // Load canonical sequence from sequence storage
+                    let canonical = match self.storage.sequence_storage.load_canonical(seq_hash) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            eprintln!("WARNING: Failed to load canonical sequence {} (index {}): {}", seq_hash, idx, e);
+                            eprintln!("  This might indicate the sequence storage is not properly initialized.");
+                            return Err(anyhow::anyhow!("Failed to load canonical sequence {}: {}", seq_hash, e));
+                        }
+                    };
+
+                    // Load representations to get accession and description
+                    let representations = self.storage.sequence_storage
+                        .load_representations(seq_hash)
+                        .unwrap_or_else(|_| crate::SequenceRepresentations {
+                            canonical_hash: seq_hash.clone(),
+                            representations: Vec::new(),
+                        });
+
+                    // Use first representation for accession/description, or use hash as fallback
+                    let (id, description, taxon_id) = if let Some(first_repr) = representations.representations.first() {
+                        let id = first_repr.accessions.first()
+                            .cloned()
+                            .unwrap_or_else(|| seq_hash.to_hex()[..8].to_string());
+                        (id, first_repr.description.clone(), first_repr.taxon_id)
+                    } else {
+                        // No representations, use hash prefix as ID
+                        (seq_hash.to_hex()[..8].to_string(), None, None)
+                    };
+
+                    // Convert to bio sequence
+                    let mut seq = Sequence {
+                        id,
+                        description,
                         sequence: canonical.sequence,
-                        taxon_id: None,
+                        taxon_id: taxon_id.map(|t| t.0),
                         taxonomy_sources: Default::default(),
-                    });
+                    };
+
+                    // Override with chunk-level taxonomy if more specific
+                    if manifest.taxon_ids.len() == 1 && seq.taxon_id.is_none() {
+                        seq.taxon_id = Some(manifest.taxon_ids[0].0);
+                    }
+
+                    sequences.push(seq);
                 }
-            }
-            return Ok(sequences);
-        }
 
-        // Otherwise verify and parse as FASTA
-        if self.verify_on_assembly {
-            let actual_hash = SHA256Hash::compute(&chunk_data);
-            if &actual_hash != hash {
-                return Err(anyhow::anyhow!(
-                    "Chunk verification failed: expected {}, got {}",
-                    hash,
-                    actual_hash
-                ));
+                return Ok(sequences);
             }
         }
 
-        // Parse FASTA from chunk
-        self.parse_fasta(&chunk_data)
+        // If it looks like FASTA, parse it directly
+        if is_fasta {
+            return self.parse_fasta(&chunk_data);
+        }
+
+        // Otherwise, we have an unknown format
+        log::debug!("Chunk {} has unknown format", hash);
+        eprintln!("  Size: {} bytes", chunk_data.len());
+        eprintln!("  First 100 bytes (hex): {:02x?}", &chunk_data[..chunk_data.len().min(100)]);
+        eprintln!("  First 100 bytes (text): {:?}", String::from_utf8_lossy(&chunk_data[..chunk_data.len().min(100)]));
+
+        Err(anyhow::anyhow!(
+            "Chunk {} has unknown format. Not FASTA (starts with '>') or JSON (starts with '{{' or '['). First byte: 0x{:02x}",
+            hash,
+            chunk_data[0]
+        ))
     }
 
     /// Stream a chunk directly to writer
     fn stream_chunk_to_writer<W: Write>(&self, hash: &SHA256Hash, writer: &mut W) -> Result<usize> {
         // Extract sequences (this handles both ChunkManifest and old formats)
-        let sequences = self.extract_sequences_from_chunk(hash)?;
+        let sequences = self.extract_sequences_from_chunk(hash)
+            .with_context(|| format!("Failed to extract sequences from chunk {}", hash))?;
 
         // Write sequences as FASTA with TaxID in header if available
         for seq in &sequences {

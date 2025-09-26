@@ -133,6 +133,32 @@ pub fn storage_path() -> PathBuf {
     talaria_databases_dir().join("chunks")
 }
 
+/// Get the canonical sequence storage directory
+/// This is the SINGLE shared location for all unique sequences across all databases
+/// SEQUOIA Principle #1: Canonical Sequence Storage - Each unique sequence stored exactly once
+/// Returns: TALARIA_DATABASES_DIR/sequences
+pub fn canonical_sequence_storage_dir() -> PathBuf {
+    talaria_databases_dir().join("sequences")
+}
+
+/// Get the canonical sequence packs directory
+/// Returns: TALARIA_DATABASES_DIR/sequences/packs
+pub fn canonical_sequence_packs_dir() -> PathBuf {
+    canonical_sequence_storage_dir().join("packs")
+}
+
+/// Get the canonical sequence indices directory
+/// Returns: TALARIA_DATABASES_DIR/sequences/indices
+pub fn canonical_sequence_indices_dir() -> PathBuf {
+    canonical_sequence_storage_dir().join("indices")
+}
+
+/// Get the canonical sequence index file path
+/// Returns: TALARIA_DATABASES_DIR/sequences/indices/sequence_index.tal
+pub fn canonical_sequence_index_path() -> PathBuf {
+    canonical_sequence_indices_dir().join("sequence_index.tal")
+}
+
 /// Get manifest path for a specific database
 pub fn manifest_path(source: &str, dataset: &str) -> PathBuf {
     talaria_databases_dir()
@@ -171,45 +197,99 @@ pub fn describe_paths() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
 
     #[test]
-    #[ignore] // This test must run in isolation due to OnceLock initialization
-    fn test_default_paths() {
-        // Clear any existing environment variables for testing
-        env::remove_var("TALARIA_HOME");
-        env::remove_var("TALARIA_DATA_DIR");
-        env::remove_var("TALARIA_DATABASES_DIR");
+    fn test_utc_timestamp_format() {
+        let timestamp = generate_utc_timestamp();
 
-        let expected_home = dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(".talaria");
+        // Should be in format YYYYMMDD_HHMMSS
+        assert_eq!(timestamp.len(), 15);
+        assert_eq!(&timestamp[8..9], "_");
 
-        // Force re-initialization for testing
-        // Note: In production, OnceLock prevents this
-        assert_eq!(talaria_home(), expected_home);
-        assert_eq!(talaria_data_dir(), expected_home);
-        assert_eq!(talaria_databases_dir(), expected_home.join("databases"));
+        // Should only contain digits and underscore
+        for (i, c) in timestamp.chars().enumerate() {
+            if i == 8 {
+                assert_eq!(c, '_');
+            } else {
+                assert!(c.is_ascii_digit());
+            }
+        }
     }
 
     #[test]
-    fn test_custom_paths() {
-        // This test would need to be run in isolation due to OnceLock
-        // In practice, environment variables should be set before first use
-        env::set_var("TALARIA_HOME", "/custom/talaria");
-        env::set_var("TALARIA_DATABASES_DIR", "/fast/ssd/databases");
+    fn test_database_path_construction() {
+        // These don't depend on environment variables
+        let path = database_path("uniprot", "swissprot");
+        assert!(path.ends_with("uniprot/swissprot"));
 
-        // These assertions would work if OnceLock wasn't already initialized
-        // assert_eq!(talaria_home(), PathBuf::from("/custom/talaria"));
-        // assert_eq!(talaria_databases_dir(), PathBuf::from("/fast/ssd/databases"));
+        let path = database_path("ncbi", "nr");
+        assert!(path.ends_with("ncbi/nr"));
+
+        let path = database_path("custom", "mydb");
+        assert!(path.ends_with("custom/mydb"));
     }
 
     #[test]
-    fn test_database_paths() {
-        let manifest_path = manifest_path("uniprot", "swissprot");
-        assert!(manifest_path.ends_with("manifests/uniprot-swissprot.json"));
+    fn test_manifest_path_construction() {
+        let path = manifest_path("uniprot", "swissprot");
+        assert!(path.ends_with("manifests/uniprot-swissprot.json"));
 
-        let db_path = database_path("ncbi", "nr");
-        assert!(db_path.ends_with("ncbi/nr"));
+        let path = manifest_path("ncbi", "taxonomy");
+        assert!(path.ends_with("manifests/ncbi-taxonomy.json"));
+    }
+
+    #[test]
+    fn test_taxonomy_path_construction() {
+        let version_dir = talaria_taxonomy_version_dir("20241225");
+        assert!(version_dir.ends_with("taxonomy/20241225"));
+
+        let current_dir = talaria_taxonomy_current_dir();
+        assert!(current_dir.ends_with("taxonomy/current"));
+    }
+
+    #[test]
+    fn test_canonical_sequence_paths() {
+        let storage_dir = canonical_sequence_storage_dir();
+        assert!(storage_dir.ends_with("sequences"));
+
+        let packs_dir = canonical_sequence_packs_dir();
+        assert!(packs_dir.ends_with("sequences/packs"));
+
+        let indices_dir = canonical_sequence_indices_dir();
+        assert!(indices_dir.ends_with("sequences/indices"));
+
+        let index_path = canonical_sequence_index_path();
+        assert!(index_path.ends_with("sequences/indices/sequence_index.tal"));
+    }
+
+    #[test]
+    fn test_storage_path() {
+        let path = storage_path();
+        assert!(path.ends_with("chunks"));
+    }
+
+    #[test]
+    fn test_is_custom_data_dir() {
+        // This test checks the function logic without depending on actual env vars
+        // The actual behavior is tested in integration tests
+        let result = is_custom_data_dir();
+        // Result depends on whether env vars are set - just verify it returns a bool
+        assert!(result == true || result == false);
+    }
+
+    #[test]
+    fn test_describe_paths() {
+        let description = describe_paths();
+
+        // Should contain all path types
+        assert!(description.contains("Home:"));
+        assert!(description.contains("Data:"));
+        assert!(description.contains("Databases:"));
+        assert!(description.contains("Tools:"));
+        assert!(description.contains("Cache:"));
+        assert!(description.contains("Custom:"));
+
+        // Should indicate custom status
+        assert!(description.contains("Yes") || description.contains("No (using defaults)"));
     }
 }

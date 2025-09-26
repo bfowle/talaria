@@ -35,3 +35,17 @@ colored = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = "1.4"
+tempfile = { workspace = true }
+tokio-test = "0.4"
+criterion = "0.5"
+mockall = "0.12"
+proptest = "1.4"
+serial_test = "3.0"
+wiremock = "0.5"
+predicates = "3.0"
+quickcheck = "1.0"
+quickcheck_macros = "1.0"
+
+[[bench]]
+name = "tools_benchmarks"
+harness = false

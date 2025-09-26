@@ -10,7 +10,7 @@ use talaria_sequoia::manifest::Manifest;
 use talaria_sequoia::{ManifestMetadata, TaxonId, TemporalManifest};
 use crate::cli::formatting::format_number;
 use crate::cli::visualize::{ascii_histogram_categorized, sparkline, CategoryCounts};
-use crate::core::database::database_manager::DatabaseManager;
+use talaria_sequoia::database::DatabaseManager;
 use crate::cli::progress::create_spinner;
 
 /// Trait for inspecting manifest contents

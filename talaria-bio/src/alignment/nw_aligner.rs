@@ -52,6 +52,12 @@ impl<S: ScoringMatrix> NeedlemanWunsch<S> {
     }
 
     pub fn align(&self, ref_seq: &[u8], query_seq: &[u8]) -> DetailedAlignment {
+        // Normalize sequences to uppercase for consistent alignment
+        let ref_seq_upper: Vec<u8> = ref_seq.iter().map(|&b| b.to_ascii_uppercase()).collect();
+        let query_seq_upper: Vec<u8> = query_seq.iter().map(|&b| b.to_ascii_uppercase()).collect();
+        let ref_seq = &ref_seq_upper;
+        let query_seq = &query_seq_upper;
+
         let ref_len = ref_seq.len();
         let query_len = query_seq.len();
 
@@ -279,8 +285,24 @@ impl<S: ScoringMatrix> NeedlemanWunsch<S> {
         let mut ref_pos = 0;
 
         for (&r, &q) in ref_aligned.iter().zip(query_aligned.iter()) {
-            if r != b'-' {
-                if q != b'-' && r != q {
+            if r == b'-' {
+                // Insertion in query
+                deltas.push(Delta {
+                    position: ref_pos,
+                    reference: b'-',
+                    query: q,
+                });
+            } else if q == b'-' {
+                // Deletion in query
+                deltas.push(Delta {
+                    position: ref_pos,
+                    reference: r,
+                    query: b'-',
+                });
+                ref_pos += 1;
+            } else {
+                // Match or mismatch
+                if r != q {
                     deltas.push(Delta {
                         position: ref_pos,
                         reference: r,

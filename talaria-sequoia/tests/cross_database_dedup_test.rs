@@ -4,25 +4,21 @@
 /// results in only one copy being stored, achieving the 60% space saving target.
 
 use talaria_sequoia::{
-    SHA256Hash, TaxonId,
-    indices::SequenceIndices,
-    types::DatabaseSource,
-    sequence_storage::SequenceStorage,
+    storage::{SequenceStorage, SequenceIndices},
+    DatabaseSource,
 };
+use talaria_core::{SHA256Hash, TaxonId, UniProtDatabase, NCBIDatabase};
 use tempfile::TempDir;
 use anyhow::Result;
 use std::collections::HashSet;
-use std::sync::Arc;
 
 #[test]
 fn test_cross_database_deduplication() -> Result<()> {
     let temp_dir = TempDir::new()?;
 
-    // Create sequence storage directly
-    let mut storage = SequenceStorage::new(temp_dir.path())?;
-
-    // Create indices for lookups
-    let indices = Arc::new(SequenceIndices::new(temp_dir.path())?);
+    // Create sequence storage and indices
+    let storage = SequenceStorage::new(temp_dir.path())?;
+    let indices = SequenceIndices::new(temp_dir.path())?;
 
     // Create a common E. coli sequence that appears in all databases
     let common_sequence = "MSKGEELFTGVVPILVELDGDVNGHKFSVSGEGEGDATYGKLTLKFICTTGKLPVPWPTLVTTFSYGVQCFSRYPDHMKQHDFFKSAMPEGYVQERTIFFKDDGNYKTRAEVKFEGDTLVNRIELKGIDFKEDGNILGHKLEYNYNSHNVYIMADKQKNGIKVNFKIRHNIEDGSVQLADHYQQNTPIGDGPVLLPDNHYLSTQSALSKDPNEKRDHMVLLEFVTAAGITLGMDELYK";
@@ -33,7 +29,7 @@ fn test_cross_database_deduplication() -> Result<()> {
 
     // Import UniProt sequences
     println!("Importing UniProt sequences...");
-    let uniprot_source = DatabaseSource::new("uniprot", "swissprot");
+    let uniprot_source = DatabaseSource::UniProt(UniProtDatabase::SwissProt);
 
     // Common sequence in UniProt
     let hash1 = storage.store_sequence(
@@ -58,7 +54,7 @@ fn test_cross_database_deduplication() -> Result<()> {
     )?;
     canonical_hashes.insert(hash_unique_uniprot.clone());
     indices.add_sequence(
-        hash_unique_uniprot,
+        hash_unique_uniprot.clone(),
         Some("sp|Q67890|UNIQUE_SWISS".to_string()),
         Some(TaxonId(9606)),
         Some(uniprot_source.clone()),
@@ -67,7 +63,7 @@ fn test_cross_database_deduplication() -> Result<()> {
 
     // Import NCBI sequences
     println!("Importing NCBI sequences...");
-    let ncbi_source = DatabaseSource::new("ncbi", "nr");
+    let ncbi_source = DatabaseSource::NCBI(NCBIDatabase::NR);
 
     // Same common sequence in NCBI - should be deduplicated
     let hash2 = storage.store_sequence(
@@ -93,7 +89,7 @@ fn test_cross_database_deduplication() -> Result<()> {
     )?;
     canonical_hashes.insert(hash_unique_ncbi.clone());
     indices.add_sequence(
-        hash_unique_ncbi,
+        hash_unique_ncbi.clone(),
         Some("NP_789012.1".to_string()),
         Some(TaxonId(10090)),
         Some(ncbi_source.clone()),
@@ -102,7 +98,7 @@ fn test_cross_database_deduplication() -> Result<()> {
 
     // Import RefSeq sequences
     println!("Importing RefSeq sequences...");
-    let refseq_source = DatabaseSource::new("ncbi", "refseq");
+    let refseq_source = DatabaseSource::NCBI(NCBIDatabase::RefSeq);
 
     // Same common sequence in RefSeq - should be deduplicated
     let hash3 = storage.store_sequence(
@@ -129,7 +125,7 @@ fn test_cross_database_deduplication() -> Result<()> {
     )?;
     canonical_hashes.insert(hash_unique_refseq.clone());
     indices.add_sequence(
-        hash_unique_refseq,
+        hash_unique_refseq.clone(),
         Some("YP_007890.1".to_string()),
         Some(TaxonId(559292)),
         Some(refseq_source.clone()),
@@ -182,8 +178,8 @@ fn test_cross_database_deduplication() -> Result<()> {
     // Get statistics from storage
     let stats = storage.get_stats()?;
     println!("\n=== Storage Statistics ===");
-    println!("Total canonical sequences: {}", stats.total_sequences);
-    println!("Total representations: {}", stats.total_representations);
+    println!("Total canonical sequences: {:?}", stats.total_sequences);
+    println!("Total representations: {:?}", stats.total_representations);
     println!("Deduplication ratio: {:.1}%", stats.deduplication_ratio * 100.0);
 
     println!("\n✅ Cross-database deduplication test PASSED!");

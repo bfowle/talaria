@@ -491,15 +491,11 @@ fn write_sequences(sequences: &[talaria_bio::sequence::Sequence], path: &PathBuf
     Ok(())
 }
 
-fn print_tree_node(node: &talaria_sequoia::output::TreeNode, depth: usize) {
+fn print_tree_node(node: &talaria_utils::display::TreeNode, depth: usize) {
     let indent = "  ".repeat(depth);
     let prefix = if depth == 0 { "" } else { "├─ " };
 
-    if let Some(value) = &node.value {
-        println!("{}{}{}: {}", indent, prefix, node.label, value);
-    } else {
-        println!("{}{}{}", indent, prefix, node.label);
-    }
+    println!("{}{}{}", indent, prefix, node.name);
 
     for child in &node.children {
         print_tree_node(child, depth + 1);

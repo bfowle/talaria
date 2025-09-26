@@ -13,9 +13,9 @@ use talaria_bio::taxonomy::{TaxonomyFormatter, StandardTaxonomyFormatter};
 use talaria_sequoia::operations::FastaAssembler;
 use talaria_sequoia::manifest::Manifest;
 use crate::cli::formatting::output::{info as print_info, success as print_success};
-use crate::core::database::database_manager::DatabaseManager;
+use talaria_sequoia::database::DatabaseManager;
 use talaria_core::system::paths;
-use crate::core::database::database_ref::{parse_database_reference, DatabaseReference};
+use talaria_utils::database::database_ref::{parse_database_reference, DatabaseReference};
 use crate::cli::progress::create_spinner;
 
 #[derive(Args)]

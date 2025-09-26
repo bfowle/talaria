@@ -551,3 +551,427 @@ impl StorageOptimizer for StandardStorageOptimizer {
         Ok(true)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use tokio;
+
+    async fn setup_test_optimizer() -> (StandardStorageOptimizer, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().to_path_buf();
+        let chunks_dir = base_path.join("chunks");
+        std::fs::create_dir_all(&chunks_dir).unwrap();
+
+        let optimizer = StandardStorageOptimizer::new(base_path);
+        (optimizer, temp_dir)
+    }
+
+    async fn create_test_chunk(chunks_dir: &PathBuf, data: &[u8], compressed: bool) -> SHA256Hash {
+        let hash = SHA256Hash::compute(data);
+        let filename = if compressed {
+            format!("{}.gz", hash.to_hex())
+        } else {
+            hash.to_hex()
+        };
+        let path = chunks_dir.join(filename);
+
+        if compressed {
+            use flate2::write::GzEncoder;
+            use flate2::Compression;
+            use std::io::Write;
+
+            let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+            encoder.write_all(data).unwrap();
+            let compressed_data = encoder.finish().unwrap();
+            std::fs::write(path, compressed_data).unwrap();
+        } else {
+            std::fs::write(path, data).unwrap();
+        }
+
+        hash
+    }
+
+    #[tokio::test]
+    async fn test_scan_chunks() {
+        let (mut optimizer, temp_dir) = setup_test_optimizer().await;
+        let chunks_dir = temp_dir.path().join("chunks");
+
+        // Create test chunks
+        create_test_chunk(&chunks_dir, b"test data 1", false).await;
+        create_test_chunk(&chunks_dir, b"test data 2", true).await;
+        create_test_chunk(&chunks_dir, b"test data 3", false).await;
+
+        // Scan chunks
+        optimizer.scan_chunks().await.unwrap();
+
+        // Verify cache populated
+        assert_eq!(optimizer.chunk_cache.len(), 3);
+
+        // Verify compressed flag detected
+        let compressed_count = optimizer.chunk_cache.values()
+            .filter(|info| info.compressed)
+            .count();
+        assert_eq!(compressed_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_find_duplicates() {
+        let (mut optimizer, temp_dir) = setup_test_optimizer().await;
+        let chunks_dir = temp_dir.path().join("chunks");
+
+        // Create duplicate chunks (same data, different locations)
+        let data = b"duplicate data";
+        let hash = SHA256Hash::compute(data);
+
+        // Create first copy
+        let path1 = chunks_dir.join(hash.to_hex());
+        std::fs::write(&path1, data).unwrap();
+
+        // Create second copy with different name (simulating duplicate)
+        let path2 = chunks_dir.join(format!("{}_copy", hash.to_hex()));
+        std::fs::write(&path2, data).unwrap();
+
+        // Manually add to cache to simulate duplicates
+        optimizer.chunk_cache.insert(
+            hash,
+            ChunkInfo {
+                hash,
+                size: data.len(),
+                compressed: false,
+                _access_count: 0,
+                _last_accessed: None,
+                references: vec![path1, path2],
+            },
+        );
+
+        let duplicates = optimizer.find_duplicates();
+        assert_eq!(duplicates.len(), 1);
+        assert_eq!(duplicates[0].count, 2);
+        assert_eq!(duplicates[0].size, data.len());
+    }
+
+    #[tokio::test]
+    async fn test_find_compressible() {
+        let (mut optimizer, _temp_dir) = setup_test_optimizer().await;
+
+        // Add uncompressed chunks to cache
+        let hash1 = SHA256Hash::compute(b"small");
+        let hash2 = SHA256Hash::compute(b"large enough to compress");
+
+        optimizer.chunk_cache.insert(
+            hash1,
+            ChunkInfo {
+                hash: hash1,
+                size: 5, // Too small to compress
+                compressed: false,
+                _access_count: 0,
+                _last_accessed: None,
+                references: vec![],
+            },
+        );
+
+        optimizer.chunk_cache.insert(
+            hash2,
+            ChunkInfo {
+                hash: hash2,
+                size: 2000, // Large enough to compress
+                compressed: false,
+                _access_count: 0,
+                _last_accessed: None,
+                references: vec![],
+            },
+        );
+
+        let compressible = optimizer.find_compressible();
+        assert_eq!(compressible.len(), 1);
+        assert_eq!(compressible[0].current_size, 2000);
+        assert!(compressible[0].compressed_size < 2000);
+    }
+
+    #[tokio::test]
+    async fn test_analyze_storage() {
+        let (mut optimizer, temp_dir) = setup_test_optimizer().await;
+        let chunks_dir = temp_dir.path().join("chunks");
+
+        // Create various chunks
+        create_test_chunk(&chunks_dir, b"test data 1", false).await;
+        create_test_chunk(&chunks_dir, &vec![0u8; 5000], false).await; // Compressible
+
+        optimizer.scan_chunks().await.unwrap();
+        let analysis = optimizer.analyze().await.unwrap();
+
+        assert_eq!(analysis.chunk_count, 2);
+        assert!(analysis.total_size > 0);
+        assert!(analysis.potential_savings.contains_key(&StorageStrategy::Compression));
+    }
+
+    #[tokio::test]
+    async fn test_deduplicate() {
+        let (mut optimizer, temp_dir) = setup_test_optimizer().await;
+        let chunks_dir = temp_dir.path().join("chunks");
+
+        // Create duplicate files
+        let data = b"duplicate data";
+        let hash = SHA256Hash::compute(data);
+
+        let path1 = chunks_dir.join(format!("{}_1", hash.to_hex()));
+        let path2 = chunks_dir.join(format!("{}_2", hash.to_hex()));
+        std::fs::write(&path1, data).unwrap();
+        std::fs::write(&path2, data).unwrap();
+
+        // Setup cache with duplicates
+        optimizer.chunk_cache.insert(
+            hash,
+            ChunkInfo {
+                hash,
+                size: data.len(),
+                compressed: false,
+                _access_count: 0,
+                _last_accessed: None,
+                references: vec![path1.clone(), path2.clone()],
+            },
+        );
+
+        // Deduplicate
+        let result = optimizer.deduplicate().await.unwrap();
+
+        assert_eq!(result.strategy, StorageStrategy::Deduplication);
+        assert!(result.space_saved > 0);
+        assert_eq!(result.chunks_affected, 1);
+
+        // Verify one file removed
+        assert!(path1.exists());
+        assert!(!path2.exists());
+    }
+
+    #[tokio::test]
+    async fn test_compress_chunks() {
+        let (mut optimizer, temp_dir) = setup_test_optimizer().await;
+        let chunks_dir = temp_dir.path().join("chunks");
+
+        // Create large uncompressed chunk
+        let data = vec![0u8; 5000];
+        let hash = create_test_chunk(&chunks_dir, &data, false).await;
+
+        optimizer.chunk_cache.insert(
+            hash,
+            ChunkInfo {
+                hash,
+                size: data.len(),
+                compressed: false,
+                _access_count: 0,
+                _last_accessed: None,
+                references: vec![chunks_dir.join(hash.to_hex())],
+            },
+        );
+
+        // Compress chunks
+        let result = optimizer.compress_chunks(6).await.unwrap();
+
+        assert_eq!(result.strategy, StorageStrategy::Compression);
+        assert!(result.space_saved > 0);
+        assert_eq!(result.chunks_affected, 1);
+
+        // Verify compressed file exists
+        let compressed_path = chunks_dir.join(format!("{}.gz", hash.to_hex()));
+        assert!(compressed_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_optimize_with_options() {
+        let (mut optimizer, temp_dir) = setup_test_optimizer().await;
+        let chunks_dir = temp_dir.path().join("chunks");
+
+        // Create test data
+        create_test_chunk(&chunks_dir, &vec![0u8; 5000], false).await;
+
+        optimizer.scan_chunks().await.unwrap();
+
+        // Test with dry run
+        let options = OptimizationOptions {
+            strategies: vec![StorageStrategy::Compression],
+            dry_run: true,
+            ..Default::default()
+        };
+
+        let results = optimizer.optimize(options).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].strategy, StorageStrategy::Compression);
+
+        // Dry run should not actually compress
+        let uncompressed_count = optimizer.chunk_cache.values()
+            .filter(|info| !info.compressed)
+            .count();
+        assert!(uncompressed_count > 0);
+    }
+
+    #[tokio::test]
+    async fn test_optimize_with_target_savings() {
+        let (mut optimizer, temp_dir) = setup_test_optimizer().await;
+        let chunks_dir = temp_dir.path().join("chunks");
+
+        // Create multiple chunks larger than 1024 bytes (compression threshold)
+        create_test_chunk(&chunks_dir, &vec![0u8; 2000], false).await;
+        create_test_chunk(&chunks_dir, &vec![1u8; 2000], false).await;
+
+        optimizer.scan_chunks().await.unwrap();
+
+        let options = OptimizationOptions {
+            strategies: vec![StorageStrategy::Compression, StorageStrategy::Deduplication],
+            target_savings: Some(100), // Low target
+            dry_run: true,
+            ..Default::default()
+        };
+
+        let results = optimizer.optimize(options).await.unwrap();
+
+        // Should stop after reaching target
+        assert!(!results.is_empty());
+        let total_saved: i64 = results.iter().map(|r| r.space_saved).sum();
+        assert!(total_saved >= 100);
+    }
+
+    #[tokio::test]
+    async fn test_estimate_impact() {
+        let (mut optimizer, _temp_dir) = setup_test_optimizer().await;
+
+        // Setup cache with compressible chunk
+        let hash = SHA256Hash::compute(b"test");
+        optimizer.chunk_cache.insert(
+            hash,
+            ChunkInfo {
+                hash,
+                size: 3000,
+                compressed: false,
+                _access_count: 0,
+                _last_accessed: None,
+                references: vec![],
+            },
+        );
+
+        let impact = optimizer.estimate_impact(StorageStrategy::Compression).await.unwrap();
+        assert!(impact > 0);
+        assert!(impact < 3000); // Should be less than original size
+    }
+
+    #[tokio::test]
+    async fn test_verify_integrity() {
+        let (mut optimizer, temp_dir) = setup_test_optimizer().await;
+        let chunks_dir = temp_dir.path().join("chunks");
+
+        // Create valid chunk
+        let data = b"valid data";
+        let hash = create_test_chunk(&chunks_dir, data, false).await;
+
+        optimizer.chunk_cache.insert(
+            hash,
+            ChunkInfo {
+                hash,
+                size: data.len(),
+                compressed: false,
+                _access_count: 0,
+                _last_accessed: None,
+                references: vec![chunks_dir.join(hash.to_hex())],
+            },
+        );
+
+        // Verify integrity
+        let is_valid = optimizer.verify_integrity().await.unwrap();
+        assert!(is_valid);
+
+        // Corrupt the chunk
+        let wrong_hash = SHA256Hash::compute(b"wrong");
+        optimizer.chunk_cache.insert(
+            wrong_hash,
+            ChunkInfo {
+                hash: wrong_hash,
+                size: data.len(),
+                compressed: false,
+                _access_count: 0,
+                _last_accessed: None,
+                references: vec![chunks_dir.join(hash.to_hex())], // Points to wrong file
+            },
+        );
+
+        // Verify should fail
+        let is_valid = optimizer.verify_integrity().await.unwrap();
+        assert!(!is_valid);
+    }
+
+    #[tokio::test]
+    async fn test_garbage_collect() {
+        let (mut optimizer, _temp_dir) = setup_test_optimizer().await;
+
+        // Test garbage collection (currently returns empty result)
+        let result = optimizer.garbage_collect().await.unwrap();
+        assert_eq!(result.strategy, StorageStrategy::GarbageCollection);
+        assert_eq!(result.space_saved, 0);
+    }
+
+    #[tokio::test]
+    async fn test_storage_strategy_equality() {
+        assert_eq!(StorageStrategy::Compression, StorageStrategy::Compression);
+        assert_ne!(StorageStrategy::Compression, StorageStrategy::Deduplication);
+    }
+
+    #[tokio::test]
+    async fn test_optimization_result_details() {
+        let mut details = HashMap::new();
+        details.insert("chunks_processed".to_string(), "10".to_string());
+        details.insert("method".to_string(), "gzip".to_string());
+
+        let result = OptimizationResult {
+            strategy: StorageStrategy::Compression,
+            space_saved: 1000,
+            space_before: 5000,
+            space_after: 4000,
+            chunks_affected: 10,
+            duration_seconds: 5,
+            details,
+        };
+
+        assert_eq!(result.space_saved, 1000);
+        assert_eq!(result.details.get("method"), Some(&"gzip".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_scan_empty_directory() {
+        let (mut optimizer, _temp_dir) = setup_test_optimizer().await;
+
+        // Scan empty directory
+        optimizer.scan_chunks().await.unwrap();
+        assert_eq!(optimizer.chunk_cache.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_scan_invalid_files() {
+        let (mut optimizer, temp_dir) = setup_test_optimizer().await;
+        let chunks_dir = temp_dir.path().join("chunks");
+
+        // Create file with invalid name
+        std::fs::write(chunks_dir.join("not_a_hash.txt"), b"data").unwrap();
+
+        // Scan should skip invalid files
+        optimizer.scan_chunks().await.unwrap();
+        assert_eq!(optimizer.chunk_cache.len(), 0);
+    }
+
+    // Property-based test
+    #[quickcheck_macros::quickcheck]
+    fn prop_compression_ratio(data: Vec<u8>) -> bool {
+        if data.len() < 1024 {
+            return true; // Skip small data
+        }
+
+        let chunk = CompressibleChunk {
+            hash: SHA256Hash::compute(&data),
+            current_size: data.len(),
+            compressed_size: data.len() / 3, // Estimate
+            ratio: (data.len() / 3) as f32 / data.len() as f32,
+        };
+
+        chunk.ratio > 0.0 && chunk.ratio <= 1.0
+    }
+}

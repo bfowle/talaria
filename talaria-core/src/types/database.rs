@@ -10,6 +10,8 @@ pub enum DatabaseSource {
     UniProt(UniProtDatabase),
     NCBI(NCBIDatabase),
     Custom(String),
+    /// Test database source for unit testing
+    Test,
 }
 
 /// UniProt database variants
@@ -34,6 +36,7 @@ pub enum NCBIDatabase {
     RefSeqGenomic,    // RefSeq genomic database
     NR,
     NT,
+    GenBank,          // GenBank database
 }
 
 impl fmt::Display for DatabaseSource {
@@ -42,6 +45,7 @@ impl fmt::Display for DatabaseSource {
             DatabaseSource::UniProt(db) => write!(f, "UniProt: {}", db),
             DatabaseSource::NCBI(db) => write!(f, "NCBI: {}", db),
             DatabaseSource::Custom(name) => write!(f, "Custom: {}", name),
+            DatabaseSource::Test => write!(f, "Test"),
         }
     }
 }
@@ -70,6 +74,7 @@ impl fmt::Display for NCBIDatabase {
             NCBIDatabase::RefSeqGenomic => write!(f, "RefSeq Genomic"),
             NCBIDatabase::NR => write!(f, "NR"),
             NCBIDatabase::NT => write!(f, "NT"),
+            NCBIDatabase::GenBank => write!(f, "GenBank"),
         }
     }
 }
@@ -108,6 +113,7 @@ impl From<DatabaseSource> for DatabaseSourceInfo {
                     DatabaseSourceInfo::new("custom", name)
                 }
             }
+            DatabaseSource::Test => DatabaseSourceInfo::new("test", "test"),
         }
     }
 }
@@ -124,6 +130,7 @@ impl From<&DatabaseSource> for DatabaseSourceInfo {
                     DatabaseSourceInfo::new("custom", name)
                 }
             }
+            DatabaseSource::Test => DatabaseSourceInfo::new("test", "test"),
         }
     }
 }
@@ -174,6 +181,9 @@ impl DatabaseSource {
             "ncbi/nt" | "nt" => {
                 DatabaseSource::NCBI(NCBIDatabase::NT)
             }
+            "ncbi/genbank" | "genbank" => {
+                DatabaseSource::NCBI(NCBIDatabase::GenBank)
+            }
             custom => DatabaseSource::Custom(custom.to_string()),
         }
     }
@@ -184,6 +194,7 @@ impl DatabaseSource {
             DatabaseSource::UniProt(_) => "uniprot",
             DatabaseSource::NCBI(_) => "ncbi",
             DatabaseSource::Custom(_) => "custom",
+            DatabaseSource::Test => "test",
         }
     }
 
@@ -193,6 +204,7 @@ impl DatabaseSource {
             DatabaseSource::UniProt(db) => db.to_string().to_lowercase(),
             DatabaseSource::NCBI(db) => db.to_string().to_lowercase(),
             DatabaseSource::Custom(name) => name.clone(),
+            DatabaseSource::Test => "test".to_string(),
         }
     }
 }
@@ -221,6 +233,7 @@ impl NCBIDatabase {
             NCBIDatabase::RefSeqGenomic => "refseq-genomic",
             NCBIDatabase::NR => "nr",
             NCBIDatabase::NT => "nt",
+            NCBIDatabase::GenBank => "genbank",
         }
     }
 }
@@ -284,17 +297,17 @@ impl DatabaseReference {
         self.profile.as_deref().unwrap_or("auto-detect")
     }
 
-    /// Parse from a string like "uniprot/swissprot:2024_04#blast-30"
+    /// Parse from a string like "uniprot/swissprot@2024_04:blast-30"
     pub fn parse(input: &str) -> Result<Self> {
-        // Split on '#' for profile
-        let (base_with_version, profile) = if let Some(idx) = input.rfind('#') {
+        // Split on ':' for profile
+        let (base_with_version, profile) = if let Some(idx) = input.rfind(':') {
             (&input[..idx], Some(input[idx + 1..].to_string()))
         } else {
             (input, None)
         };
 
-        // Split on ':' for version
-        let (base, version) = if let Some(idx) = base_with_version.rfind(':') {
+        // Split on '@' for version
+        let (base, version) = if let Some(idx) = base_with_version.rfind('@') {
             (
                 &base_with_version[..idx],
                 Some(base_with_version[idx + 1..].to_string()),
@@ -349,11 +362,393 @@ impl std::fmt::Display for DatabaseReference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}/{}", self.source, self.dataset)?;
         if let Some(v) = &self.version {
-            write!(f, ":{}", v)?;
+            write!(f, "@{}", v)?;
         }
         if let Some(p) = &self.profile {
-            write!(f, "#{}", p)?;
+            write!(f, ":{}", p)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_database_source_display() {
+        assert_eq!(
+            format!("{}", DatabaseSource::UniProt(UniProtDatabase::SwissProt)),
+            "UniProt: SwissProt"
+        );
+        assert_eq!(
+            format!("{}", DatabaseSource::NCBI(NCBIDatabase::NR)),
+            "NCBI: NR"
+        );
+        assert_eq!(
+            format!("{}", DatabaseSource::Custom("mydb".to_string())),
+            "Custom: mydb"
+        );
+        assert_eq!(format!("{}", DatabaseSource::Test), "Test");
+    }
+
+    #[test]
+    fn test_uniprot_database_display() {
+        assert_eq!(format!("{}", UniProtDatabase::SwissProt), "SwissProt");
+        assert_eq!(format!("{}", UniProtDatabase::TrEMBL), "TrEMBL");
+        assert_eq!(format!("{}", UniProtDatabase::UniRef50), "UniRef50");
+        assert_eq!(format!("{}", UniProtDatabase::UniRef90), "UniRef90");
+        assert_eq!(format!("{}", UniProtDatabase::UniRef100), "UniRef100");
+        assert_eq!(format!("{}", UniProtDatabase::IdMapping), "IdMapping");
+    }
+
+    #[test]
+    fn test_ncbi_database_display() {
+        assert_eq!(format!("{}", NCBIDatabase::Taxonomy), "Taxonomy");
+        assert_eq!(format!("{}", NCBIDatabase::ProtAccession2TaxId), "ProtAccession2TaxId");
+        assert_eq!(format!("{}", NCBIDatabase::RefSeqProtein), "RefSeq Protein");
+        assert_eq!(format!("{}", NCBIDatabase::NR), "NR");
+        assert_eq!(format!("{}", NCBIDatabase::NT), "NT");
+        assert_eq!(format!("{}", NCBIDatabase::GenBank), "GenBank");
+    }
+
+    #[test]
+    fn test_database_source_parse() {
+        // UniProt parsing
+        assert!(matches!(
+            DatabaseSource::parse("swissprot"),
+            DatabaseSource::UniProt(UniProtDatabase::SwissProt)
+        ));
+        assert!(matches!(
+            DatabaseSource::parse("uniprot/swissprot"),
+            DatabaseSource::UniProt(UniProtDatabase::SwissProt)
+        ));
+        assert!(matches!(
+            DatabaseSource::parse("trembl"),
+            DatabaseSource::UniProt(UniProtDatabase::TrEMBL)
+        ));
+
+        // NCBI parsing
+        assert!(matches!(
+            DatabaseSource::parse("ncbi/nr"),
+            DatabaseSource::NCBI(NCBIDatabase::NR)
+        ));
+        assert!(matches!(
+            DatabaseSource::parse("nr"),
+            DatabaseSource::NCBI(NCBIDatabase::NR)
+        ));
+        assert!(matches!(
+            DatabaseSource::parse("taxonomy"),
+            DatabaseSource::NCBI(NCBIDatabase::Taxonomy)
+        ));
+
+        // Custom parsing
+        match DatabaseSource::parse("my_custom_db") {
+            DatabaseSource::Custom(name) => assert_eq!(name, "my_custom_db"),
+            _ => panic!("Expected Custom variant"),
+        }
+    }
+
+    #[test]
+    fn test_database_source_methods() {
+        let uniprot = DatabaseSource::UniProt(UniProtDatabase::SwissProt);
+        assert_eq!(uniprot.source_name(), "uniprot");
+        assert_eq!(uniprot.dataset_name(), "swissprot");
+
+        let ncbi = DatabaseSource::NCBI(NCBIDatabase::NR);
+        assert_eq!(ncbi.source_name(), "ncbi");
+        assert_eq!(ncbi.dataset_name(), "nr");
+
+        let custom = DatabaseSource::Custom("mydb".to_string());
+        assert_eq!(custom.source_name(), "custom");
+        assert_eq!(custom.dataset_name(), "mydb");
+
+        let test = DatabaseSource::Test;
+        assert_eq!(test.source_name(), "test");
+        assert_eq!(test.dataset_name(), "test");
+    }
+
+    #[test]
+    fn test_uniprot_database_name() {
+        assert_eq!(UniProtDatabase::SwissProt.name(), "swissprot");
+        assert_eq!(UniProtDatabase::TrEMBL.name(), "trembl");
+        assert_eq!(UniProtDatabase::UniRef50.name(), "uniref50");
+        assert_eq!(UniProtDatabase::UniRef90.name(), "uniref90");
+        assert_eq!(UniProtDatabase::UniRef100.name(), "uniref100");
+        assert_eq!(UniProtDatabase::IdMapping.name(), "idmapping");
+    }
+
+    #[test]
+    fn test_ncbi_database_name() {
+        assert_eq!(NCBIDatabase::Taxonomy.name(), "taxonomy");
+        assert_eq!(NCBIDatabase::ProtAccession2TaxId.name(), "prot-accession2taxid");
+        assert_eq!(NCBIDatabase::NuclAccession2TaxId.name(), "nucl-accession2taxid");
+        assert_eq!(NCBIDatabase::RefSeq.name(), "refseq");
+        assert_eq!(NCBIDatabase::RefSeqProtein.name(), "refseq-protein");
+        assert_eq!(NCBIDatabase::RefSeqGenomic.name(), "refseq-genomic");
+        assert_eq!(NCBIDatabase::NR.name(), "nr");
+        assert_eq!(NCBIDatabase::NT.name(), "nt");
+        assert_eq!(NCBIDatabase::GenBank.name(), "genbank");
+    }
+
+    #[test]
+    fn test_database_source_info_new() {
+        let info = DatabaseSourceInfo::new("uniprot", "swissprot");
+        assert_eq!(info.source, "uniprot");
+        assert_eq!(info.dataset, "swissprot");
+        assert_eq!(format!("{}", info), "uniprot/swissprot");
+    }
+
+    #[test]
+    fn test_database_source_to_info_conversion() {
+        // UniProt conversion
+        let uniprot = DatabaseSource::UniProt(UniProtDatabase::SwissProt);
+        let info: DatabaseSourceInfo = uniprot.into();
+        assert_eq!(info.source, "uniprot");
+        assert_eq!(info.dataset, "swissprot");
+
+        // NCBI conversion
+        let ncbi = DatabaseSource::NCBI(NCBIDatabase::NR);
+        let info: DatabaseSourceInfo = ncbi.into();
+        assert_eq!(info.source, "ncbi");
+        assert_eq!(info.dataset, "nr");
+
+        // Custom conversion with slash
+        let custom = DatabaseSource::Custom("org/database".to_string());
+        let info: DatabaseSourceInfo = custom.into();
+        assert_eq!(info.source, "org");
+        assert_eq!(info.dataset, "database");
+
+        // Custom conversion without slash
+        let custom = DatabaseSource::Custom("mydb".to_string());
+        let info: DatabaseSourceInfo = custom.into();
+        assert_eq!(info.source, "custom");
+        assert_eq!(info.dataset, "mydb");
+
+        // Test conversion
+        let test = DatabaseSource::Test;
+        let info: DatabaseSourceInfo = test.into();
+        assert_eq!(info.source, "test");
+        assert_eq!(info.dataset, "test");
+    }
+
+    #[test]
+    fn test_database_source_ref_to_info_conversion() {
+        let uniprot = DatabaseSource::UniProt(UniProtDatabase::SwissProt);
+        let info: DatabaseSourceInfo = (&uniprot).into();
+        assert_eq!(info.source, "uniprot");
+        assert_eq!(info.dataset, "swissprot");
+    }
+
+    #[test]
+    fn test_database_reference_new() {
+        let ref1 = DatabaseReference::new("uniprot".to_string(), "swissprot".to_string());
+        assert_eq!(ref1.source, "uniprot");
+        assert_eq!(ref1.dataset, "swissprot");
+        assert_eq!(ref1.version, None);
+        assert_eq!(ref1.profile, None);
+    }
+
+    #[test]
+    fn test_database_reference_with_all() {
+        let ref1 = DatabaseReference::with_all(
+            "ncbi".to_string(),
+            "nr".to_string(),
+            Some("2024_04".to_string()),
+            Some("blast-30".to_string()),
+        );
+        assert_eq!(ref1.source, "ncbi");
+        assert_eq!(ref1.dataset, "nr");
+        assert_eq!(ref1.version, Some("2024_04".to_string()));
+        assert_eq!(ref1.profile, Some("blast-30".to_string()));
+    }
+
+    #[test]
+    fn test_database_reference_base_ref() {
+        let ref1 = DatabaseReference::with_all(
+            "uniprot".to_string(),
+            "swissprot".to_string(),
+            Some("2024_04".to_string()),
+            Some("blast".to_string()),
+        );
+        assert_eq!(ref1.base_ref(), "uniprot/swissprot");
+    }
+
+    #[test]
+    fn test_database_reference_defaults() {
+        let ref1 = DatabaseReference::new("uniprot".to_string(), "swissprot".to_string());
+        assert_eq!(ref1.version_or_default(), "current");
+        assert_eq!(ref1.profile_or_default(), "auto-detect");
+
+        let ref2 = DatabaseReference::with_all(
+            "ncbi".to_string(),
+            "nr".to_string(),
+            Some("2024_04".to_string()),
+            Some("custom".to_string()),
+        );
+        assert_eq!(ref2.version_or_default(), "2024_04");
+        assert_eq!(ref2.profile_or_default(), "custom");
+    }
+
+    #[test]
+    fn test_database_reference_parse() {
+        // Simple format
+        let ref1 = DatabaseReference::parse("uniprot/swissprot").unwrap();
+        assert_eq!(ref1.source, "uniprot");
+        assert_eq!(ref1.dataset, "swissprot");
+        assert_eq!(ref1.version, None);
+        assert_eq!(ref1.profile, None);
+
+        // With version
+        let ref2 = DatabaseReference::parse("ncbi/nr@2024_04").unwrap();
+        assert_eq!(ref2.source, "ncbi");
+        assert_eq!(ref2.dataset, "nr");
+        assert_eq!(ref2.version, Some("2024_04".to_string()));
+        assert_eq!(ref2.profile, None);
+
+        // With profile
+        let ref3 = DatabaseReference::parse("uniprot/trembl:blast-30").unwrap();
+        assert_eq!(ref3.source, "uniprot");
+        assert_eq!(ref3.dataset, "trembl");
+        assert_eq!(ref3.version, None);
+        assert_eq!(ref3.profile, Some("blast-30".to_string()));
+
+        // With both version and profile
+        let ref4 = DatabaseReference::parse("ncbi/nt@2024_04:blast-50").unwrap();
+        assert_eq!(ref4.source, "ncbi");
+        assert_eq!(ref4.dataset, "nt");
+        assert_eq!(ref4.version, Some("2024_04".to_string()));
+        assert_eq!(ref4.profile, Some("blast-50".to_string()));
+
+        // Invalid format
+        assert!(DatabaseReference::parse("invalid").is_err());
+        assert!(DatabaseReference::parse("").is_err());
+        assert!(DatabaseReference::parse("one/two/three").is_err());
+    }
+
+    #[test]
+    fn test_database_reference_display() {
+        let ref1 = DatabaseReference::new("uniprot".to_string(), "swissprot".to_string());
+        assert_eq!(format!("{}", ref1), "uniprot/swissprot");
+
+        let ref2 = DatabaseReference::with_all(
+            "ncbi".to_string(),
+            "nr".to_string(),
+            Some("2024_04".to_string()),
+            None,
+        );
+        assert_eq!(format!("{}", ref2), "ncbi/nr@2024_04");
+
+        let ref3 = DatabaseReference::with_all(
+            "uniprot".to_string(),
+            "trembl".to_string(),
+            None,
+            Some("blast-30".to_string()),
+        );
+        assert_eq!(format!("{}", ref3), "uniprot/trembl:blast-30");
+
+        let ref4 = DatabaseReference::with_all(
+            "ncbi".to_string(),
+            "nt".to_string(),
+            Some("2024_04".to_string()),
+            Some("blast-50".to_string()),
+        );
+        assert_eq!(format!("{}", ref4), "ncbi/nt@2024_04:blast-50");
+    }
+
+    #[test]
+    fn test_database_reference_matches() {
+        let ref1 = DatabaseReference::new("uniprot".to_string(), "swissprot".to_string());
+        let ref2 = DatabaseReference::new("uniprot".to_string(), "swissprot".to_string());
+        let ref3 = DatabaseReference::new("ncbi".to_string(), "nr".to_string());
+
+        // Same reference
+        assert!(ref1.matches(&ref2));
+
+        // Different source/dataset
+        assert!(!ref1.matches(&ref3));
+
+        // Version matching
+        let ref_v1 = DatabaseReference::with_all(
+            "uniprot".to_string(),
+            "swissprot".to_string(),
+            Some("2024_04".to_string()),
+            None,
+        );
+        let ref_v2 = DatabaseReference::with_all(
+            "uniprot".to_string(),
+            "swissprot".to_string(),
+            Some("2024_05".to_string()),
+            None,
+        );
+
+        assert!(!ref_v1.matches(&ref_v2)); // Different versions
+        assert!(ref1.matches(&ref_v1)); // None matches any version
+        assert!(ref_v1.matches(&ref1)); // Any version matches None
+
+        // Profile matching
+        let ref_p1 = DatabaseReference::with_all(
+            "uniprot".to_string(),
+            "swissprot".to_string(),
+            None,
+            Some("blast-30".to_string()),
+        );
+        let ref_p2 = DatabaseReference::with_all(
+            "uniprot".to_string(),
+            "swissprot".to_string(),
+            None,
+            Some("blast-50".to_string()),
+        );
+
+        assert!(!ref_p1.matches(&ref_p2)); // Different profiles
+        assert!(ref1.matches(&ref_p1)); // None matches any profile
+    }
+
+    #[test]
+    fn test_database_reference_round_trip() {
+        let original = DatabaseReference::with_all(
+            "uniprot".to_string(),
+            "swissprot".to_string(),
+            Some("2024_04".to_string()),
+            Some("blast-30".to_string()),
+        );
+
+        let formatted = format!("{}", original);
+        let parsed = DatabaseReference::parse(&formatted).unwrap();
+
+        assert_eq!(original.source, parsed.source);
+        assert_eq!(original.dataset, parsed.dataset);
+        assert_eq!(original.version, parsed.version);
+        assert_eq!(original.profile, parsed.profile);
+    }
+
+    #[test]
+    fn test_serialization() {
+        // Test DatabaseSource serialization
+        let source = DatabaseSource::UniProt(UniProtDatabase::SwissProt);
+        let json = serde_json::to_string(&source).unwrap();
+        let deserialized: DatabaseSource = serde_json::from_str(&json).unwrap();
+        assert_eq!(format!("{:?}", source), format!("{:?}", deserialized));
+
+        // Test DatabaseSourceInfo serialization
+        let info = DatabaseSourceInfo::new("uniprot", "swissprot");
+        let json = serde_json::to_string(&info).unwrap();
+        let deserialized: DatabaseSourceInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(info.source, deserialized.source);
+        assert_eq!(info.dataset, deserialized.dataset);
+
+        // Test DatabaseReference serialization
+        let reference = DatabaseReference::with_all(
+            "ncbi".to_string(),
+            "nr".to_string(),
+            Some("2024_04".to_string()),
+            Some("blast".to_string()),
+        );
+        let json = serde_json::to_string(&reference).unwrap();
+        let deserialized: DatabaseReference = serde_json::from_str(&json).unwrap();
+        assert_eq!(reference.source, deserialized.source);
+        assert_eq!(reference.dataset, deserialized.dataset);
+        assert_eq!(reference.version, deserialized.version);
+        assert_eq!(reference.profile, deserialized.profile);
     }
 }
