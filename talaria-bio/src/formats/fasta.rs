@@ -144,7 +144,7 @@ fn parse_record(input: &[u8]) -> IResult<&[u8], Sequence> {
 }
 
 /// Extract taxon ID from description (handles various formats)
-fn extract_taxon_id(description: &str) -> Option<u32> {
+pub fn extract_taxon_id(description: &str) -> Option<u32> {
     // First check for TaxID - if it's non-zero, use it
     if let Some(pos) = description.find("TaxID=") {
         let start = pos + "TaxID=".len();
@@ -575,6 +575,33 @@ mod tests {
 
         // Non-zero TaxID should be used even if OX= exists
         assert_eq!(extract_taxon_id("TaxID=123 OX=456"), Some(123));
+    }
+
+    #[test]
+    fn test_extract_taxon_id_uniref_format() {
+        // Test UniRef50 style headers
+        assert_eq!(
+            extract_taxon_id("UniRef50_A0A024RBG1 Cluster member n=1 Tax=Human TaxID=9606"),
+            Some(9606)
+        );
+        assert_eq!(
+            extract_taxon_id("UniRef50_Q8T6B1 Sodium channel TaxID=9606 RepID=Q8T6B1_HUMAN"),
+            Some(9606)
+        );
+        assert_eq!(
+            extract_taxon_id("UniRef50_A0A0E3J5A9 Cluster: PREDICTED: mucin-5AC n=2 Tax=Equus TaxID=9796"),
+            Some(9796)
+        );
+        // Mixed formats - TaxID takes priority
+        assert_eq!(
+            extract_taxon_id("UniRef50_P12345 Some protein OX=12345 TaxID=67890"),
+            Some(67890)
+        );
+        // Only OX= field
+        assert_eq!(
+            extract_taxon_id("UniRef50_P12345 Some protein OX=3702 RepID=P12345_ARATH"),
+            Some(3702)
+        );
     }
 
     #[test]

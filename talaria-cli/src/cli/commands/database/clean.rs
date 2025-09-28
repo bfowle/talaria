@@ -25,7 +25,15 @@ pub struct CleanArgs {
     #[arg(long)]
     pub compact: bool,
 
-    /// Clean all issues (orphaned, duplicates, and compact)
+    /// Clean old download workspaces
+    #[arg(long)]
+    pub downloads: bool,
+
+    /// Maximum age in hours for keeping incomplete downloads (default: 168 = 1 week)
+    #[arg(long, default_value = "168", requires = "downloads")]
+    pub max_age_hours: i64,
+
+    /// Clean all issues (orphaned, duplicates, compact, and downloads)
     #[arg(long, short = 'a')]
     pub all: bool,
 
@@ -55,9 +63,10 @@ pub fn run(args: CleanArgs) -> anyhow::Result<()> {
     let clean_orphaned = args.all || args.orphaned;
     let clean_duplicates = args.all || args.duplicates;
     let do_compact = args.all || args.compact;
+    let clean_downloads = args.all || args.downloads;
 
-    if !clean_orphaned && !clean_duplicates && !do_compact {
-        println!("{} No cleaning operations specified. Use --orphaned, --duplicates, --compact, or --all",
+    if !clean_orphaned && !clean_duplicates && !do_compact && !clean_downloads {
+        println!("{} No cleaning operations specified. Use --orphaned, --duplicates, --compact, --downloads, or --all",
                 "⚠".yellow().bold());
         return Ok(());
     }
@@ -88,6 +97,15 @@ pub fn run(args: CleanArgs) -> anyhow::Result<()> {
     if do_compact {
         let freed = compact_database(&mut repo, args.dry_run)?;
         total_freed += freed;
+    }
+
+    // Clean download workspaces if requested
+    if clean_downloads {
+        let downloads_cleaned = clean_download_workspaces(args.max_age_hours, args.dry_run)?;
+        if downloads_cleaned > 0 {
+            println!("  {} Cleaned {} download workspace(s)",
+                    "✓".green().bold(), downloads_cleaned);
+        }
     }
 
     // Display results
@@ -219,4 +237,28 @@ fn compact_database(repo: &mut SEQUOIARepository, dry_run: bool) -> anyhow::Resu
 fn estimate_chunk_size(chunks: &[talaria_sequoia::SHA256Hash]) -> usize {
     // Estimate 100KB per chunk as a rough average
     chunks.len() * 102_400
+}
+
+fn clean_download_workspaces(max_age_hours: i64, dry_run: bool) -> anyhow::Result<usize> {
+    use talaria_sequoia::download::workspace::cleanup_old_workspaces;
+
+    if dry_run {
+        // In dry run, just count what would be cleaned
+        use talaria_sequoia::download::{find_resumable_downloads, DatabaseSourceExt};
+        let resumable = find_resumable_downloads()?;
+
+        let mut would_clean = 0;
+        for download in resumable {
+            if download.is_stale(max_age_hours) {
+                would_clean += 1;
+                println!("  Would clean: {} ({})",
+                    download.id,
+                    download.source.canonical_name()
+                );
+            }
+        }
+        Ok(would_clean)
+    } else {
+        Ok(cleanup_old_workspaces(max_age_hours)?)
+    }
 }

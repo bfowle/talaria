@@ -1,6 +1,77 @@
+//! Download management system with resume capability and workspace isolation
+//!
+//! This module provides a robust download system for biological databases with:
+//! - **Resume capability**: Downloads can be interrupted and resumed from any stage
+//! - **Workspace isolation**: Each download gets a unique workspace preventing collisions
+//! - **State persistence**: Download progress is saved and can be recovered after failures
+//! - **Concurrent download prevention**: File-based locking prevents duplicate downloads
+//! - **Distributed systems patterns**: Session IDs, deterministic naming, process locks
+//!
+//! # Architecture
+//!
+//! The download system uses a state machine pattern with the following stages:
+//! - `Pending`: Initial state, ready to start download
+//! - `Downloading`: Actively downloading from remote source
+//! - `Verifying`: Checking checksums/integrity
+//! - `Decompressing`: Extracting compressed files
+//! - `Processing`: Converting to internal format (e.g., chunking)
+//! - `Completed`: Successfully finished
+//! - `Failed`: Error occurred (may be recoverable)
+//!
+//! # Workspace Structure
+//!
+//! Each download gets an isolated workspace at:
+//! ```text
+//! ${TALARIA_DATA_DIR}/downloads/{database}_{version}_{session_id}/
+//! ├── state.json          # Persistent state for resume
+//! ├── .lock              # Process lock file
+//! ├── checkpoints/       # Recovery checkpoints
+//! └── files/            # Downloaded/processed files
+//! ```
+//!
+//! # Environment Variables
+//!
+//! - `TALARIA_PRESERVE_ON_FAILURE`: Keep workspace on errors for debugging
+//! - `TALARIA_PRESERVE_ALWAYS`: Never clean up workspaces
+//! - `TALARIA_DATA_DIR`: Base directory for all downloads
+//!
+//! # Example Usage
+//!
+//! ```rust,no_run
+//! use talaria_sequoia::download::{DownloadManager, DownloadOptions, DownloadProgress};
+//! use talaria_core::DatabaseSource;
+//!
+//! async fn download_database() -> anyhow::Result<()> {
+//!     let mut manager = DownloadManager::new()?;
+//!     let mut progress = DownloadProgress::new();
+//!
+//!     let options = DownloadOptions {
+//!         resume: true,  // Resume if interrupted
+//!         skip_verify: false,
+//!         preserve_on_failure: true,
+//!         preserve_always: false,
+//!         force: false,
+//!     };
+//!
+//!     let path = manager.download_with_state(
+//!         DatabaseSource::Test,
+//!         options,
+//!         &mut progress,
+//!     ).await?;
+//!
+//!     println!("Downloaded to: {}", path.display());
+//!     Ok(())
+//! }
+//! ```
+
+pub mod manager;
 pub mod ncbi;
 pub mod progress;
+pub mod unified_progress;
+pub mod resume;
+pub mod resumable_downloader;
 pub mod uniprot;
+pub mod workspace;
 
 use anyhow::Result;
 use sha2::{Digest, Sha256};
@@ -8,9 +79,12 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
 
+pub use manager::{DownloadManager, DownloadOptions};
 pub use ncbi::NCBIDownloader;
 pub use progress::DownloadProgress;
 pub use uniprot::UniProtDownloader;
+pub use workspace::{DownloadState, Stage, get_download_workspace, find_resumable_downloads,
+                    find_existing_workspace_for_source, DatabaseSourceExt};
 
 /// Verify file checksum
 #[allow(dead_code)]
@@ -238,15 +312,61 @@ pub async fn download_database_with_full_options(
                         downloader.download_swissprot(output_path, progress).await
                     }
                 }
-                UniProtDatabase::TrEMBL => downloader.download_trembl(output_path, progress).await,
+                UniProtDatabase::TrEMBL => {
+                    if resume {
+                        downloader.download_and_extract_with_options(
+                            &format!("{}/current_release/knowledgebase/complete/uniprot_trembl.fasta.gz",
+                                    "https://ftp.ebi.ac.uk/pub/databases/uniprot"),
+                            output_path,
+                            progress,
+                            skip_verify,
+                            resume
+                        ).await
+                    } else {
+                        downloader.download_trembl(output_path, progress).await
+                    }
+                }
                 UniProtDatabase::UniRef50 => {
-                    downloader.download_uniref50(output_path, progress).await
+                    if resume {
+                        downloader.download_and_extract_with_options(
+                            &format!("{}/current_release/uniref/uniref50/uniref50.fasta.gz",
+                                    "https://ftp.ebi.ac.uk/pub/databases/uniprot"),
+                            output_path,
+                            progress,
+                            skip_verify,
+                            resume
+                        ).await
+                    } else {
+                        downloader.download_uniref50(output_path, progress).await
+                    }
                 }
                 UniProtDatabase::UniRef90 => {
-                    downloader.download_uniref90(output_path, progress).await
+                    if resume {
+                        downloader.download_and_extract_with_options(
+                            &format!("{}/current_release/uniref/uniref90/uniref90.fasta.gz",
+                                    "https://ftp.ebi.ac.uk/pub/databases/uniprot"),
+                            output_path,
+                            progress,
+                            skip_verify,
+                            resume
+                        ).await
+                    } else {
+                        downloader.download_uniref90(output_path, progress).await
+                    }
                 }
                 UniProtDatabase::UniRef100 => {
-                    downloader.download_uniref100(output_path, progress).await
+                    if resume {
+                        downloader.download_and_extract_with_options(
+                            &format!("{}/current_release/uniref/uniref100/uniref100.fasta.gz",
+                                    "https://ftp.ebi.ac.uk/pub/databases/uniprot"),
+                            output_path,
+                            progress,
+                            skip_verify,
+                            resume
+                        ).await
+                    } else {
+                        downloader.download_uniref100(output_path, progress).await
+                    }
                 }
                 UniProtDatabase::IdMapping => {
                     if resume {

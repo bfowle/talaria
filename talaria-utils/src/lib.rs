@@ -7,6 +7,7 @@ pub mod database;
 pub mod display;
 pub mod parallel;
 pub mod performance;
+pub mod progress;  // New unified progress module
 pub mod report;
 pub mod workspace;
 

@@ -172,11 +172,12 @@ impl HierarchicalTaxonomicChunker {
         self.sequence_storage.save_indices()?;
         storing_progress.finish_and_clear();
 
+        use talaria_utils::display::output::format_number;
         println!(
             "Stored {} sequences ({} new, {} deduplicated)",
-            sequence_records.len(),
-            new_count,
-            dedup_count
+            format_number(sequence_records.len()),
+            format_number(new_count),
+            format_number(dedup_count)
         );
 
         // Step 2: Build taxonomic hierarchy

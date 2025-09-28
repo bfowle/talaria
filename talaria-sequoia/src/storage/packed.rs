@@ -203,14 +203,46 @@ impl PackReader {
                 .context("Invalid header length")?
         ) as usize;
 
+        // Validate header length is reasonable (max 10KB for header)
+        const MAX_HEADER_SIZE: usize = 10 * 1024;
+        if header_len > MAX_HEADER_SIZE {
+            return Err(anyhow!(
+                "Invalid header length {} at offset {} (max: {}, pack size: {})",
+                header_len, offset, MAX_HEADER_SIZE, self.data.len()
+            ));
+        }
+
+        // Validate we have enough data for the header
+        if offset + 4 + header_len > self.data.len() {
+            return Err(anyhow!(
+                "Header extends beyond pack: offset={}, header_len={}, pack_size={}",
+                offset, header_len, self.data.len()
+            ));
+        }
+
         // Read and parse header
         let header_data = &self.data[offset + 4..offset + 4 + header_len];
-        let entry: PackEntry = rmp_serde::from_slice(header_data)?;
+        let entry: PackEntry = rmp_serde::from_slice(header_data)
+            .with_context(|| format!("Failed to parse header at offset {}", offset))?;
 
         // Read sequence and representations data
         let seq_start = offset + 4 + header_len;
         let seq_end = seq_start + entry.sequence_length as usize;
         let repr_end = seq_end + entry.representations_length as usize;
+
+        // Validate all bounds before accessing
+        if seq_end > self.data.len() {
+            return Err(anyhow!(
+                "Sequence data extends beyond pack: seq_start={}, seq_len={}, pack_size={}",
+                seq_start, entry.sequence_length, self.data.len()
+            ));
+        }
+        if repr_end > self.data.len() {
+            return Err(anyhow!(
+                "Representations data extends beyond pack: repr_start={}, repr_len={}, pack_size={}",
+                seq_end, entry.representations_length, self.data.len()
+            ));
+        }
 
         // The data is already MessagePack serialized, just return it as-is
         let sequence_data = self.data[seq_start..seq_end].to_vec();

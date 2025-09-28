@@ -17,6 +17,57 @@ Talaria CLI is the primary command-line interface for the Talaria sequence reduc
 
 ## Recent Improvements
 
+### Intelligent Resume Downloads (v1.2.0)
+
+- **Automatic Workspace Discovery**: The `--resume` flag now automatically finds existing downloads
+- **Smart Resume Logic**: Detects the most recent matching download for any database source
+- **Clear Progress Messages**: Shows exactly what's being resumed and from what stage
+- **Complete Download Handling**: Resumes SEQUOIA processing even if download finished but processing didn't
+- **Multi-Stage Resume Support**: Can resume from downloading, decompressing, or processing stages
+
+#### Resume Examples
+
+```bash
+# Download a large database (e.g., UniRef50 is 14GB compressed, 28GB decompressed)
+talaria database download uniprot/uniref50
+
+# If interrupted or fails, resume with:
+talaria database download uniprot/uniref50 --resume
+
+# Output shows resume status:
+# ● Searching for existing downloads of UniProt/UniRef50...
+# ✓ Found existing download at: ~/.talaria/downloads/uniprot_uniref50_20250927_c7c5c593
+# ├─ Found download from 2 hours ago
+# └─ Download complete, resuming SEQUOIA processing...
+# ✓ Using existing downloaded file
+
+# For debugging, preserve download workspace:
+TALARIA_PRESERVE_DOWNLOADS=1 talaria database download uniprot/uniref50
+
+# Force fresh download (ignore existing):
+talaria database download uniprot/uniref50 --force
+```
+
+#### Workspace Management
+
+Each download creates an isolated workspace:
+
+```
+~/.talaria/downloads/
+├── uniprot_uniref50_20250927_c7c5c593/
+│   ├── state.json              # Resume state
+│   ├── uniref50.fasta.gz       # Downloaded file
+│   ├── uniref50.fasta          # Decompressed file
+│   └── chunks/                 # Processing artifacts
+└── ncbi_nr_20250926_a1b2c3d4/
+    └── ...
+```
+
+Environment variables for workspace control:
+- `TALARIA_PRESERVE_DOWNLOADS=1` - Keep workspace after successful processing
+- `TALARIA_PRESERVE_ON_FAILURE=1` - Keep workspace on errors (default)
+- `TALARIA_PRESERVE_ALWAYS=1` - Never clean up workspaces
+
 ### Enhanced Test Coverage (v1.1.0)
 
 - **4x increase in test coverage**: From 20 to 81+ comprehensive tests
@@ -153,7 +204,7 @@ SUBCOMMANDS:
     add <NAME> <PATH>   Add custom database from FASTA
     export <DB>         Export database to FASTA
     versions <DB>       Manage database versions
-    diff <DB1> <DB2>    Compare two databases
+    diff <DB1> <DB2>    Compare two databases (comprehensive analysis)
     verify <DB>         Verify database integrity
     clean               Clean unused data
     backup <DB>         Create database backup
@@ -180,6 +231,45 @@ talaria database download uniprot/trembl --mirror ebi
 
 # Download taxonomy data
 talaria database download ncbi/taxonomy
+
+# Download with automatic resume on failure
+talaria database download ncbi/nr --resume  # Resume if previous download was interrupted
+
+# Force fresh download (ignore existing)
+talaria database download uniprot/swissprot --force
+```
+
+##### Download Recovery
+
+```bash
+# List interrupted downloads that can be resumed
+talaria database download --list-resumable
+
+# Example output:
+# Resumable Downloads:
+#
+#   a1b2c3d4 - uniprot_swissprot (downloading)
+#     Started: 2024-01-15 14:23:45
+#   e5f6g7h8 - ncbi_nr (decompressing)
+#     Started: 2024-01-15 11:15:30
+#
+# Use 'talaria database download --resume-id <id>' to resume a specific download
+# Use 'talaria database download --resume' to resume the most recent download
+
+# Resume most recent download
+talaria database download --resume
+
+# Resume specific download by ID
+talaria database download --resume-id a1b2c3d4
+
+# Clean old download workspaces (default: 7 days old)
+talaria database clean --downloads
+
+# Clean downloads older than 24 hours
+talaria database clean --downloads --max-age-hours 24
+
+# Dry run to see what would be cleaned
+talaria database clean --downloads --dry-run
 ```
 
 ##### Database Management Examples
@@ -199,6 +289,75 @@ talaria database export uniprot/swissprot \
 talaria database versions uniprot/swissprot --list
 talaria database versions uniprot/swissprot --rollback 2024_03
 talaria database versions uniprot/swissprot --prune --keep 3
+```
+
+##### Database Comparison (diff)
+
+The `diff` command provides comprehensive comparison between databases:
+
+```bash
+# Basic comparison
+talaria database diff uniprot/swissprot uniprot/uniref50
+
+# Show all analysis types
+talaria database diff db1 db2 --all
+
+# Specific analysis types
+talaria database diff db1 db2 --sequences   # Sequence-level comparison
+talaria database diff db1 db2 --chunks      # Chunk-level comparison
+talaria database diff db1 db2 --taxonomy    # Taxonomy distribution
+
+# Export results
+talaria database diff db1 db2 --export comparison.json
+
+# Summary mode
+talaria database diff db1 db2 --summary
+
+# Detailed mode
+talaria database diff db1 db2 --detailed
+```
+
+Output includes:
+- **Chunk Analysis**: Shared/unique chunks, percentages
+- **Sequence Analysis**: Total sequences, overlap statistics, sample IDs
+- **Taxonomy Distribution**: Shared/unique taxa, top organisms by sequence count
+- **Storage Metrics**: Database sizes, deduplication savings
+
+Example output:
+```
+DATABASE COMPARISON: uniprot/swissprot vs uniprot/uniref50
+════════════════════════════════════════════════════════════
+
+CHUNK-LEVEL ANALYSIS
+────────────────────
+Total chunks in first:        1,234
+Total chunks in second:       5,678
+Shared chunks:                  456 (36.9% / 8.0%)
+Unique to first:                778 (63.1%)
+Unique to second:             5,222 (92.0%)
+
+SEQUENCE-LEVEL ANALYSIS
+──────────────────────
+Total sequences in first:   569,667
+Total sequences in second: 52,324,151
+Shared sequences:           234,567 (41.2% / 0.4%)
+
+TAXONOMY DISTRIBUTION
+────────────────────
+Taxa in first:               14,562
+Taxa in second:             234,789
+Shared taxa:                 12,345 (84.8% / 5.3%)
+
+Top shared taxa:
+1. Homo sapiens (9606): 45,234 / 1,234,567 seqs
+2. Mus musculus (10090): 23,456 / 987,654 seqs
+3. E. coli (562): 12,345 / 543,210 seqs
+
+STORAGE METRICS
+──────────────
+Size first:                  267.8 MB
+Size second:                  45.2 GB
+Deduplication savings:        12.3 GB (shared content)
 ```
 
 #### `sequoia` - SEQUOIA Repository Management
@@ -469,6 +628,12 @@ TALARIA_THREADS              # Thread count (0 = auto)
 
 # Database Configuration
 TALARIA_DATABASES_DIR        # Database storage (default: $TALARIA_HOME/databases)
+
+# Download Management
+TALARIA_PRESERVE_ON_FAILURE  # Keep download files on failure (default: 1)
+TALARIA_PRESERVE_ALWAYS      # Never clean download workspace (debugging)
+TALARIA_PRESERVE_DOWNLOADS   # Keep downloaded files after processing
+TALARIA_SESSION              # Override session ID for downloads (testing)
 TALARIA_TAXONOMY_DIR         # Taxonomy data (default: $TALARIA_HOME/taxonomy)
 TALARIA_CACHE_DIR            # Cache directory (default: $TALARIA_HOME/cache)
 

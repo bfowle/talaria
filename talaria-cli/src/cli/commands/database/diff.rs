@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
 use talaria_sequoia::{SEQUOIARepository, DiffResult};
-use talaria_sequoia::operations::{TemporalManifestDiffer, StandardTemporalManifestDiffer, DiffOptions, ChangeType};
+use talaria_sequoia::operations::{TemporalManifestDiffer, StandardTemporalManifestDiffer, DiffOptions, ChangeType,
+                                   DatabaseDiffer, format_bytes};
 use talaria_core::system::paths;
 use clap::Args;
 use colored::*;
@@ -28,6 +29,18 @@ pub struct DiffArgs {
     /// Show taxonomy differences
     #[arg(long, short = 't')]
     pub taxonomy: bool,
+
+    /// Show sequence-level comparisons
+    #[arg(long)]
+    pub sequences: bool,
+
+    /// Show chunk-level comparisons (default)
+    #[arg(long)]
+    pub chunks: bool,
+
+    /// Show all comparison types
+    #[arg(long, short = 'a')]
+    pub all: bool,
 
     /// Export diff to JSON file
     #[arg(long, value_name = "FILE")]
@@ -57,16 +70,21 @@ pub fn run(args: DiffArgs) -> anyhow::Result<()> {
         return run_bitemporal_diff(args);
     }
 
+    // Parse the from/to specifications
+    let (from_path, from_version) = parse_spec(&args.from)?;
+    let (to_path, to_version) = parse_spec(&args.to)?;
+
+    // Check if we should use the new comprehensive diff
+    if args.all || args.sequences || (!args.detailed && !args.summary && !args.chunks) {
+        return run_comprehensive_diff(args, from_path, to_path);
+    }
+
     println!(
         "{} Computing differences between '{}' and '{}'...",
         "►".cyan().bold(),
         args.from,
         args.to
     );
-
-    // Parse the from/to specifications
-    let (from_path, from_version) = parse_spec(&args.from)?;
-    let (to_path, to_version) = parse_spec(&args.to)?;
 
     // Load repositories
     let from_repo = SEQUOIARepository::open(&from_path)?;
@@ -439,6 +457,167 @@ fn export_diff(diff: &DiffResult, path: &Path) -> anyhow::Result<()> {
 
     let json = serde_json::to_string_pretty(diff)?;
     fs::write(path, json)?;
+
+    Ok(())
+}
+
+/// Run comprehensive database comparison
+fn run_comprehensive_diff(args: DiffArgs, from_path: PathBuf, to_path: PathBuf) -> anyhow::Result<()> {
+    println!(
+        "{} DATABASE COMPARISON: {} vs {}",
+        "►".cyan().bold(),
+        args.from,
+        args.to
+    );
+    println!("{}", "═".repeat(60));
+
+    // Create the differ and perform comparison
+    let differ = DatabaseDiffer::new(&from_path, &to_path)?;
+    let comparison = differ.compare()?;
+
+    // Display results based on flags
+    let show_chunks = args.chunks || args.all || (!args.sequences && !args.taxonomy);
+    let show_sequences = args.sequences || args.all;
+    let show_taxonomy = args.taxonomy || args.all;
+
+    if show_chunks {
+        display_chunk_analysis(&comparison.chunk_analysis)?;
+    }
+
+    if show_sequences {
+        display_sequence_analysis(&comparison.sequence_analysis)?;
+    }
+
+    if show_taxonomy {
+        display_taxonomy_analysis(&comparison.taxonomy_analysis)?;
+    }
+
+    // Always show storage metrics
+    display_storage_metrics(&comparison.storage_metrics)?;
+
+    // Export if requested
+    if let Some(export_path) = args.export {
+        let json = serde_json::to_string_pretty(&comparison)?;
+        std::fs::write(&export_path, json)?;
+        println!(
+            "\n{} Comparison exported to {}",
+            "✓".green().bold(),
+            export_path.display()
+        );
+    }
+
+    Ok(())
+}
+
+fn display_chunk_analysis(analysis: &talaria_sequoia::ChunkAnalysis) -> anyhow::Result<()> {
+    println!("\n{}", "CHUNK-LEVEL ANALYSIS".bold());
+    println!("{}", "─".repeat(40));
+
+    println!("Total chunks in first:     {:>8}", analysis.total_chunks_a);
+    println!("Total chunks in second:    {:>8}", analysis.total_chunks_b);
+    println!(
+        "Shared chunks:             {:>8} ({:.1}% / {:.1}%)",
+        analysis.shared_chunks.len(),
+        analysis.shared_percentage_a,
+        analysis.shared_percentage_b
+    );
+    println!(
+        "Unique to first:           {:>8} ({:.1}%)",
+        analysis.unique_to_a.len(),
+        100.0 - analysis.shared_percentage_a
+    );
+    println!(
+        "Unique to second:          {:>8} ({:.1}%)",
+        analysis.unique_to_b.len(),
+        100.0 - analysis.shared_percentage_b
+    );
+
+    Ok(())
+}
+
+fn display_sequence_analysis(analysis: &talaria_sequoia::SequenceAnalysis) -> anyhow::Result<()> {
+    println!("\n{}", "SEQUENCE-LEVEL ANALYSIS".bold());
+    println!("{}", "─".repeat(40));
+
+    println!("Total sequences in first:  {:>8}", analysis.total_sequences_a);
+    println!("Total sequences in second: {:>8}", analysis.total_sequences_b);
+    println!(
+        "Shared sequences:          {:>8} ({:.1}% / {:.1}%)",
+        analysis.shared_sequences,
+        analysis.shared_percentage_a,
+        analysis.shared_percentage_b
+    );
+    println!(
+        "Unique to first:           {:>8} ({:.1}%)",
+        analysis.unique_to_a,
+        100.0 - analysis.shared_percentage_a
+    );
+    println!(
+        "Unique to second:          {:>8} ({:.1}%)",
+        analysis.unique_to_b,
+        100.0 - analysis.shared_percentage_b
+    );
+
+    if !analysis.sample_shared_ids.is_empty() {
+        println!("\nSample shared sequences:");
+        for id in analysis.sample_shared_ids.iter().take(5) {
+            println!("  • {}", id);
+        }
+    }
+
+    Ok(())
+}
+
+fn display_taxonomy_analysis(analysis: &talaria_sequoia::TaxonomyAnalysis) -> anyhow::Result<()> {
+    println!("\n{}", "TAXONOMY DISTRIBUTION".bold());
+    println!("{}", "─".repeat(40));
+
+    println!("Taxa in first:             {:>8}", analysis.total_taxa_a);
+    println!("Taxa in second:            {:>8}", analysis.total_taxa_b);
+    println!(
+        "Shared taxa:               {:>8} ({:.1}% / {:.1}%)",
+        analysis.shared_taxa.len(),
+        analysis.shared_percentage_a,
+        analysis.shared_percentage_b
+    );
+
+    if !analysis.top_shared_taxa.is_empty() {
+        println!("\nTop shared taxa:");
+        for (i, taxon) in analysis.top_shared_taxa.iter().enumerate().take(5) {
+            println!(
+                "  {}. {} ({}): {} / {} sequences",
+                i + 1,
+                taxon.taxon_name,
+                taxon.taxon_id.0,
+                taxon.count_in_a,
+                taxon.count_in_b
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn display_storage_metrics(metrics: &talaria_sequoia::StorageMetrics) -> anyhow::Result<()> {
+    println!("\n{}", "STORAGE METRICS".bold());
+    println!("{}", "─".repeat(40));
+
+    println!("Size first:                {}", format_bytes(metrics.size_a_bytes));
+    println!("Size second:               {}", format_bytes(metrics.size_b_bytes));
+
+    if metrics.dedup_savings_bytes > 0 {
+        println!(
+            "Deduplication savings:     {} (shared content)",
+            format_bytes(metrics.dedup_savings_bytes)
+        );
+    }
+
+    if metrics.dedup_ratio_a > 0.0 {
+        println!("Deduplication ratio first: {:.2}x", metrics.dedup_ratio_a);
+    }
+    if metrics.dedup_ratio_b > 0.0 {
+        println!("Deduplication ratio second: {:.2}x", metrics.dedup_ratio_b);
+    }
 
     Ok(())
 }

@@ -180,24 +180,45 @@ impl ManifestInspector for TemporalManifest {
 
         // Others - show top 3
         if !others.is_empty() {
-            output.push_str(&format!("\n  {} Other Organisms:\n", "●".white()));
-            let others_to_show = 3.min(others.len());
-            for ((name, taxon_id), chunks, total_sequences, total_size) in
-                others.iter().take(others_to_show)
-            {
-                output.push_str(&format_category_entry(
-                    name,
-                    taxon_id,
-                    chunks,
-                    *total_sequences,
-                    *total_size,
-                ));
-            }
-            if others.len() > others_to_show {
-                output.push_str(&format!(
-                    "    └─ ... {} more organisms\n",
-                    others.len() - others_to_show
-                ));
+            // Check if all organisms have unknown taxonomy
+            let all_unknown = others.iter().all(|((_, taxon_id), _, _, _)| taxon_id.0 == 0);
+
+            if all_unknown && model_organisms.is_empty() && pathogens.is_empty() && environmental.is_empty() {
+                output.push_str(&format!("\n  {} Other Organisms:\n", "●".white()));
+                output.push_str(&format!("    {} No taxonomy data available for this database\n", "ℹ".blue()));
+
+                // Show summary for unknown organisms
+                for ((name, taxon_id), chunks, total_sequences, total_size) in
+                    others.iter().take(1)
+                {
+                    output.push_str(&format_category_entry(
+                        name,
+                        taxon_id,
+                        chunks,
+                        *total_sequences,
+                        *total_size,
+                    ));
+                }
+            } else {
+                output.push_str(&format!("\n  {} Other Organisms:\n", "●".white()));
+                let others_to_show = 3.min(others.len());
+                for ((name, taxon_id), chunks, total_sequences, total_size) in
+                    others.iter().take(others_to_show)
+                {
+                    output.push_str(&format_category_entry(
+                        name,
+                        taxon_id,
+                        chunks,
+                        *total_sequences,
+                        *total_size,
+                    ));
+                }
+                if others.len() > others_to_show {
+                    output.push_str(&format!(
+                        "    └─ ... {} more organisms\n",
+                        others.len() - others_to_show
+                    ));
+                }
             }
         }
 

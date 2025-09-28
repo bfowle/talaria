@@ -344,8 +344,10 @@ impl NCBIDownloader {
 
         io::copy(&mut decoder, &mut output_file).context("Failed to decompress file")?;
 
-        // Clean up
-        std::fs::remove_file(&temp_path).context("Failed to remove temporary file")?;
+        // IMPORTANT: Do NOT delete temp file here - cleanup happens after processing succeeds
+        // This allows retry without re-downloading if chunking/processing fails
+        // The download manager will handle cleanup after all operations complete
+        // std::fs::remove_file(&temp_path).context("Failed to remove temporary file")?;
 
         progress.set_message("Download complete!");
         progress.finish();

@@ -2,6 +2,11 @@
 
 pub mod diff;
 pub mod manager;
+pub mod manager_resume;
+pub mod manager_unified_progress;
+
+#[cfg(test)]
+mod manager_test;
 
 pub use diff::{DatabaseDiffer, ComparisonResult};
 pub use manager::DatabaseManager;

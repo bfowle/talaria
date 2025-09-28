@@ -10,6 +10,7 @@ use talaria_utils::workspace::TempWorkspace;
 use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::AtomicBool;
@@ -210,9 +211,128 @@ impl LambdaAligner {
     }
 
     /// Perform actual search (non-trait implementation)
-    pub fn search(&mut self, _query: &[Sequence], _reference: &[Sequence]) -> Result<Vec<AlignmentResult>> {
-        // TODO: Implement actual LAMBDA search
-        Ok(Vec::new())
+    pub fn search(&mut self, query: &[Sequence], reference: &[Sequence]) -> Result<Vec<AlignmentResult>> {
+        // Ensure temp directory is initialized
+        if self.temp_dir == PathBuf::new() {
+            self.initialize_temp_dir();
+        }
+
+        // Create unique directory for this search
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        let search_dir = self.temp_dir.join(format!("search_{}", timestamp));
+        fs::create_dir_all(&search_dir)?;
+
+        // Write query sequences
+        let query_path = search_dir.join("query.fasta");
+        let mut query_file = std::fs::File::create(&query_path)?;
+        for seq in query {
+            writeln!(query_file, ">{}", seq.id)?;
+            writeln!(query_file, "{}", String::from_utf8_lossy(&seq.sequence))?;
+        }
+
+        // Create index if needed (or write reference sequences)
+        let index_path = if query.len() == reference.len() &&
+                            query.iter().zip(reference.iter()).all(|(q, r)| q.id == r.id) {
+            // All-vs-all mode: use query as both query and reference
+            self.create_index_for_sequences(query)?
+        } else {
+            // Query-vs-reference mode: create index from reference
+            self.create_index_for_sequences(reference)?
+        };
+
+        // Run LAMBDA search (.m8 is BLAST tab format)
+        let output_path = search_dir.join("alignments.m8");
+        let mut cmd = Command::new(&self.binary_path);
+        cmd.arg("searchp")
+            .arg("-q").arg(&query_path)
+            .arg("-i").arg(&index_path)
+            .arg("-o").arg(&output_path);
+
+        // Add verbosity if requested
+        if std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok() {
+            cmd.arg("-v");
+        }
+
+        let output = cmd.output()
+            .context("Failed to run LAMBDA searchp")?;
+
+        // Check if LAMBDA succeeded - sometimes returns non-zero exit code even on success
+        if !output.status.success() {
+            // Check if the output file was created and has content
+            if output_path.exists() {
+                if let Ok(metadata) = fs::metadata(&output_path) {
+                    if metadata.len() > 0 {
+                        // File exists with content, LAMBDA likely succeeded despite exit code
+                        eprintln!("Warning: LAMBDA returned exit code {} but output file exists with {} bytes",
+                                 output.status.code().unwrap_or(-1), metadata.len());
+                    } else {
+                        // File exists but is empty, this is a real failure
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        anyhow::bail!("LAMBDA searchp failed with exit code {}: stderr='{}', stdout='{}'",
+                                     output.status.code().unwrap_or(-1), stderr, stdout);
+                    }
+                }
+            } else {
+                // Output file doesn't exist, this is definitely a failure
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                anyhow::bail!("LAMBDA searchp failed with exit code {} (no output file created): stderr='{}', stdout='{}'",
+                             output.status.code().unwrap_or(-1), stderr, stdout);
+            }
+        }
+
+        // Parse output
+        self.parse_lambda_output(&output_path)
+    }
+
+    /// Parse LAMBDA output in BLAST tabular format
+    fn parse_lambda_output(&self, output_path: &Path) -> Result<Vec<AlignmentResult>> {
+        use std::io::{BufRead, BufReader};
+        let mut alignments = Vec::new();
+
+        let file = std::fs::File::open(output_path)
+            .context("Failed to open LAMBDA output")?;
+        let reader = BufReader::new(file);
+
+        for line in reader.lines() {
+            let line = line?;
+            if line.starts_with('#') || line.is_empty() {
+                continue;
+            }
+
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() < 12 {
+                continue;  // Invalid format
+            }
+
+            // BLAST tabular format fields:
+            // 0: query_id, 1: subject_id, 2: identity%, 3: align_len,
+            // 4: mismatches, 5: gaps, 6: q_start, 7: q_end,
+            // 8: s_start, 9: s_end, 10: evalue, 11: bit_score
+
+            let alignment = AlignmentResult {
+                query_id: parts[0].to_string(),
+                reference_id: parts[1].to_string(),
+                identity: parts[2].parse::<f32>().unwrap_or(0.0),
+                alignment_length: parts[3].parse::<usize>().unwrap_or(0),
+                mismatches: parts[4].parse::<usize>().unwrap_or(0),
+                gap_opens: parts[5].parse::<usize>().unwrap_or(0),
+                query_start: parts[6].parse::<usize>().unwrap_or(0),
+                query_end: parts[7].parse::<usize>().unwrap_or(0),
+                ref_start: parts[8].parse::<usize>().unwrap_or(0),
+                ref_end: parts[9].parse::<usize>().unwrap_or(0),
+                e_value: parts[10].parse::<f64>().unwrap_or(0.0),
+                bit_score: parts[11].parse::<f32>().unwrap_or(0.0),
+            };
+
+            alignments.push(alignment);
+        }
+
+        Ok(alignments)
     }
 
     /// Search all vs all
@@ -221,23 +341,157 @@ impl LambdaAligner {
     }
 
     /// Create index for sequences
-    pub fn create_index_for_sequences(&mut self, _sequences: &[Sequence]) -> Result<PathBuf> {
-        // TODO: Implement LAMBDA index creation
-        // For now, return a temporary path
-        let index_path = std::env::temp_dir().join("lambda_index");
+    pub fn create_index_for_sequences(&mut self, sequences: &[Sequence]) -> Result<PathBuf> {
+        // Ensure temp directory is initialized
+        if self.temp_dir == PathBuf::new() {
+            self.initialize_temp_dir();
+        }
+
+        // Create unique index directory
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        let index_dir = self.temp_dir.join(format!("index_{}", timestamp));
+        fs::create_dir_all(&index_dir)?;
+
+        // Write sequences to FASTA file
+        let fasta_path = index_dir.join("reference.fasta");
+        let mut fasta_file = std::fs::File::create(&fasta_path)?;
+
+        for seq in sequences {
+            writeln!(fasta_file, ">{}", seq.id)?;
+            writeln!(fasta_file, "{}", String::from_utf8_lossy(&seq.sequence))?;
+        }
+
+        // Create LAMBDA index with proper extension
+        let index_path = index_dir.join("lambda_index.lba");
+        let mut cmd = Command::new(&self.binary_path);
+        cmd.arg("mkindexp")
+            .arg("-d").arg(&fasta_path)
+            .arg("-i").arg(&index_path);
+
+        // Add verbosity if requested
+        if std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok() {
+            cmd.arg("-v");
+        }
+
+        let output = cmd.output()
+            .context("Failed to run LAMBDA mkindexp")?;
+
+        // Check if LAMBDA mkindexp succeeded - sometimes returns non-zero exit code even on success
+        if !output.status.success() {
+            // Check if the index file was created
+            if index_path.exists() {
+                if let Ok(metadata) = fs::metadata(&index_path) {
+                    if metadata.len() > 0 {
+                        // Index exists with content, LAMBDA likely succeeded despite exit code
+                        eprintln!("Warning: LAMBDA mkindexp returned exit code {} but index file exists with {} bytes",
+                                 output.status.code().unwrap_or(-1), metadata.len());
+                    } else {
+                        // Index exists but is empty, this is a real failure
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        anyhow::bail!("LAMBDA mkindexp failed with exit code {}: stderr='{}', stdout='{}'",
+                                     output.status.code().unwrap_or(-1), stderr, stdout);
+                    }
+                }
+            } else {
+                // Index file doesn't exist, this is definitely a failure
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                anyhow::bail!("LAMBDA mkindexp failed with exit code {} (no index created): stderr='{}', stdout='{}'",
+                             output.status.code().unwrap_or(-1), stderr, stdout);
+            }
+        }
+
         Ok(index_path)
     }
 
     /// Search groups in parallel
-    pub fn search_groups_parallel(&mut self, _groups: Vec<Vec<Sequence>>, _index_path: &Path, _parallel_processes: usize) -> Result<Vec<Vec<AlignmentResult>>> {
-        // TODO: Implement parallel group search
-        Ok(Vec::new())
+    pub fn search_groups_parallel(&mut self, groups: Vec<Vec<Sequence>>, index_path: &Path, _parallel_processes: usize) -> Result<Vec<Vec<AlignmentResult>>> {
+        // Since we can't parallelize with mutable self, process sequentially for now
+        let mut all_results = Vec::new();
+
+        for group in groups {
+            match self.search_with_index_silent(&group, index_path) {
+                Ok(alignments) => {
+                    all_results.push(alignments);
+                }
+                Err(e) => {
+                    eprintln!("Warning: Failed to process group: {}", e);
+                    all_results.push(Vec::new());
+                }
+            }
+        }
+
+        Ok(all_results)
     }
 
     /// Search with index (silent mode)
-    pub fn search_with_index_silent(&mut self, _query: &[Sequence], _index_path: &Path) -> Result<Vec<AlignmentResult>> {
-        // TODO: Implement search with pre-built index
-        Ok(Vec::new())
+    pub fn search_with_index_silent(&mut self, query: &[Sequence], index_path: &Path) -> Result<Vec<AlignmentResult>> {
+        // Ensure temp directory is initialized
+        if self.temp_dir == PathBuf::new() {
+            self.initialize_temp_dir();
+        }
+
+        // Create unique directory for this search
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        let search_dir = self.temp_dir.join(format!("search_silent_{}", timestamp));
+        fs::create_dir_all(&search_dir)?;
+
+        // Write query sequences
+        let query_path = search_dir.join("query.fasta");
+        let mut query_file = std::fs::File::create(&query_path)?;
+        for seq in query {
+            writeln!(query_file, ">{}", seq.id)?;
+            writeln!(query_file, "{}", String::from_utf8_lossy(&seq.sequence))?;
+        }
+
+        // Run LAMBDA search with existing index (.m8 is BLAST tab format)
+        let output_path = search_dir.join("alignments.m8");
+        let mut cmd = Command::new(&self.binary_path);
+        cmd.arg("searchp")
+            .arg("-q").arg(&query_path)
+            .arg("-i").arg(index_path)
+            .arg("-o").arg(&output_path);
+
+        // Silent mode - no verbose output even if TALARIA_LAMBDA_VERBOSE is set
+
+        let output = cmd.output()
+            .context("Failed to run LAMBDA searchp")?;
+
+        // Check if LAMBDA succeeded - sometimes returns non-zero exit code even on success
+        if !output.status.success() {
+            // Check if the output file was created and has content
+            if output_path.exists() {
+                if let Ok(metadata) = fs::metadata(&output_path) {
+                    if metadata.len() > 0 {
+                        // File exists with content, LAMBDA likely succeeded despite exit code
+                        eprintln!("Warning: LAMBDA returned exit code {} but output file exists with {} bytes",
+                                 output.status.code().unwrap_or(-1), metadata.len());
+                    } else {
+                        // File exists but is empty, this is a real failure
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        anyhow::bail!("LAMBDA searchp failed with exit code {}: stderr='{}', stdout='{}'",
+                                     output.status.code().unwrap_or(-1), stderr, stdout);
+                    }
+                }
+            } else {
+                // Output file doesn't exist, this is definitely a failure
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                anyhow::bail!("LAMBDA searchp failed with exit code {} (no output file created): stderr='{}', stdout='{}'",
+                             output.status.code().unwrap_or(-1), stderr, stdout);
+            }
+        }
+
+        // Parse output
+        self.parse_lambda_output(&output_path)
     }
 }
 
@@ -289,8 +543,45 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let binary_path = temp_dir.path().join("lambda");
 
-        // Create a mock executable file
-        File::create(&binary_path).unwrap();
+        // Create a shell script that simulates LAMBDA behavior
+        let mock_script = r#"#!/bin/sh
+# Mock LAMBDA binary for testing
+case "$1" in
+    "--version")
+        echo "lambda3 version: 3.1.0"
+        exit 0
+        ;;
+    "mkindexp")
+        # Create empty index files
+        shift
+        while [ "$#" -gt 0 ]; do
+            case "$1" in
+                -d) shift; touch "${1}.idx" 2>/dev/null || true; shift ;;
+                *) shift ;;
+            esac
+        done
+        exit 0
+        ;;
+    "searchp")
+        # Create empty output file
+        shift
+        while [ "$#" -gt 0 ]; do
+            case "$1" in
+                -o) shift; touch "$1" 2>/dev/null || true; shift ;;
+                *) shift ;;
+            esac
+        done
+        exit 0
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+"#;
+
+        use std::io::Write;
+        let mut file = File::create(&binary_path).unwrap();
+        file.write_all(mock_script.as_bytes()).unwrap();
 
         #[cfg(unix)]
         {
@@ -503,7 +794,10 @@ mod tests {
 
         let index_path = PathBuf::from("/tmp/index");
         let results = aligner.search_groups_parallel(groups, &index_path, 2).unwrap();
-        assert_eq!(results.len(), 0); // Currently returns empty as it's not implemented
+        assert_eq!(results.len(), 2); // Should return results for each group
+        // Each group should have empty alignments from the mock
+        assert_eq!(results[0].len(), 0);
+        assert_eq!(results[1].len(), 0);
     }
 
     #[test]

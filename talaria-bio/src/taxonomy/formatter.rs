@@ -34,7 +34,7 @@ impl TaxonomyFormatter for StandardTaxonomyFormatter {
         let mut header = format!(">{}", id);
 
         if let Some(desc) = description {
-            header.push_str(" ");
+            header.push(' ');
             header.push_str(desc);
         }
 
@@ -44,7 +44,7 @@ impl TaxonomyFormatter for StandardTaxonomyFormatter {
         if let Some(tid) = taxon_id {
             // Check if description already has any TaxID
             if !description.map(|d| self.has_taxid(d)).unwrap_or(false) {
-                header.push_str(" ");
+                header.push(' ');
                 header.push_str(&format!("TaxID={}", tid));
             }
         }

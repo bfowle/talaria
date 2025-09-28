@@ -22,7 +22,7 @@ pub mod assertions;
 pub use environment::{TestEnvironment, TestConfig};
 pub use storage::{TestStorage, StorageFixture};
 pub use fixtures::{TestSequence, create_test_fasta, generate_sequences};
-pub use mock::{MockAligner, MockTaxonomyManager};
+pub use mock::{MockAligner, MockTaxonomyManager, MockDownloadSource, create_test_download_state};
 
 // Re-export test dependencies for convenience
 pub use tempfile;

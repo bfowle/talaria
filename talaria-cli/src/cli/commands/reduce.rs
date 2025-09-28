@@ -475,7 +475,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
             .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
     );
     spinner.set_message("Assembling database from SEQUOIA chunks...");
-    spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+    // Don't use steady_tick - causes ETA miscalculation
 
     // Assemble the database from SEQUOIA
     if let Some(db_source) = &database_source {
@@ -608,7 +608,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
                     .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
             );
             spinner.set_message("Creating taxonomy mapping from manifest...");
-            spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+            // Don't use steady_tick - causes ETA miscalculation
 
             match db_manager.create_accession2taxid_from_manifest(db_src) {
                 Ok(path) => {

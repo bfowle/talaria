@@ -14,4 +14,10 @@ pub use output::{
     TreeNode, format_number, warning, info, success, error,
     tree_section, create_standard_table, header_cell,
 };
-pub use progress::{create_progress_bar, create_spinner, ProgressBarManager};
+// Re-export progress functions from the new unified module for backwards compatibility
+pub use crate::progress::{
+    create_progress_bar, create_spinner, create_hidden_progress_bar,
+    ProgressManager, ProgressManagerBuilder, OperationType,
+};
+// Keep old ProgressBarManager for compatibility
+pub use progress::ProgressBarManager;

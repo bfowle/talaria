@@ -1,5 +1,4 @@
 use indicatif::{ProgressBar, ProgressStyle};
-use std::time::Duration;
 
 pub struct DownloadProgress {
     bar: ProgressBar,
@@ -10,19 +9,8 @@ pub struct DownloadProgress {
 
 impl DownloadProgress {
     pub fn new() -> Self {
-        let bar = ProgressBar::new(0);
-        bar.set_style(
-            ProgressStyle::default_bar()
-                .template(
-                    "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] \
-                     {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
-                )
-                .unwrap()
-                .progress_chars("#>-"),
-        );
-
-        // Enable steady tick for smooth spinner animation
-        bar.enable_steady_tick(Duration::from_millis(100));
+        // Start with a hidden bar until we have actual data to show
+        let bar = ProgressBar::hidden();
 
         DownloadProgress {
             bar,
@@ -41,7 +29,26 @@ impl DownloadProgress {
 
     pub fn set_total(&mut self, total: usize) {
         self.total = total;
-        self.bar.set_length(total as u64);
+
+        // Only create and show the progress bar if we have actual data
+        if total > 0 && !self.bar.is_finished() {
+            // Create a new visible progress bar with the actual total
+            self.bar = ProgressBar::new(total as u64);
+            self.bar.set_style(
+                ProgressStyle::default_bar()
+                    .template(
+                        "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] \
+                         {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
+                    )
+                    .unwrap()
+                    .progress_chars("#>-"),
+            );
+            // Don't use steady_tick - causes ETA miscalculation with zero progress
+            // Manually tick to update the display
+            self.bar.tick();
+        } else {
+            self.bar.set_length(total as u64);
+        }
     }
 
     pub fn set_current(&mut self, current: usize) {
@@ -181,7 +188,7 @@ pub fn create_spinner(message: &str) -> ProgressBar {
             .unwrap(),
     );
     spinner.set_message(message.to_string());
-    spinner.enable_steady_tick(Duration::from_millis(100));
+    // Don't use steady_tick - causes ETA miscalculation
     spinner
 }
 

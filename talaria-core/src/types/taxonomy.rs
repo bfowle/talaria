@@ -4,6 +4,7 @@ use std::fmt;
 
 /// Taxonomy ID type - newtype pattern for type safety
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct TaxonId(pub u32);
 
 impl TaxonId {
@@ -46,11 +47,6 @@ impl From<TaxonId> for u32 {
     }
 }
 
-impl Default for TaxonId {
-    fn default() -> Self {
-        Self(0) // Unclassified
-    }
-}
 
 // Common taxonomy constants
 impl TaxonId {

@@ -23,9 +23,17 @@ pub struct DownloadArgs {
     )]
     pub complete: bool,
 
-    /// Resume incomplete download
+    /// Resume incomplete download (auto-resumes most recent if no ID given)
     #[arg(short = 'r', long)]
     pub resume: bool,
+
+    /// Resume specific download by ID
+    #[arg(long, conflicts_with = "database")]
+    pub resume_id: Option<String>,
+
+    /// List available resumable downloads
+    #[arg(long)]
+    pub list_resumable: bool,
 
     /// Interactive mode
     #[arg(short = 'i', long)]
@@ -137,6 +145,8 @@ impl DownloadArgs {
             taxonomy: false,
             complete: false,
             resume: false,
+            resume_id: None,
+            list_resumable: false,
             interactive: false,
             skip_verify: false,
             list_datasets: false,
@@ -166,6 +176,16 @@ impl DownloadArgs {
 }
 
 pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
+    // Handle listing resumable downloads
+    if args.list_resumable {
+        return list_resumable_downloads();
+    }
+
+    // Handle resume by ID
+    if let Some(resume_id) = &args.resume_id {
+        return resume_download_by_id(resume_id, args.skip_verify);
+    }
+
     if args.list_datasets {
         list_available_datasets();
         return Ok(());
@@ -285,6 +305,8 @@ fn run_complete_taxonomy_download(args: DownloadArgs) -> anyhow::Result<()> {
                     taxonomy: args.taxonomy,
                     complete: false, // Don't recurse
                     resume: args.resume,
+                    resume_id: None,
+                    list_resumable: false,
                     interactive: false, // Force non-interactive for batch
                     skip_verify: args.skip_verify,
                     list_datasets: false,
@@ -400,6 +422,93 @@ fn run_complete_taxonomy_download(args: DownloadArgs) -> anyhow::Result<()> {
     } else {
         Err(anyhow::anyhow!("Some components failed to download"))
     }
+}
+
+fn list_resumable_downloads() -> anyhow::Result<()> {
+    use talaria_sequoia::download::{find_resumable_downloads, DatabaseSourceExt};
+    use colored::Colorize;
+
+    let resumable = find_resumable_downloads()?;
+
+    if resumable.is_empty() {
+        println!("No incomplete downloads found in workspace");
+        println!("Note: Complete downloads ready for processing are automatically detected");
+        return Ok(());
+    }
+
+    println!("{}", "Resumable Downloads:".bold());
+    println!();
+
+    for download in resumable {
+        println!("  {} - {} ({})",
+            download.id.green(),
+            download.source.canonical_name(),
+            download.stage.name()
+        );
+        println!("    Started: {}", download.started_at.format("%Y-%m-%d %H:%M:%S"));
+    }
+
+    println!();
+    println!("Use 'talaria database download --resume-id <id>' to resume a specific download");
+    println!("Use 'talaria database download --resume' to resume the most recent download");
+
+    Ok(())
+}
+
+fn resume_download_by_id(resume_id: &str, skip_verify: bool) -> anyhow::Result<()> {
+    use talaria_sequoia::download::{
+        workspace::{get_workspace_by_id, DownloadState},
+        manager::{DownloadManager, DownloadOptions},
+        progress::DownloadProgress,
+        DatabaseSourceExt,
+    };
+    use colored::Colorize;
+
+    let workspace = get_workspace_by_id(resume_id);
+    let state_path = workspace.join("state.json");
+
+    if !state_path.exists() {
+        anyhow::bail!("Download '{}' not found. Use 'talaria database download --list-resumable' to see available downloads", resume_id);
+    }
+
+    let state = DownloadState::load(&state_path)?;
+
+    println!("{} {}", "Resuming download:".bold(), state.source.canonical_name());
+    println!("  Stage: {}", state.stage.name());
+
+    if state.stage.is_complete() {
+        println!("✓ Download is already complete");
+        return Ok(());
+    }
+
+    let runtime = tokio::runtime::Runtime::new()?;
+    runtime.block_on(async {
+        let mut download_manager = DownloadManager::new()?;
+        let mut progress = DownloadProgress::new();
+
+        let options = DownloadOptions {
+            skip_verify,
+            resume: true,
+            preserve_on_failure: true,
+            preserve_always: false,
+            force: false,
+        };
+
+        match download_manager.download_with_state(
+            state.source.clone(),
+            options,
+            &mut progress
+        ).await {
+            Ok(_) => {
+                println!("✓ {}", "Download resumed and completed successfully".green().bold());
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("✗ {} {}", "Failed to resume download:".red().bold(), e);
+                Err(e)
+            }
+        }
+    })
 }
 
 fn list_available_datasets() {

@@ -95,24 +95,37 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
     // Initialize the discrepancy detector
     let mut detector = DiscrepancyDetector::new();
 
-    // Load taxonomy mappings if available (this shows its own progress bar)
+    // Load taxonomy mappings if available
     let spinner = create_spinner("Loading taxonomy mappings...");
-    spinner.finish_and_clear(); // Clear spinner before progress bar appears
+    let mapping_count = match manager.load_taxonomy_mappings(&args.database) {
+        Ok(mappings) => {
+            let count = mappings.len();
+            detector.set_taxonomy_mappings(mappings);
+            spinner.finish_and_clear();
+            println!("✓ Loaded {} taxonomy mappings", count);
+            count
+        }
+        Err(e) => {
+            spinner.finish_and_clear();
+            println!("ℹ No taxonomy mappings available: {}", e);
+            0
+        }
+    };
 
-    if let Ok(mappings) = manager.load_taxonomy_mappings(&args.database) {
-        detector.set_taxonomy_mappings(mappings);
-    }
+    // Now analyze sequences for discrepancies with progress bar
+    use talaria_utils::display::progress::create_progress_bar;
 
-    // Now analyze sequences for discrepancies
-    let spinner = create_spinner("Analyzing sequences for discrepancies...");
+    let progress = create_progress_bar(chunk_metadata.len() as u64, "Analyzing chunks for discrepancies");
 
     let mut all_discrepancies = Vec::new();
     let mut chunk_count = 0;
     let mut sequence_count = 0;
+    let mut failed_chunks = 0;
 
-    // Process each chunk
+    // Process each chunk with progress feedback
     for chunk_meta in &chunk_metadata {
         chunk_count += 1;
+        progress.set_message(format!("Processing chunk {}/{}", chunk_count, chunk_metadata.len()));
 
         // Try new manifest-based approach
         match manager.load_manifest(&chunk_meta.hash) {
@@ -123,21 +136,31 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
                         sequence_count += sequences.len();
 
                         // Detect discrepancies using the new method
-                        let chunk_discrepancies = detector.detect_from_manifest(&manifest, sequences);
-                        all_discrepancies.extend(chunk_discrepancies);
+                        if mapping_count > 0 {
+                            let chunk_discrepancies = detector.detect_from_manifest(&manifest, sequences);
+                            all_discrepancies.extend(chunk_discrepancies);
+                        }
                     }
                     Err(e) => {
-                        eprintln!("Warning: Failed to load sequences for chunk {}: {}", chunk_meta.hash, e);
+                        failed_chunks += 1;
+                        tracing::debug!("Failed to load sequences for chunk {}: {}", chunk_meta.hash, e);
                     }
                 }
             }
             Err(e) => {
-                eprintln!("Warning: Failed to load manifest for chunk {}: {}", chunk_meta.hash, e);
+                failed_chunks += 1;
+                tracing::debug!("Failed to load manifest for chunk {}: {}", chunk_meta.hash, e);
             }
         }
+
+        progress.inc(1);
     }
 
-    spinner.finish_and_clear();
+    progress.finish_and_clear();
+
+    if failed_chunks > 0 {
+        eprintln!("⚠ Warning: {} chunks could not be analyzed", failed_chunks);
+    }
 
     // Filter by type if requested
     let filtered_discrepancies: Vec<_> = if let Some(ref filter_type) = args.discrepancy_type {
@@ -159,16 +182,25 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
     // Display summary
     println!("{} {} chunks analyzed", "►".cyan().bold(), chunk_count);
     println!("{} {} sequences checked", "►".cyan().bold(), sequence_count);
-    println!(
-        "{} {} discrepancies found",
-        if filtered_discrepancies.is_empty() {
-            "✓".green()
-        } else {
-            "⚠".yellow()
-        }
-        .bold(),
-        filtered_discrepancies.len()
-    );
+
+    if mapping_count == 0 {
+        println!(
+            "{} No taxonomy mappings available - discrepancy detection skipped",
+            "ℹ".blue().bold()
+        );
+        println!("\n{}", "Tip: To enable discrepancy detection, ensure taxonomy data is available.".dimmed());
+    } else {
+        println!(
+            "{} {} discrepancies found",
+            if filtered_discrepancies.is_empty() {
+                "✓".green()
+            } else {
+                "⚠".yellow()
+            }
+            .bold(),
+            filtered_discrepancies.len()
+        );
+    }
 
     if !filtered_discrepancies.is_empty() {
         println!("\n{}", "Discrepancy Summary:".bold().underline());

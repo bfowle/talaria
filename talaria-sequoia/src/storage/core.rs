@@ -113,11 +113,13 @@ impl SEQUOIAStorage {
     fn rebuild_index(&mut self) -> Result<()> {
         use std::fs;
         use std::path::Path;
+        use rayon::prelude::*;
+        use std::time::Instant;
 
         let chunks_dir = self.base_path.join("chunks");
 
-        // Helper function to recursively scan for chunk files
-        fn scan_dir(dir: &Path, index: &DashMap<SHA256Hash, ChunkLocation>) -> Result<()> {
+        // Helper function to collect all directories to scan
+        fn collect_dirs(dir: &Path, dirs: &mut Vec<PathBuf>) -> Result<()> {
             if !dir.exists() {
                 return Ok(());
             }
@@ -125,45 +127,81 @@ impl SEQUOIAStorage {
             for entry in fs::read_dir(dir)? {
                 let entry = entry?;
                 let path = entry.path();
-
                 if path.is_dir() {
-                    // Recursively scan subdirectories
-                    scan_dir(&path, index)?;
-                } else if path.is_file() {
-                    // Process chunk files - only add files with .tal extension
-                    if path.extension().and_then(|s| s.to_str()) == Some("tal") {
-                        if let Some(hash_str) = path.file_stem().and_then(|s| s.to_str()) {
-                            if let Ok(hash) = SHA256Hash::from_hex(hash_str) {
-                                let metadata = fs::metadata(&path)?;
-
-                                // Skip empty files
-                                if metadata.len() == 0 {
-                                    continue;
-                                }
-
-                                // All chunks use .tal format (Binary with compression)
-                                let format = ChunkFormat::Binary;
-                                let compressed = true;
-
-                                index.insert(
-                                    hash.clone(),
-                                    ChunkLocation {
-                                        path: path.clone(),
-                                        compressed,
-                                        size: metadata.len() as usize,
-                                        format,
-                                    },
-                                );
-                            }
-                        }
-                    }
+                    dirs.push(path);
                 }
             }
             Ok(())
         }
 
-        // Scan the entire chunks directory recursively
-        scan_dir(&chunks_dir, &self.chunk_index)?;
+        // First, collect all directories to scan
+        let start = Instant::now();
+        let mut dirs_to_scan = vec![];
+        if chunks_dir.exists() {
+            // Get all subdirectories (e.g., the 256 hash prefix directories)
+            collect_dirs(&chunks_dir, &mut dirs_to_scan)?;
+
+            // Only show progress for large repositories
+            if dirs_to_scan.len() > 100 {
+                eprintln!("Indexing {} chunk directories...", dirs_to_scan.len());
+            }
+        }
+
+        // Process all directories in parallel
+        let chunk_entries: Vec<(SHA256Hash, ChunkLocation)> = dirs_to_scan
+            .par_iter()
+            .flat_map(|dir| {
+                let mut entries = Vec::new();
+
+                if let Ok(read_dir) = fs::read_dir(dir) {
+                    for entry in read_dir.flatten() {
+                        let path = entry.path();
+
+                        // Process chunk files - only add files with .tal extension
+                        if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("tal") {
+                            if let Some(hash_str) = path.file_stem().and_then(|s| s.to_str()) {
+                                if let Ok(hash) = SHA256Hash::from_hex(hash_str) {
+                                    if let Ok(metadata) = fs::metadata(&path) {
+                                        // Skip empty files
+                                        if metadata.len() == 0 {
+                                            continue;
+                                        }
+
+                                        // All chunks use .tal format (Binary with compression)
+                                        let format = ChunkFormat::Binary;
+                                        let compressed = true;
+
+                                        entries.push((
+                                            hash,
+                                            ChunkLocation {
+                                                path,
+                                                compressed,
+                                                size: metadata.len() as usize,
+                                                format,
+                                            },
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                entries
+            })
+            .collect();
+
+        // Insert all entries into the index
+        let num_chunks = chunk_entries.len();
+        for (hash, location) in chunk_entries {
+            self.chunk_index.insert(hash, location);
+        }
+
+        // Report timing for large repositories
+        if num_chunks > 10000 {
+            let elapsed = start.elapsed();
+            eprintln!("Indexed {} chunks in {:.2}s", num_chunks, elapsed.as_secs_f32());
+        }
 
         Ok(())
     }

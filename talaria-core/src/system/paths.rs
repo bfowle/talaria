@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // Cache the paths to avoid repeated environment lookups
 static TALARIA_HOME: OnceLock<PathBuf> = OnceLock::new();
@@ -8,6 +9,16 @@ static TALARIA_DATABASES_DIR: OnceLock<PathBuf> = OnceLock::new();
 static TALARIA_TOOLS_DIR: OnceLock<PathBuf> = OnceLock::new();
 static TALARIA_CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
 static TALARIA_WORKSPACE_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+// Global flag to bypass caching in tests
+static BYPASS_CACHE: AtomicBool = AtomicBool::new(false);
+
+/// Enable bypassing the path cache - FOR TESTING ONLY
+/// This is used by tests that need to change environment variables
+#[doc(hidden)]
+pub fn bypass_cache_for_tests(bypass: bool) {
+    BYPASS_CACHE.store(bypass, Ordering::SeqCst);
+}
 
 /// Generate a UTC timestamp for version identifiers
 /// Returns format: YYYYMMDD_HHMMSS (in UTC timezone)
@@ -19,6 +30,18 @@ pub fn generate_utc_timestamp() -> String {
 /// Get the Talaria home directory
 /// Checks TALARIA_HOME environment variable, falls back to ${HOME}/.talaria
 pub fn talaria_home() -> PathBuf {
+    // Check if we should bypass caching (for tests)
+    if BYPASS_CACHE.load(Ordering::SeqCst) {
+        if let Ok(path) = std::env::var("TALARIA_HOME") {
+            return PathBuf::from(path);
+        } else {
+            let home = std::env::var("HOME").unwrap_or_else(|_| {
+                std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string())
+            });
+            return PathBuf::from(home).join(".talaria");
+        }
+    }
+
     TALARIA_HOME
         .get_or_init(|| {
             if let Ok(path) = std::env::var("TALARIA_HOME") {
@@ -36,6 +59,15 @@ pub fn talaria_home() -> PathBuf {
 /// Get the Talaria data directory
 /// Checks TALARIA_DATA_DIR environment variable, falls back to TALARIA_HOME
 pub fn talaria_data_dir() -> PathBuf {
+    // Check if we should bypass caching (for tests)
+    if BYPASS_CACHE.load(Ordering::SeqCst) {
+        if let Ok(path) = std::env::var("TALARIA_DATA_DIR") {
+            return PathBuf::from(path);
+        } else {
+            return talaria_home();
+        }
+    }
+
     TALARIA_DATA_DIR
         .get_or_init(|| {
             if let Ok(path) = std::env::var("TALARIA_DATA_DIR") {
@@ -121,6 +153,12 @@ pub fn talaria_workspace_dir() -> PathBuf {
             }
         })
         .clone()
+}
+
+/// Get the downloads directory for managing database downloads
+/// Returns: TALARIA_DATA_DIR/downloads
+pub fn talaria_downloads_dir() -> PathBuf {
+    talaria_data_dir().join("downloads")
 }
 
 /// Get database path for a specific source and dataset

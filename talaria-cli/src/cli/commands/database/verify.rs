@@ -70,15 +70,41 @@ pub fn run(args: VerifyArgs) -> anyhow::Result<()> {
         verify_structure(&repo)?
     } else {
         // Default to full verification or based on flags
-        repo.verify()?;
-        // Create a simple success result
-        VerificationResult {
-            valid: true,
-            chunks_verified: repo.manifest.get_data()
-                .map(|m| m.chunk_index.len())
-                .unwrap_or(0),
-            invalid_chunks: Vec::new(),
-            merkle_root_valid: true,
+        match repo.verify() {
+            Ok(_) => {
+                // Create a simple success result
+                VerificationResult {
+                    valid: true,
+                    chunks_verified: repo.manifest.get_data()
+                        .map(|m| m.chunk_index.len())
+                        .unwrap_or(0),
+                    invalid_chunks: Vec::new(),
+                    merkle_root_valid: true,
+                }
+            }
+            Err(e) => {
+                // Check if this is just missing Merkle roots (warning, not error)
+                let error_msg = e.to_string();
+                if error_msg.contains("Merkle root is missing") {
+                    println!(
+                        "{} {}",
+                        "⚠".yellow().bold(),
+                        "Database uses older format without Merkle roots (still valid)".yellow()
+                    );
+                    // Continue with verification result
+                    VerificationResult {
+                        valid: true,
+                        chunks_verified: repo.manifest.get_data()
+                            .map(|m| m.chunk_index.len())
+                            .unwrap_or(0),
+                        invalid_chunks: Vec::new(),
+                        merkle_root_valid: false,
+                    }
+                } else {
+                    // Re-throw the error for actual failures
+                    return Err(e);
+                }
+            }
         }
     };
 

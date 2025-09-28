@@ -486,14 +486,46 @@ impl SequenceStorage {
         use dashmap::DashMap;
         use rayon::prelude::*;
         use std::sync::Arc;
+        use std::collections::HashSet;
 
-        // Pre-compute all hashes and check existence in parallel
-        let sequence_data: Vec<_> = sequences
+        // Pre-compute all hashes in parallel first
+        let hashes_and_data: Vec<_> = sequences
             .par_iter()
             .map(|(sequence, header, source)| {
                 let canonical_hash = SHA256Hash::compute(sequence.as_bytes());
-                let exists = self.backend.sequence_exists(&canonical_hash).unwrap_or(false);
-                (sequence, header, source, canonical_hash, !exists)
+                (sequence, header, source, canonical_hash)
+            })
+            .collect();
+
+        // Batch check existence - parallel checking for performance
+        let existing_hashes: HashSet<SHA256Hash> = {
+            // Collect all hashes first
+            let all_hashes: Vec<_> = hashes_and_data.iter()
+                .map(|(_, _, _, hash)| hash.clone())
+                .collect();
+
+            // Check existence in parallel using rayon
+            let existence_results: Vec<(SHA256Hash, bool)> = all_hashes
+                .par_iter()
+                .map(|hash| {
+                    let exists = self.backend.sequence_exists(hash).unwrap_or(false);
+                    (hash.clone(), exists)
+                })
+                .collect();
+
+            // Build set of existing hashes
+            existence_results.into_iter()
+                .filter(|(_, exists)| *exists)
+                .map(|(hash, _)| hash)
+                .collect()
+        };
+
+        // Now create the final data with existence info
+        let sequence_data: Vec<_> = hashes_and_data
+            .into_iter()
+            .map(|(sequence, header, source, hash)| {
+                let is_new = !existing_hashes.contains(&hash);
+                (sequence, header, source, hash, is_new)
             })
             .collect();
 

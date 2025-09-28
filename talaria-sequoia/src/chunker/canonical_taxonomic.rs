@@ -7,13 +7,14 @@ use anyhow::Result;
 use chrono::Utc;
 use std::collections::HashMap;
 use talaria_bio::sequence::Sequence;
-use talaria_utils::display::progress::{create_progress_bar, create_spinner};
+use talaria_utils::display::progress::{create_progress_bar, create_spinner, create_hidden_progress_bar};
 
 /// Taxonomic chunker that works with canonical sequences
 pub struct TaxonomicChunker {
     strategy: super::ChunkingStrategy,
     pub sequence_storage: SequenceStorage,
     database_source: DatabaseSource,
+    quiet_mode: bool,
 }
 
 impl TaxonomicChunker {
@@ -26,7 +27,22 @@ impl TaxonomicChunker {
             strategy,
             sequence_storage,
             database_source,
+            quiet_mode: false,
         }
+    }
+
+    /// Set quiet mode (suppress progress bars)
+    pub fn set_quiet_mode(&mut self, quiet: bool) {
+        self.quiet_mode = quiet;
+    }
+
+    /// Chunk sequences by storing them canonically and creating manifests (quiet version)
+    pub fn chunk_sequences_canonical_quiet(
+        &mut self,
+        sequences: Vec<Sequence>,
+    ) -> Result<Vec<ChunkManifest>> {
+        // Default to not being the final batch
+        self.chunk_sequences_canonical_quiet_final(sequences, false)
     }
 
     /// Chunk sequences by storing them canonically and creating manifests
@@ -34,13 +50,66 @@ impl TaxonomicChunker {
         &mut self,
         sequences: Vec<Sequence>,
     ) -> Result<Vec<ChunkManifest>> {
+        self.chunk_sequences_canonical_internal(sequences, None, false)
+    }
+
+    /// Chunk sequences with progress callback
+    pub fn chunk_sequences_canonical_with_progress(
+        &mut self,
+        sequences: Vec<Sequence>,
+        progress_callback: Option<Box<dyn Fn(usize, &str) + Send>>,
+    ) -> Result<Vec<ChunkManifest>> {
+        // Default to not being the final batch
+        self.chunk_sequences_canonical_with_progress_final(sequences, progress_callback, false)
+    }
+
+    /// Chunk sequences with progress callback and final batch indicator
+    pub fn chunk_sequences_canonical_with_progress_final(
+        &mut self,
+        sequences: Vec<Sequence>,
+        progress_callback: Option<Box<dyn Fn(usize, &str) + Send>>,
+        is_final_batch: bool,
+    ) -> Result<Vec<ChunkManifest>> {
+        // Set quiet mode and use progress callback
+        let was_quiet = self.quiet_mode;
+        self.quiet_mode = true;
+        let result = self.chunk_sequences_canonical_internal(sequences, progress_callback, is_final_batch);
+        self.quiet_mode = was_quiet;
+        result
+    }
+
+    /// Quiet version with final batch indicator
+    pub fn chunk_sequences_canonical_quiet_final(
+        &mut self,
+        sequences: Vec<Sequence>,
+        is_final_batch: bool,
+    ) -> Result<Vec<ChunkManifest>> {
+        // Set quiet mode temporarily
+        let was_quiet = self.quiet_mode;
+        self.quiet_mode = true;
+        let result = self.chunk_sequences_canonical_internal(sequences, None, is_final_batch);
+        self.quiet_mode = was_quiet;
+        result
+    }
+
+    /// Internal implementation of chunk_sequences_canonical
+    fn chunk_sequences_canonical_internal(
+        &mut self,
+        sequences: Vec<Sequence>,
+        progress_callback: Option<Box<dyn Fn(usize, &str) + Send>>,
+        is_final_batch: bool,
+    ) -> Result<Vec<ChunkManifest>> {
         use rayon::prelude::*;
 
         // Step 1: Pre-process sequences in parallel to prepare data
-        let storing_progress = create_progress_bar(
-            sequences.len() as u64,
-            "Processing sequences",
-        );
+        let storing_progress = if self.quiet_mode {
+            create_hidden_progress_bar()  // Hidden progress bar for quiet mode
+        } else {
+            create_progress_bar(
+                sequences.len() as u64,
+                "Processing sequences",
+            )
+        };
 
         // Process sequences in parallel to prepare headers and convert to strings
         let prepared_sequences: Vec<_> = sequences
@@ -71,62 +140,98 @@ impl TaxonomicChunker {
 
         storing_progress.finish_and_clear();
 
-        // Step 2: Store sequences in parallel batches (optimized for performance)
-        let storing_progress = create_progress_bar(
-            prepared_sequences.len() as u64,
-            "Storing canonical sequences",
-        );
+        // Notify progress callback about preparation completion
+        if let Some(ref callback) = progress_callback {
+            callback(prepared_sequences.len(), "Prepared sequences");
+        }
 
-        const BATCH_SIZE: usize = 10000;
+        // Step 2: Store sequences in parallel batches (optimized for performance)
+        let storing_progress = if self.quiet_mode {
+            create_hidden_progress_bar()  // Hidden progress bar for quiet mode
+        } else {
+            create_progress_bar(
+                prepared_sequences.len() as u64,
+                "Storing canonical sequences",
+            )
+        };
+
+        // Optimized batch sizes for high-throughput processing
+        const BATCH_SIZE: usize = 200_000;     // Process 200k sequences at once (increased from 50k)
+        const MINI_BATCH_SIZE: usize = 50_000; // Larger mini-batches for better throughput (increased from 10k)
         let mut all_results = Vec::with_capacity(prepared_sequences.len());
         let mut dedup_count = 0;
         let mut new_count = 0;
+        let mut mini_batch_count = 0;
 
         // Process sequences in batches for optimal performance
         for chunk in prepared_sequences.chunks(BATCH_SIZE) {
-            // Prepare batch for parallel storage
-            let batch_data: Vec<(&str, &str, crate::types::DatabaseSource)> = chunk
-                .iter()
-                .map(|(_, header, sequence_str, _)| {
-                    (sequence_str.as_str(), header.as_str(), self.database_source.clone())
-                })
-                .collect();
+            // Process in smaller mini-batches for more frequent progress updates
+            for mini_chunk in chunk.chunks(MINI_BATCH_SIZE) {
+                // Prepare mini-batch for parallel storage
+                let batch_data: Vec<(&str, &str, crate::types::DatabaseSource)> = mini_chunk
+                    .iter()
+                    .map(|(_, header, sequence_str, _)| {
+                        (sequence_str.as_str(), header.as_str(), self.database_source.clone())
+                    })
+                    .collect();
 
-            // Store batch in parallel
-            let batch_results = self.sequence_storage.store_sequences_batch(batch_data)?;
+                // Store mini-batch in parallel
+                let batch_results = self.sequence_storage.store_sequences_batch(batch_data)?;
 
-            // Track results
-            for ((id, _, _, taxon_id), (hash, is_new)) in chunk.iter().zip(batch_results.iter()) {
-                if *is_new {
-                    new_count += 1;
-                } else {
-                    dedup_count += 1;
+                // Track results
+                for ((id, _, _, taxon_id), (hash, is_new)) in mini_chunk.iter().zip(batch_results.iter()) {
+                    if *is_new {
+                        new_count += 1;
+                    } else {
+                        dedup_count += 1;
+                    }
+                    all_results.push((hash.clone(), *taxon_id, id.clone()));
                 }
-                all_results.push((hash.clone(), *taxon_id, id.clone()));
-            }
 
-            // Update progress
-            storing_progress.set_position(all_results.len() as u64);
+                // Update progress
+                storing_progress.set_position(all_results.len() as u64);
+
+                // Update progress callback less frequently to reduce overhead
+                mini_batch_count += 1;
+                if mini_batch_count % 5 == 0 {  // Update every 50k sequences
+                    if let Some(ref callback) = progress_callback {
+                        callback(all_results.len(), &format!("Storing sequences ({} new, {} dedup)",
+                            new_count, dedup_count));
+                    }
+                }
+            }
         }
 
-        // Save indices ONCE after all sequences are processed
-        self.sequence_storage.save_indices()?;
+        // Save indices only on the final batch to avoid blocking
+        if is_final_batch {
+            if let Some(ref callback) = progress_callback {
+                callback(all_results.len(), "Saving indices...");
+            }
+            self.sequence_storage.save_indices()?;
+        }
 
         storing_progress.finish_and_clear();
-        println!(
-            "Stored {} sequences ({} new, {} deduplicated)",
-            all_results.len(),
-            new_count,
-            dedup_count
-        );
+        use talaria_utils::display::output::format_number;
+        if !self.quiet_mode {
+            println!(
+                "Stored {} sequences ({} new, {} deduplicated)",
+                format_number(all_results.len()),
+                format_number(new_count),
+                format_number(dedup_count)
+            );
+        }
 
         let sequence_records = all_results;
 
         // Step 2: Group sequences by taxonomy
-        let grouping_progress = create_progress_bar(
-            sequence_records.len() as u64,
-            "Grouping by taxonomy",
-        );
+        let grouping_progress = if self.quiet_mode {
+            create_hidden_progress_bar()  // Hidden progress bar for quiet mode
+        } else {
+            create_progress_bar(
+                sequence_records.len() as u64,
+                "Grouping by taxonomy",
+            )
+        };
 
         let mut taxon_groups: HashMap<TaxonId, Vec<SHA256Hash>> = HashMap::new();
         for (hash, taxon_id, _) in &sequence_records {
@@ -137,28 +242,66 @@ impl TaxonomicChunker {
         }
 
         grouping_progress.finish_and_clear();
-        println!("Grouped into {} taxonomic groups", taxon_groups.len());
 
-        // Step 3: Create chunk manifests
-        let chunking_progress = create_progress_bar(
-            taxon_groups.len() as u64,
-            "Creating chunk manifests",
-        );
-
-        let mut manifests = Vec::new();
-        for (taxon_id, sequence_hashes) in taxon_groups {
-            let group_manifests = self.create_manifests_for_group(taxon_id, sequence_hashes)?;
-            manifests.extend(group_manifests);
-            chunking_progress.inc(1);
+        // Notify progress callback about grouping completion
+        if let Some(ref callback) = progress_callback {
+            callback(sequence_records.len(), &format!("Grouped into {} taxa", taxon_groups.len()));
+        }
+        if !self.quiet_mode {
+            // Show sample of taxon IDs for debugging
+            let sample_taxids: Vec<String> = taxon_groups.keys()
+                .take(3)
+                .map(|tid| format!("{}", tid.0))
+                .collect();
+            let taxid_info = if taxon_groups.len() == 1 {
+                format!(" (taxon_id: {})", sample_taxids.join(", "))
+            } else if taxon_groups.len() > 3 {
+                format!(" (sample taxon_ids: {}, ...)", sample_taxids.join(", "))
+            } else {
+                format!(" (taxon_ids: {})", sample_taxids.join(", "))
+            };
+            println!("Grouped into {} taxonomic groups{}", taxon_groups.len(), taxid_info);
         }
 
+        // Step 3: Create chunk manifests
+        let chunking_progress = if self.quiet_mode {
+            create_hidden_progress_bar()  // Hidden progress bar for quiet mode
+        } else {
+            create_progress_bar(
+                taxon_groups.len() as u64,
+                "Creating chunk manifests",
+            )
+        };
+
+        // Parallelize manifest creation for all taxonomic groups
+        let manifest_results: Result<Vec<_>> = taxon_groups
+            .into_par_iter()
+            .map(|(taxon_id, sequence_hashes)| {
+                let result = self.create_manifests_for_group(taxon_id, sequence_hashes);
+                chunking_progress.inc(1);
+                result
+            })
+            .collect();
+
+        // Flatten the results
+        let mut manifests: Vec<ChunkManifest> = manifest_results?
+            .into_iter()
+            .flatten()
+            .collect();
+
         chunking_progress.finish_and_clear();
-        println!("Created {} chunk manifests", manifests.len());
+        if !self.quiet_mode {
+            println!("Created {} chunk manifests", manifests.len());
+        }
 
         // Step 4: Apply special taxa rules
-        let special_progress = create_spinner("Applying special taxa rules");
-        manifests = self.apply_special_taxa_rules(manifests)?;
-        special_progress.finish_and_clear();
+        if !self.quiet_mode {
+            let special_progress = create_spinner("Applying special taxa rules");
+            manifests = self.apply_special_taxa_rules(manifests)?;
+            special_progress.finish_and_clear();
+        } else {
+            manifests = self.apply_special_taxa_rules(manifests)?;
+        }
 
         Ok(manifests)
     }

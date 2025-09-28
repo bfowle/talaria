@@ -14,6 +14,9 @@ pub mod manifest;
 // Chunking
 pub mod chunker;
 
+// Checkpoint system
+pub mod checkpoint;
+
 // Delta encoding
 pub mod delta;
 
@@ -25,6 +28,12 @@ pub mod temporal;
 
 // Operations
 pub mod operations;
+
+// Performance optimization
+pub mod performance;
+
+// Resilience and error recovery
+pub mod resilience;
 
 // Processing pipelines
 pub mod processing;
@@ -72,7 +81,9 @@ pub use operations::{
     FastaAssembler, AssemblyResult, TemporalManifestDiffer, DiffResult,
     ReductionManifest, ReductionParameters, ProcessingState, OperationType,
     Reducer, SelectionAlgorithm, ReferenceSelectorImpl, SelectionResult,
-    ReferenceSelector, AlignmentBasedSelector, TraitSelectionResult, SelectionStats
+    ReferenceSelector, AlignmentBasedSelector, TraitSelectionResult, SelectionStats,
+    DatabaseDiffer, DatabaseComparison, ChunkAnalysis, SequenceAnalysis,
+    TaxonomyAnalysis, TaxonDistribution, StorageMetrics, format_bytes
 };
 pub use temporal::{
     TemporalIndex, BiTemporalDatabase, RetroactiveAnalyzer,
@@ -97,7 +108,7 @@ impl SEQUOIARepository {
     pub fn init(base_path: &Path) -> Result<Self> {
         let storage = SEQUOIAStorage::new(base_path)?;
         let manifest = Manifest::new_with_path(base_path);
-        let taxonomy = taxonomy::TaxonomyManager::new(base_path)?;
+        let taxonomy = taxonomy::TaxonomyManager::load(base_path)?;
         let temporal = TemporalIndex::new(base_path)?;
 
         Ok(Self {

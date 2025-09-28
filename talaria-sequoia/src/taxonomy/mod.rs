@@ -110,23 +110,14 @@ impl TaxonomyManager {
         Ok(manager)
     }
 
-    /// Load NCBI taxonomy from taxdump files
-    pub fn load_ncbi_taxonomy(&mut self, taxdump_dir: &Path) -> Result<()> {
-        // Support both old path structure (with taxdump subdir) and new (direct files)
-        let nodes_file = if taxdump_dir.join("taxdump").join("nodes.dmp").exists() {
-            taxdump_dir.join("taxdump").join("nodes.dmp")
-        } else {
-            taxdump_dir.join("nodes.dmp")
-        };
-
-        let names_file = if taxdump_dir.join("taxdump").join("names.dmp").exists() {
-            taxdump_dir.join("taxdump").join("names.dmp")
-        } else {
-            taxdump_dir.join("names.dmp")
-        };
+    /// Load NCBI taxonomy from tree directory files
+    pub fn load_ncbi_taxonomy(&mut self, tree_dir: &Path) -> Result<()> {
+        // Files should be directly in the tree directory
+        let nodes_file = tree_dir.join("nodes.dmp");
+        let names_file = tree_dir.join("names.dmp");
 
         if !nodes_file.exists() || !names_file.exists() {
-            return Err(anyhow::anyhow!("Taxonomy files not found"));
+            return Err(anyhow::anyhow!("Taxonomy files not found in {:?}", tree_dir));
         }
 
         // Parse nodes.dmp

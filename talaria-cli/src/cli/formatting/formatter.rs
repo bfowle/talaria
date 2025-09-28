@@ -6,7 +6,6 @@
 use colored::*;
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 /// Task status for todo-style tracking
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -180,7 +179,7 @@ impl TaskList {
                 .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
         );
         spinner.set_message(message.to_string());
-        spinner.enable_steady_tick(Duration::from_millis(100));
+        // Don't use steady_tick - causes ETA miscalculation
 
         self.current_spinner = Some(spinner.clone());
         self.update_task(handle, TaskStatus::InProgress);

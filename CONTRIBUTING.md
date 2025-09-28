@@ -139,28 +139,57 @@ Follow the architecture:
 
 ### 3. Commit Changes
 
-Write clear commit messages:
+This project follows the [Conventional Commits](https://www.conventionalcommits.org/) specification. Please adhere to this standard for all commit messages.
+
+#### Commit Message Format
+
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+#### Examples
 
 ```bash
 # Good
-git commit -m "feat(sequoia): Add parallel chunk processing"
-git commit -m "fix(cli): Correct memory leak in reduce command"
-git commit -m "docs(api): Update reducer documentation"
+git commit -m "feat(sequoia): add parallel chunk processing"
+git commit -m "fix(cli): correct memory leak in reduce command"
+git commit -m "docs(api): update reducer documentation"
+git commit -m "refactor!: restructure module hierarchy"
 
 # Bad
 git commit -m "Fixed stuff"
 git commit -m "Update"
+git commit -m "ADDED NEW FEATURE"
 ```
 
-Commit message format:
+#### Commit Types
+
 - `feat:` New feature
 - `fix:` Bug fix
-- `docs:` Documentation
+- `docs:` Documentation only changes
+- `style:` Changes that don't affect code meaning (whitespace, formatting)
+- `refactor:` Code change that neither fixes a bug nor adds a feature
 - `perf:` Performance improvement
 - `test:` Test addition/modification
-- `refactor:` Code refactoring
-- `style:` Code style changes
+- `build:` Changes to build system or dependencies
+- `ci:` CI configuration changes
 - `chore:` Maintenance tasks
+- `revert:` Reverts a previous commit
+
+#### Guidelines
+
+- Use imperative mood ("add" not "adds" or "added")
+- Don't capitalize first letter after colon
+- No period at the end of the subject line
+- Keep subject under 72 characters
+- Add `!` after type for breaking changes: `feat!:` or `refactor!:`
+- Reference issues/PRs in footer when applicable
+
+For more details, see the full [Commit Message Guidelines](CLAUDE.md#commit-message-guidelines) in CLAUDE.md.
 
 ## Code Style
 

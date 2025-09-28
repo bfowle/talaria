@@ -318,7 +318,7 @@ impl Reducer {
                         .unwrap()
                         .progress_chars("##-"),
                 );
-                pb.enable_steady_tick(std::time::Duration::from_millis(100));
+                // Don't use steady_tick - causes ETA miscalculation
                 pb
             } else {
                 ProgressBar::hidden()

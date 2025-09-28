@@ -1,4 +1,5 @@
 use talaria_bio::sequence::Sequence;
+use tracing::{info, warn, instrument, span, Level};
 /// Database manager using content-addressed storage
 ///
 /// Instead of downloading entire databases and creating dated directories,
@@ -9,13 +10,15 @@ use crate::{
 use talaria_core::system::paths;
 use talaria_core::{DatabaseSource, NCBIDatabase, UniProtDatabase};
 use crate::taxonomy::{TaxonomyManager, VersionDecision};
-use crate::download::{DownloadProgress, download_database_with_full_options, parse_database_source};
+use crate::download::{DownloadProgress, parse_database_source};
+use crate::download::manager::{DownloadManager, DownloadOptions};
+use crate::download::workspace::{find_existing_workspace_for_source, Stage};
 use talaria_utils::database::database_ref::parse_database_reference;
 use super::{DownloadResult, TaxonomyUpdateResult};
 
 /// Magic bytes for Talaria manifest format
 const TALARIA_MAGIC: &[u8] = b"TAL\x01";
-use talaria_utils::display::{create_progress_bar, create_spinner};
+use talaria_utils::display::{create_progress_bar, create_spinner, create_hidden_progress_bar};
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
@@ -27,9 +30,23 @@ pub struct DatabaseManager {
     base_path: PathBuf,
     use_json_manifest: bool,
     _taxonomy_manager: TaxonomyManager,
+    /// Accumulate manifests during batch processing to avoid creating multiple versions
+    accumulated_manifests: Vec<(crate::ChunkManifest, crate::SHA256Hash)>,
+    /// Current version being processed (set once at start)
+    current_version: Option<String>,
 }
 
 impl DatabaseManager {
+    /// Get access to the repository (for extensions)
+    pub fn get_repository(&self) -> &SEQUOIARepository {
+        &self.repository
+    }
+
+    /// Get mutable access to the repository (for extensions)
+    pub fn get_repository_mut(&mut self) -> &mut SEQUOIARepository {
+        &mut self.repository
+    }
+
     /// Create a new SEQUOIA database manager
     pub fn new(base_dir: Option<String>) -> Result<Self> {
         let base_path = if let Some(dir) = base_dir {
@@ -57,6 +74,8 @@ impl DatabaseManager {
             base_path,
             use_json_manifest: false,
             _taxonomy_manager: taxonomy_manager,
+            accumulated_manifests: Vec::new(),
+            current_version: None,
         })
     }
 
@@ -87,6 +106,8 @@ impl DatabaseManager {
             base_path,
             use_json_manifest,
             _taxonomy_manager: taxonomy_manager,
+            accumulated_manifests: Vec::new(),
+            current_version: None,
         })
     }
 
@@ -304,6 +325,49 @@ impl DatabaseManager {
             return self
                 .handle_initial_download(source, progress_callback)
                 .await;
+        }
+
+        // First check if we have an existing complete download that needs processing
+        if let Ok(Some((_workspace, state))) = find_existing_workspace_for_source(source) {
+            if state.stage == Stage::Complete {
+                if let Some(decompressed) = state.files.decompressed.as_ref() {
+                    if decompressed.exists() {
+                        let file_size = decompressed.metadata()?.len();
+                        progress_callback(&format!(
+                            "✓ Found complete download: {} ({:.2} GB)",
+                            decompressed.file_name().unwrap_or_default().to_string_lossy(),
+                            file_size as f64 / 1_073_741_824.0
+                        ));
+                        progress_callback("Using existing download, processing into SEQUOIA format...");
+
+                        // Process the existing file directly
+                        progress_callback("Processing database into SEQUOIA chunks...");
+                        progress_callback("This one-time conversion enables future incremental updates");
+
+                        // Chunk the database
+                        if let Err(e) = self.chunk_database(&decompressed, source) {
+                            progress_callback(&format!(
+                                "Processing failed: {}. Downloaded file preserved in workspace for retry.",
+                                e
+                            ));
+                            return Err(e);
+                        }
+
+                        // Clean up workspace after successful processing
+                        if let Err(e) = DownloadManager::cleanup_download_workspace(source) {
+                            progress_callback(&format!("Warning: Failed to clean up workspace: {}", e));
+                        }
+
+                        progress_callback("Database successfully stored in SEQUOIA format");
+
+                        // Return success - we've processed the existing download
+                        return Ok(DownloadResult::InitialDownload {
+                            total_chunks: 0, // We don't have exact counts here
+                            total_size: file_size,
+                        });
+                    }
+                }
+            }
         }
 
         // Check if we have a cached manifest (for non-taxonomy databases)
@@ -946,60 +1010,170 @@ impl DatabaseManager {
         source: &DatabaseSource,
         progress_callback: impl Fn(&str) + Send + Sync,
     ) -> Result<DownloadResult> {
+        // First check if SEQUOIA manifest already exists for this database
+        let manifest_path = self.get_manifest_path(source);
+        if manifest_path.exists() {
+            progress_callback("SEQUOIA manifest already exists for this database");
+            progress_callback("Database is already in SEQUOIA format - skipping download and processing");
+
+            // Try to clean up any lingering download workspace
+            if let Err(e) = DownloadManager::cleanup_download_workspace(source) {
+                progress_callback(&format!("Note: Failed to clean up old download workspace: {}", e));
+            }
+
+            return Ok(DownloadResult::UpToDate);
+        }
+
         // Skip taxonomy check if we're downloading taxonomy data itself
         if !Self::is_taxonomy_database(source) {
             // Check if taxonomy is needed and download if missing
+            progress_callback("Checking for taxonomy data...");
+
+            // Check specific paths
+            let taxonomy_dir = talaria_core::system::paths::talaria_taxonomy_current_dir();
+            let tree_file = taxonomy_dir.join("taxonomy_tree.json");
+            let nodes_file = taxonomy_dir.join("tree/nodes.dmp");
+            let names_file = taxonomy_dir.join("tree/names.dmp");
+
             if !self.repository.taxonomy.has_taxonomy() {
-                progress_callback("Checking for taxonomy data...");
-                if let Err(e) = self.ensure_taxonomy_loaded(&progress_callback).await {
-                    progress_callback(&format!("[!] Warning: Could not load taxonomy: {}", e));
-                    progress_callback("Continuing without taxonomy data (will use placeholders)");
+                // Provide detailed information about what's missing
+                progress_callback("[!] Taxonomy data not loaded");
+
+                if !taxonomy_dir.exists() {
+                    progress_callback(&format!("    Taxonomy directory not found: {}", taxonomy_dir.display()));
+                } else if tree_file.exists() {
+                    progress_callback(&format!("    Found taxonomy tree at: {}", tree_file.display()));
+                    progress_callback("    Attempting to load existing taxonomy...");
+                    // Try to reload taxonomy
+                    self.repository.taxonomy = crate::taxonomy::TaxonomyManager::load(&self.base_path)?;
+                    if self.repository.taxonomy.has_taxonomy() {
+                        progress_callback("✓ Successfully loaded existing taxonomy data");
+                    }
+                } else if nodes_file.exists() && names_file.exists() {
+                    progress_callback(&format!("    Found NCBI dump files at: {}", taxonomy_dir.display()));
+                    progress_callback("    Loading NCBI taxonomy...");
+                    if let Err(e) = self.repository.taxonomy.load_ncbi_taxonomy(&taxonomy_dir.join("tree")) {
+                        progress_callback(&format!("    Failed to load: {}", e));
+                    } else {
+                        progress_callback("✓ Successfully loaded NCBI taxonomy");
+                    }
+                }
+
+                // Final check if we still don't have taxonomy
+                if !self.repository.taxonomy.has_taxonomy() {
+                    progress_callback("[!] WARNING: No taxonomy data available");
+                    progress_callback("    Without taxonomy, all sequences will be grouped together");
+                    progress_callback("    This reduces chunking efficiency and search performance");
+                    progress_callback("");
+                    progress_callback("    To download taxonomy data, run:");
+                    progress_callback("    talaria database download ncbi/taxonomy");
+                    progress_callback("");
+                    progress_callback("    Continuing with placeholder taxonomy (all sequences in one group)...");
+
                     // Ensure at least a minimal taxonomy structure
                     self.repository.taxonomy.ensure_taxonomy()?;
                 }
+            } else {
+                progress_callback("Taxonomy data is loaded and ready");
             }
         }
 
-        // For initial download, fall back to traditional download
-        // then chunk it into SEQUOIA format
-        // Use appropriate extension based on database type
-        let temp_file = if Self::is_taxonomy_database(source) {
-            self.base_path.join("temp_download.tar.gz")
-        } else {
-            self.base_path.join("temp_download.fasta.gz")
+        // Use the new workspace-isolated download system
+        // First check if there's an existing complete download
+
+        // Create download manager with database manager for processing
+        let mut download_manager = DownloadManager::new()?;
+
+        let options = DownloadOptions {
+            skip_verify: false,
+            resume: true,  // Always enable resume
+            preserve_on_failure: true,  // Keep files if processing fails
+            preserve_always: std::env::var("TALARIA_PRESERVE_DOWNLOADS").is_ok(),
+            force: false,
         };
 
-        progress_callback("Downloading full database (this may take a while)...");
+        let mut progress = DownloadProgress::new();
 
-        // Download full file
-        self.download_full_database(source, &temp_file, &progress_callback)
-            .await?;
+        // Check if there's already a complete download before downloading
+        let existing_download = if options.resume {
+            match find_existing_workspace_for_source(source)? {
+                Some((_workspace, state)) if state.stage == Stage::Complete => {
+                    if let Some(decompressed) = state.files.decompressed.as_ref() {
+                        if decompressed.exists() {
+                            let file_size = decompressed.metadata()?.len();
+                            progress_callback(&format!(
+                                "✓ Found complete download: {} ({:.2} GB)",
+                                decompressed.file_name().unwrap_or_default().to_string_lossy(),
+                                file_size as f64 / 1_073_741_824.0
+                            ));
+                            progress_callback("Skipping download, proceeding directly to processing...");
+                            Some(decompressed.clone())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                _ => None
+            }
+        } else {
+            None
+        };
 
-        // Chunk the database
+        // Use existing download or download new
+        let output_path = if let Some(existing_path) = existing_download {
+            // We have a complete download, use it directly
+            existing_path
+        } else {
+            // Need to download (either fresh or resume incomplete)
+            download_manager
+                .download_with_state(source.clone(), options, &mut progress)
+                .await?
+        };
+
+        // Only check for manifest if we actually downloaded something new
+        // (not when using existing complete download)
+        if manifest_path.exists() {
+            progress_callback("SEQUOIA manifest already exists - database is already in SEQUOIA format");
+            // Clean up the downloaded file since we don't need it
+            if let Err(e) = DownloadManager::cleanup_download_workspace(source) {
+                progress_callback(&format!("Warning: Failed to clean up workspace: {}", e));
+            }
+            return Ok(DownloadResult::UpToDate);
+        }
+
+        // Process the downloaded/existing file
         progress_callback("Processing database into SEQUOIA chunks...");
         progress_callback("This one-time conversion enables future incremental updates");
 
-        // Add better error context for taxonomy files
-        if let Err(e) = self.chunk_database(&temp_file, source) {
-            if Self::is_taxonomy_database(source) {
-                return Err(anyhow::anyhow!(
-                    "Failed to process taxonomy file after download: {}. \
-                    The file was downloaded successfully but could not be stored. \
-                    This is likely a file processing issue, not a download issue.",
+        // Chunk the database (only if not a taxonomy file)
+        if !Self::is_taxonomy_database(source) {
+            if let Err(e) = self.chunk_database(&output_path, source) {
+                // Don't delete the file - it's preserved in the workspace
+                progress_callback(&format!(
+                    "Processing failed: {}. Downloaded file preserved in workspace for retry.",
                     e
                 ));
-            } else {
+                progress_callback("Run with --resume to retry processing without re-downloading");
+                return Err(e);
+            }
+        } else {
+            // For taxonomy files, store them directly
+            if let Err(e) = self.store_taxonomy_mapping_file(&output_path, source) {
+                progress_callback(&format!(
+                    "Failed to store taxonomy file: {}. File preserved for retry.",
+                    e
+                ));
                 return Err(e);
             }
         }
 
-        // Clean up temp file if it still exists (it may have been moved)
-        if temp_file.exists() {
-            // Only try to remove if it actually exists to avoid errors
-            if let Err(e) = std::fs::remove_file(&temp_file) {
-                // Log but don't fail if we can't remove temp file
-                eprintln!("Warning: Could not clean up temp file: {}", e);
-            }
+        // Now that processing is complete, clean up the download workspace
+        // unless preservation is enabled
+        if let Err(e) = DownloadManager::cleanup_download_workspace(source) {
+            progress_callback(&format!("Warning: Failed to clean up workspace: {}", e));
+            // Don't fail the whole operation if cleanup fails
         }
 
         progress_callback("✓ Initial SEQUOIA setup complete!");
@@ -1035,7 +1209,7 @@ impl DatabaseManager {
         println!("Processing sequences with canonical storage...");
         let chunk_manifests = chunker.chunk_sequences_canonical(sequences)?;
 
-        println!("Created {} chunk manifests", chunk_manifests.len());
+        // Don't print duplicate message - the chunker already prints this
 
         // Store the manifests in SEQUOIA repository and get their stored hashes
         let manifests_with_hashes = self.store_chunk_manifests(chunk_manifests, source)?;
@@ -1043,7 +1217,109 @@ impl DatabaseManager {
         // Create versions directory structure and save database manifest
         self.save_database_manifest(manifests_with_hashes, source)?;
 
+        // Clear version after saving
+        self.current_version = None;
+
         Ok(())
+    }
+
+    /// Quiet version of chunk_sequences_direct for use in streaming mode
+    #[allow(dead_code)]
+    fn chunk_sequences_direct_quiet(
+        &mut self,
+        sequences: Vec<Sequence>,
+        source: &DatabaseSource,
+    ) -> Result<()> {
+        // Call the version with progress callback, passing None
+        self.chunk_sequences_direct_with_progress(sequences, source, None)
+    }
+
+    /// Process sequences with optional progress callback
+    #[allow(dead_code)]
+    fn chunk_sequences_direct_with_progress(
+        &mut self,
+        sequences: Vec<Sequence>,
+        source: &DatabaseSource,
+        progress_callback: Option<Box<dyn Fn(usize, &str) + Send>>,
+    ) -> Result<()> {
+        // Default to not being the final batch
+        self.chunk_sequences_direct_with_progress_final(sequences, source, progress_callback, false)
+    }
+
+    /// Process sequences with optional progress callback and final batch indicator
+    pub fn chunk_sequences_direct_with_progress_final(
+        &mut self,
+        sequences: Vec<Sequence>,
+        source: &DatabaseSource,
+        progress_callback: Option<Box<dyn Fn(usize, &str) + Send>>,
+        is_final_batch: bool,
+    ) -> Result<()> {
+        use crate::storage::SequenceStorage;
+
+        // Initialize canonical sequence storage using centralized path
+        let sequences_path = paths::canonical_sequence_storage_dir();
+        let sequence_storage = SequenceStorage::new(&sequences_path)?;
+
+        // Create chunker with canonical storage
+        let mut chunker = TaxonomicChunker::new(
+            ChunkingStrategy::default(),
+            sequence_storage,
+            source.clone(),
+        );
+
+        // Process sequences with optional progress callback and final batch flag
+        let chunk_manifests = if let Some(callback) = progress_callback {
+            chunker.chunk_sequences_canonical_with_progress_final(sequences, Some(callback), is_final_batch)?
+        } else {
+            chunker.chunk_sequences_canonical_quiet_final(sequences, is_final_batch)?
+        };
+
+        // Store the manifests in SEQUOIA repository quietly
+        let manifests_with_hashes = self.store_chunk_manifests_quiet(chunk_manifests, source)?;
+
+        // Accumulate manifests instead of saving immediately
+        self.accumulated_manifests.extend(manifests_with_hashes);
+
+        // Only save database manifest on final batch
+        if is_final_batch && !self.accumulated_manifests.is_empty() {
+            // Use existing version or generate new one
+            let version = self.current_version.clone().unwrap_or_else(|| {
+                talaria_core::system::paths::generate_utc_timestamp()
+            });
+
+            // Save all accumulated manifests with the single version
+            self.save_database_manifest_quiet_with_version(
+                self.accumulated_manifests.clone(),
+                source,
+                &version
+            )?;
+
+            // Clear accumulated manifests after saving
+            self.accumulated_manifests.clear();
+            self.current_version = None;
+        }
+
+        Ok(())
+    }
+
+    /// Save database manifest in versions directory structure (quiet version)
+    #[allow(dead_code)]
+    fn save_database_manifest_quiet(
+        &mut self,
+        manifests_with_hashes: Vec<(crate::ChunkManifest, crate::SHA256Hash)>,
+        source: &DatabaseSource,
+    ) -> Result<()> {
+        self.save_database_manifest_internal(manifests_with_hashes, source, false)
+    }
+
+    /// Save database manifest with specific version (quiet version)
+    fn save_database_manifest_quiet_with_version(
+        &mut self,
+        manifests_with_hashes: Vec<(crate::ChunkManifest, crate::SHA256Hash)>,
+        source: &DatabaseSource,
+        version: &str,
+    ) -> Result<()> {
+        self.save_database_manifest_internal_with_version(manifests_with_hashes, source, version, false)
     }
 
     /// Save database manifest in versions directory structure
@@ -1051,6 +1327,35 @@ impl DatabaseManager {
         &mut self,
         manifests_with_hashes: Vec<(crate::ChunkManifest, crate::SHA256Hash)>,
         source: &DatabaseSource,
+    ) -> Result<()> {
+        // Generate version once if not already set
+        if self.current_version.is_none() {
+            self.current_version = Some(talaria_core::system::paths::generate_utc_timestamp());
+        }
+        let version = self.current_version.as_ref().unwrap().clone();
+        self.save_database_manifest_internal_with_version(manifests_with_hashes, source, &version, true)
+    }
+
+    /// Internal implementation of save_database_manifest
+    fn save_database_manifest_internal(
+        &mut self,
+        manifests_with_hashes: Vec<(crate::ChunkManifest, crate::SHA256Hash)>,
+        source: &DatabaseSource,
+        verbose: bool,
+    ) -> Result<()> {
+        use chrono::Utc;
+        // Generate new version timestamp
+        let version = Utc::now().format("%Y%m%d_%H%M%S").to_string();
+        self.save_database_manifest_internal_with_version(manifests_with_hashes, source, &version, verbose)
+    }
+
+    /// Internal implementation with specific version
+    fn save_database_manifest_internal_with_version(
+        &mut self,
+        manifests_with_hashes: Vec<(crate::ChunkManifest, crate::SHA256Hash)>,
+        source: &DatabaseSource,
+        version: &str,
+        verbose: bool,
     ) -> Result<()> {
         use crate::{ManifestMetadata, TemporalManifest, BiTemporalCoordinate};
         use chrono::Utc;
@@ -1063,12 +1368,12 @@ impl DatabaseManager {
             DatabaseSource::Test => ("test", "test".to_string()),
         };
 
-        let version = Utc::now().format("%Y%m%d_%H%M%S").to_string();
+        // Use provided version instead of generating new one
         let versions_dir = self.base_path.join("versions");
         let db_path = versions_dir
             .join(source_name)
             .join(&dataset_name)
-            .join(&version);
+            .join(version);
 
         std::fs::create_dir_all(&db_path)?;
 
@@ -1085,9 +1390,9 @@ impl DatabaseManager {
 
         // Create temporal manifest
         let manifest = TemporalManifest {
-            version: version.clone(),
+            version: version.to_string(),
             created_at: Utc::now(),
-            sequence_version: version.clone(),
+            sequence_version: version.to_string(),
             taxonomy_version: "current".to_string(),
             temporal_coordinate: Some(BiTemporalCoordinate {
                 sequence_time: Utc::now(),
@@ -1124,11 +1429,22 @@ impl DatabaseManager {
         std::os::unix::fs::symlink(&version, &current_link)?;
 
         // Create version metadata
-        self.create_version_metadata(source, &version, &manifest_path)?;
+        self.create_version_metadata(source, version, &manifest_path)?;
 
-        println!("✓ Database manifest saved to versions/{}/{}/{}", source_name, dataset_name, version);
+        if verbose {
+            println!("✓ Database manifest saved to versions/{}/{}/{}", source_name, dataset_name, version);
+        }
 
         Ok(())
+    }
+
+    /// Store chunk manifests quietly (no progress bar)
+    fn store_chunk_manifests_quiet(
+        &mut self,
+        manifests: Vec<crate::ChunkManifest>,
+        source: &DatabaseSource,
+    ) -> Result<Vec<(crate::ChunkManifest, crate::SHA256Hash)>> {
+        self.store_chunk_manifests_internal(manifests, source, true)
     }
 
     /// Store chunk manifests (lightweight references to canonical sequences)
@@ -1136,12 +1452,26 @@ impl DatabaseManager {
     fn store_chunk_manifests(
         &mut self,
         manifests: Vec<crate::ChunkManifest>,
+        source: &DatabaseSource,
+    ) -> Result<Vec<(crate::ChunkManifest, crate::SHA256Hash)>> {
+        self.store_chunk_manifests_internal(manifests, source, false)
+    }
+
+    /// Internal implementation of store_chunk_manifests
+    fn store_chunk_manifests_internal(
+        &mut self,
+        manifests: Vec<crate::ChunkManifest>,
         _source: &DatabaseSource,
+        quiet: bool,
     ) -> Result<Vec<(crate::ChunkManifest, crate::SHA256Hash)>> {
         use crate::ManifestMetadata;
 
         let total = manifests.len();
-        let pb = create_progress_bar(total as u64, "Storing chunk manifests");
+        let pb = if quiet {
+            create_hidden_progress_bar()  // Hidden progress bar for quiet mode
+        } else {
+            create_progress_bar(total as u64, "Storing chunk manifests")
+        };
         let mut manifest_with_hashes = Vec::new();
 
         for manifest in manifests {
@@ -1167,7 +1497,11 @@ impl DatabaseManager {
             pb.inc(1);
         }
 
-        pb.finish_with_message("All manifests stored");
+        if !quiet {
+            pb.finish_with_message("All manifests stored");
+        } else {
+            pb.finish_and_clear();
+        }
 
         // Save and persist the repository state
         self.repository.save()?;
@@ -1338,20 +1672,45 @@ impl DatabaseManager {
     }
 
     /// Chunk a downloaded database into SEQUOIA format (legacy wrapper for FASTA files)
+    #[instrument(skip(self), fields(source = %source, file_size))]
     pub fn chunk_database(&mut self, file_path: &Path, source: &DatabaseSource) -> Result<()> {
+        eprintln!("DEBUG: Entering chunk_database for {}", file_path.display());
+        let span = span!(Level::INFO, "chunk_database", path = %file_path.display());
+        let _enter = span.enter();
+
         // Check if this is a taxonomy mapping file (not a FASTA file)
         if Self::is_taxonomy_database(source) {
+            info!("Processing taxonomy database file");
             // Store taxonomy files in their proper location
             return self.store_taxonomy_mapping_file(file_path, source);
         }
 
-        // Read sequences from FASTA file
-        println!("Reading sequences from FASTA file...");
-        let sequences = self.read_fasta_sequences(file_path)?;
+        // Check file size to determine whether to use streaming
+        let file_size = file_path.metadata()?.len();
+        tracing::Span::current().record("file_size", file_size);
 
-        // Use the unified pipeline
-        self.chunk_sequences_direct(sequences, source)?;
+        const STREAMING_THRESHOLD: u64 = 1_000_000_000; // Use streaming for files > 1GB
 
+        if file_size > STREAMING_THRESHOLD {
+            info!(
+                file_size_gb = file_size as f64 / 1_073_741_824.0,
+                "Large file detected, using streaming mode"
+            );
+            println!("Large file detected ({:.2} GB), using streaming mode...", file_size as f64 / 1_073_741_824.0);
+            self.chunk_database_streaming(file_path, source)?;
+        } else {
+            // Read sequences from FASTA file
+            info!("Reading sequences from FASTA file");
+            println!("Reading sequences from FASTA file...");
+            let sequences = self.read_fasta_sequences(file_path)?;
+
+            info!(sequence_count = sequences.len(), "Sequences loaded");
+
+            // Use the unified pipeline
+            self.chunk_sequences_direct(sequences, source)?;
+        }
+
+        info!("Database chunking completed successfully");
         Ok(())
     }
 
@@ -1660,32 +2019,6 @@ impl DatabaseManager {
         }
     }
 
-    /// Download full database (for initial setup)
-    async fn download_full_database(
-        &self,
-        source: &DatabaseSource,
-        output_path: &Path,
-        progress_callback: &impl Fn(&str),
-    ) -> Result<()> {
-        // DownloadProgress already imported at the top
-
-        progress_callback("Downloading full database...");
-
-        let mut progress = DownloadProgress::new();
-
-        // Always use resume-enabled downloads
-        // The downloaders will automatically check for .tmp files
-        download_database_with_full_options(
-            source.clone(),
-            output_path,
-            &mut progress,
-            false,  // skip_verify
-            true    // resume - always enable resume support
-        ).await?;
-
-        Ok(())
-    }
-
     /// Get taxonomy mapping from SEQUOIA manifest
     /// This extracts accession-to-taxid mappings directly from the manifest's chunk metadata
     pub fn get_taxonomy_mapping_from_manifest(
@@ -1915,6 +2248,7 @@ impl DatabaseManager {
     }
 
     /// Ensure taxonomy is loaded, downloading if necessary
+    #[allow(dead_code)]
     async fn ensure_taxonomy_loaded(&mut self, progress_callback: &impl Fn(&str)) -> Result<()> {
         let taxonomy_dir = talaria_core::system::paths::talaria_taxonomy_current_dir();
         let taxdump_dir = taxonomy_dir.join("tree");
@@ -2281,7 +2615,7 @@ impl DatabaseManager {
             std::fs::create_dir_all(&new_version_dir)?;
 
             // Copy existing data to new version
-            let _ = std::fs::create_dir_all(new_version_dir.join("taxdump"));
+            let _ = std::fs::create_dir_all(new_version_dir.join("tree"));
 
             // Update current symlink to point to new version
             let current_link = talaria_core::system::paths::talaria_taxonomy_versions_dir().join("current");
@@ -2430,6 +2764,7 @@ impl DatabaseManager {
         let mut current_id = String::new();
         let mut current_desc = None;
         let mut current_seq = Vec::new();
+        let mut current_taxon_id: Option<u32> = None;
 
         for line in reader.lines() {
             let line = line?;
@@ -2443,7 +2778,7 @@ impl DatabaseManager {
                         id: current_id.clone(),
                         description: current_desc.clone(),
                         sequence: current_seq.clone(),
-                        taxon_id: None,
+                        taxon_id: current_taxon_id,
                         taxonomy_sources: Default::default(),
                     });
                 }
@@ -2453,6 +2788,11 @@ impl DatabaseManager {
                 current_id = parts[0].to_string();
                 current_desc = parts.get(1).map(|s| s.to_string());
                 current_seq.clear();
+
+                // Extract taxon_id from description using the standard function
+                // This handles TaxID=, OX=, and taxon: formats
+                current_taxon_id = current_desc.as_ref()
+                    .and_then(|desc| talaria_bio::formats::fasta::extract_taxon_id(desc));
             } else {
                 // Append to sequence
                 current_seq.extend(line.bytes());
@@ -2465,15 +2805,422 @@ impl DatabaseManager {
                 id: current_id,
                 description: current_desc,
                 sequence: current_seq,
-                taxon_id: None,
+                taxon_id: current_taxon_id,
                 taxonomy_sources: Default::default(),
             });
         }
 
         progress.finish_and_clear();
-        println!("Read {} sequences", sequences.len());
+        use talaria_utils::display::output::format_number;
+        println!("Read {} sequences", format_number(sequences.len()));
         Ok(sequences)
     }
+
+    /// Stream-process FASTA file with concurrent reading and processing
+    fn chunk_database_streaming(&mut self, file_path: &Path, source: &DatabaseSource) -> Result<()> {
+        eprintln!("DEBUG: Entering chunk_database_streaming");
+        self.chunk_database_streaming_concurrent(file_path, source)
+    }
+
+    /// Concurrent version with channels for smooth progress
+    fn chunk_database_streaming_concurrent(&mut self, file_path: &Path, source: &DatabaseSource) -> Result<()> {
+        eprintln!("DEBUG: Entering chunk_database_streaming_concurrent");
+        use std::fs::File;
+        use std::io::{BufRead, BufReader, Seek, SeekFrom};
+        use std::sync::{mpsc, Arc, Mutex};
+        use std::thread;
+        use std::time::Duration;
+        use talaria_utils::display::output::format_number;
+        use talaria_utils::display::format_bytes;
+        use talaria_utils::display::progress::create_progress_bar;
+        use crate::checkpoint::ChunkingCheckpoint;
+        use crate::performance::{AdaptiveManager, AdaptiveConfigBuilder};
+
+        // Check if monitoring is enabled
+        let monitor_enabled = std::env::var("TALARIA_MONITOR").unwrap_or_default() == "1";
+        let monitor = if monitor_enabled {
+            use crate::performance::ThroughputMonitor;
+            println!("Performance monitoring enabled");
+            Some(Arc::new(ThroughputMonitor::new()))
+        } else {
+            None
+        };
+
+        // Create adaptive performance manager with optimized settings
+        let adaptive_config = AdaptiveConfigBuilder::new()
+            .min_batch_size(50_000)      // Increased from 1,000
+            .max_batch_size(500_000)     // Increased from 100,000
+            .min_channel_buffer(50)      // Increased from 5
+            .max_channel_buffer(500)     // Increased from 100
+            .target_memory_usage(0.75)   // Use 75% of available memory
+            .avg_sequence_size(500)      // Typical protein sequence
+            .build();
+
+        let adaptive = AdaptiveManager::with_config(adaptive_config)?;
+
+        // Get optimized sizes from adaptive manager
+        let batch_size = adaptive.get_memory_aware_batch_size();
+        let channel_buffer = adaptive.get_optimal_buffer_size();
+
+        println!("Using adaptive batch size: {} sequences", format_number(batch_size));
+        println!("Using adaptive channel buffer: {} slots", channel_buffer);
+
+        let file = File::open(file_path)?;
+        let file_size = file.metadata()?.len();
+
+        // Try to load existing checkpoint
+        let db_source = format!("{:?}", source);
+        let checkpoint = if let Some(cp) = ChunkingCheckpoint::load(&db_source)? {
+            println!("Resuming from checkpoint: {} sequences processed ({:.1}%)",
+                format_number(cp.sequences_processed),
+                (cp.file_offset as f64 / file_size as f64) * 100.0);
+            // Use version from checkpoint
+            if let Some(ref version) = cp.version {
+                self.current_version = Some(version.clone());
+            }
+            cp
+        } else {
+            println!("Processing {} file with concurrent reading and processing...",
+                format_bytes(file_size));
+            let mut cp = ChunkingCheckpoint::new(db_source.clone(), file_size);
+            // Generate version once at start
+            let version = talaria_core::system::paths::generate_utc_timestamp();
+            cp.version = Some(version.clone());
+            self.current_version = Some(version);
+            cp
+        };
+
+        // Better estimation: UniRef50 has ~57M sequences in 26.8GB
+        // That's about 470 bytes per sequence on average
+        let estimated_sequences = (file_size / 470) as u64;
+
+        // Create single unified progress bar instead of multiple confusing ones
+        let main_progress = Arc::new(create_progress_bar(estimated_sequences, "Processing database"));
+
+        // Set initial position if resuming
+        if checkpoint.sequences_processed > 0 {
+            main_progress.set_position(checkpoint.sequences_processed as u64);
+            main_progress.set_message(format!("Resuming from sequence {}",
+                format_number(checkpoint.sequences_processed)));
+        }
+
+        // Shared counters and checkpoint
+        let total_read = Arc::new(Mutex::new(checkpoint.sequences_processed));
+        let total_processed = Arc::new(Mutex::new(checkpoint.sequences_processed));
+        let checkpoint = Arc::new(Mutex::new(checkpoint));
+
+        // Use unbounded channel to prevent reader blocking
+        println!("Using unbounded channel for maximum throughput");
+        let (tx, rx) = mpsc::channel::<(Vec<Sequence>, bool)>();
+
+        // Clone for reader thread
+        let progress_clone = Arc::clone(&main_progress);
+        let total_read_clone = Arc::clone(&total_read);
+        let checkpoint_clone = Arc::clone(&checkpoint);
+        let file_path = file_path.to_owned();
+        let monitor_clone = monitor.clone();
+
+        // Spawn reader thread
+        eprintln!("DEBUG: Spawning reader thread...");
+        let reader_thread = thread::spawn(move || -> Result<()> {
+            eprintln!("DEBUG: Reader thread started, opening file: {}", file_path.display());
+            let mut file = File::open(&file_path)?;
+            eprintln!("DEBUG: File opened successfully");
+
+            // Seek to checkpoint position if resuming
+            let (start_offset, mut local_total) = {
+                let cp = checkpoint_clone.lock().unwrap();
+                (cp.file_offset, cp.sequences_processed)
+            };
+
+            if start_offset > 0 {
+                file.seek(SeekFrom::Start(start_offset))?;
+                // Skip partial line if we're resuming mid-file
+                let mut reader = BufReader::new(file);
+                let mut _discard = String::new();
+                reader.read_line(&mut _discard)?;
+                file = reader.into_inner();
+            }
+
+            let reader = BufReader::new(file);
+            let mut sequences_batch = Vec::with_capacity(batch_size);
+            let mut current_id = String::new();
+            let mut current_desc = None;
+            let mut current_seq = Vec::new();
+            let mut current_taxon_id: Option<u32> = None;
+            let mut bytes_read = start_offset;
+
+            for line in reader.lines() {
+                let line = line?;
+                bytes_read += line.len() as u64 + 1; // +1 for newline
+
+                if let Some(header) = line.strip_prefix('>') {
+                    // Save previous sequence if any
+                    if !current_id.is_empty() {
+                        sequences_batch.push(Sequence {
+                            id: current_id.clone(),
+                            description: current_desc.clone(),
+                            sequence: current_seq.clone(),
+                            taxon_id: current_taxon_id,
+                            taxonomy_sources: Default::default(),
+                        });
+                        local_total += 1;
+
+                        // Update progress every 10k sequences for less overhead
+                        if local_total % 10_000 == 0 {
+                            progress_clone.set_position(local_total as u64);
+                            progress_clone.set_message(format!("Reading sequences ({})",
+                                format_number(local_total)));
+                        }
+
+                        // Send batch when full
+                        if sequences_batch.len() >= batch_size {
+                            *total_read_clone.lock().unwrap() = local_total;
+
+                            // Record monitoring metrics if enabled
+                            if let Some(ref monitor) = monitor_clone {
+                                let batch_bytes: usize = sequences_batch.iter()
+                                    .map(|seq| seq.sequence.len())
+                                    .sum();
+                                monitor.record_sequences(sequences_batch.len(), batch_bytes);
+                            }
+
+                            // Update and save checkpoint if needed (release lock quickly)
+                            {
+                                let mut cp = checkpoint_clone.lock().unwrap();
+                                cp.update(local_total, bytes_read, Some(current_id.clone()));
+                                if cp.should_save(local_total) {
+                                    let cp_clone = cp.clone();
+                                    drop(cp); // Release lock before I/O
+                                    cp_clone.save().ok(); // Ignore errors, checkpoint is best-effort
+                                }
+                            }
+
+                            if tx.send((sequences_batch, false)).is_err() {
+                                return Ok(()); // Channel closed
+                            }
+                            sequences_batch = Vec::with_capacity(batch_size);
+                        }
+                    }
+
+                    // Parse new header
+                    let parts: Vec<&str> = header.splitn(2, ' ').collect();
+                    current_id = parts[0].to_string();
+                    current_desc = parts.get(1).map(|s| s.to_string());
+                    current_seq.clear();
+                    current_taxon_id = current_desc.as_ref()
+                        .and_then(|desc| talaria_bio::formats::fasta::extract_taxon_id(desc));
+                } else {
+                    // Append to sequence
+                    current_seq.extend(line.bytes());
+                }
+            }
+
+            // Save last sequence
+            if !current_id.is_empty() {
+                sequences_batch.push(Sequence {
+                    id: current_id,
+                    description: current_desc,
+                    sequence: current_seq,
+                    taxon_id: current_taxon_id,
+                    taxonomy_sources: Default::default(),
+                });
+                local_total += 1;
+            }
+
+            // Send final batch
+            if !sequences_batch.is_empty() {
+                *total_read_clone.lock().unwrap() = local_total;
+                let _ = tx.send((sequences_batch, true)); // Mark as final
+            }
+
+            progress_clone.set_position(local_total as u64);
+            progress_clone.set_message(format!("Read {} sequences",
+                format_number(local_total)));
+            Ok(())
+        });
+
+        // Process batches - still sequential but with monitoring in separate thread
+        let adaptive_clone = Arc::new(adaptive);
+        let monitor_for_processing = monitor.clone();
+        let mut batch_num = 0;
+        let mut last_batch_was_final = false;
+        let mut stage_times = std::collections::HashMap::new();
+
+        // Spawn monitoring thread for real-time updates
+        eprintln!("DEBUG: Setting up monitoring thread...");
+        let _monitor_thread = if let Some(ref monitor) = monitor_for_processing {
+            let monitor_clone = monitor.clone();
+            let interval_secs = std::env::var("TALARIA_MONITOR_INTERVAL")
+                .unwrap_or_else(|_| "5".to_string())
+                .parse::<u64>()
+                .unwrap_or(5);
+
+            Some(thread::spawn(move || {
+                loop {
+                    thread::sleep(Duration::from_secs(interval_secs));
+                    let (seq_per_sec, mb_per_sec) = monitor_clone.current_throughput();
+                    if seq_per_sec > 0.0 || mb_per_sec > 0.0 {
+                        println!("\n📊 Performance: {:.0} seq/s, {:.1} MB/s", seq_per_sec, mb_per_sec);
+
+                        // Check for bottlenecks
+                        let bottlenecks = monitor_clone.detect_bottlenecks();
+                        for bottleneck in bottlenecks {
+                            use crate::performance::Bottleneck;
+                            match bottleneck {
+                                Bottleneck::CpuBound { utilization } =>
+                                    println!("  ⚠️ CPU bound: {:.0}% utilization", utilization * 100.0),
+                                Bottleneck::MemoryBound { available_mb, .. } =>
+                                    println!("  ⚠️ Memory pressure: {} MB available", available_mb),
+                                Bottleneck::IoBound { read_mb_sec, .. } =>
+                                    println!("  ⚠️ I/O bound: {:.1} MB/s", read_mb_sec),
+                                Bottleneck::SingleThreaded { cpu_cores, utilized } =>
+                                    println!("  ⚠️ Using only {} of {} cores", utilized, cpu_cores),
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }))
+        } else {
+            None
+        };
+
+        // Process batches as they arrive (keep sequential for now but with better monitoring)
+        eprintln!("DEBUG: Starting to receive batches...");
+        while let Ok((batch, is_final)) = rx.recv() {
+            eprintln!("DEBUG: Received batch {} with {} sequences", batch_num + 1, batch.len());
+            batch_num += 1;
+            let batch_size = batch.len();
+            let batch_start = std::time::Instant::now();
+
+            // Update adaptive performance metrics
+            adaptive_clone.update_metrics(batch_size, batch_size * 500);
+
+            // Check for memory pressure and adapt
+            if adaptive_clone.has_memory_pressure() {
+                tracing::debug!("Memory pressure detected, adapting batch size");
+                adaptive_clone.adapt_batch_size();
+            }
+
+            // Update progress
+            main_progress.set_message(format!("Processing batch {} ({} sequences)",
+                batch_num, format_number(batch_size)));
+            let current_batch = batch_num;
+            let progress_for_batch = Arc::clone(&main_progress);
+
+            // Process the batch
+            let chunk_start = std::time::Instant::now();
+            self.chunk_sequences_direct_with_progress_final(
+                batch,
+                source,
+                Some(Box::new(move |processed, stage| {
+                    progress_for_batch.set_message(format!("Batch {} - {} ({} sequences)",
+                        current_batch, stage, format_number(processed)));
+                })),
+                is_final,
+            )?;
+            let chunk_duration = chunk_start.elapsed();
+
+            // Track stage times
+            *stage_times.entry("chunking".to_string()).or_insert(Duration::default()) += chunk_duration;
+
+            // Update processed count
+            let mut processed = total_processed.lock().unwrap();
+            *processed += batch_size;
+            main_progress.set_position(*processed as u64);
+
+            // Record chunks if monitoring (monitoring thread handles reporting)
+            if let Some(ref monitor) = monitor_for_processing {
+                // Estimate chunks created
+                monitor.record_chunks(batch_size / 100); // Rough estimate
+                monitor.update_batch_size(batch_size);
+            }
+
+            if is_final {
+                last_batch_was_final = true;
+                break;
+            }
+        }
+
+        // Wait for reader thread
+        if let Err(e) = reader_thread.join() {
+            eprintln!("Reader thread panicked: {:?}", e);
+        }
+
+        // If we didn't process a final batch, save indices now
+        if !last_batch_was_final && *total_processed.lock().unwrap() > 0 {
+            main_progress.set_message("Saving indices...");
+            use crate::storage::SequenceStorage;
+            let sequences_path = paths::canonical_sequence_storage_dir();
+            let sequence_storage = SequenceStorage::new(&sequences_path)?;
+            sequence_storage.save_indices()?;
+        }
+
+        // Finish progress bar
+        let total = *total_processed.lock().unwrap();
+        main_progress.set_position(total as u64);
+        main_progress.finish_with_message(format!("✓ Processed {} sequences",
+            format_number(total)));
+
+        // Print performance report
+        tracing::info!("\n{}", adaptive_clone.get_performance_report());
+
+        // Print stage timing summary if we have monitoring
+        if monitor_enabled && !stage_times.is_empty() {
+            println!("\n📊 Stage Performance Summary:");
+            let total_time: Duration = stage_times.values().sum();
+            for (stage, duration) in &stage_times {
+                let percentage = (duration.as_secs_f64() / total_time.as_secs_f64()) * 100.0;
+                println!("  {}: {:.2}s ({:.1}%)", stage, duration.as_secs_f64(), percentage);
+            }
+            println!("  Total processing time: {:.2}s", total_time.as_secs_f64());
+        }
+
+        // Delete checkpoint on successful completion
+        checkpoint.lock().unwrap().delete().ok();
+
+        // Generate and save performance report if monitoring was enabled
+        if let Some(monitor) = monitor {
+            let report = monitor.generate_report();
+
+            // Print summary
+            println!("\n{}", report.format());
+
+            // Save to file if output directory is specified
+            if let Ok(output_dir) = std::env::var("TALARIA_MONITOR_OUTPUT") {
+                use std::fs;
+                use std::path::PathBuf;
+
+                let output_path = PathBuf::from(output_dir);
+                fs::create_dir_all(&output_path).ok();
+
+                let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+
+                // Save JSON report
+                if let Ok(json) = report.to_json() {
+                    let json_path = output_path.join(format!("performance_{}.json", timestamp));
+                    if let Err(e) = fs::write(&json_path, json) {
+                        eprintln!("Failed to write performance report: {}", e);
+                    } else {
+                        println!("Performance report saved to: {}", json_path.display());
+                    }
+                }
+
+                // Save CSV metrics
+                let csv_path = output_path.join(format!("metrics_{}.csv", timestamp));
+                let csv = report.metrics_to_csv();
+                if let Err(e) = fs::write(&csv_path, csv) {
+                    eprintln!("Failed to write metrics CSV: {}", e);
+                } else {
+                    println!("Metrics CSV saved to: {}", csv_path.display());
+                }
+            }
+        }
+
+        Ok(())
+    }
+
 }
 
 // Use DownloadResult from parent module (database/mod.rs)

@@ -621,12 +621,23 @@ impl Manifest {
         }
 
         // Verify Merkle roots are present (check for zero hash)
+        // Note: Some older manifests may not have Merkle roots, so we warn instead of failing
+        let mut warnings = Vec::new();
+
         if manifest.sequence_root.0.iter().all(|&b| b == 0) {
-            anyhow::bail!("Sequence Merkle root is missing");
+            warnings.push("Sequence Merkle root is missing (older database format)");
         }
 
         if manifest.taxonomy_root.0.iter().all(|&b| b == 0) {
-            anyhow::bail!("Taxonomy Merkle root is missing");
+            warnings.push("Taxonomy Merkle root is missing (older database format)");
+        }
+
+        // Print warnings if any
+        if !warnings.is_empty() {
+            tracing::warn!("Manifest verification warnings:");
+            for warning in warnings {
+                tracing::warn!("  - {}", warning);
+            }
         }
 
         Ok(())

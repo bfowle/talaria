@@ -41,6 +41,9 @@ pub fn run(args: InfoArgs) -> anyhow::Result<()> {
     use talaria_utils::database::database_ref::parse_database_reference;
     use crate::cli::progress::create_spinner;
     use humansize::{format_size, BINARY};
+    use talaria_utils::display::output::format_number;
+    use colored::*;
+    use talaria_core::system::paths;
 
     // Check if we need bi-temporal info
     if args.sequence_date.is_some() || args.taxonomy_date.is_some() {
@@ -83,11 +86,74 @@ pub fn run(args: InfoArgs) -> anyhow::Result<()> {
         Some(&db_info.created_at.format("%Y-%m-%d %H:%M:%S").to_string()),
     );
 
-    // Storage section
-    let storage_items = vec![
-        ("Chunks", db_info.chunk_count.to_string()),
+    // Show additional details in detailed format
+    if matches!(args.format, OutputFormat::Detailed) {
+        // Load and show manifest details
+        if let Ok(manifest) = manager.get_manifest(&db_info.name) {
+            // Note: upstream_version field may not exist in TemporalManifest
+            // tree_item(false, "Upstream Version", manifest.upstream_version.as_ref().map(|s| s.as_str()));
+            tree_item(false, "ETag", Some(&manifest.etag));
+
+            // Show taxonomy and sequence roots if available
+            let seq_root = if manifest.sequence_root.0.iter().all(|&b| b == 0) {
+                "Not available (older format)".to_string()
+            } else {
+                format!("{:?}", manifest.sequence_root)
+            };
+            tree_item(false, "Sequence Root", Some(&seq_root));
+
+            let tax_root = if manifest.taxonomy_root.0.iter().all(|&b| b == 0) {
+                "Not available (older format)".to_string()
+            } else {
+                format!("{:?}", manifest.taxonomy_root)
+            };
+            tree_item(false, "Taxonomy Root", Some(&tax_root));
+        }
+    }
+
+    // Storage section - expand in detailed mode
+    let mut storage_items = vec![
+        ("Chunks", format_number(db_info.chunk_count)),
         ("Size", format_size(db_info.total_size, BINARY)),
     ];
+
+    if matches!(args.format, OutputFormat::Detailed) {
+        // Add more storage details
+        if let Ok(manifest) = manager.get_manifest(&db_info.name) {
+            let total_sequences: usize = manifest.chunk_index.iter().map(|c| c.sequence_count).sum();
+            storage_items.push(("Total Sequences", format_number(total_sequences)));
+
+            // Show chunk distribution
+            let min_chunk_size = manifest.chunk_index.iter().map(|c| c.size).min().unwrap_or(0);
+            let max_chunk_size = manifest.chunk_index.iter().map(|c| c.size).max().unwrap_or(0);
+            let avg_chunk_size = if !manifest.chunk_index.is_empty() {
+                db_info.total_size / manifest.chunk_index.len()
+            } else {
+                0
+            };
+
+            storage_items.push(("Avg Chunk Size", format_size(avg_chunk_size, BINARY)));
+            storage_items.push(("Min Chunk Size", format_size(min_chunk_size, BINARY)));
+            storage_items.push(("Max Chunk Size", format_size(max_chunk_size, BINARY)));
+        }
+
+        // Show storage paths
+        // Parse the database name to get source and dataset
+        let parts: Vec<&str> = db_info.name.split('/').collect();
+        let (source, dataset) = if parts.len() == 2 {
+            (parts[0], parts[1])
+        } else {
+            (&db_info.name[..], "")
+        };
+
+        let db_path = paths::talaria_databases_dir()
+            .join("versions")
+            .join(source)
+            .join(dataset)
+            .join(&db_info.version);
+        storage_items.push(("Path", db_path.display().to_string()));
+    }
+
     tree_section("Storage", storage_items, false);
 
     // Reductions section
@@ -168,6 +234,13 @@ pub fn run(args: InfoArgs) -> anyhow::Result<()> {
         ("Cryptographic verification", "SHA256".to_string()),
     ];
     tree_section("Storage Benefits", benefits_items, true);
+
+    println!();
+
+    // Add hint for detailed view
+    if !matches!(args.format, OutputFormat::Detailed) {
+        println!("{}", "Tip: Use --format detailed for more information".dimmed());
+    }
 
     Ok(())
 }

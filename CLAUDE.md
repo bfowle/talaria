@@ -4,11 +4,82 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Important Guidelines
 
+### CRITICAL: Search Before Adding
+**BEFORE adding ANY new functionality:**
+1. ALWAYS search for existing implementations first using Grep/Glob
+2. Check if the functionality already exists and just needs fixing
+3. Look for similar patterns in the codebase to understand conventions
+4. DO NOT add new methods/functions without verifying they don't already exist
+5. DO NOT hallucinate method names or assume functionality exists without checking
+
+**This prevents:**
+- Code bloat from duplicate functionality
+- Compilation errors from non-existent methods
+- Diverging from established patterns
+- Creating unnecessary complexity
+
 ### Simplicity First
 - DO NOT over-complicate solutions with backwards compatibility unless EXPLICITLY requested
 - Prefer simple, clean solutions over complex ones
 - Remove old code paths rather than maintaining multiple versions
 - When in doubt, choose the simpler approach
+
+## Commit Message Guidelines
+
+This project follows the [Conventional Commits](https://www.conventionalcommits.org/) specification for commit messages. This provides a standardized format that enables automated tooling and clear communication of changes.
+
+### Format
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+### Types
+- `feat`: A new feature
+- `fix`: A bug fix
+- `docs`: Documentation only changes
+- `style`: Changes that do not affect the meaning of the code (white-space, formatting, etc)
+- `refactor`: A code change that neither fixes a bug nor adds a feature
+- `perf`: A code change that improves performance
+- `test`: Adding missing tests or correcting existing tests
+- `build`: Changes that affect the build system or external dependencies (cargo, etc)
+- `ci`: Changes to CI configuration files and scripts
+- `chore`: Other changes that don't modify src or test files
+- `revert`: Reverts a previous commit
+
+### Breaking Changes
+- Add `!` after the type/scope to indicate a breaking change: `refactor!: drop support for Rust 1.60`
+- Alternatively, include `BREAKING CHANGE:` in the footer
+
+### Examples
+```
+feat: add SEQUOIA bitemporal storage system
+
+feat(reducer): implement parallel sequence processing
+
+fix: correct delta encoding for edge case sequences
+
+docs: update README with new configuration options
+
+refactor!: restructure module hierarchy for better separation
+
+BREAKING CHANGE: Public API for DatabaseManager has changed
+
+chore: update dependencies to latest versions
+
+test: add integration tests for taxonomy queries
+```
+
+### Guidelines
+- Use the imperative mood ("add" not "adds" or "added")
+- Don't capitalize the first letter after the colon
+- No period at the end of the subject line
+- Keep the subject line under 72 characters
+- Reference issues and PRs in the footer when applicable
+- Be specific and descriptive about what changed and why
 
 ## Environment Variables
 
@@ -306,15 +377,119 @@ Tests run automatically on:
 - Can be run locally with `cargo test` before pushing
 
 ### Coverage
+
 While not aiming for 100% coverage, ensure:
 - All public APIs have basic tests
 - Critical algorithms have thorough tests
 - Error paths are tested
 - Integration points are covered
 
-Check coverage locally:
+#### Coverage Tool: cargo-llvm-cov
+
+We use `cargo-llvm-cov` for coverage analysis as it's faster and more reliable than alternatives.
+
+#### Quick Start
 ```bash
-cargo install cargo-tarpaulin
-cargo tarpaulin --out html
-open tarpaulin-report.html
+# Install coverage tool (one-time setup)
+cargo install cargo-llvm-cov
+rustup component add llvm-tools-preview
+
+# Run coverage for entire workspace
+./scripts/coverage.sh
+
+# Generate HTML report
+./scripts/coverage.sh --html
+
+# Generate and open HTML report
+./scripts/coverage.sh --html --open
+```
+
+#### Per-Crate Coverage
+```bash
+# Coverage for specific crates
+./scripts/coverage.sh talaria-sequoia
+./scripts/coverage.sh talaria-core
+./scripts/coverage.sh talaria-bio
+./scripts/coverage.sh talaria-utils
+./scripts/coverage.sh talaria-storage
+./scripts/coverage.sh talaria-tools
+./scripts/coverage.sh talaria-cli
+./scripts/coverage.sh talaria-test
+
+# Generate HTML for specific crate
+./scripts/coverage.sh talaria-sequoia --html --open
+```
+
+#### Advanced Usage
+```bash
+# Show uncovered lines
+./scripts/coverage.sh --show-missing
+
+# Clean previous coverage data
+./scripts/coverage.sh --clean
+
+# Generate LCOV report (for CI/CD)
+./scripts/coverage.sh --lcov
+
+# Generate JSON report
+./scripts/coverage.sh --json
+
+# Coverage for library code only (exclude tests)
+cargo llvm-cov --lib
+
+# Coverage for specific test
+cargo llvm-cov --test download_manager_integration
+
+# Coverage with specific features
+cargo llvm-cov --features "feature1,feature2"
+```
+
+#### Coverage Reports
+
+- **Terminal**: Default output shows coverage percentages
+- **HTML**: Interactive report at `target/llvm-cov/html/index.html`
+- **LCOV**: Machine-readable at `target/coverage.lcov`
+- **JSON**: Detailed data at `target/coverage.json`
+
+#### Coverage Guidelines
+
+**Target Coverage by Component:**
+- Core algorithms (reduction, chunking): >80%
+- Public APIs: >70%
+- Database operations: >75%
+- CLI commands: >60%
+- Error handling: >70%
+- Utility functions: >50%
+
+**Excluding from Coverage:**
+- Generated code
+- Debug/display implementations
+- Simple getters/setters
+- Third-party trait implementations
+
+#### CI Integration
+
+Coverage reports are automatically generated in CI and can be viewed:
+- In pull request comments (if configured)
+- As build artifacts
+- On coverage tracking services (codecov.io, coveralls.io)
+
+#### Interpreting Coverage
+
+- **Line Coverage**: Percentage of code lines executed
+- **Branch Coverage**: Percentage of conditional branches tested
+- **Function Coverage**: Percentage of functions called
+
+Focus on increasing coverage for:
+1. Complex business logic
+2. Error conditions
+3. Edge cases
+4. Public API boundaries
+
+#### Quick Commands Reference
+```bash
+# Most common commands
+./scripts/coverage.sh --html --open  # View coverage in browser
+./scripts/coverage.sh --show-missing # Find untested code
+./scripts/coverage.sh talaria-core   # Test specific crate
 ```

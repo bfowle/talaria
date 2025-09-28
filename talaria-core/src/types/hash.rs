@@ -4,6 +4,7 @@ use std::fmt;
 
 /// SHA256 hash type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct SHA256Hash(#[serde(with = "serde_bytes")] pub [u8; 32]);
 
 impl SHA256Hash {
@@ -66,11 +67,6 @@ impl fmt::Display for SHA256Hash {
     }
 }
 
-impl Default for SHA256Hash {
-    fn default() -> Self {
-        Self([0u8; 32])
-    }
-}
 
 impl AsRef<[u8]> for SHA256Hash {
     fn as_ref(&self) -> &[u8] {

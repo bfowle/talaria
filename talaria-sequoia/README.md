@@ -16,6 +16,53 @@ SEQUOIA (Sequence Query Optimization with Indexed Architecture) is the core stor
 - **Cross-Database Deduplication**: Canonical sequences shared across databases
 - **Retroactive Analysis**: Query historical states and track evolution
 
+## Download Management
+
+### Resume Capability
+
+SEQUOIA includes robust download management with automatic resume capability:
+
+- **Automatic Discovery**: Finds existing downloads for the same database source
+- **State Persistence**: Preserves download progress across interruptions
+- **Workspace Isolation**: Each download gets a unique workspace preventing collisions
+- **Multi-Stage Resume**: Can resume at any stage (download, decompress, process)
+- **Smart Selection**: Automatically chooses the most recent workspace when multiple exist
+
+### Workspace Structure
+
+Downloads are managed in isolated workspaces:
+
+```
+${TALARIA_DATA_DIR}/downloads/{database}_{version}_{session}/
+├── state.json          # Persistent state for resume
+├── *.fasta.gz         # Compressed download
+├── *.fasta            # Decompressed file
+├── chunks/            # Processing artifacts
+└── .lock             # Process lock file
+```
+
+### Resume Example
+
+```bash
+# Start a large download
+talaria database download uniprot/uniref50
+
+# If interrupted, resume from where it left off
+talaria database download uniprot/uniref50 --resume
+
+# Messages show resume status:
+# ✓ Found existing download at: ~/.talaria/downloads/uniprot_uniref50_...
+# ├─ Found download from 2 hours ago
+# └─ Download was 42% complete (5.77 GB of 13.72 GB)
+# ▶ Resuming download from byte position 5.77 GB...
+```
+
+### Environment Variables for Downloads
+
+- `TALARIA_PRESERVE_DOWNLOADS`: Keep download workspace after successful processing
+- `TALARIA_PRESERVE_ON_FAILURE`: Keep workspace on errors for debugging
+- `TALARIA_PRESERVE_ALWAYS`: Never clean up workspaces
+
 ## Architecture
 
 ### Core Components
@@ -72,9 +119,12 @@ talaria-sequoia/
 │   ├── database/                       # Database management
 │   │   ├── manager.rs                  # Database manager
 │   │   └── diff.rs                     # Database diffing
-│   ├── download/                       # Download handlers
+│   ├── download/                       # Download handlers with resume support
+│   │   ├── manager.rs                  # Download state machine manager
+│   │   ├── workspace.rs                # Workspace isolation & locking
 │   │   ├── ncbi.rs                     # NCBI database downloads
 │   │   ├── uniprot.rs                  # UniProt database downloads
+│   │   ├── resumable_downloader.rs     # Resumable download implementation
 │   │   └── progress.rs                 # Download progress tracking
 │   ├── processing/                     # Processing pipeline
 │   │   ├── pipeline.rs                 # Processing pipeline implementation
@@ -288,6 +338,113 @@ let result = validator.validate(
 )?;
 ```
 
+## Download Management
+
+### Resumable Downloads with Workspace Isolation
+
+SEQUOIA implements a robust download system with automatic resume capability and workspace isolation for concurrent operations:
+
+#### Features
+
+- **State Machine Architecture**: Downloads progress through well-defined stages with checkpoint recovery
+- **Workspace Isolation**: Each download gets a unique workspace preventing conflicts
+- **Automatic Resume**: Interrupted downloads resume from the last successful stage
+- **Lock-Based Concurrency**: File-based locks prevent concurrent access to same download
+- **Selective Cleanup**: Failed downloads preserve critical files for retry
+
+#### Download State Machine
+
+Downloads progress through these stages:
+
+1. **Initializing** → Setting up workspace
+2. **Downloading** → Fetching database with byte-level resume
+3. **Verifying** → Checksum verification (optional)
+4. **Decompressing** → Extracting compressed files
+5. **Processing** → Converting to SEQUOIA chunks
+6. **Finalizing** → Moving to final location
+7. **Complete** → Successfully finished
+
+Each stage transition creates a checkpoint for recovery.
+
+#### Workspace Structure
+
+```
+.talaria/downloads/
+├── uniprot_swissprot_20240326_a1b2c3d4/
+│   ├── state.json           # Download state machine
+│   ├── .lock                # Process lock file
+│   ├── uniprot_sprot.fasta.gz.tmp  # Partial download
+│   ├── uniprot_sprot.fasta  # Decompressed file
+│   └── chunks/              # Processing directory
+```
+
+Each workspace is named: `{database}_{version}_{session_id}`
+
+#### Resume Capabilities
+
+```rust
+use talaria_sequoia::download::{DownloadManager, DownloadOptions};
+
+let mut manager = DownloadManager::new()?;
+
+let options = DownloadOptions {
+    resume: true,              // Enable resume (default)
+    preserve_on_failure: true, // Keep files on failure
+    skip_verify: false,        // Verify checksums
+    force: false,              // Don't force re-download
+    preserve_always: false,    // Clean on success
+};
+
+// Download with automatic resume on failure
+let path = manager.download_with_state(
+    source,
+    options,
+    &mut progress
+).await?;
+```
+
+#### Recovery Commands
+
+List resumable downloads:
+```bash
+talaria database list-resumable
+```
+
+Resume specific download:
+```bash
+talaria database resume <download_id>
+```
+
+Clean old download workspaces:
+```bash
+talaria database clean-downloads --max-age-hours 168
+```
+
+#### Environment Variables
+
+Control download behavior with environment variables:
+
+```bash
+# Preserve files on failure for debugging
+TALARIA_PRESERVE_ON_FAILURE=1
+
+# Always preserve workspace (debugging)
+TALARIA_PRESERVE_ALWAYS=1
+
+# Keep downloaded files after processing
+TALARIA_PRESERVE_DOWNLOADS=1
+```
+
+#### Error Recovery
+
+The download manager handles various failure scenarios:
+
+- **Network Interruption**: Resume from last downloaded byte
+- **Disk Full**: Preserve compressed file for retry after space is freed
+- **Processing Failure**: Keep decompressed file to avoid re-download
+- **Corrupted State**: Start fresh if state file is unreadable
+- **Stale Locks**: Automatic cleanup of locks from dead processes
+
 ## Operations
 
 ### Database Reduction
@@ -350,6 +507,51 @@ for change in diff.changes {
         ChangeType::Reclassified => // Taxonomy changes
     }
 }
+```
+
+### Database Comparison
+
+Comprehensive comparison between databases:
+
+```rust
+use talaria_sequoia::operations::DatabaseDiffer;
+
+// Compare two databases
+let differ = DatabaseDiffer::new(path_a, path_b)?;
+let comparison = differ.compare()?;
+
+// Chunk-level analysis
+println!("Total chunks in A: {}", comparison.chunk_analysis.total_chunks_a);
+println!("Total chunks in B: {}", comparison.chunk_analysis.total_chunks_b);
+println!("Shared chunks: {} ({:.1}% / {:.1}%)",
+    comparison.chunk_analysis.shared_chunks.len(),
+    comparison.chunk_analysis.shared_percentage_a,
+    comparison.chunk_analysis.shared_percentage_b);
+
+// Sequence-level analysis
+println!("Total sequences in A: {}", comparison.sequence_analysis.total_sequences_a);
+println!("Total sequences in B: {}", comparison.sequence_analysis.total_sequences_b);
+println!("Shared sequences: {}", comparison.sequence_analysis.shared_sequences);
+
+// Taxonomy distribution
+println!("Taxa in A: {}", comparison.taxonomy_analysis.total_taxa_a);
+println!("Taxa in B: {}", comparison.taxonomy_analysis.total_taxa_b);
+println!("Shared taxa: {}", comparison.taxonomy_analysis.shared_taxa.len());
+
+// Top shared taxa
+for taxon in &comparison.taxonomy_analysis.top_shared_taxa {
+    println!("{} ({}): {} / {} sequences",
+        taxon.taxon_name,
+        taxon.taxon_id.0,
+        taxon.count_in_a,
+        taxon.count_in_b);
+}
+
+// Storage metrics
+println!("Size A: {}", format_bytes(comparison.storage_metrics.size_a_bytes));
+println!("Size B: {}", format_bytes(comparison.storage_metrics.size_b_bytes));
+println!("Deduplication savings: {}",
+    format_bytes(comparison.storage_metrics.dedup_savings_bytes));
 ```
 
 ## Taxonomy Management
@@ -676,6 +878,34 @@ Typical performance on modern hardware:
 3. **Storage Space**: Enable compression and deduplication
 4. **Network Latency**: Use local cache for cloud backends
 5. **Corruption**: Run verification to detect and repair
+
+### Download Issues
+
+6. **Download Interrupted**:
+   - Run `talaria database list-resumable` to see interrupted downloads
+   - Use `talaria database resume <id>` to continue from last checkpoint
+   - Set `TALARIA_PRESERVE_ON_FAILURE=1` to keep files for debugging
+
+7. **Download Already in Progress**:
+   - Check for stale locks: `ls ~/.talaria/downloads/*/. lock`
+   - If process is dead, remove lock file and retry
+   - Use `talaria database clean-downloads` to clean stale workspaces
+
+8. **Disk Full During Download**:
+   - Free disk space
+   - Resume download with `talaria database resume <id>`
+   - Compressed file is preserved, won't re-download
+
+9. **Checksum Verification Failed**:
+   - Download will be marked for retry
+   - Check network stability
+   - Use `--skip-verify` flag if checksums unavailable
+
+10. **Processing Failed After Download**:
+    - Downloaded file is preserved in workspace
+    - Fix the issue (e.g., memory, disk space)
+    - Resume with `talaria database resume <id>`
+    - No re-download needed
 
 ### Debug Output
 

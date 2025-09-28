@@ -227,19 +227,19 @@ fn get_all_local_databases(
     use std::fs;
     use talaria_core::system::paths;
 
-    let db_dir = paths::talaria_databases_dir();
+    let versions_dir = paths::talaria_databases_dir().join("versions");
     let mut databases = Vec::new();
 
-    // Scan for databases
-    if db_dir.exists() {
-        for source_entry in fs::read_dir(&db_dir)? {
+    // Scan for databases in the versions directory
+    if versions_dir.exists() {
+        for source_entry in fs::read_dir(&versions_dir)? {
             let source_entry = source_entry?;
             if source_entry.file_type()?.is_dir() {
                 let source_name = source_entry.file_name();
                 let source_str = source_name.to_string_lossy();
 
                 // Skip special directories
-                if source_str.starts_with('.') || source_str == "exports" {
+                if source_str.starts_with('.') {
                     continue;
                 }
 
@@ -249,7 +249,18 @@ fn get_all_local_databases(
                         let dataset_name = dataset_entry.file_name();
                         let dataset_str = dataset_name.to_string_lossy();
 
-                        databases.push(format!("{}/{}", source_str, dataset_str));
+                        // Check if there's at least one version directory
+                        let has_version = fs::read_dir(dataset_entry.path())?
+                            .any(|e| {
+                                e.ok()
+                                    .and_then(|e| e.file_type().ok())
+                                    .map(|ft| ft.is_dir())
+                                    .unwrap_or(false)
+                            });
+
+                        if has_version {
+                            databases.push(format!("{}/{}", source_str, dataset_str));
+                        }
                     }
                 }
             }

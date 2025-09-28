@@ -44,7 +44,7 @@ impl UniProtClient {
                 .unwrap(),
         );
         pb.set_message(format!("  Downloading sequences for TaxID {}", taxid));
-        pb.enable_steady_tick(std::time::Duration::from_millis(100));
+        // Don't use steady_tick - causes ETA miscalculation
 
         // Make request
         let response = self
@@ -130,7 +130,7 @@ impl UniProtClient {
                 .unwrap(),
         );
         pb.set_message(format!("Downloading reference proteome for {}", organism));
-        pb.enable_steady_tick(std::time::Duration::from_millis(100));
+        // Don't use steady_tick - causes ETA miscalculation
 
         let response = self
             .client
@@ -167,7 +167,7 @@ impl UniProtClient {
                 .unwrap(),
         );
         pb.set_message(format!("Downloading proteome {}", proteome_id));
-        pb.enable_steady_tick(std::time::Duration::from_millis(100));
+        // Don't use steady_tick - causes ETA miscalculation
 
         let response = self
             .client

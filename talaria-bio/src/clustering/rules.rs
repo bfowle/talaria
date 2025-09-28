@@ -241,6 +241,12 @@ pub struct TaxonGroupingRules {
     rules: HashMap<u32, GroupingStrategy>,
 }
 
+impl Default for TaxonGroupingRules {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TaxonGroupingRules {
     pub fn new() -> Self {
         Self {

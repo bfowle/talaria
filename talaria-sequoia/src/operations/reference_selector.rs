@@ -935,15 +935,15 @@ impl ReferenceSelectorImpl {
 
         // If we have a manifest-based accession2taxid file, use it
         if let Some(ref acc2taxid_path) = self.manifest_acc2taxid {
-            // Also need the taxdump directory
+            // Also need the tree directory (contains nodes.dmp, names.dmp, etc.)
             let taxonomy_dir = talaria_core::system::paths::talaria_taxonomy_current_dir();
-            let taxdump_dir = taxonomy_dir.join("taxdump");
+            let tree_dir = taxonomy_dir.join("tree");
 
-            if taxdump_dir.exists() {
-                aligner = aligner.with_taxonomy(Some(acc2taxid_path.clone()), Some(taxdump_dir));
+            if tree_dir.exists() {
+                aligner = aligner.with_taxonomy(Some(acc2taxid_path.clone()), Some(tree_dir));
                 success("Using manifest-based taxonomy mapping");
             } else {
-                warning("taxdump directory not found, taxonomy features disabled");
+                warning("tree directory not found, taxonomy features disabled");
             }
         }
 
@@ -1285,6 +1285,10 @@ impl ReferenceSelectorImpl {
         let seq_lengths: HashMap<String, usize> =
             sequences.iter().map(|s| (s.id.clone(), s.len())).collect();
 
+        // Create sequence lookup map for O(1) access instead of O(n) find()
+        let sequence_map: HashMap<String, &Sequence> =
+            sequences.iter().map(|s| (s.id.clone(), s)).collect();
+
         // Sort queries by number of hits (process most connected first)
         let mut sorted_queries: Vec<_> = query_alignments
             .iter()
@@ -1337,8 +1341,10 @@ impl ReferenceSelectorImpl {
                 // Select the best subject as reference
                 if let Some((ref_id, _)) = best_subject {
                     if !discarded.contains(&ref_id) {
-                        references.push(sequences.iter().find(|s| s.id == ref_id).unwrap().clone());
-                        discarded.insert(ref_id.clone());
+                        if let Some(seq) = sequence_map.get(&ref_id) {
+                            references.push((*seq).clone());
+                            discarded.insert(ref_id.clone());
+                        }
 
                         // Mark all well-aligned sequences as children
                         let mut ref_children = Vec::new();
@@ -1372,28 +1378,20 @@ impl ReferenceSelectorImpl {
 
                     if !has_any_decent_alignment {
                         // Truly isolated sequence, becomes its own reference
-                        references.push(
-                            sequences
-                                .iter()
-                                .find(|s| &s.id == query_id)
-                                .unwrap()
-                                .clone(),
-                        );
-                        discarded.insert(query_id.clone());
+                        if let Some(seq) = sequence_map.get(query_id) {
+                            references.push((*seq).clone());
+                            discarded.insert(query_id.clone());
+                        }
                     }
                     // Otherwise, leave it uncovered for now
                 }
             } else if !discarded.contains(query_id) {
                 // Query has no alignments at all - truly isolated
                 // This is rare but valid - becomes its own reference
-                references.push(
-                    sequences
-                        .iter()
-                        .find(|s| &s.id == query_id)
-                        .unwrap()
-                        .clone(),
-                );
-                discarded.insert(query_id.clone());
+                if let Some(seq) = sequence_map.get(query_id) {
+                    references.push((*seq).clone());
+                    discarded.insert(query_id.clone());
+                }
             }
 
             // Report progress

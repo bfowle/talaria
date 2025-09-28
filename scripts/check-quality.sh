@@ -65,6 +65,19 @@ run_check "Build Check" \
 run_check "Test Suite" \
     "cargo test"
 
+# Coverage check (optional - can be slow)
+if [ "${INCLUDE_COVERAGE:-false}" = "true" ]; then
+    run_check "Code Coverage Report" \
+        "./scripts/coverage.sh"
+else
+    echo ""
+    echo "───────────────────────────────────────────────────"
+    echo "▶ Skipping coverage (set INCLUDE_COVERAGE=true to enable)"
+    echo "  Run: INCLUDE_COVERAGE=true $0"
+    echo "  Or:  ./scripts/coverage.sh --html --open"
+    echo "───────────────────────────────────────────────────"
+fi
+
 # Summary
 echo ""
 echo "═══════════════════════════════════════════════════"
