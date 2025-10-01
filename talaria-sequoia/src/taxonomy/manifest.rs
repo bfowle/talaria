@@ -304,7 +304,6 @@ impl TaxonomyDiff {
     }
 }
 
-
 // SHA256Hash methods are already implemented in crate::types
 
 #[cfg(test)]

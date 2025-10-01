@@ -1,12 +1,12 @@
+use anyhow::Result;
 /// Unified progress tracking system for download and processing operations
 ///
 /// This module provides a clean, non-overlapping progress display that shows
 /// meaningful information at each stage of the operation.
-
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle, ProgressDrawTarget};
-use std::sync::{Arc, Mutex};
+use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
+use parking_lot::Mutex;
+use std::sync::Arc;
 use std::time::Duration;
-use anyhow::Result;
 
 /// Different stages of a download and processing operation
 #[derive(Debug, Clone, PartialEq)]
@@ -14,7 +14,10 @@ pub enum OperationStage {
     /// Discovering existing downloads
     Discovery,
     /// Downloading the file
-    Download { bytes_current: u64, bytes_total: u64 },
+    Download {
+        bytes_current: u64,
+        bytes_total: u64,
+    },
     /// Processing/chunking sequences
     Processing {
         sequences_processed: usize,
@@ -51,7 +54,7 @@ impl UnifiedProgressTracker {
     /// Create a new progress tracker
     pub fn new(operation_name: &str, silent: bool) -> Self {
         if silent {
-            // Create dummy bars that don't display
+            // Create hidden progress bars for silent mode (no visual output)
             let multi = MultiProgress::with_draw_target(ProgressDrawTarget::hidden());
             let main_bar = ProgressBar::hidden();
 
@@ -73,7 +76,7 @@ impl UnifiedProgressTracker {
             ProgressStyle::default_bar()
                 .template("╭─ {msg}\n╰─ [{elapsed_precise}] [{bar:50.cyan/blue}] {pos}% ETA: {eta}")
                 .unwrap()
-                .progress_chars("█▓▒░ ")
+                .progress_chars("█▓▒░ "),
         );
         main_bar.set_message(format!("🔄 {}", operation_name));
 
@@ -96,13 +99,13 @@ impl UnifiedProgressTracker {
             return Ok(());
         }
 
-        let mut stage = self.stage.lock().unwrap();
+        let mut stage = self.stage.lock();
         *stage = new_stage.clone();
 
-        let main_bar = self.main_bar.lock().unwrap();
+        let main_bar = self.main_bar.lock();
 
         // Clear any existing detail bar
-        if let Some(bar) = self.detail_bar.lock().unwrap().take() {
+        if let Some(bar) = self.detail_bar.lock().take() {
             bar.finish_and_clear();
         }
 
@@ -112,7 +115,10 @@ impl UnifiedProgressTracker {
                 main_bar.set_position(5);
             }
 
-            OperationStage::Download { bytes_current, bytes_total } => {
+            OperationStage::Download {
+                bytes_current,
+                bytes_total,
+            } => {
                 let percent = if *bytes_total > 0 {
                     (*bytes_current as f64 / *bytes_total as f64 * 30.0) as u64 + 5
                 } else {
@@ -132,12 +138,16 @@ impl UnifiedProgressTracker {
 
                 let detail = self.multi.add(detail);
                 // Don't use steady_tick - causes ETA miscalculation
-                *self.detail_bar.lock().unwrap() = Some(detail);
+                *self.detail_bar.lock() = Some(detail);
 
                 main_bar.set_message("📥 Downloading database...");
             }
 
-            OperationStage::Processing { sequences_processed, sequences_total, batches_processed } => {
+            OperationStage::Processing {
+                sequences_processed,
+                sequences_total,
+                batches_processed,
+            } => {
                 let percent = if let Some(total) = sequences_total {
                     if *total > 0 {
                         (*sequences_processed as f64 / *total as f64 * 40.0) as u64 + 35
@@ -176,19 +186,23 @@ impl UnifiedProgressTracker {
 
                 let detail = self.multi.add(detail);
                 // Don't use steady_tick - causes ETA miscalculation
-                *self.detail_bar.lock().unwrap() = Some(detail);
+                *self.detail_bar.lock() = Some(detail);
 
                 main_bar.set_message("🧬 Processing sequences...");
             }
 
-            OperationStage::Storing { sequences_stored, sequences_new, sequences_dedup } => {
+            OperationStage::Storing {
+                sequences_stored,
+                sequences_new,
+                sequences_dedup,
+            } => {
                 main_bar.set_position(80);
 
                 let detail = ProgressBar::new_spinner();
                 detail.set_style(
                     ProgressStyle::default_spinner()
                         .template("     💾 Storing: {spinner:.cyan} {msg}")
-                        .unwrap()
+                        .unwrap(),
                 );
                 detail.set_message(format!(
                     "{} total ({} new, {} deduplicated)",
@@ -199,7 +213,7 @@ impl UnifiedProgressTracker {
 
                 let detail = self.multi.add(detail);
                 // Don't use steady_tick - causes ETA miscalculation
-                *self.detail_bar.lock().unwrap() = Some(detail);
+                *self.detail_bar.lock() = Some(detail);
 
                 main_bar.set_message("💾 Storing canonical sequences...");
             }
@@ -226,7 +240,7 @@ impl UnifiedProgressTracker {
                     format_duration(*total_time)
                 ));
 
-                if let Some(bar) = self.detail_bar.lock().unwrap().take() {
+                if let Some(bar) = self.detail_bar.lock().take() {
                     bar.finish_and_clear();
                 }
             }
@@ -241,9 +255,12 @@ impl UnifiedProgressTracker {
             return Ok(());
         }
 
-        self.set_stage(OperationStage::Download { bytes_current, bytes_total })?;
+        self.set_stage(OperationStage::Download {
+            bytes_current,
+            bytes_total,
+        })?;
 
-        if let Some(ref bar) = *self.detail_bar.lock().unwrap() {
+        if let Some(ref bar) = *self.detail_bar.lock() {
             bar.set_position(bytes_current);
 
             // Add helpful context
@@ -261,7 +278,7 @@ impl UnifiedProgressTracker {
         &self,
         sequences_processed: usize,
         sequences_total: Option<usize>,
-        batches_processed: usize
+        batches_processed: usize,
     ) -> Result<()> {
         if self.silent {
             return Ok(());
@@ -321,10 +338,10 @@ impl UnifiedProgressTracker {
             return;
         }
 
-        let main_bar = self.main_bar.lock().unwrap();
+        let main_bar = self.main_bar.lock();
         main_bar.abandon_with_message(format!("❌ Error: {}", err));
 
-        if let Some(bar) = self.detail_bar.lock().unwrap().take() {
+        if let Some(bar) = self.detail_bar.lock().take() {
             bar.abandon();
         }
     }
@@ -333,13 +350,15 @@ impl UnifiedProgressTracker {
 impl Drop for UnifiedProgressTracker {
     fn drop(&mut self) {
         // Clean up any remaining bars
-        if let Ok(main_bar) = self.main_bar.lock() {
+        {
+            let main_bar = self.main_bar.lock();
             if !main_bar.is_finished() {
                 main_bar.abandon();
             }
         }
 
-        if let Ok(detail_opt) = self.detail_bar.lock() {
+        {
+            let detail_opt = self.detail_bar.lock();
             if let Some(ref bar) = *detail_opt {
                 if !bar.is_finished() {
                     bar.abandon();
@@ -378,16 +397,20 @@ mod tests {
 
         // Test stage transitions
         assert!(tracker.set_stage(OperationStage::Discovery).is_ok());
-        assert!(tracker.set_stage(OperationStage::Download {
-            bytes_current: 100,
-            bytes_total: 1000
-        }).is_ok());
+        assert!(tracker
+            .set_stage(OperationStage::Download {
+                bytes_current: 100,
+                bytes_total: 1000
+            })
+            .is_ok());
         assert!(tracker.update_download(500, 1000).is_ok());
-        assert!(tracker.set_stage(OperationStage::Processing {
-            sequences_processed: 50,
-            sequences_total: Some(100),
-            batches_processed: 1,
-        }).is_ok());
+        assert!(tracker
+            .set_stage(OperationStage::Processing {
+                sequences_processed: 50,
+                sequences_total: Some(100),
+                batches_processed: 1,
+            })
+            .is_ok());
         assert!(tracker.complete().is_ok());
     }
 

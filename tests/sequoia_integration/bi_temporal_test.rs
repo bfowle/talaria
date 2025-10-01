@@ -2,7 +2,7 @@ use tempfile::TempDir;
 use chrono::Utc;
 use std::sync::Arc;
 use talaria_sequoia::{
-    SEQUOIAStorage,
+    SequoiaStorage,
     bi_temporal::BiTemporalDatabase,
     temporal::TemporalIndex,
     types::{ChunkMetadata, SHA256Hash, TaxonId},
@@ -12,7 +12,7 @@ use anyhow::Result;
 #[test]
 fn test_bi_temporal_basic_query() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let storage = Arc::new(SEQUOIAStorage::new(temp_dir.path())?);
+    let storage = Arc::new(SequoiaStorage::new(temp_dir.path())?);
     
     // Create bi-temporal database
     let mut db = BiTemporalDatabase::new(storage)?;
@@ -30,7 +30,7 @@ fn test_bi_temporal_basic_query() -> Result<()> {
 #[test]
 fn test_bi_temporal_different_times() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let storage = Arc::new(SEQUOIAStorage::new(temp_dir.path())?);
+    let storage = Arc::new(SequoiaStorage::new(temp_dir.path())?);
     
     // Create bi-temporal database
     let mut db = BiTemporalDatabase::new(storage.clone())?;
@@ -60,7 +60,7 @@ fn test_bi_temporal_different_times() -> Result<()> {
 #[test]
 fn test_bi_temporal_diff() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let storage = Arc::new(SEQUOIAStorage::new(temp_dir.path())?);
+    let storage = Arc::new(SequoiaStorage::new(temp_dir.path())?);
     
     let mut db = BiTemporalDatabase::new(storage)?;
     
@@ -98,7 +98,7 @@ fn test_bi_temporal_diff() -> Result<()> {
 #[test]
 fn test_available_coordinates() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let storage = Arc::new(SEQUOIAStorage::new(temp_dir.path())?);
+    let storage = Arc::new(SequoiaStorage::new(temp_dir.path())?);
     
     let db = BiTemporalDatabase::new(storage)?;
     

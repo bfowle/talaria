@@ -1,15 +1,15 @@
-/// Main reduction pipeline
-use talaria_bio::sequence::Sequence;
-use crate::TargetAligner;
-use talaria_core::Config;
-use talaria_bio::compression::delta::{DeltaEncoder, DeltaRecord};
 use super::reference_selector::{ReferenceSelectorImpl, SelectionAlgorithm};
-use talaria_utils::workspace::TempWorkspace;
+use crate::TargetAligner;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use tracing::{info as log_info};
+use std::sync::{Arc, Mutex as StdMutex};
+use talaria_bio::compression::delta::{DeltaEncoder, DeltaRecord};
+/// Main reduction pipeline
+use talaria_bio::sequence::Sequence;
+use talaria_core::Config;
+use talaria_utils::workspace::TempWorkspace;
+use tracing::info as log_info;
 
 // Simple output utilities
 fn action(msg: &str) {
@@ -64,7 +64,7 @@ pub struct Reducer {
     batch_enabled: bool,
     batch_size: usize,
     pub selection_algorithm: SelectionAlgorithm,
-    workspace: Option<Arc<Mutex<TempWorkspace>>>,
+    workspace: Option<Arc<StdMutex<TempWorkspace>>>,
 }
 
 impl Reducer {
@@ -142,7 +142,7 @@ impl Reducer {
         self
     }
 
-    pub fn with_workspace(mut self, workspace: Arc<Mutex<TempWorkspace>>) -> Self {
+    pub fn with_workspace(mut self, workspace: Arc<StdMutex<TempWorkspace>>) -> Self {
         self.workspace = Some(workspace);
         self
     }
@@ -222,26 +222,35 @@ impl Reducer {
             // Auto-detection mode - no ratio specified
             // LAMBDA is required for auto-detection
             let manager = talaria_tools::ToolManager::new().map_err(|e| {
-                talaria_core::error::TalariaError::Configuration(format!("Failed to initialize tool manager: {}", e))
+                talaria_core::error::TalariaError::Configuration(format!(
+                    "Failed to initialize tool manager: {}",
+                    e
+                ))
             })?;
 
             if !manager.is_installed(talaria_tools::Tool::Lambda) {
-                return Err(talaria_core::error::TalariaError::Configuration("LAMBDA aligner is required for auto-detection mode.\n\n\
+                return Err(talaria_core::error::TalariaError::Configuration(
+                    "LAMBDA aligner is required for auto-detection mode.\n\n\
                         To install LAMBDA:\n  \
                         talaria tools install lambda\n\n\
                         Or specify a fixed reduction ratio:\n  \
                         talaria reduce -i input.fasta -o output.fasta -r 0.3\n\n\
-                        For more information: https://github.com/seqan/lambda3".to_string()));
+                        For more information: https://github.com/seqan/lambda3"
+                        .to_string(),
+                ));
             }
 
             if !self.silent {
-                    info("Using LAMBDA aligner for intelligent auto-detection...");
+                info("Using LAMBDA aligner for intelligent auto-detection...");
             }
 
             selector
                 .select_references_with_lambda(sequences.clone())
                 .map_err(|e| {
-                    talaria_core::error::TalariaError::Other(format!("LAMBDA alignment failed: {}", e))
+                    talaria_core::error::TalariaError::Other(format!(
+                        "LAMBDA alignment failed: {}",
+                        e
+                    ))
                 })?
         } else if self.use_alignment {
             // Use full alignment-based selection
@@ -269,7 +278,7 @@ impl Reducer {
         let deltas = if self.no_deltas {
             // Skip delta encoding entirely
             if !self.silent {
-                    info("Skipping delta encoding (--no-deltas flag)");
+                info("Skipping delta encoding (--no-deltas flag)");
             }
             Vec::new()
         } else {
@@ -279,7 +288,7 @@ impl Reducer {
 
             // Print informative message about delta encoding
             if !self.silent && total_before_filter > 0 {
-                    section_header(&format!(
+                section_header(&format!(
                     "Delta Encoding ({} sequences)",
                     format_number(total_before_filter)
                 ));
@@ -329,7 +338,7 @@ impl Reducer {
             }
 
             if !self.silent && total_children > 0 {
-                    action(&format!(
+                action(&format!(
                     "Processing {} sequences for delta encoding...",
                     format_number(total_children)
                 ));

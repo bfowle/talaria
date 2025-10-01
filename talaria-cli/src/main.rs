@@ -10,7 +10,7 @@ use talaria_core::TalariaError;
 
 fn main() {
     // Initialize logging with TALARIA_LOG environment variable support
-    let log_level = std::env::var("TALARIA_LOG").unwrap_or_else(|_| "info".to_string());
+    let log_level = std::env::var("TALARIA_LOG").unwrap_or_else(|_| "warn".to_string());
 
     tracing_subscriber::fmt()
         .with_env_filter(

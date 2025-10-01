@@ -180,7 +180,8 @@ impl TaxonomyManifest {
         StatsChanges {
             taxa_added: self.stats.total_taxa.saturating_sub(other.total_taxa),
             taxa_removed: other.total_taxa.saturating_sub(self.stats.total_taxa),
-            species_changed: (self.stats.species_count as i64 - other.species_count as i64).unsigned_abs() as usize,
+            species_changed: (self.stats.species_count as i64 - other.species_count as i64)
+                .unsigned_abs() as usize,
             accessions_changed: match (self.stats.accession_count, other.accession_count) {
                 (Some(a), Some(b)) => Some((a as i64 - b as i64).unsigned_abs() as usize),
                 _ => None,
@@ -188,7 +189,6 @@ impl TaxonomyManifest {
         }
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct TaxonomyDiff {

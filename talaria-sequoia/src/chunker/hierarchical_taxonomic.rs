@@ -3,12 +3,9 @@
 /// This module implements hierarchical organization of chunks based on taxonomy,
 /// allowing efficient access patterns for taxonomic queries at different levels
 /// (species, genus, family, order, class, phylum, kingdom, domain)
-
 use crate::storage::sequence::SequenceStorage;
 use crate::taxonomy::TaxonomyManager;
-use crate::types::{
-    ChunkManifest, ChunkClassification, DatabaseSource, SHA256Hash, TaxonId,
-};
+use crate::types::{ChunkClassification, ChunkManifest, DatabaseSource, SHA256Hash, TaxonId};
 use anyhow::Result;
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
@@ -18,15 +15,15 @@ use talaria_utils::display::progress::{create_progress_bar, create_spinner};
 /// Hierarchical taxonomic levels used for chunking
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TaxonomicRank {
-    Domain,      // e.g., Bacteria, Archaea, Eukaryota
-    Kingdom,     // e.g., Animalia, Plantae, Fungi
-    Phylum,      // e.g., Chordata, Arthropoda
-    Class,       // e.g., Mammalia, Insecta
-    Order,       // e.g., Primates, Diptera
-    Family,      // e.g., Hominidae, Drosophilidae
-    Genus,       // e.g., Homo, Drosophila
-    Species,     // e.g., sapiens, melanogaster
-    Subspecies,  // e.g., subspecies or strain level
+    Domain,     // e.g., Bacteria, Archaea, Eukaryota
+    Kingdom,    // e.g., Animalia, Plantae, Fungi
+    Phylum,     // e.g., Chordata, Arthropoda
+    Class,      // e.g., Mammalia, Insecta
+    Order,      // e.g., Primates, Diptera
+    Family,     // e.g., Hominidae, Drosophilidae
+    Genus,      // e.g., Homo, Drosophila
+    Species,    // e.g., sapiens, melanogaster
+    Subspecies, // e.g., subspecies or strain level
 }
 
 impl TaxonomicRank {
@@ -63,15 +60,15 @@ impl TaxonomicRank {
     /// Get minimum chunk size for this rank
     pub fn min_chunk_size(&self) -> usize {
         match self {
-            Self::Domain => 100_000_000,  // 100MB for domain level
-            Self::Kingdom => 50_000_000,   // 50MB for kingdom
-            Self::Phylum => 20_000_000,    // 20MB for phylum
-            Self::Class => 10_000_000,     // 10MB for class
-            Self::Order => 5_000_000,      // 5MB for order
-            Self::Family => 2_000_000,     // 2MB for family
-            Self::Genus => 1_000_000,      // 1MB for genus
-            Self::Species => 500_000,      // 500KB for species
-            Self::Subspecies => 100_000,   // 100KB for subspecies
+            Self::Domain => 100_000_000, // 100MB for domain level
+            Self::Kingdom => 50_000_000, // 50MB for kingdom
+            Self::Phylum => 20_000_000,  // 20MB for phylum
+            Self::Class => 10_000_000,   // 10MB for class
+            Self::Order => 5_000_000,    // 5MB for order
+            Self::Family => 2_000_000,   // 2MB for family
+            Self::Genus => 1_000_000,    // 1MB for genus
+            Self::Species => 500_000,    // 500KB for species
+            Self::Subspecies => 100_000, // 100KB for subspecies
         }
     }
 
@@ -83,6 +80,22 @@ impl TaxonomicRank {
     /// Get maximum chunk size for this rank
     pub fn max_chunk_size(&self) -> usize {
         self.min_chunk_size() * 5
+    }
+
+    /// Create from string rank name
+    pub fn from_string(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "domain" => Self::Domain,
+            "kingdom" => Self::Kingdom,
+            "phylum" => Self::Phylum,
+            "class" => Self::Class,
+            "order" => Self::Order,
+            "family" => Self::Family,
+            "genus" => Self::Genus,
+            "species" => Self::Species,
+            "subspecies" | "strain" => Self::Subspecies,
+            _ => Self::Species, // Default to species if unknown
+        }
     }
 }
 
@@ -115,10 +128,8 @@ impl HierarchicalTaxonomicChunker {
         sequences: Vec<Sequence>,
     ) -> Result<Vec<ChunkManifest>> {
         // Step 1: Store sequences canonically
-        let storing_progress = create_progress_bar(
-            sequences.len() as u64,
-            "Storing canonical sequences",
-        );
+        let storing_progress =
+            create_progress_bar(sequences.len() as u64, "Storing canonical sequences");
 
         let mut sequence_records = Vec::new();
         let dedup_count = 0;
@@ -158,9 +169,7 @@ impl HierarchicalTaxonomicChunker {
                 // For simplicity, assume all are new
                 new_count += 1;
 
-                let taxon_id = seq.taxon_id
-                    .map(|t| TaxonId(t))
-                    .unwrap_or(TaxonId(0));
+                let taxon_id = seq.taxon_id.map(|t| TaxonId(t)).unwrap_or(TaxonId(0));
 
                 sequence_records.push((hash.clone(), taxon_id, seq.id.clone()));
             }
@@ -186,19 +195,14 @@ impl HierarchicalTaxonomicChunker {
         hierarchy_progress.finish_and_clear();
 
         // Step 3: Create hierarchical chunks
-        let chunking_progress = create_progress_bar(
-            hierarchy.len() as u64,
-            "Creating hierarchical chunks",
-        );
+        let chunking_progress =
+            create_progress_bar(hierarchy.len() as u64, "Creating hierarchical chunks");
 
         let mut manifests = Vec::new();
         for (rank, rank_groups) in hierarchy {
             for (parent_taxon, sequences_in_group) in rank_groups {
-                let rank_manifests = self.create_rank_manifests(
-                    rank,
-                    parent_taxon,
-                    sequences_in_group,
-                )?;
+                let rank_manifests =
+                    self.create_rank_manifests(rank, parent_taxon, sequences_in_group)?;
                 manifests.extend(rank_manifests);
             }
             chunking_progress.inc(1);
@@ -250,48 +254,24 @@ impl HierarchicalTaxonomicChunker {
     /// Get taxonomic lineage for a taxon ID
     fn get_taxonomic_lineage(&self, taxon_id: TaxonId) -> Result<Vec<(TaxonomicRank, TaxonId)>> {
         // If we have a taxonomy manager, use it
-        if let Some(_tax_mgr) = &self.taxonomy_manager {
-            // This would query the actual taxonomy tree
-            // For now, use mock data
-            return self.mock_taxonomic_lineage(taxon_id);
+        if let Some(tax_mgr) = &self.taxonomy_manager {
+            // Query the actual taxonomy tree from RocksDB
+            let nodes = tax_mgr.get_lineage(&taxon_id)?;
+
+            // Convert TaxonomyNode to (TaxonomicRank, TaxonId)
+            let lineage = nodes
+                .into_iter()
+                .map(|node| {
+                    let rank = TaxonomicRank::from_string(&node.rank);
+                    (rank, node.taxon_id)
+                })
+                .collect();
+
+            return Ok(lineage);
         }
 
-        // Fallback to mock data
-        self.mock_taxonomic_lineage(taxon_id)
-    }
-
-    /// Mock taxonomic lineage for testing (replace with actual taxonomy lookup)
-    fn mock_taxonomic_lineage(&self, taxon_id: TaxonId) -> Result<Vec<(TaxonomicRank, TaxonId)>> {
-        let lineage = match taxon_id.0 {
-            // E. coli K-12
-            511145 => vec![
-                (TaxonomicRank::Domain, TaxonId(2)),        // Bacteria
-                (TaxonomicRank::Phylum, TaxonId(1224)),    // Proteobacteria
-                (TaxonomicRank::Class, TaxonId(1236)),     // Gammaproteobacteria
-                (TaxonomicRank::Order, TaxonId(91347)),    // Enterobacterales
-                (TaxonomicRank::Family, TaxonId(543)),     // Enterobacteriaceae
-                (TaxonomicRank::Genus, TaxonId(561)),      // Escherichia
-                (TaxonomicRank::Species, TaxonId(562)),    // E. coli
-                (TaxonomicRank::Subspecies, TaxonId(511145)), // K-12
-            ],
-            // Human
-            9606 => vec![
-                (TaxonomicRank::Domain, TaxonId(2759)),     // Eukaryota
-                (TaxonomicRank::Kingdom, TaxonId(33208)),   // Metazoa
-                (TaxonomicRank::Phylum, TaxonId(7711)),    // Chordata
-                (TaxonomicRank::Class, TaxonId(40674)),    // Mammalia
-                (TaxonomicRank::Order, TaxonId(9443)),     // Primates
-                (TaxonomicRank::Family, TaxonId(9604)),    // Hominidae
-                (TaxonomicRank::Genus, TaxonId(9605)),     // Homo
-                (TaxonomicRank::Species, TaxonId(9606)),   // sapiens
-            ],
-            // Default: just species level
-            _ => vec![
-                (TaxonomicRank::Species, taxon_id),
-            ],
-        };
-
-        Ok(lineage)
+        // No taxonomy available - return minimal lineage
+        Err(anyhow::anyhow!("Taxonomy data not available. Please download with: talaria database download ncbi/taxonomy"))
     }
 
     /// Create manifests for a specific taxonomic rank
@@ -316,8 +296,9 @@ impl HierarchicalTaxonomicChunker {
             let estimated_size = AVG_SEQUENCE_SIZE;
 
             // Check if we should create a new chunk
-            if current_size + estimated_size > max_size ||
-               (current_size > target_size && current_refs.len() > 100) {
+            if current_size + estimated_size > max_size
+                || (current_size > target_size && current_refs.len() > 100)
+            {
                 // Create manifest
                 if current_size >= min_size || rank == TaxonomicRank::Subspecies {
                     manifests.push(self.create_hierarchical_manifest(
@@ -337,8 +318,9 @@ impl HierarchicalTaxonomicChunker {
         }
 
         // Create final manifest if it meets minimum size
-        if !current_refs.is_empty() &&
-           (current_size >= min_size || rank == TaxonomicRank::Subspecies) {
+        if !current_refs.is_empty()
+            && (current_size >= min_size || rank == TaxonomicRank::Subspecies)
+        {
             manifests.push(self.create_hierarchical_manifest(
                 rank,
                 vec![parent_taxon],
@@ -363,8 +345,16 @@ impl HierarchicalTaxonomicChunker {
         let manifest_data = format!(
             "{}:{}:{}",
             rank.as_str(),
-            taxon_ids.iter().map(|t| t.0.to_string()).collect::<Vec<_>>().join(","),
-            sorted_refs.iter().map(|h| h.to_string()).collect::<Vec<_>>().join(",")
+            taxon_ids
+                .iter()
+                .map(|t| t.0.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
+            sorted_refs
+                .iter()
+                .map(|h| h.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
         );
 
         let chunk_hash = SHA256Hash::compute(manifest_data.as_bytes());
@@ -373,7 +363,8 @@ impl HierarchicalTaxonomicChunker {
         // For subspecies, use delta compression with reference to parent species
         let chunk_type = if rank == TaxonomicRank::Subspecies {
             // Find a reference hash (use first as reference for now)
-            let reference_hash = sequence_refs.first()
+            let reference_hash = sequence_refs
+                .first()
                 .cloned()
                 .unwrap_or_else(|| SHA256Hash::compute(b"no_ref"));
             ChunkClassification::Delta {
@@ -398,10 +389,7 @@ impl HierarchicalTaxonomicChunker {
     }
 
     /// Optimize the chunk hierarchy to eliminate redundancy
-    fn optimize_hierarchy(
-        &self,
-        manifests: Vec<ChunkManifest>,
-    ) -> Result<Vec<ChunkManifest>> {
+    fn optimize_hierarchy(&self, manifests: Vec<ChunkManifest>) -> Result<Vec<ChunkManifest>> {
         let mut optimized = Vec::new();
         let mut sequence_coverage: HashSet<SHA256Hash> = HashSet::new();
 
@@ -480,12 +468,17 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
+    #[serial_test::serial]
     fn test_taxonomic_rank_sizes() {
         assert!(TaxonomicRank::Domain.min_chunk_size() > TaxonomicRank::Species.min_chunk_size());
-        assert_eq!(TaxonomicRank::Genus.target_chunk_size(), TaxonomicRank::Genus.min_chunk_size() * 2);
+        assert_eq!(
+            TaxonomicRank::Genus.target_chunk_size(),
+            TaxonomicRank::Genus.min_chunk_size() * 2
+        );
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_hierarchical_chunking() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let sequence_storage = SequenceStorage::new(temp_dir.path())?;

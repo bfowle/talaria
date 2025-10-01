@@ -2,7 +2,6 @@
 
 /// Beautiful CLI output formatting module
 /// Provides consistent, modern CLI output styling similar to Claude Code and other modern tools
-
 use colored::*;
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use std::sync::{Arc, Mutex};

@@ -12,19 +12,19 @@
 /// - Sustain >50 MB/second throughput for large files
 /// - Linear scaling with CPU cores for parallel operations
 /// - Memory usage <2GB for 1M sequences
-
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use talaria_sequoia::{
-    database::DatabaseManager,
-    storage::SequenceStorage,
-    chunker::{ChunkingStrategy, TaxonomicChunker},
-    download::DatabaseSource,
-};
-use talaria_bio::sequence::Sequence;
-use tempfile::{TempDir, NamedTempFile};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::io::Write;
-use std::time::Duration;
 use std::sync::Arc;
+use std::time::Duration;
+use talaria_bio::sequence::Sequence;
+use talaria_test::fixtures::test_database_source;
+use talaria_sequoia::{
+    chunker::{ChunkingStrategy, TaxonomicChunker},
+    database::DatabaseManager,
+    download::DatabaseSource,
+    storage::SequenceStorage,
+};
+use tempfile::{NamedTempFile, TempDir};
 
 /// Generate a test FASTA file with specified number of sequences
 fn generate_fasta_file(num_sequences: usize, avg_seq_length: usize) -> NamedTempFile {
@@ -37,9 +37,7 @@ fn generate_fasta_file(num_sequences: usize, avg_seq_length: usize) -> NamedTemp
         // Generate sequence (mix of ACGT)
         let seq_len = avg_seq_length + (i % 100); // Vary length slightly
         let bases = ['A', 'C', 'G', 'T'];
-        let sequence: String = (0..seq_len)
-            .map(|j| bases[(i + j) % 4])
-            .collect();
+        let sequence: String = (0..seq_len).map(|j| bases[(i + j) % 4]).collect();
 
         // Write sequence in 80-character lines (FASTA standard)
         for chunk in sequence.as_bytes().chunks(80) {
@@ -68,8 +66,8 @@ fn bench_fasta_reading(c: &mut Criterion) {
             num_sequences,
             |b, _| {
                 b.iter(|| {
-                    use std::io::{BufRead, BufReader};
                     use std::fs::File;
+                    use std::io::{BufRead, BufReader};
 
                     let reader = BufReader::new(File::open(file.path()).unwrap());
                     let mut count = 0;
@@ -157,12 +155,14 @@ fn bench_chunking_throughput(c: &mut Criterion) {
                         let chunker = TaxonomicChunker::new(
                             ChunkingStrategy::default(),
                             storage,
-                            DatabaseSource::Test,
+                            test_database_source("bench"),
                         );
                         (chunker, sequences.clone())
                     },
                     |(mut chunker, sequences)| {
-                        chunker.chunk_sequences_canonical(black_box(sequences)).unwrap()
+                        chunker
+                            .chunk_sequences_canonical(black_box(sequences))
+                            .unwrap()
                     },
                 );
             },
@@ -186,9 +186,18 @@ fn bench_deduplication_perf(c: &mut Criterion) {
         let total_sequences = num_unique + num_duplicates;
 
         let sequences: Vec<_> = (0..num_unique)
-            .map(|i| (format!("UNIQUE_SEQ_{:06}_ACGTACGT", i), format!("seq_{}", i)))
-            .chain((0..num_duplicates)
-                .map(|i| (format!("UNIQUE_SEQ_{:06}_ACGTACGT", i % 100), format!("dup_{}", i))))
+            .map(|i| {
+                (
+                    format!("UNIQUE_SEQ_{:06}_ACGTACGT", i),
+                    format!("seq_{}", i),
+                )
+            })
+            .chain((0..num_duplicates).map(|i| {
+                (
+                    format!("UNIQUE_SEQ_{:06}_ACGTACGT", i % 100),
+                    format!("dup_{}", i),
+                )
+            }))
             .collect();
 
         group.throughput(Throughput::Elements(total_sequences as u64));
@@ -203,7 +212,9 @@ fn bench_deduplication_perf(c: &mut Criterion) {
                     },
                     |(storage, sequences)| {
                         for (seq, header) in sequences {
-                            storage.store_sequence(&seq, &header, DatabaseSource::Test).unwrap();
+                            storage
+                                .store_sequence(&seq, &header, test_database_source("bench"))
+                                .unwrap();
                         }
                     },
                 );
@@ -264,7 +275,7 @@ fn bench_memory_aware_batching(c: &mut Criterion) {
     let mut group = c.benchmark_group("memory_aware_batching");
     group.sample_size(10);
 
-    use talaria_sequoia::performance::{AdaptiveManager, AdaptiveConfigBuilder};
+    use talaria_sequoia::performance::{AdaptiveConfigBuilder, AdaptiveManager};
 
     // Test different memory limits
     for memory_limit_mb in [100, 500, 1000, 2000].iter() {
@@ -323,11 +334,8 @@ fn bench_end_to_end_pipeline(c: &mut Criterion) {
                     },
                     |(mut manager, path)| {
                         // This simulates the full pipeline
-                        let source = DatabaseSource::Test;
-                        manager.chunk_database(
-                            &path,
-                            &source,
-                        ).unwrap();
+                        let source = test_database_source("bench");
+                        manager.chunk_database(&path, &source, None).unwrap();
                     },
                 );
             },
@@ -348,10 +356,8 @@ fn bench_checkpoint_overhead(c: &mut Criterion) {
 
     // Benchmark checkpoint saving
     group.bench_function("checkpoint_save", |b| {
-        let checkpoint = ChunkingCheckpoint::new(
-            checkpoint_path.clone(),
-            "test_version".to_string(),
-        );
+        let checkpoint =
+            ChunkingCheckpoint::new(checkpoint_path.clone(), "test_version".to_string());
 
         b.iter(|| {
             let mut cp = checkpoint.clone();
@@ -362,15 +368,11 @@ fn bench_checkpoint_overhead(c: &mut Criterion) {
 
     // Benchmark checkpoint loading
     group.bench_function("checkpoint_load", |b| {
-        let checkpoint = ChunkingCheckpoint::new(
-            checkpoint_path.clone(),
-            "test_version".to_string(),
-        );
+        let checkpoint =
+            ChunkingCheckpoint::new(checkpoint_path.clone(), "test_version".to_string());
         checkpoint.save().unwrap();
 
-        b.iter(|| {
-            ChunkingCheckpoint::load(&checkpoint_path).unwrap()
-        });
+        b.iter(|| ChunkingCheckpoint::load(&checkpoint_path).unwrap());
     });
 
     group.finish();

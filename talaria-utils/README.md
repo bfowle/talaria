@@ -15,7 +15,7 @@ This module is designed with the following principles:
 
 1. **Database Management**: Reference parsing, version detection, and aliasing
 2. **Display & UI**: Terminal formatting, progress bars, tree visualization, and tables
-3. **Workspace Management**: Temporary file orchestration with SEQUOIA integration
+3. **Workspace Management**: Temporary file orchestration with Sequoia integration
 4. **Parallel Processing**: Thread pool management and parallelization utilities
 5. **Performance Monitoring**: Memory estimation and resource tracking
 6. **Report Generation**: Multi-format report generation (HTML, JSON, text)
@@ -60,7 +60,7 @@ talaria-utils/
 │   ├── workspace/                # Workspace management
 │   │   ├── mod.rs                # Module exports
 │   │   ├── temp.rs               # Temporary workspace lifecycle (4 tests)
-│   │   └── sequoia.rs            # SEQUOIA-specific workspace operations (5 tests)
+│   │   └── sequoia.rs            # Sequoia-specific workspace operations (5 tests)
 │   │
 │   ├── parallel.rs               # Parallel processing utilities (11 tests)
 │   └── lib.rs                    # Public API exports
@@ -343,7 +343,7 @@ let pb2 = manager.add_progress_bar(200, "Task 2");
 
 ## Workspace Module
 
-The workspace module manages temporary file operations with automatic cleanup and SEQUOIA integration.
+The workspace module manages temporary file operations with automatic cleanup and Sequoia integration.
 
 ### Temporary Workspace
 
@@ -417,7 +417,7 @@ let mut metadata = WorkspaceMetadata {
 workspace.update_metadata(metadata)?;
 ```
 
-### SEQUOIA Workspace Manager
+### Sequoia Workspace Manager
 
 Content-addressed storage integration for workspace files:
 
@@ -426,7 +426,7 @@ use talaria_utils::workspace::{SequoiaWorkspaceManager, SequoiaTransaction};
 
 let mut manager = SequoiaWorkspaceManager::new()?;
 
-// Create SEQUOIA-managed workspace
+// Create Sequoia-managed workspace
 let workspace = manager.create_workspace("reduce")?;
 
 // Content-addressed file storage
@@ -516,7 +516,7 @@ println!("Available CPU cores: {}", cores);
    - Formatted output for results
 
 2. **talaria-sequoia**: Workspace and formatting utilities
-   - SEQUOIA workspace management
+   - Sequoia workspace management
    - Version detection for manifest creation
    - Progress tracking for large operations
 
@@ -550,7 +550,7 @@ pb.finish();
 success(&format!("Processed {} sequences", total_sequences));
 ```
 
-#### SEQUOIA Integration
+#### Sequoia Integration
 ```rust
 // In talaria-sequoia
 use talaria_utils::{

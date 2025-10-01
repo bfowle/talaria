@@ -1,5 +1,5 @@
 use super::merkle::MerkleDAG;
-use crate::storage::SEQUOIAStorage;
+use crate::storage::SequoiaStorage;
 /// Cryptographic verification for SEQUOIA
 use crate::types::{SHA256HashExt, *};
 use anyhow::{Context, Result};
@@ -13,13 +13,13 @@ pub struct VerificationResult {
     pub merkle_root_valid: bool,
 }
 
-pub struct SEQUOIAVerifier<'a> {
-    storage: &'a SEQUOIAStorage,
+pub struct SequoiaVerifier<'a> {
+    storage: &'a SequoiaStorage,
     manifest: &'a TemporalManifest,
 }
 
-impl<'a> SEQUOIAVerifier<'a> {
-    pub fn new(storage: &'a SEQUOIAStorage, manifest: &'a TemporalManifest) -> Self {
+impl<'a> SequoiaVerifier<'a> {
+    pub fn new(storage: &'a SequoiaStorage, manifest: &'a TemporalManifest) -> Self {
         Self { storage, manifest }
     }
 
@@ -91,8 +91,11 @@ impl<'a> SEQUOIAVerifier<'a> {
 
         // Verify taxonomy root
         if self.manifest.taxonomy_root != SHA256Hash::zero() {
-            // Use placeholder since ManifestMetadata doesn't have taxonomy_version
-            let tax_hashes: Vec<SHA256Hash> = vec![self.manifest.taxonomy_root.clone()];
+            // Get taxonomy version from manifest metadata
+            let taxonomy_version = &self.manifest.taxonomy_version;
+
+            // Build taxonomy hash list from actual taxonomy data
+            let tax_hashes = self.get_taxonomy_hashes(taxonomy_version)?;
 
             if !tax_hashes.is_empty() {
                 let computed_tax_root = self.compute_taxonomy_root(tax_hashes)?;
@@ -171,10 +174,29 @@ impl<'a> SEQUOIAVerifier<'a> {
                 return Ok(false);
             }
 
-            // Basic signature validation (placeholder for real crypto)
-            if attestation.signature.iter().all(|&b| b == 0) {
-                eprintln!("Invalid null signature");
-                return Ok(false);
+            // Implement Ed25519 signature verification
+            // The signature should be 64 bytes for Ed25519
+
+            // Verify the signature using the authority's public key
+            // For now, we'll use ring crate for Ed25519 verification
+            use ring::signature::{self, UnparsedPublicKey};
+
+            // Get the public key for the authority
+            // In production, this would be loaded from a keystore
+            let public_key_bytes = self.get_authority_public_key(&attestation.authority)?;
+
+            // Create the public key object
+            let public_key = UnparsedPublicKey::new(&signature::ED25519, &public_key_bytes);
+
+            // Verify the signature
+            match public_key.verify(&signed_data, &attestation.signature) {
+                Ok(()) => {
+                    // Signature is valid
+                }
+                Err(_) => {
+                    eprintln!("Invalid signature for authority: {}", attestation.authority);
+                    return Ok(false);
+                }
             }
         }
 
@@ -408,6 +430,101 @@ impl<'a> SEQUOIAVerifier<'a> {
             manifest_version: self.manifest.version.clone(),
         }
     }
+
+    /// Get the public key for a given authority
+    fn get_authority_public_key(&self, authority: &str) -> Result<Vec<u8>> {
+        use std::fs;
+        use std::path::PathBuf;
+
+        // First, try to load from RocksDB keystore
+        let backend = self.storage.chunk_storage();
+        if let Ok(key) = backend.db.get(format!("pubkey:{}", authority).as_bytes()) {
+            if let Some(key_data) = key {
+                return Ok(key_data.to_vec());
+            }
+        }
+
+        // Fallback to file-based keystore for trusted authorities
+        let keystore_path = PathBuf::from(std::env::var("TALARIA_KEYSTORE").unwrap_or_else(|_| {
+            talaria_core::system::paths::talaria_home()
+                .join("keystore")
+                .to_string_lossy()
+                .to_string()
+        }));
+
+        let key_file = keystore_path.join(format!("{}.pub", authority));
+        if key_file.exists() {
+            let key_data = fs::read(&key_file)
+                .with_context(|| format!("Failed to read public key for {}", authority))?;
+
+            // Ed25519 public keys should be 32 bytes
+            if key_data.len() != 32 {
+                return Err(anyhow::anyhow!(
+                    "Invalid public key size for {}: expected 32 bytes, got {}",
+                    authority,
+                    key_data.len()
+                ));
+            }
+
+            return Ok(key_data);
+        }
+
+        // For testing/development, generate a deterministic key based on authority name
+        // In production, this should always fail if key not found
+        if cfg!(debug_assertions) {
+            use ring::digest;
+            let mut key = [0u8; 32];
+            let hash = digest::digest(&digest::SHA256, authority.as_bytes());
+            key.copy_from_slice(&hash.as_ref()[..32]);
+            return Ok(key.to_vec());
+        }
+
+        Err(anyhow::anyhow!(
+            "No public key found for authority: {}",
+            authority
+        ))
+    }
+
+    /// Get taxonomy hashes for a given version
+    fn get_taxonomy_hashes(&self, taxonomy_version: &str) -> Result<Vec<SHA256Hash>> {
+        // Query RocksDB for taxonomy data at this version
+        let tax_key = format!("taxonomy:hashes:{}", taxonomy_version);
+
+        let backend = self.storage.chunk_storage();
+        if let Ok(Some(data)) = backend.db.get(tax_key.as_bytes()) {
+            // Deserialize the hash list
+            let hashes: Vec<SHA256Hash> =
+                bincode::deserialize(&data).or_else(|_| serde_json::from_slice(&data))?;
+            return Ok(hashes);
+        }
+
+        // Fallback: compute from taxonomy tree if available
+        let taxonomy_path = talaria_core::system::paths::talaria_taxonomy_current_dir();
+        let tree_file = taxonomy_path.join("taxonomy_tree.json");
+
+        if tree_file.exists() {
+            // Load tree and compute hashes from nodes
+            let tree_data = std::fs::read(&tree_file)?;
+            let tree: serde_json::Value = serde_json::from_slice(&tree_data)?;
+
+            // Extract all node IDs and compute their hashes
+            let mut hashes = Vec::new();
+            if let Some(nodes) = tree.get("nodes").and_then(|n| n.as_array()) {
+                for node in nodes {
+                    if let Some(id) = node.get("id").and_then(|i| i.as_u64()) {
+                        // Hash the node ID as part of the taxonomy structure
+                        let node_hash = SHA256Hash::compute(format!("taxon:{}", id).as_bytes());
+                        hashes.push(node_hash);
+                    }
+                }
+            }
+
+            return Ok(hashes);
+        }
+
+        // If no taxonomy data available, return empty list (will use manifest's root directly)
+        Ok(vec![self.manifest.taxonomy_root.clone()])
+    }
 }
 
 #[derive(Debug)]
@@ -471,14 +588,14 @@ pub enum AuditEventType {
 
 /// Batch verification for efficiency
 pub struct BatchVerifier<'a> {
-    verifier: SEQUOIAVerifier<'a>,
+    verifier: SequoiaVerifier<'a>,
     parallel: bool,
 }
 
 impl<'a> BatchVerifier<'a> {
-    pub fn new(storage: &'a SEQUOIAStorage, manifest: &'a TemporalManifest) -> Self {
+    pub fn new(storage: &'a SequoiaStorage, manifest: &'a TemporalManifest) -> Self {
         Self {
-            verifier: SEQUOIAVerifier::new(storage, manifest),
+            verifier: SequoiaVerifier::new(storage, manifest),
             parallel: false,
         }
     }
@@ -558,9 +675,9 @@ pub struct BatchResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::SEQUOIAStorage;
-    use tempfile::TempDir;
+    use crate::storage::SequoiaStorage;
     use chrono::Utc;
+    use tempfile::TempDir;
 
     fn create_test_manifest() -> TemporalManifest {
         TemporalManifest {
@@ -597,7 +714,7 @@ mod tests {
         }
     }
 
-    fn setup_test_storage() -> (SEQUOIAStorage, TempDir, TemporalManifest) {
+    fn setup_test_storage() -> (SequoiaStorage, TempDir, TemporalManifest) {
         let temp_dir = TempDir::new().unwrap();
 
         // Save original env vars
@@ -608,7 +725,7 @@ mod tests {
         std::env::set_var("TALARIA_HOME", temp_dir.path());
         std::env::set_var("TALARIA_DATABASES_DIR", temp_dir.path().join("databases"));
 
-        let storage = SEQUOIAStorage::new(temp_dir.path()).unwrap();
+        let storage = SequoiaStorage::new(temp_dir.path()).unwrap();
 
         // Restore original env vars
         if let Some(val) = orig_home {
@@ -640,16 +757,17 @@ mod tests {
     #[serial_test::serial]
     fn test_verifier_creation() {
         let (storage, _temp_dir, manifest) = setup_test_storage();
-        let verifier = SEQUOIAVerifier::new(&storage, &manifest);
+        let verifier = SequoiaVerifier::new(&storage, &manifest);
 
         // Just verify creation doesn't panic
         assert_eq!(verifier.manifest.chunk_index.len(), 2);
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_verify_chunk_valid() {
         let (storage, _temp_dir, manifest) = setup_test_storage();
-        let verifier = SEQUOIAVerifier::new(&storage, &manifest);
+        let verifier = SequoiaVerifier::new(&storage, &manifest);
 
         // Verify a valid chunk
         let hash = SHA256Hash::compute(b"chunk1");
@@ -658,9 +776,10 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_verify_chunk_invalid() {
         let (storage, _temp_dir, manifest) = setup_test_storage();
-        let verifier = SEQUOIAVerifier::new(&storage, &manifest);
+        let verifier = SequoiaVerifier::new(&storage, &manifest);
 
         // Try to verify non-existent chunk
         let fake_hash = SHA256Hash::compute(b"nonexistent");
@@ -669,9 +788,10 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_verify_all_valid() {
         let (storage, _temp_dir, manifest) = setup_test_storage();
-        let verifier = SEQUOIAVerifier::new(&storage, &manifest);
+        let verifier = SequoiaVerifier::new(&storage, &manifest);
 
         let result = verifier.verify_all().unwrap();
         assert!(result.valid);
@@ -681,6 +801,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_verify_all_with_corruption() {
         let (storage, _temp_dir, mut manifest) = setup_test_storage();
 
@@ -693,7 +814,7 @@ mod tests {
             compressed_size: None,
         });
 
-        let verifier = SEQUOIAVerifier::new(&storage, &manifest);
+        let verifier = SequoiaVerifier::new(&storage, &manifest);
         let result = verifier.verify_all().unwrap();
 
         assert!(!result.valid);
@@ -705,7 +826,7 @@ mod tests {
     #[serial_test::serial]
     fn test_merkle_proof_generation() {
         let (storage, _temp_dir, manifest) = setup_test_storage();
-        let verifier = SEQUOIAVerifier::new(&storage, &manifest);
+        let verifier = SequoiaVerifier::new(&storage, &manifest);
 
         // Generate proof for first chunk
         let chunk_hash = &manifest.chunk_index[0].hash;
@@ -721,11 +842,13 @@ mod tests {
     #[serial_test::serial]
     fn test_merkle_proof_validation() {
         let (storage, _temp_dir, manifest) = setup_test_storage();
-        let verifier = SEQUOIAVerifier::new(&storage, &manifest);
+        let verifier = SequoiaVerifier::new(&storage, &manifest);
 
         // Generate and validate proof
         let chunk_hash = &manifest.chunk_index[0].hash;
-        let proof = verifier.generate_assembly_proof(&[chunk_hash.clone()]).unwrap();
+        let proof = verifier
+            .generate_assembly_proof(&[chunk_hash.clone()])
+            .unwrap();
 
         let is_valid = verifier.verify_proof(&proof);
         assert!(is_valid);
@@ -735,11 +858,13 @@ mod tests {
     #[serial_test::serial]
     fn test_merkle_proof_invalid() {
         let (storage, _temp_dir, manifest) = setup_test_storage();
-        let verifier = SEQUOIAVerifier::new(&storage, &manifest);
+        let verifier = SequoiaVerifier::new(&storage, &manifest);
 
         // Generate proof for one chunk but try to validate with different hash
         let chunk_hash = &manifest.chunk_index[0].hash;
-        let proof = verifier.generate_assembly_proof(&[chunk_hash.clone()]).unwrap();
+        let proof = verifier
+            .generate_assembly_proof(&[chunk_hash.clone()])
+            .unwrap();
 
         // Note: Can't easily test with wrong hash without modifying proof
         // This test may need to be restructured
@@ -748,11 +873,13 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_batch_verification() {
         let (storage, _temp_dir, manifest) = setup_test_storage();
-        let verifier = SEQUOIAVerifier::new(&storage, &manifest);
+        let verifier = SequoiaVerifier::new(&storage, &manifest);
 
-        let _chunk_hashes: Vec<SHA256Hash> = manifest.chunk_index
+        let _chunk_hashes: Vec<SHA256Hash> = manifest
+            .chunk_index
             .iter()
             .map(|m| m.hash.clone())
             .collect();
@@ -764,11 +891,13 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_parallel_verification() {
         let (storage, _temp_dir, manifest) = setup_test_storage();
-        let verifier = SEQUOIAVerifier::new(&storage, &manifest);
+        let verifier = SequoiaVerifier::new(&storage, &manifest);
 
-        let _chunk_hashes: Vec<SHA256Hash> = manifest.chunk_index
+        let _chunk_hashes: Vec<SHA256Hash> = manifest
+            .chunk_index
             .iter()
             .map(|m| m.hash.clone())
             .collect();
@@ -781,13 +910,14 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_verification_error_handling() {
         let temp_dir = TempDir::new().unwrap();
-        let storage = SEQUOIAStorage::new(temp_dir.path()).unwrap();
+        let storage = SequoiaStorage::new(temp_dir.path()).unwrap();
         let manifest = create_test_manifest();
 
         // Create verifier with manifest but no actual chunks stored
-        let verifier = SEQUOIAVerifier::new(&storage, &manifest);
+        let verifier = SequoiaVerifier::new(&storage, &manifest);
         let result = verifier.verify_all().unwrap();
 
         assert!(!result.valid);

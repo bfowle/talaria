@@ -1,8 +1,8 @@
-use talaria_sequoia::TALARIA_MAGIC;
-use talaria_sequoia::{ManifestMetadata, Manifest, SHA256Hash, TaxonId, TemporalManifest};
 use chrono::Utc;
 use std::collections::HashSet;
 use std::fs;
+use talaria_sequoia::TALARIA_MAGIC;
+use talaria_sequoia::{Manifest, ManifestMetadata, SHA256Hash, TaxonId, TemporalManifest};
 use tempfile::TempDir;
 
 // Helper to create test manifests with required fields

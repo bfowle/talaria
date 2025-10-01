@@ -5,5 +5,5 @@ mod update_test;
 mod version_identification_test;
 
 // Re-export for use in integration tests
-pub use version_identification_test::VersionIdentifier;
 pub use talaria_sequoia::temporal::VersionInfo;
+pub use version_identification_test::VersionIdentifier;

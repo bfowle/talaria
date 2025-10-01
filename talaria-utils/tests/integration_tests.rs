@@ -1,6 +1,6 @@
+use talaria_utils::database::database_ref::parse_database_reference;
 /// Integration tests for talaria-utils
 use talaria_utils::*;
-use talaria_utils::database::database_ref::parse_database_reference;
 use tempfile::TempDir;
 
 // ===== Workspace Integration Tests =====
@@ -47,7 +47,11 @@ fn test_workspace_preservation_on_error() {
 
         // Check if workspace was moved to preserved directory within sequoia_root
         let preserved_path = sequoia_root.join("preserved").join(&workspace_id);
-        assert!(preserved_path.exists(), "Workspace should be preserved at {:?}", preserved_path);
+        assert!(
+            preserved_path.exists(),
+            "Workspace should be preserved at {:?}",
+            preserved_path
+        );
 
         // Clean up manually
         std::fs::remove_dir_all(preserved_path).ok();
@@ -85,12 +89,12 @@ fn test_tree_visualization() {
         .add_child(
             TreeNode::new("Sequences")
                 .add_child(TreeNode::new("proteins.fasta"))
-                .add_child(TreeNode::new("nucleotides.fasta"))
+                .add_child(TreeNode::new("nucleotides.fasta")),
         )
         .add_child(
             TreeNode::new("Indices")
                 .add_child(TreeNode::new("lambda.idx"))
-                .add_child(TreeNode::new("blast.idx"))
+                .add_child(TreeNode::new("blast.idx")),
         );
 
     let rendered = tree.render();
@@ -280,8 +284,16 @@ fn test_formatted_output_display() {
 
     let section = formatter.start_section("Test Results");
     section.add_item(Item::new("Total").with_value("1,000"));
-    section.add_item(Item::new("Passed").with_value("950").with_status(Status::Complete));
-    section.add_item(Item::new("Failed").with_value("50").with_status(Status::Failed));
+    section.add_item(
+        Item::new("Passed")
+            .with_value("950")
+            .with_status(Status::Complete),
+    );
+    section.add_item(
+        Item::new("Failed")
+            .with_value("50")
+            .with_status(Status::Failed),
+    );
 
     let output = formatter.render();
 
@@ -340,7 +352,8 @@ fn test_parallel_error_handling() {
     let data: Vec<i32> = vec![1, 2, 0, 4, 5];
 
     // Parallel operation that might fail
-    let results: Vec<_> = data.par_iter()
+    let results: Vec<_> = data
+        .par_iter()
         .map(|&x| {
             if x == 0 {
                 Err("Division by zero")

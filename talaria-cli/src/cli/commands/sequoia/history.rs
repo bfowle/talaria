@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use clap::Args;
 use colored::*;
 use std::path::PathBuf;
-use chrono::{DateTime, Utc};
 use talaria_sequoia::VersionInfo;
 
 #[derive(Args)]
@@ -13,9 +13,17 @@ pub struct HistoryArgs {
     #[arg(short, long)]
     pub path: Option<PathBuf>,
 
-    /// Output format (text, json, markdown, html)
+    /// Output format (deprecated: use --report-format)
     #[arg(short = 'f', long, default_value = "text")]
     pub format: String,
+
+    /// Report output file path (alternative to --output)
+    #[arg(long = "report-output", value_name = "FILE")]
+    pub report_output: Option<PathBuf>,
+
+    /// Report output format (text, html, json, csv)
+    #[arg(long = "report-format", value_name = "FORMAT", default_value = "text")]
+    pub report_format: String,
 
     /// Maximum number of versions to show
     #[arg(short = 'n', long, default_value = "20")]
@@ -51,10 +59,10 @@ pub struct HistoryArgs {
 }
 
 pub fn run(args: HistoryArgs) -> Result<()> {
-    use talaria_sequoia::SEQUOIARepository;
-    use talaria_sequoia::TemporalIndex;
-    use crate::cli::progress::create_spinner;
     use crate::cli::formatting::output::*;
+    use crate::cli::progress::create_spinner;
+    use talaria_sequoia::SequoiaRepository;
+    use talaria_sequoia::TemporalIndex;
 
     section_header("Version History");
 
@@ -67,18 +75,21 @@ pub fn run(args: HistoryArgs) -> Result<()> {
     };
 
     if !sequoia_path.exists() {
-        anyhow::bail!("SEQUOIA repository not found at {}. Initialize it first with 'talaria sequoia init'",
-                     sequoia_path.display());
+        anyhow::bail!(
+            "SEQUOIA repository not found at {}. Initialize it first with 'talaria sequoia init'",
+            sequoia_path.display()
+        );
     }
 
     // Open repository
     let spinner = create_spinner("Loading version history...");
-    let repository = SEQUOIARepository::open(&sequoia_path)?;
+    let repository = SequoiaRepository::open(&sequoia_path)?;
 
     // Initialize temporal tracking for existing data if needed
     {
-        use talaria_sequoia::database::DatabaseManager as SEQUOIADatabaseManager;
-        let mut manager = SEQUOIADatabaseManager::new(Some(sequoia_path.to_string_lossy().to_string()))?;
+        use talaria_sequoia::database::DatabaseManager as SequoiaDatabaseManager;
+        let mut manager =
+            SequoiaDatabaseManager::new(Some(sequoia_path.to_string_lossy().to_string()))?;
         let _ = manager.init_temporal_for_existing();
     }
 
@@ -86,21 +97,72 @@ pub fn run(args: HistoryArgs) -> Result<()> {
     let temporal_index = TemporalIndex::load(&sequoia_path)?;
     spinner.finish_and_clear();
 
-    // Generate report based on format
-    let report = match args.format.as_str() {
-        "json" => generate_json_report(&temporal_index, &repository, &args)?,
-        "markdown" | "md" => generate_markdown_report(&temporal_index, &repository, &args)?,
-        "html" => generate_html_report(&temporal_index, &repository, &args)?,
-        _ => generate_text_report(&temporal_index, &repository, &args)?,
-    };
+    // Use new generic framework or legacy format handling
+    if args.report_output.is_some() {
+        // Use new generic framework
+        use talaria_sequoia::operations::{HistoryResult, VersionHistoryEntry};
+        use std::time::Duration;
 
-    // Output report
-    if let Some(output_path) = args.output.clone() {
-        std::fs::write(&output_path, report)
-            .context("Failed to write output file")?;
-        success(&format!("Report saved to {}", output_path.display()));
+        // Get version history
+        let history = temporal_index.get_version_history(args.limit)?;
+        let filtered_history = filter_by_date(history, &args.since, &args.until)?;
+
+        // Build version entries
+        let versions: Vec<VersionHistoryEntry> = filtered_history
+            .iter()
+            .map(|v| VersionHistoryEntry {
+                version_id: v.version.clone(),
+                timestamp: v.timestamp.format("%Y-%m-%d %H:%M:%S").to_string(),
+                sequences: v.sequence_count,
+                chunks: v.chunk_count,
+                size: 0, // TODO: Calculate total size from chunks if needed
+                changes: v.changes.join(", "),
+            })
+            .collect();
+
+        // Calculate date range
+        let date_range = if !versions.is_empty() {
+            (
+                versions.last().unwrap().timestamp.clone(),
+                versions.first().unwrap().timestamp.clone(),
+            )
+        } else {
+            ("Unknown".to_string(), "Unknown".to_string())
+        };
+
+        // Build storage evolution (sample from versions)
+        let storage_evolution: Vec<(String, u64)> = versions
+            .iter()
+            .map(|v| (v.timestamp.clone(), v.size))
+            .collect();
+
+        let result = HistoryResult {
+            total_versions: versions.len(),
+            date_range,
+            versions,
+            storage_evolution,
+            duration: Duration::from_secs(0), // TODO: Track actual duration
+        };
+
+        let report_path = args.report_output.as_ref().or(args.output.as_ref()).unwrap();
+        crate::cli::commands::save_report(&result, &args.report_format, report_path)?;
+        success(&format!("Report saved to {}", report_path.display()));
     } else {
-        println!("{}", report);
+        // Use legacy format handling for backward compatibility
+        let report = match args.format.as_str() {
+            "json" => generate_json_report(&temporal_index, &repository, &args)?,
+            "markdown" | "md" => generate_markdown_report(&temporal_index, &repository, &args)?,
+            "html" => generate_html_report(&temporal_index, &repository, &args)?,
+            _ => generate_text_report(&temporal_index, &repository, &args)?,
+        };
+
+        // Output report
+        if let Some(output_path) = args.output.clone() {
+            std::fs::write(&output_path, report).context("Failed to write output file")?;
+            success(&format!("Report saved to {}", output_path.display()));
+        } else {
+            println!("{}", report);
+        }
     }
 
     Ok(())
@@ -108,7 +170,7 @@ pub fn run(args: HistoryArgs) -> Result<()> {
 
 fn generate_text_report(
     temporal_index: &talaria_sequoia::TemporalIndex,
-    repository: &talaria_sequoia::SEQUOIARepository,
+    repository: &talaria_sequoia::SequoiaRepository,
     args: &HistoryArgs,
 ) -> Result<String> {
     use std::fmt::Write;
@@ -143,25 +205,35 @@ fn generate_text_report(
         }
 
         // Version as tree root
-        writeln!(report, "├─ Version: {}",
-                 version.version.bold())?;
-        writeln!(report, "│  ├─ Date: {}",
-                 version.timestamp.format("%Y-%m-%d %H:%M:%S UTC"))?;
-        writeln!(report, "│  ├─ Type: {}",
-                 version.version_type)?;
+        writeln!(report, "├─ Version: {}", version.version.bold())?;
+        writeln!(
+            report,
+            "│  ├─ Date: {}",
+            version.timestamp.format("%Y-%m-%d %H:%M:%S UTC")
+        )?;
+        writeln!(report, "│  ├─ Type: {}", version.version_type)?;
 
         if args.detailed {
             // Show detailed information
-            writeln!(report, "  {}: {}",
-                     "Sequence Root".bold(),
-                     version.sequence_root)?;
-            writeln!(report, "  {}: {}",
-                     "Taxonomy Root".bold(),
-                     version.taxonomy_root)?;
-            writeln!(report, "  {}: {} chunks, {} sequences",
-                     "Content".bold(),
-                     version.chunk_count,
-                     version.sequence_count)?;
+            writeln!(
+                report,
+                "  {}: {}",
+                "Sequence Root".bold(),
+                version.sequence_root
+            )?;
+            writeln!(
+                report,
+                "  {}: {}",
+                "Taxonomy Root".bold(),
+                version.taxonomy_root
+            )?;
+            writeln!(
+                report,
+                "  {}: {} chunks, {} sequences",
+                "Content".bold(),
+                version.chunk_count,
+                version.sequence_count
+            )?;
 
             if !version.changes.is_empty() {
                 writeln!(report, "  {}:", "Changes".bold())?;
@@ -171,9 +243,7 @@ fn generate_text_report(
             }
 
             if let Some(ref parent) = version.parent_version {
-                writeln!(report, "  {}: {}",
-                         "Parent".bold(),
-                         parent)?;
+                writeln!(report, "  {}: {}", "Parent".bold(), parent)?;
             }
         }
 
@@ -195,7 +265,13 @@ fn generate_text_report(
             writeln!(report, "{}", "═".repeat(80))?;
             writeln!(report)?;
 
-            compare_versions(&mut report, &versions[0], &versions[1], temporal_index, repository)?;
+            compare_versions(
+                &mut report,
+                &versions[0],
+                &versions[1],
+                temporal_index,
+                repository,
+            )?;
         }
     }
 
@@ -207,11 +283,15 @@ fn generate_text_report(
     if !filtered_history.is_empty() {
         let first = filtered_history.last().unwrap();
         let last = filtered_history.first().unwrap();
-        writeln!(report, "  Date range: {} to {}",
-                 first.timestamp.format("%Y-%m-%d"),
-                 last.timestamp.format("%Y-%m-%d"))?;
+        writeln!(
+            report,
+            "  Date range: {} to {}",
+            first.timestamp.format("%Y-%m-%d"),
+            last.timestamp.format("%Y-%m-%d")
+        )?;
 
-        let total_sequences: usize = filtered_history.iter()
+        let total_sequences: usize = filtered_history
+            .iter()
             .map(|v| v.sequence_count)
             .max()
             .unwrap_or(0);
@@ -223,7 +303,7 @@ fn generate_text_report(
 
 fn generate_json_report(
     temporal_index: &talaria_sequoia::TemporalIndex,
-    _repository: &talaria_sequoia::SEQUOIARepository,
+    _repository: &talaria_sequoia::SequoiaRepository,
     args: &HistoryArgs,
 ) -> Result<String> {
     use serde_json::json;
@@ -245,14 +325,18 @@ fn generate_json_report(
 
 fn generate_markdown_report(
     temporal_index: &talaria_sequoia::TemporalIndex,
-    _repository: &talaria_sequoia::SEQUOIARepository,
+    _repository: &talaria_sequoia::SequoiaRepository,
     args: &HistoryArgs,
 ) -> Result<String> {
     use std::fmt::Write;
     let mut report = String::new();
 
     writeln!(report, "# Version History Report\n")?;
-    writeln!(report, "Generated: {}\n", Utc::now().format("%Y-%m-%d %H:%M:%S UTC"))?;
+    writeln!(
+        report,
+        "Generated: {}\n",
+        Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+    )?;
 
     let history = temporal_index.get_version_history(args.limit)?;
     let filtered_history = filter_by_date(history, &args.since, &args.until)?;
@@ -263,9 +347,12 @@ fn generate_markdown_report(
     if !filtered_history.is_empty() {
         let first = filtered_history.last().unwrap();
         let last = filtered_history.first().unwrap();
-        writeln!(report, "- **Date range**: {} to {}",
-                 first.timestamp.format("%Y-%m-%d"),
-                 last.timestamp.format("%Y-%m-%d"))?;
+        writeln!(
+            report,
+            "- **Date range**: {} to {}",
+            first.timestamp.format("%Y-%m-%d"),
+            last.timestamp.format("%Y-%m-%d")
+        )?;
     }
 
     writeln!(report, "\n## Version Timeline\n")?;
@@ -286,7 +373,11 @@ fn generate_markdown_report(
         writeln!(report, "### {}\n", version.version)?;
         writeln!(report, "| Field | Value |")?;
         writeln!(report, "|-------|-------|")?;
-        writeln!(report, "| Date | {} |", version.timestamp.format("%Y-%m-%d %H:%M:%S UTC"))?;
+        writeln!(
+            report,
+            "| Date | {} |",
+            version.timestamp.format("%Y-%m-%d %H:%M:%S UTC")
+        )?;
         writeln!(report, "| Type | {} |", version.version_type)?;
         writeln!(report, "| Chunks | {} |", version.chunk_count)?;
         writeln!(report, "| Sequences | {} |", version.sequence_count)?;
@@ -315,13 +406,14 @@ fn generate_markdown_report(
 
 fn generate_html_report(
     temporal_index: &talaria_sequoia::TemporalIndex,
-    _repository: &talaria_sequoia::SEQUOIARepository,
+    _repository: &talaria_sequoia::SequoiaRepository,
     args: &HistoryArgs,
 ) -> Result<String> {
     let history = temporal_index.get_version_history(args.limit)?;
     let filtered_history = filter_by_date(history, &args.since, &args.until)?;
 
-    let mut html = String::from(r#"<!DOCTYPE html>
+    let mut html = String::from(
+        r#"<!DOCTYPE html>
 <html>
 <head>
     <title>Version History Report</title>
@@ -345,24 +437,33 @@ fn generate_html_report(
 <body>
     <div class="container">
         <h1>Version History Report</h1>
-        <p>Generated: )"#);
+        <p>Generated: )"#,
+    );
 
     html.push_str(&Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string());
     html.push_str("</p>");
 
     // Summary statistics
     html.push_str(r#"<div class="stats">"#);
-    html.push_str(&format!(r#"
+    html.push_str(&format!(
+        r#"
         <div class="stat-box">
             <div class="stat-value">{}</div>
             <div class="stat-label">Total Versions</div>
-        </div>"#, filtered_history.len()));
+        </div>"#,
+        filtered_history.len()
+    ));
 
     if !filtered_history.is_empty() {
         let total_chunks: usize = filtered_history.iter().map(|v| v.chunk_count).sum();
-        let max_sequences: usize = filtered_history.iter().map(|v| v.sequence_count).max().unwrap_or(0);
+        let max_sequences: usize = filtered_history
+            .iter()
+            .map(|v| v.sequence_count)
+            .max()
+            .unwrap_or(0);
 
-        html.push_str(&format!(r#"
+        html.push_str(&format!(
+            r#"
         <div class="stat-box">
             <div class="stat-value">{}</div>
             <div class="stat-label">Total Chunks</div>
@@ -370,7 +471,9 @@ fn generate_html_report(
         <div class="stat-box">
             <div class="stat-value">{}</div>
             <div class="stat-label">Peak Sequences</div>
-        </div>"#, total_chunks, max_sequences));
+        </div>"#,
+            total_chunks, max_sequences
+        ));
     }
     html.push_str("</div>");
 
@@ -384,7 +487,8 @@ fn generate_html_report(
     }
 
     // Version table
-    html.push_str(r#"
+    html.push_str(
+        r#"
         <h2>Version History</h2>
         <table>
             <tr>
@@ -392,7 +496,8 @@ fn generate_html_report(
                 <th>Date</th>
                 <th>Type</th>
                 <th>Chunks</th>
-                <th>Sequences</th>"#);
+                <th>Sequences</th>"#,
+    );
 
     if args.detailed {
         html.push_str("<th>Changes</th>");
@@ -401,7 +506,8 @@ fn generate_html_report(
     html.push_str("</tr>");
 
     for version in filtered_history.iter().take(args.limit) {
-        html.push_str(&format!(r#"
+        html.push_str(&format!(
+            r#"
             <tr>
                 <td><code>{}</code></td>
                 <td>{}</td>
@@ -495,7 +601,7 @@ fn generate_version_diff(
     output: &mut String,
     current: &VersionInfo,
     previous: &VersionInfo,
-    _repository: &talaria_sequoia::SEQUOIARepository,
+    _repository: &talaria_sequoia::SequoiaRepository,
 ) -> Result<()> {
     use std::fmt::Write;
 
@@ -520,32 +626,48 @@ fn compare_versions(
     version1: &str,
     version2: &str,
     temporal_index: &talaria_sequoia::TemporalIndex,
-    _repository: &talaria_sequoia::SEQUOIARepository,
+    _repository: &talaria_sequoia::SequoiaRepository,
 ) -> Result<()> {
     use std::fmt::Write;
 
-    let v1 = temporal_index.get_version(version1)?
+    let v1 = temporal_index
+        .get_version(version1)?
         .context(format!("Version {} not found", version1))?;
-    let v2 = temporal_index.get_version(version2)?
+    let v2 = temporal_index
+        .get_version(version2)?
         .context(format!("Version {} not found", version2))?;
 
-    writeln!(output, "Comparing {} vs {}", version1.bold(), version2.bold())?;
+    writeln!(
+        output,
+        "Comparing {} vs {}",
+        version1.bold(),
+        version2.bold()
+    )?;
     writeln!(output)?;
 
     writeln!(output, "{:<20} {:<30} {:<30}", "", version1, version2)?;
     writeln!(output, "{}", "-".repeat(80))?;
-    writeln!(output, "{:<20} {:<30} {:<30}",
-             "Date",
-             v1.timestamp.format("%Y-%m-%d %H:%M:%S").to_string(),
-             v2.timestamp.format("%Y-%m-%d %H:%M:%S").to_string())?;
-    writeln!(output, "{:<20} {:<30} {:<30}",
-             "Sequences",
-             v1.sequence_count.to_string(),
-             v2.sequence_count.to_string())?;
-    writeln!(output, "{:<20} {:<30} {:<30}",
-             "Chunks",
-             v1.chunk_count.to_string(),
-             v2.chunk_count.to_string())?;
+    writeln!(
+        output,
+        "{:<20} {:<30} {:<30}",
+        "Date",
+        v1.timestamp.format("%Y-%m-%d %H:%M:%S").to_string(),
+        v2.timestamp.format("%Y-%m-%d %H:%M:%S").to_string()
+    )?;
+    writeln!(
+        output,
+        "{:<20} {:<30} {:<30}",
+        "Sequences",
+        v1.sequence_count.to_string(),
+        v2.sequence_count.to_string()
+    )?;
+    writeln!(
+        output,
+        "{:<20} {:<30} {:<30}",
+        "Chunks",
+        v1.chunk_count.to_string(),
+        v2.chunk_count.to_string()
+    )?;
 
     Ok(())
 }
@@ -557,4 +679,3 @@ fn html_escape(s: &str) -> String {
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
 }
-

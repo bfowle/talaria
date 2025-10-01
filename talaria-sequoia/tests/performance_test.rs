@@ -1,20 +1,21 @@
+use std::fs;
+use std::io::Write;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use talaria_bio::sequence::Sequence;
+use talaria_test::fixtures::test_database_source;
 /// Performance regression tests for download and chunking pipeline
 ///
 /// These tests ensure that performance doesn't degrade over time.
 /// They set baseline expectations for throughput and resource usage.
-
 use talaria_sequoia::{
+    chunker::{ChunkingStrategy, TaxonomicChunker},
     database::DatabaseManager,
     download::DatabaseSource,
+    performance::{get_system_info, AdaptiveConfigBuilder, AdaptiveManager},
     storage::SequenceStorage,
-    chunker::{ChunkingStrategy, TaxonomicChunker},
-    performance::{AdaptiveManager, AdaptiveConfigBuilder, get_system_info},
 };
-use talaria_bio::sequence::Sequence;
 use tempfile::TempDir;
-use std::time::{Instant, Duration};
-use std::fs;
-use std::io::Write;
 
 /// Minimum acceptable throughput in sequences per second
 const MIN_THROUGHPUT_SEQS_PER_SEC: f64 = 50_000.0;
@@ -41,13 +42,10 @@ fn generate_test_sequences(count: usize) -> Vec<Sequence> {
 #[test]
 fn test_throughput_baseline() {
     let temp_dir = TempDir::new().unwrap();
-    let storage = SequenceStorage::new(temp_dir.path()).unwrap();
+    let storage = Arc::new(SequenceStorage::new(temp_dir.path()).unwrap());
 
-    let mut chunker = TaxonomicChunker::new(
-        ChunkingStrategy::default(),
-        storage,
-        DatabaseSource::Test,
-    );
+    let mut chunker =
+        TaxonomicChunker::new(ChunkingStrategy::default(), storage, test_database_source("performance"));
 
     // Generate 100k sequences for testing
     let sequences = generate_test_sequences(100_000);
@@ -55,13 +53,19 @@ fn test_throughput_baseline() {
 
     // Process sequences
     chunker.set_quiet_mode(true);
-    let _result = chunker.chunk_sequences_canonical(sequences.clone()).unwrap();
+    let _result = chunker
+        .chunk_sequences_canonical(sequences.clone())
+        .unwrap();
 
     let elapsed = start.elapsed();
     let throughput = sequences.len() as f64 / elapsed.as_secs_f64();
 
     println!("Throughput: {:.0} sequences/second", throughput);
-    println!("Time: {:.2}s for {} sequences", elapsed.as_secs_f64(), sequences.len());
+    println!(
+        "Time: {:.2}s for {} sequences",
+        elapsed.as_secs_f64(),
+        sequences.len()
+    );
 
     // Assert minimum throughput is met
     assert!(
@@ -80,13 +84,10 @@ fn test_memory_usage() {
     let initial_memory = monitor.get_stats().used_mb();
 
     let temp_dir = TempDir::new().unwrap();
-    let storage = SequenceStorage::new(temp_dir.path()).unwrap();
+    let storage = Arc::new(SequenceStorage::new(temp_dir.path()).unwrap());
 
-    let mut chunker = TaxonomicChunker::new(
-        ChunkingStrategy::default(),
-        storage,
-        DatabaseSource::Test,
-    );
+    let mut chunker =
+        TaxonomicChunker::new(ChunkingStrategy::default(), storage, test_database_source("performance"));
 
     // Process 100k sequences
     let sequences = generate_test_sequences(100_000);
@@ -115,9 +116,7 @@ fn test_parallel_scaling() {
     use rayon::prelude::*;
     use talaria_core::SHA256Hash;
 
-    let sequences: Vec<Vec<u8>> = (0..100_000)
-        .map(|i| vec![b'A'; 500 + (i % 100)])
-        .collect();
+    let sequences: Vec<Vec<u8>> = (0..100_000).map(|i| vec![b'A'; 500 + (i % 100)]).collect();
 
     // Measure sequential performance
     let start = Instant::now();
@@ -156,12 +155,11 @@ fn test_parallel_scaling() {
 fn test_checkpoint_performance() {
     use talaria_sequoia::checkpoint::ChunkingCheckpoint;
 
-    let temp_dir = TempDir::new().unwrap();
-    let checkpoint_path = temp_dir.path().join("checkpoint.json");
+    let _temp_dir = TempDir::new().unwrap();
 
     let mut checkpoint = ChunkingCheckpoint::new(
-        checkpoint_path.clone(),
-        "test_version".to_string(),
+        "test_database".to_string(),
+        1_000_000_000, // 1GB file size
     );
 
     // Measure save time
@@ -173,7 +171,7 @@ fn test_checkpoint_performance() {
 
     // Measure load time
     let start = Instant::now();
-    let _loaded = ChunkingCheckpoint::load(&checkpoint_path).unwrap();
+    let _loaded = ChunkingCheckpoint::load("test_database").unwrap();
     let load_time = start.elapsed();
 
     println!("Checkpoint save: {}ms", save_time.as_millis());
@@ -197,10 +195,9 @@ fn test_checkpoint_performance() {
 #[test]
 fn test_adaptive_batch_sizing() {
     let system_info = get_system_info();
-    println!("System: {} cores, {} MB RAM total, {} MB available",
-        system_info.cpu_cores,
-        system_info.total_memory_mb,
-        system_info.available_memory_mb
+    println!(
+        "System: {} cores, {} MB RAM total, {} MB available",
+        system_info.cpu_cores, system_info.total_memory_mb, system_info.available_memory_mb
     );
 
     // Test adaptive manager with different memory scenarios
@@ -219,7 +216,10 @@ fn test_adaptive_batch_sizing() {
         let adaptive = AdaptiveManager::with_config(config).unwrap();
         let batch_size = adaptive.get_memory_aware_batch_size();
 
-        println!("{}: {} MB limit -> batch size {}", scenario, memory_mb, batch_size);
+        println!(
+            "{}: {} MB limit -> batch size {}",
+            scenario, memory_mb, batch_size
+        );
 
         // Batch size should be reasonable
         assert!(batch_size >= 100, "Batch size too small");
@@ -230,7 +230,7 @@ fn test_adaptive_batch_sizing() {
 #[test]
 fn test_deduplication_performance() {
     let temp_dir = TempDir::new().unwrap();
-    let storage = SequenceStorage::new(temp_dir.path()).unwrap();
+    let storage = Arc::new(SequenceStorage::new(temp_dir.path()).unwrap());
 
     // Create sequences with 50% duplicates
     let unique_count = 50_000;
@@ -242,21 +242,29 @@ fn test_deduplication_performance() {
     for i in 0..unique_count {
         let seq = format!("UNIQUE_SEQ_{:06}_ACGTACGT", i);
         let header = format!(">seq_{}", i);
-        storage.store_sequence(&seq, &header, DatabaseSource::Test).unwrap();
+        storage
+            .store_sequence(&seq, &header, test_database_source("performance"))
+            .unwrap();
     }
 
     // Store duplicates (should be deduplicated)
     for i in 0..duplicate_count {
         let seq = format!("UNIQUE_SEQ_{:06}_ACGTACGT", i % 100); // Repeat first 100
         let header = format!(">dup_{}", i);
-        storage.store_sequence(&seq, &header, DatabaseSource::Test).unwrap();
+        storage
+            .store_sequence(&seq, &header, test_database_source("performance"))
+            .unwrap();
     }
 
     let elapsed = start.elapsed();
     let throughput = (unique_count + duplicate_count) as f64 / elapsed.as_secs_f64();
 
     println!("Deduplication: {:.0} sequences/second", throughput);
-    println!("Time: {:.2}s for {} total sequences", elapsed.as_secs_f64(), unique_count + duplicate_count);
+    println!(
+        "Time: {:.2}s for {} total sequences",
+        elapsed.as_secs_f64(),
+        unique_count + duplicate_count
+    );
 
     // Should maintain good throughput even with deduplication
     assert!(
@@ -286,17 +294,20 @@ fn test_large_file_stress() {
     let mut manager = DatabaseManager::new(None).unwrap();
 
     let start = Instant::now();
-    manager.chunk_database(
-        &file_path,
-        &DatabaseSource::Test,
-    ).unwrap();
+    manager
+        .chunk_database(&file_path, &test_database_source("performance"), None)
+        .unwrap();
     let elapsed = start.elapsed();
 
     let file_size_mb = fs::metadata(&file_path).unwrap().len() / 1_000_000;
     let throughput_mb = file_size_mb as f64 / elapsed.as_secs_f64();
 
-    println!("Large file: {} MB in {:.2}s = {:.1} MB/s",
-        file_size_mb, elapsed.as_secs_f64(), throughput_mb);
+    println!(
+        "Large file: {} MB in {:.2}s = {:.1} MB/s",
+        file_size_mb,
+        elapsed.as_secs_f64(),
+        throughput_mb
+    );
 
     // Should process at least 20 MB/s
     assert!(
@@ -308,16 +319,16 @@ fn test_large_file_stress() {
 
 #[test]
 fn test_cpu_utilization() {
-    use std::thread;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::thread;
 
     let running = Arc::new(AtomicBool::new(true));
     let running_clone = Arc::clone(&running);
 
     // Monitor CPU usage in background
     let monitor_thread = thread::spawn(move || {
-        let mut max_cpu = 0.0;
+        let max_cpu = 0.0;
         while running_clone.load(Ordering::Relaxed) {
             // This is a simplified CPU check
             // In production, use proper CPU monitoring
@@ -329,12 +340,9 @@ fn test_cpu_utilization() {
     // Run intensive operation
     let sequences = generate_test_sequences(100_000);
     let temp_dir = TempDir::new().unwrap();
-    let storage = SequenceStorage::new(temp_dir.path()).unwrap();
-    let mut chunker = TaxonomicChunker::new(
-        ChunkingStrategy::default(),
-        storage,
-        DatabaseSource::Test,
-    );
+    let storage = Arc::new(SequenceStorage::new(temp_dir.path()).unwrap());
+    let mut chunker =
+        TaxonomicChunker::new(ChunkingStrategy::default(), storage, test_database_source("performance"));
 
     chunker.set_quiet_mode(true);
     let _result = chunker.chunk_sequences_canonical(sequences).unwrap();

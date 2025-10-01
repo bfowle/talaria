@@ -2,7 +2,5 @@ pub mod metadata;
 
 // Re-export commonly used types and functions
 pub use metadata::{
-    write_metadata, load_metadata,
-    write_ref2children, load_ref2children,
-    DeltaRecord,
+    load_metadata, load_ref2children, write_metadata, write_ref2children, DeltaRecord,
 };

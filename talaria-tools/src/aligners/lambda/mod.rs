@@ -3,10 +3,7 @@
 mod parser;
 mod utils;
 
-use talaria_bio::sequence::Sequence;
-use talaria_bio::formats::fasta::{FastaReadable, FastaFile};
 use crate::traits::{Aligner, AlignmentSummary as TraitAlignmentResult};
-use talaria_utils::workspace::TempWorkspace;
 use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::fs;
@@ -15,6 +12,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
+use talaria_bio::formats::fasta::{FastaFile, FastaReadable};
+use talaria_bio::sequence::Sequence;
+use talaria_utils::workspace::TempWorkspace;
 
 use utils::read_lines_lossy;
 
@@ -25,7 +25,7 @@ pub struct LambdaAligner {
     acc_tax_map: Option<PathBuf>,  // Accession to taxonomy mapping file
     tax_dump_dir: Option<PathBuf>, // NCBI taxonomy dump directory
     batch_enabled: bool,
-    batch_size: usize,         // Max amino acids per batch (not sequence count)
+    batch_size: usize,          // Max amino acids per batch (not sequence count)
     _preserve_on_failure: bool, // Whether to preserve temp dir on failure
     _failed: AtomicBool,        // Track if LAMBDA failed for cleanup decision
     workspace: Option<Arc<Mutex<TempWorkspace>>>, // Optional workspace for organized temp files
@@ -58,8 +58,8 @@ impl LambdaAligner {
             temp_dir, // Will be set when workspace is provided or on first use
             acc_tax_map,
             tax_dump_dir,
-            batch_enabled: false, // Default: no batching
-            batch_size: 50_000_000,  // Default: 50M amino acids (matching db-reduce approach)
+            batch_enabled: false,   // Default: no batching
+            batch_size: 50_000_000, // Default: 50M amino acids (matching db-reduce approach)
             _preserve_on_failure: preserve_on_failure,
             _failed: AtomicBool::new(false),
             workspace: None,
@@ -204,14 +204,22 @@ impl LambdaAligner {
     }
 
     /// Configure taxonomy settings
-    pub fn with_taxonomy(mut self, acc_tax_map: Option<PathBuf>, tax_dump_dir: Option<PathBuf>) -> Self {
+    pub fn with_taxonomy(
+        mut self,
+        acc_tax_map: Option<PathBuf>,
+        tax_dump_dir: Option<PathBuf>,
+    ) -> Self {
         self.acc_tax_map = acc_tax_map;
         self.tax_dump_dir = tax_dump_dir;
         self
     }
 
     /// Perform actual search (non-trait implementation)
-    pub fn search(&mut self, query: &[Sequence], reference: &[Sequence]) -> Result<Vec<AlignmentResult>> {
+    pub fn search(
+        &mut self,
+        query: &[Sequence],
+        reference: &[Sequence],
+    ) -> Result<Vec<AlignmentResult>> {
         // Ensure temp directory is initialized
         if self.temp_dir == PathBuf::new() {
             self.initialize_temp_dir();
@@ -234,8 +242,12 @@ impl LambdaAligner {
         }
 
         // Create index if needed (or write reference sequences)
-        let index_path = if query.len() == reference.len() &&
-                            query.iter().zip(reference.iter()).all(|(q, r)| q.id == r.id) {
+        let index_path = if query.len() == reference.len()
+            && query
+                .iter()
+                .zip(reference.iter())
+                .all(|(q, r)| q.id == r.id)
+        {
             // All-vs-all mode: use query as both query and reference
             self.create_index_for_sequences(query)?
         } else {
@@ -247,17 +259,19 @@ impl LambdaAligner {
         let output_path = search_dir.join("alignments.m8");
         let mut cmd = Command::new(&self.binary_path);
         cmd.arg("searchp")
-            .arg("-q").arg(&query_path)
-            .arg("-i").arg(&index_path)
-            .arg("-o").arg(&output_path);
+            .arg("-q")
+            .arg(&query_path)
+            .arg("-i")
+            .arg(&index_path)
+            .arg("-o")
+            .arg(&output_path);
 
         // Add verbosity if requested
         if std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok() {
             cmd.arg("-v");
         }
 
-        let output = cmd.output()
-            .context("Failed to run LAMBDA searchp")?;
+        let output = cmd.output().context("Failed to run LAMBDA searchp")?;
 
         // Check if LAMBDA succeeded - sometimes returns non-zero exit code even on success
         if !output.status.success() {
@@ -272,8 +286,12 @@ impl LambdaAligner {
                         // File exists but is empty, this is a real failure
                         let stderr = String::from_utf8_lossy(&output.stderr);
                         let stdout = String::from_utf8_lossy(&output.stdout);
-                        anyhow::bail!("LAMBDA searchp failed with exit code {}: stderr='{}', stdout='{}'",
-                                     output.status.code().unwrap_or(-1), stderr, stdout);
+                        anyhow::bail!(
+                            "LAMBDA searchp failed with exit code {}: stderr='{}', stdout='{}'",
+                            output.status.code().unwrap_or(-1),
+                            stderr,
+                            stdout
+                        );
                     }
                 }
             } else {
@@ -294,8 +312,7 @@ impl LambdaAligner {
         use std::io::{BufRead, BufReader};
         let mut alignments = Vec::new();
 
-        let file = std::fs::File::open(output_path)
-            .context("Failed to open LAMBDA output")?;
+        let file = std::fs::File::open(output_path).context("Failed to open LAMBDA output")?;
         let reader = BufReader::new(file);
 
         for line in reader.lines() {
@@ -306,7 +323,7 @@ impl LambdaAligner {
 
             let parts: Vec<&str> = line.split('\t').collect();
             if parts.len() < 12 {
-                continue;  // Invalid format
+                continue; // Invalid format
             }
 
             // BLAST tabular format fields:
@@ -368,16 +385,17 @@ impl LambdaAligner {
         let index_path = index_dir.join("lambda_index.lba");
         let mut cmd = Command::new(&self.binary_path);
         cmd.arg("mkindexp")
-            .arg("-d").arg(&fasta_path)
-            .arg("-i").arg(&index_path);
+            .arg("-d")
+            .arg(&fasta_path)
+            .arg("-i")
+            .arg(&index_path);
 
         // Add verbosity if requested
         if std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok() {
             cmd.arg("-v");
         }
 
-        let output = cmd.output()
-            .context("Failed to run LAMBDA mkindexp")?;
+        let output = cmd.output().context("Failed to run LAMBDA mkindexp")?;
 
         // Check if LAMBDA mkindexp succeeded - sometimes returns non-zero exit code even on success
         if !output.status.success() {
@@ -392,8 +410,12 @@ impl LambdaAligner {
                         // Index exists but is empty, this is a real failure
                         let stderr = String::from_utf8_lossy(&output.stderr);
                         let stdout = String::from_utf8_lossy(&output.stdout);
-                        anyhow::bail!("LAMBDA mkindexp failed with exit code {}: stderr='{}', stdout='{}'",
-                                     output.status.code().unwrap_or(-1), stderr, stdout);
+                        anyhow::bail!(
+                            "LAMBDA mkindexp failed with exit code {}: stderr='{}', stdout='{}'",
+                            output.status.code().unwrap_or(-1),
+                            stderr,
+                            stdout
+                        );
                     }
                 }
             } else {
@@ -409,7 +431,12 @@ impl LambdaAligner {
     }
 
     /// Search groups in parallel
-    pub fn search_groups_parallel(&mut self, groups: Vec<Vec<Sequence>>, index_path: &Path, _parallel_processes: usize) -> Result<Vec<Vec<AlignmentResult>>> {
+    pub fn search_groups_parallel(
+        &mut self,
+        groups: Vec<Vec<Sequence>>,
+        index_path: &Path,
+        _parallel_processes: usize,
+    ) -> Result<Vec<Vec<AlignmentResult>>> {
         // Since we can't parallelize with mutable self, process sequentially for now
         let mut all_results = Vec::new();
 
@@ -429,7 +456,11 @@ impl LambdaAligner {
     }
 
     /// Search with index (silent mode)
-    pub fn search_with_index_silent(&mut self, query: &[Sequence], index_path: &Path) -> Result<Vec<AlignmentResult>> {
+    pub fn search_with_index_silent(
+        &mut self,
+        query: &[Sequence],
+        index_path: &Path,
+    ) -> Result<Vec<AlignmentResult>> {
         // Ensure temp directory is initialized
         if self.temp_dir == PathBuf::new() {
             self.initialize_temp_dir();
@@ -455,14 +486,16 @@ impl LambdaAligner {
         let output_path = search_dir.join("alignments.m8");
         let mut cmd = Command::new(&self.binary_path);
         cmd.arg("searchp")
-            .arg("-q").arg(&query_path)
-            .arg("-i").arg(index_path)
-            .arg("-o").arg(&output_path);
+            .arg("-q")
+            .arg(&query_path)
+            .arg("-i")
+            .arg(index_path)
+            .arg("-o")
+            .arg(&output_path);
 
         // Silent mode - no verbose output even if TALARIA_LAMBDA_VERBOSE is set
 
-        let output = cmd.output()
-            .context("Failed to run LAMBDA searchp")?;
+        let output = cmd.output().context("Failed to run LAMBDA searchp")?;
 
         // Check if LAMBDA succeeded - sometimes returns non-zero exit code even on success
         if !output.status.success() {
@@ -477,8 +510,12 @@ impl LambdaAligner {
                         // File exists but is empty, this is a real failure
                         let stderr = String::from_utf8_lossy(&output.stderr);
                         let stdout = String::from_utf8_lossy(&output.stdout);
-                        anyhow::bail!("LAMBDA searchp failed with exit code {}: stderr='{}', stdout='{}'",
-                                     output.status.code().unwrap_or(-1), stderr, stdout);
+                        anyhow::bail!(
+                            "LAMBDA searchp failed with exit code {}: stderr='{}', stdout='{}'",
+                            output.status.code().unwrap_or(-1),
+                            stderr,
+                            stdout
+                        );
                     }
                 }
             } else {
@@ -524,10 +561,10 @@ impl Aligner for LambdaAligner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs::File;
     use std::io::Write;
     use std::sync::atomic::Ordering;
+    use tempfile::TempDir;
 
     fn create_test_sequence(id: &str, seq: &str) -> Sequence {
         Sequence {
@@ -650,7 +687,8 @@ esac
         let acc_tax_path = PathBuf::from("/path/to/acc_tax.tsv");
         let tax_dump_path = PathBuf::from("/path/to/taxdump");
 
-        let aligner = aligner.with_taxonomy(Some(acc_tax_path.clone()), Some(tax_dump_path.clone()));
+        let aligner =
+            aligner.with_taxonomy(Some(acc_tax_path.clone()), Some(tax_dump_path.clone()));
         assert_eq!(aligner.acc_tax_map, Some(acc_tax_path));
         assert_eq!(aligner.tax_dump_dir, Some(tax_dump_path));
     }
@@ -683,8 +721,14 @@ esac
         aligner.initialize_temp_dir();
 
         // Should create a temp dir with process ID
-        assert!(aligner.temp_dir.to_string_lossy().contains("talaria-lambda"));
-        assert!(aligner.temp_dir.to_string_lossy().contains(&std::process::id().to_string()));
+        assert!(aligner
+            .temp_dir
+            .to_string_lossy()
+            .contains("talaria-lambda"));
+        assert!(aligner
+            .temp_dir
+            .to_string_lossy()
+            .contains(&std::process::id().to_string()));
     }
 
     #[test]
@@ -793,9 +837,11 @@ esac
         ];
 
         let index_path = PathBuf::from("/tmp/index");
-        let results = aligner.search_groups_parallel(groups, &index_path, 2).unwrap();
+        let results = aligner
+            .search_groups_parallel(groups, &index_path, 2)
+            .unwrap();
         assert_eq!(results.len(), 2); // Should return results for each group
-        // Each group should have empty alignments from the mock
+                                      // Each group should have empty alignments from the mock
         assert_eq!(results[0].len(), 0);
         assert_eq!(results[1].len(), 0);
     }
@@ -808,7 +854,9 @@ esac
         let query = vec![create_test_sequence("Q1", "ACDEFG")];
         let index_path = PathBuf::from("/tmp/index");
 
-        let results = aligner.search_with_index_silent(&query, &index_path).unwrap();
+        let results = aligner
+            .search_with_index_silent(&query, &index_path)
+            .unwrap();
         assert_eq!(results.len(), 0); // Currently returns empty as it's not implemented
     }
 

@@ -6,5 +6,5 @@
 pub mod phylogenetic;
 pub mod rules;
 
-pub use phylogenetic::{PhylogeneticClusterer, TaxonomicCluster, ClusteringConfig};
+pub use phylogenetic::{ClusteringConfig, PhylogeneticClusterer, TaxonomicCluster};
 pub use rules::{ClusteringRules, GroupingStrategy, TaxonGroupingRules};

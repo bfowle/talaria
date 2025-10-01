@@ -12,27 +12,25 @@
 //! - **Fixtures**: Common test data and FASTA sequences
 //! - **Assertions**: Custom assertions for bioinformatics data
 
+pub mod assertions;
 pub mod environment;
-pub mod storage;
 pub mod fixtures;
 pub mod mock;
-pub mod assertions;
+pub mod storage;
 
 // Re-export commonly used items
-pub use environment::{TestEnvironment, TestConfig};
-pub use storage::{TestStorage, StorageFixture};
-pub use fixtures::{TestSequence, create_test_fasta, generate_sequences};
-pub use mock::{MockAligner, MockTaxonomyManager, MockDownloadSource, create_test_download_state};
+pub use environment::{TestConfig, TestEnvironment};
+pub use fixtures::{create_test_fasta, generate_sequences, TestSequence};
+pub use mock::{create_test_download_state, MockAligner, MockDownloadSource, MockTaxonomyManager};
+pub use storage::{StorageFixture, TestStorage};
 
 // Re-export test dependencies for convenience
+pub use anyhow::{Context, Result};
 pub use tempfile;
-pub use anyhow::{Result, Context};
 
 /// Initialize test logging (call once per test module)
 pub fn init_test_logging() {
-    let _ = env_logger::builder()
-        .is_test(true)
-        .try_init();
+    let _ = env_logger::builder().is_test(true).try_init();
 }
 
 /// Run a test with a clean environment

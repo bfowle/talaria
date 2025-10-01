@@ -5,6 +5,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use talaria_core::system::paths;
 
 use crate::types::TemporalManifest;
 // DatabaseSource will be defined locally
@@ -394,7 +395,7 @@ impl VersionMigrator for StandardVersionMigrator {
                         action: "reset_symlinks".to_string(),
                     },
                 ],
-                backup_path: Some(self.base_path.join("backups").join(from_version)),
+                backup_path: Some(paths::talaria_backups_dir().join(from_version)),
             }),
         })
     }

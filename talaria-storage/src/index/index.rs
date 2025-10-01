@@ -111,10 +111,7 @@ impl ChunkIndex for InMemoryChunkIndex {
 
         // Update taxon index
         for taxon_id in &metadata.taxon_ids {
-            self.taxon_index
-                .entry(*taxon_id)
-                .or_default()
-                .insert(hash);
+            self.taxon_index.entry(*taxon_id).or_default().insert(hash);
         }
 
         // Add to main index
@@ -163,10 +160,7 @@ impl ChunkIndex for InMemoryChunkIndex {
         let hashes: Vec<SHA256Hash> = if let Some(taxon_ids) = query.taxon_ids {
             self.find_by_taxons(&taxon_ids).await?
         } else {
-            self.chunks
-                .iter()
-                .map(|entry| *entry.key())
-                .collect()
+            self.chunks.iter().map(|entry| *entry.key()).collect()
         };
 
         for hash in hashes {
@@ -219,11 +213,7 @@ impl ChunkIndex for InMemoryChunkIndex {
     }
 
     async fn list_all(&self) -> Result<Vec<SHA256Hash>> {
-        Ok(self
-            .chunks
-            .iter()
-            .map(|entry| *entry.key())
-            .collect())
+        Ok(self.chunks.iter().map(|entry| *entry.key()).collect())
     }
 
     async fn clear(&mut self) -> Result<()> {
@@ -238,7 +228,11 @@ mod tests {
     use super::*;
     use tokio;
 
-    fn create_test_metadata(hash: SHA256Hash, size: usize, taxon_ids: Vec<TaxonId>) -> ChunkMetadata {
+    fn create_test_metadata(
+        hash: SHA256Hash,
+        size: usize,
+        taxon_ids: Vec<TaxonId>,
+    ) -> ChunkMetadata {
         ChunkMetadata {
             hash,
             size,
@@ -294,9 +288,26 @@ mod tests {
         let hash2 = SHA256Hash::compute(b"chunk2");
         let hash3 = SHA256Hash::compute(b"chunk3");
 
-        index.add_chunk(create_test_metadata(hash1, 100, vec![TaxonId(1), TaxonId(2)])).await.unwrap();
-        index.add_chunk(create_test_metadata(hash2, 200, vec![TaxonId(2), TaxonId(3)])).await.unwrap();
-        index.add_chunk(create_test_metadata(hash3, 300, vec![TaxonId(3)])).await.unwrap();
+        index
+            .add_chunk(create_test_metadata(
+                hash1,
+                100,
+                vec![TaxonId(1), TaxonId(2)],
+            ))
+            .await
+            .unwrap();
+        index
+            .add_chunk(create_test_metadata(
+                hash2,
+                200,
+                vec![TaxonId(2), TaxonId(3)],
+            ))
+            .await
+            .unwrap();
+        index
+            .add_chunk(create_test_metadata(hash3, 300, vec![TaxonId(3)]))
+            .await
+            .unwrap();
 
         // Find by single taxon
         let results = index.find_by_taxon(TaxonId(1)).await.unwrap();
@@ -320,12 +331,24 @@ mod tests {
         let hash2 = SHA256Hash::compute(b"chunk2");
         let hash3 = SHA256Hash::compute(b"chunk3");
 
-        index.add_chunk(create_test_metadata(hash1, 100, vec![TaxonId(1)])).await.unwrap();
-        index.add_chunk(create_test_metadata(hash2, 200, vec![TaxonId(2)])).await.unwrap();
-        index.add_chunk(create_test_metadata(hash3, 300, vec![TaxonId(3)])).await.unwrap();
+        index
+            .add_chunk(create_test_metadata(hash1, 100, vec![TaxonId(1)]))
+            .await
+            .unwrap();
+        index
+            .add_chunk(create_test_metadata(hash2, 200, vec![TaxonId(2)]))
+            .await
+            .unwrap();
+        index
+            .add_chunk(create_test_metadata(hash3, 300, vec![TaxonId(3)]))
+            .await
+            .unwrap();
 
         // Find by multiple taxons
-        let results = index.find_by_taxons(&[TaxonId(1), TaxonId(3)]).await.unwrap();
+        let results = index
+            .find_by_taxons(&[TaxonId(1), TaxonId(3)])
+            .await
+            .unwrap();
         assert_eq!(results.len(), 2);
         assert!(results.contains(&hash1));
         assert!(results.contains(&hash3));
@@ -340,9 +363,22 @@ mod tests {
         let hash2 = SHA256Hash::compute(b"medium");
         let hash3 = SHA256Hash::compute(b"large");
 
-        index.add_chunk(create_test_metadata(hash1, 100, vec![TaxonId(1)])).await.unwrap();
-        index.add_chunk(create_test_metadata(hash2, 500, vec![TaxonId(2)])).await.unwrap();
-        index.add_chunk(create_test_metadata(hash3, 1000, vec![TaxonId(1), TaxonId(2)])).await.unwrap();
+        index
+            .add_chunk(create_test_metadata(hash1, 100, vec![TaxonId(1)]))
+            .await
+            .unwrap();
+        index
+            .add_chunk(create_test_metadata(hash2, 500, vec![TaxonId(2)]))
+            .await
+            .unwrap();
+        index
+            .add_chunk(create_test_metadata(
+                hash3,
+                1000,
+                vec![TaxonId(1), TaxonId(2)],
+            ))
+            .await
+            .unwrap();
 
         // Query with size filter
         let query = ChunkQuery {
@@ -378,8 +414,22 @@ mod tests {
         let hash1 = SHA256Hash::compute(b"chunk1");
         let hash2 = SHA256Hash::compute(b"chunk2");
 
-        index.add_chunk(create_test_metadata(hash1, 100, vec![TaxonId(1), TaxonId(2)])).await.unwrap();
-        index.add_chunk(create_test_metadata(hash2, 200, vec![TaxonId(2), TaxonId(3)])).await.unwrap();
+        index
+            .add_chunk(create_test_metadata(
+                hash1,
+                100,
+                vec![TaxonId(1), TaxonId(2)],
+            ))
+            .await
+            .unwrap();
+        index
+            .add_chunk(create_test_metadata(
+                hash2,
+                200,
+                vec![TaxonId(2), TaxonId(3)],
+            ))
+            .await
+            .unwrap();
 
         let stats = index.get_stats().await.unwrap();
         assert_eq!(stats.total_chunks, 2);
@@ -396,9 +446,18 @@ mod tests {
         let hash2 = SHA256Hash::compute(b"chunk2");
         let hash3 = SHA256Hash::compute(b"chunk3");
 
-        index.add_chunk(create_test_metadata(hash1, 100, vec![])).await.unwrap();
-        index.add_chunk(create_test_metadata(hash2, 200, vec![])).await.unwrap();
-        index.add_chunk(create_test_metadata(hash3, 300, vec![])).await.unwrap();
+        index
+            .add_chunk(create_test_metadata(hash1, 100, vec![]))
+            .await
+            .unwrap();
+        index
+            .add_chunk(create_test_metadata(hash2, 200, vec![]))
+            .await
+            .unwrap();
+        index
+            .add_chunk(create_test_metadata(hash3, 300, vec![]))
+            .await
+            .unwrap();
 
         let all = index.list_all().await.unwrap();
         assert_eq!(all.len(), 3);
@@ -413,7 +472,10 @@ mod tests {
 
         // Add some data
         let hash = SHA256Hash::compute(b"test");
-        index.add_chunk(create_test_metadata(hash, 100, vec![TaxonId(1)])).await.unwrap();
+        index
+            .add_chunk(create_test_metadata(hash, 100, vec![TaxonId(1)]))
+            .await
+            .unwrap();
 
         // Clear
         index.clear().await.unwrap();
@@ -428,8 +490,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_concurrent_operations() {
-        use tokio::task;
         use std::sync::Arc;
+        use tokio::task;
 
         let index = Arc::new(tokio::sync::RwLock::new(InMemoryChunkIndex::new()));
         let mut handles = vec![];

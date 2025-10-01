@@ -34,12 +34,12 @@ pub struct TimeTravelArgs {
 }
 
 pub fn run(args: TimeTravelArgs) -> Result<()> {
-    use talaria_sequoia::{SEQUOIAStorage, BiTemporalDatabase};
     use crate::cli::formatting::output::create_standard_table;
+    use talaria_sequoia::{BiTemporalDatabase, SequoiaStorage};
 
     // Parse sequence time
     let sequence_time = parse_time_input(&args.sequence_time)?;
-    
+
     // Parse taxonomy time (defaults to sequence time if not specified)
     let taxonomy_time = if let Some(tax_time) = &args.taxonomy_time {
         parse_time_input(tax_time)?
@@ -48,14 +48,20 @@ pub fn run(args: TimeTravelArgs) -> Result<()> {
     };
 
     println!("\u{25cf} Opening SEQUOIA repository at {:?}", args.path);
-    
+
     // Create storage and bi-temporal database
-    let storage = Arc::new(SEQUOIAStorage::open(&args.path)?);
+    let storage = Arc::new(SequoiaStorage::open(&args.path)?);
     let mut db = BiTemporalDatabase::new(storage)?;
 
     println!("\u{25cf} Querying database state:");
-    println!("  Sequence time: {}", sequence_time.format("%Y-%m-%d %H:%M:%S UTC"));
-    println!("  Taxonomy time: {}", taxonomy_time.format("%Y-%m-%d %H:%M:%S UTC"));
+    println!(
+        "  Sequence time: {}",
+        sequence_time.format("%Y-%m-%d %H:%M:%S UTC")
+    );
+    println!(
+        "  Taxonomy time: {}",
+        taxonomy_time.format("%Y-%m-%d %H:%M:%S UTC")
+    );
 
     // Query the database
     let snapshot = match db.query_at(sequence_time, taxonomy_time) {
@@ -72,8 +78,14 @@ pub fn run(args: TimeTravelArgs) -> Result<()> {
     println!("\n\u{2713} Database snapshot retrieved:");
     println!("  Total sequences: {}", snapshot.sequence_count());
     println!("  Total chunks: {}", snapshot.chunks().len());
-    println!("  Sequence root: {}", &snapshot.sequence_root().to_string()[..12]);
-    println!("  Taxonomy root: {}", &snapshot.taxonomy_root().to_string()[..12]);
+    println!(
+        "  Sequence root: {}",
+        &snapshot.sequence_root().to_string()[..12]
+    );
+    println!(
+        "  Taxonomy root: {}",
+        &snapshot.taxonomy_root().to_string()[..12]
+    );
 
     // Show detailed stats if requested
     if args.stats {
@@ -83,21 +95,24 @@ pub fn run(args: TimeTravelArgs) -> Result<()> {
     // Handle diff if requested
     if let Some(diff_time_str) = &args.diff_with {
         let diff_time = parse_time_input(diff_time_str)?;
-        
-        println!("\n\u{25cf} Computing diff with {}", diff_time.format("%Y-%m-%d %H:%M:%S UTC"));
-        
+
+        println!(
+            "\n\u{25cf} Computing diff with {}",
+            diff_time.format("%Y-%m-%d %H:%M:%S UTC")
+        );
+
         let coord1 = talaria_sequoia::BiTemporalCoordinate {
             sequence_time,
             taxonomy_time,
         };
-        
+
         let coord2 = talaria_sequoia::BiTemporalCoordinate {
             sequence_time: diff_time,
             taxonomy_time: diff_time,
         };
-        
+
         let diff = db.diff(coord1, coord2)?;
-        
+
         println!("\n\u{2192} Changes:");
         println!("  Sequences added: {}", diff.sequences_added);
         println!("  Sequences removed: {}", diff.sequences_removed);
@@ -114,25 +129,28 @@ pub fn run(args: TimeTravelArgs) -> Result<()> {
     // Show available coordinates
     println!("\n\u{25cf} Available time points:");
     let coords = db.get_available_coordinates()?;
-    
+
     if coords.is_empty() {
         println!("  No historical data available yet.");
         println!("  Data will be added as the database is updated.");
     } else {
         let mut table = create_standard_table();
         table.set_header(vec!["Sequence Time", "Taxonomy Time"]);
-        
+
         for coord in coords.iter().take(5) {
             table.add_row(vec![
                 coord.sequence_time.format("%Y-%m-%d %H:%M").to_string(),
                 coord.taxonomy_time.format("%Y-%m-%d %H:%M").to_string(),
             ]);
         }
-        
+
         if coords.len() > 5 {
-            println!("  (showing first 5 of {} available time points)", coords.len());
+            println!(
+                "  (showing first 5 of {} available time points)",
+                coords.len()
+            );
         }
-        
+
         println!("{}", table);
     }
 
@@ -144,26 +162,29 @@ fn parse_time_input(input: &str) -> Result<DateTime<Utc>> {
     if let Ok(dt) = DateTime::parse_from_rfc3339(input) {
         return Ok(dt.with_timezone(&Utc));
     }
-    
+
     // Try parsing as date only (assume 00:00:00 UTC)
     if let Ok(dt) = chrono::NaiveDate::parse_from_str(input, "%Y-%m-%d") {
-        let time = dt.and_hms_opt(0, 0, 0)
+        let time = dt
+            .and_hms_opt(0, 0, 0)
             .ok_or_else(|| anyhow::anyhow!("Invalid time"))?;
         return Ok(DateTime::from_naive_utc_and_offset(time, Utc));
     }
-    
+
     // Try parsing as "now", "today", "yesterday"
     match input.to_lowercase().as_str() {
         "now" => Ok(Utc::now()),
         "today" => {
             let today = Utc::now().date_naive();
-            let time = today.and_hms_opt(0, 0, 0)
+            let time = today
+                .and_hms_opt(0, 0, 0)
                 .ok_or_else(|| anyhow::anyhow!("Invalid time"))?;
             Ok(DateTime::from_naive_utc_and_offset(time, Utc))
         }
         "yesterday" => {
             let yesterday = Utc::now().date_naive() - chrono::Duration::days(1);
-            let time = yesterday.and_hms_opt(0, 0, 0)
+            let time = yesterday
+                .and_hms_opt(0, 0, 0)
                 .ok_or_else(|| anyhow::anyhow!("Invalid time"))?;
             Ok(DateTime::from_naive_utc_and_offset(time, Utc))
         }
@@ -176,23 +197,31 @@ fn parse_time_input(input: &str) -> Result<DateTime<Utc>> {
 
 fn show_snapshot_stats(snapshot: &talaria_sequoia::temporal::DatabaseSnapshot) -> Result<()> {
     use crate::cli::formatting::output::format_number;
-    
+
     println!("\n\u{2192} Detailed Statistics:");
-    
+
     // Chunk size distribution
     let chunks = snapshot.chunks();
     if !chunks.is_empty() {
         let total_size: usize = chunks.iter().map(|c| c.size).sum();
-        let total_compressed: usize = chunks.iter().map(|c| c.compressed_size.unwrap_or(c.size)).sum();
+        let total_compressed: usize = chunks
+            .iter()
+            .map(|c| c.compressed_size.unwrap_or(c.size))
+            .sum();
         let avg_sequences = chunks.iter().map(|c| c.sequence_count).sum::<usize>() / chunks.len();
-        
+
         println!("  Chunk statistics:");
         println!("    Total size: {}", format_bytes(total_size));
         println!("    Compressed size: {}", format_bytes(total_compressed));
-        println!("    Compression ratio: {:.1}%", 
-                 (total_compressed as f64 / total_size as f64) * 100.0);
-        println!("    Average sequences per chunk: {}", format_number(avg_sequences));
-        
+        println!(
+            "    Compression ratio: {:.1}%",
+            (total_compressed as f64 / total_size as f64) * 100.0
+        );
+        println!(
+            "    Average sequences per chunk: {}",
+            format_number(avg_sequences)
+        );
+
         // Taxonomy distribution
         let mut taxon_counts = std::collections::HashMap::new();
         for chunk in &chunks {
@@ -200,21 +229,21 @@ fn show_snapshot_stats(snapshot: &talaria_sequoia::temporal::DatabaseSnapshot) -
                 *taxon_counts.entry(taxon).or_insert(0) += 1;
             }
         }
-        
+
         if !taxon_counts.is_empty() {
             println!("\n  Taxonomy distribution:");
             println!("    Unique taxa: {}", format_number(taxon_counts.len()));
             println!("    Most common taxa (by chunk presence):");
-            
+
             let mut sorted_taxa: Vec<_> = taxon_counts.iter().collect();
             sorted_taxa.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
-            
+
             for (taxon, count) in sorted_taxa.iter().take(5) {
                 println!("      TaxID {}: {} chunks", taxon.0, count);
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -222,11 +251,11 @@ fn format_bytes(bytes: usize) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     let mut size = bytes as f64;
     let mut unit_idx = 0;
-    
+
     while size >= 1024.0 && unit_idx < UNITS.len() - 1 {
         size /= 1024.0;
         unit_idx += 1;
     }
-    
+
     format!("{:.2} {}", size, UNITS[unit_idx])
 }

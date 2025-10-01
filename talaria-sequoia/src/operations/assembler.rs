@@ -1,21 +1,22 @@
-use talaria_bio::sequence::Sequence;
-use talaria_bio::taxonomy::{TaxonomyFormatter, StandardTaxonomyFormatter};
-use crate::storage::SEQUOIAStorage;
+use crate::storage::SequoiaStorage;
 /// FASTA reassembly from content-addressed chunks
-use crate::types::*;
-use crate::verification::Verifier as SEQUOIAVerifier;
+use crate::types::{MerkleProof, SHA256Hash, TaxonId, TemporalManifest};
+use talaria_storage::types::SequenceRepresentations;
+use crate::verification::Verifier as SequoiaVerifier;
 use anyhow::{Context, Result};
 use std::io::Write;
+use talaria_bio::sequence::Sequence;
+use talaria_bio::taxonomy::{StandardTaxonomyFormatter, TaxonomyFormatter};
 use tracing as log;
 
 pub struct FastaAssembler<'a> {
-    storage: &'a SEQUOIAStorage,
+    storage: &'a SequoiaStorage,
     verify_on_assembly: bool,
     taxonomy_formatter: StandardTaxonomyFormatter,
 }
 
 impl<'a> FastaAssembler<'a> {
-    pub fn new(storage: &'a SEQUOIAStorage) -> Self {
+    pub fn new(storage: &'a SequoiaStorage) -> Self {
         Self {
             storage,
             verify_on_assembly: true,
@@ -86,14 +87,23 @@ impl<'a> FastaAssembler<'a> {
                 let canonical = match self.storage.sequence_storage.load_canonical(seq_hash) {
                     Ok(c) => c,
                     Err(e) => {
-                        eprintln!("WARNING: Failed to load canonical sequence {}: {}", seq_hash, e);
+                        eprintln!(
+                            "WARNING: Failed to load canonical sequence {}: {}",
+                            seq_hash, e
+                        );
                         eprintln!("  This might indicate the sequence storage is not properly initialized.");
-                        return Err(anyhow::anyhow!("Failed to load canonical sequence {}: {}", seq_hash, e));
+                        return Err(anyhow::anyhow!(
+                            "Failed to load canonical sequence {}: {}",
+                            seq_hash,
+                            e
+                        ));
                     }
                 };
 
                 // Load representations to get accession and description
-                let representations = self.storage.sequence_storage
+                let representations = self
+                    .storage
+                    .sequence_storage
                     .load_representations(seq_hash)
                     .unwrap_or_else(|_| crate::SequenceRepresentations {
                         canonical_hash: seq_hash.clone(),
@@ -101,15 +111,18 @@ impl<'a> FastaAssembler<'a> {
                     });
 
                 // Use first representation for accession/description, or use hash as fallback
-                let (id, description, taxon_id) = if let Some(first_repr) = representations.representations.first() {
-                    let id = first_repr.accessions.first()
-                        .cloned()
-                        .unwrap_or_else(|| seq_hash.to_hex()[..8].to_string());
-                    (id, first_repr.description.clone(), first_repr.taxon_id)
-                } else {
-                    // No representations, use hash prefix as ID
-                    (seq_hash.to_hex()[..8].to_string(), None, None)
-                };
+                let (id, description, taxon_id) =
+                    if let Some(first_repr) = representations.representations.first() {
+                        let id = first_repr
+                            .accessions
+                            .first()
+                            .cloned()
+                            .unwrap_or_else(|| seq_hash.to_hex()[..8].to_string());
+                        (id, first_repr.description.clone(), first_repr.taxon_id)
+                    } else {
+                        // No representations, use hash prefix as ID
+                        (seq_hash.to_hex()[..8].to_string(), None, None)
+                    };
 
                 // Convert to bio sequence
                 let mut seq = Sequence {
@@ -128,7 +141,7 @@ impl<'a> FastaAssembler<'a> {
                 sequences.push(seq);
             }
 
-                return Ok(sequences);
+            return Ok(sequences);
         }
 
         // Try JSON format as fallback
@@ -145,30 +158,42 @@ impl<'a> FastaAssembler<'a> {
                     let canonical = match self.storage.sequence_storage.load_canonical(seq_hash) {
                         Ok(c) => c,
                         Err(e) => {
-                            eprintln!("WARNING: Failed to load canonical sequence {} (index {}): {}", seq_hash, idx, e);
+                            eprintln!(
+                                "WARNING: Failed to load canonical sequence {} (index {}): {}",
+                                seq_hash, idx, e
+                            );
                             eprintln!("  This might indicate the sequence storage is not properly initialized.");
-                            return Err(anyhow::anyhow!("Failed to load canonical sequence {}: {}", seq_hash, e));
+                            return Err(anyhow::anyhow!(
+                                "Failed to load canonical sequence {}: {}",
+                                seq_hash,
+                                e
+                            ));
                         }
                     };
 
                     // Load representations to get accession and description
-                    let representations = self.storage.sequence_storage
+                    let representations = self
+                        .storage
+                        .sequence_storage
                         .load_representations(seq_hash)
-                        .unwrap_or_else(|_| crate::SequenceRepresentations {
+                        .unwrap_or_else(|_| SequenceRepresentations {
                             canonical_hash: seq_hash.clone(),
                             representations: Vec::new(),
                         });
 
                     // Use first representation for accession/description, or use hash as fallback
-                    let (id, description, taxon_id) = if let Some(first_repr) = representations.representations.first() {
-                        let id = first_repr.accessions.first()
-                            .cloned()
-                            .unwrap_or_else(|| seq_hash.to_hex()[..8].to_string());
-                        (id, first_repr.description.clone(), first_repr.taxon_id)
-                    } else {
-                        // No representations, use hash prefix as ID
-                        (seq_hash.to_hex()[..8].to_string(), None, None)
-                    };
+                    let (id, description, taxon_id) =
+                        if let Some(first_repr) = representations.representations.first() {
+                            let id = first_repr
+                                .accessions
+                                .first()
+                                .cloned()
+                                .unwrap_or_else(|| seq_hash.to_hex()[..8].to_string());
+                            (id, first_repr.description.clone(), first_repr.taxon_id)
+                        } else {
+                            // No representations, use hash prefix as ID
+                            (seq_hash.to_hex()[..8].to_string(), None, None)
+                        };
 
                     // Convert to bio sequence
                     let mut seq = Sequence {
@@ -199,8 +224,14 @@ impl<'a> FastaAssembler<'a> {
         // Otherwise, we have an unknown format
         log::debug!("Chunk {} has unknown format", hash);
         eprintln!("  Size: {} bytes", chunk_data.len());
-        eprintln!("  First 100 bytes (hex): {:02x?}", &chunk_data[..chunk_data.len().min(100)]);
-        eprintln!("  First 100 bytes (text): {:?}", String::from_utf8_lossy(&chunk_data[..chunk_data.len().min(100)]));
+        eprintln!(
+            "  First 100 bytes (hex): {:02x?}",
+            &chunk_data[..chunk_data.len().min(100)]
+        );
+        eprintln!(
+            "  First 100 bytes (text): {:?}",
+            String::from_utf8_lossy(&chunk_data[..chunk_data.len().min(100)])
+        );
 
         Err(anyhow::anyhow!(
             "Chunk {} has unknown format. Not FASTA (starts with '>') or JSON (starts with '{{' or '['). First byte: 0x{:02x}",
@@ -212,7 +243,8 @@ impl<'a> FastaAssembler<'a> {
     /// Stream a chunk directly to writer
     fn stream_chunk_to_writer<W: Write>(&self, hash: &SHA256Hash, writer: &mut W) -> Result<usize> {
         // Extract sequences (this handles both ChunkManifest and old formats)
-        let sequences = self.extract_sequences_from_chunk(hash)
+        let sequences = self
+            .extract_sequences_from_chunk(hash)
             .with_context(|| format!("Failed to extract sequences from chunk {}", hash))?;
 
         // Write sequences as FASTA with TaxID in header if available
@@ -312,7 +344,7 @@ impl<'a> FastaAssembler<'a> {
         chunk_hashes: &[SHA256Hash],
         manifest: &TemporalManifest,
     ) -> Result<AssemblyResult> {
-        let verifier = SEQUOIAVerifier::new(self.storage, manifest);
+        let verifier = SequoiaVerifier::new(self.storage, manifest);
 
         // Verify all chunks first
         let mut verification_errors = Vec::new();
@@ -466,7 +498,7 @@ pub struct AssemblyBuilder<'a> {
 }
 
 impl<'a> AssemblyBuilder<'a> {
-    pub fn new(storage: &'a SEQUOIAStorage) -> Self {
+    pub fn new(storage: &'a SequoiaStorage) -> Self {
         Self {
             assembler: FastaAssembler::new(storage),
             chunk_hashes: Vec::new(),
@@ -508,10 +540,10 @@ impl<'a> AssemblyBuilder<'a> {
         // Apply taxon filter if specified
         if let Some(taxa) = self.taxon_filter {
             sequences.retain(|seq| {
-                    seq.taxon_id
-                        .map(|tid| taxa.contains(&TaxonId(tid)))
-                        .unwrap_or(false)
-                });
+                seq.taxon_id
+                    .map(|tid| taxa.contains(&TaxonId(tid)))
+                    .unwrap_or(false)
+            });
         }
 
         Ok(sequences)

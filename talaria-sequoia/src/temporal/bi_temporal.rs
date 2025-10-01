@@ -1,12 +1,15 @@
+use crate::manifest::Manifest;
+use crate::storage::SequoiaStorage;
+use crate::temporal::{TaxonomyVersion, TemporalIndex};
 /// Bi-temporal database functionality for SEQUOIA
 ///
 /// Enables independent tracking of sequence data changes and taxonomy understanding changes,
 /// allowing queries like "Give me the database as of January with March taxonomy"
-use crate::types::{SHA256HashExt, BiTemporalCoordinate, ManifestMetadata, SHA256Hash, TaxonId, TemporalManifest, MerkleHash};
-use crate::manifest::Manifest;
+use crate::types::{
+    BiTemporalCoordinate, DiscrepancyType, ManifestMetadata, MerkleHash, SHA256Hash, SHA256HashExt,
+    TaxonId, TaxonomicDiscrepancy, TemporalManifest,
+};
 use crate::verification::merkle::MerkleDAG;
-use crate::storage::SEQUOIAStorage;
-use crate::temporal::{TaxonomyVersion, TemporalIndex};
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
@@ -16,18 +19,18 @@ use std::sync::Arc;
 /// A bi-temporal database view allowing time-travel queries
 pub struct BiTemporalDatabase {
     /// Storage backend
-    storage: Arc<SEQUOIAStorage>,
+    storage: Arc<SequoiaStorage>,
 
     /// Temporal index for version tracking
     temporal_index: TemporalIndex,
 
     /// Cache of manifests at different time points
-    manifest_cache: HashMap<String, Manifest>,  // Key is concatenated timestamps
+    manifest_cache: HashMap<String, Manifest>, // Key is concatenated timestamps
 }
 
 impl BiTemporalDatabase {
     /// Create a new bi-temporal database
-    pub fn new(storage: Arc<SEQUOIAStorage>) -> Result<Self> {
+    pub fn new(storage: Arc<SequoiaStorage>) -> Result<Self> {
         let temporal_index = TemporalIndex::new(&storage.base_path)?;
 
         Ok(Self {
@@ -49,9 +52,16 @@ impl BiTemporalDatabase {
         };
 
         // Check cache first
-        let cache_key = format!("{}_{}", sequence_time.timestamp(), taxonomy_time.timestamp());
+        let cache_key = format!(
+            "{}_{}",
+            sequence_time.timestamp(),
+            taxonomy_time.timestamp()
+        );
         if let Some(manifest) = self.manifest_cache.get(&cache_key) {
-            return Ok(DatabaseSnapshot::from_manifest(manifest.clone(), self.storage.clone()));
+            return Ok(DatabaseSnapshot::from_manifest(
+                manifest.clone(),
+                self.storage.clone(),
+            ));
         }
 
         // Get the state at this temporal coordinate
@@ -61,10 +71,17 @@ impl BiTemporalDatabase {
         let manifest = self.create_manifest_at(&coordinate, state)?;
 
         // Cache for future queries
-        let cache_key = format!("{}_{}", coordinate.sequence_time.timestamp(), coordinate.taxonomy_time.timestamp());
+        let cache_key = format!(
+            "{}_{}",
+            coordinate.sequence_time.timestamp(),
+            coordinate.taxonomy_time.timestamp()
+        );
         self.manifest_cache.insert(cache_key, manifest.clone());
 
-        Ok(DatabaseSnapshot::from_manifest(manifest, self.storage.clone()))
+        Ok(DatabaseSnapshot::from_manifest(
+            manifest,
+            self.storage.clone(),
+        ))
     }
 
     /// Create a manifest representing the database at a specific time
@@ -74,12 +91,14 @@ impl BiTemporalDatabase {
         state: crate::temporal::TemporalState,
     ) -> Result<Manifest> {
         // Get sequence version at sequence_time
-        let sequence_version = self.temporal_index
+        let sequence_version = self
+            .temporal_index
             .get_sequence_version_at(coordinate.sequence_time)?
             .ok_or_else(|| anyhow!("No sequence version at {:?}", coordinate.sequence_time))?;
 
         // Get taxonomy version at taxonomy_time
-        let taxonomy_version = self.temporal_index
+        let taxonomy_version = self
+            .temporal_index
             .get_taxonomy_version_at(coordinate.taxonomy_time)?
             .ok_or_else(|| anyhow!("No taxonomy version at {:?}", coordinate.taxonomy_time))?;
 
@@ -98,7 +117,8 @@ impl BiTemporalDatabase {
 
         // Build a TemporalManifest from our data
         let temporal_manifest = TemporalManifest {
-            version: format!("{}_{}",
+            version: format!(
+                "{}_{}",
                 coordinate.sequence_time.format("%Y%m%d_%H%M%S"),
                 coordinate.taxonomy_time.format("%Y%m%d_%H%M%S")
             ),
@@ -108,12 +128,24 @@ impl BiTemporalDatabase {
             temporal_coordinate: Some(coordinate.clone()),
             taxonomy_root: taxonomy_root.clone(),
             sequence_root: sequence_root.clone(),
-            chunk_merkle_tree: None,  // Built on demand
+            chunk_merkle_tree: None, // Built on demand
             taxonomy_manifest_hash: SHA256Hash::compute(taxonomy_version.version.as_bytes()),
             taxonomy_dump_version: taxonomy_version.source.clone(),
-            source_database: None,  // TODO: Get from state
+            source_database: None, // Not available from TemporalState
             chunk_index: filtered_chunks,
-            discrepancies: Vec::new(),  // TODO: Load discrepancies for this time
+            discrepancies: self
+                .load_discrepancies_for_time(coordinate.sequence_time.timestamp())?
+                .into_iter()
+                .map(|s| TaxonomicDiscrepancy {
+                    sequence_id: s,
+                    header_taxon: None,
+                    mapped_taxon: None,
+                    inferred_taxon: None,
+                    confidence: 0.0,
+                    detection_date: coordinate.sequence_time,
+                    discrepancy_type: DiscrepancyType::Missing,
+                })
+                .collect(),
             etag: Self::generate_etag(&sequence_root, &taxonomy_root),
             previous_version: state.manifest.and_then(|m| Some(m.version)),
         };
@@ -167,17 +199,86 @@ impl BiTemporalDatabase {
     }
 
     /// Compute Merkle root for taxonomy data
-    fn compute_taxonomy_merkle_root(&self, taxonomy_version: &TaxonomyVersion) -> Result<MerkleHash> {
+    fn compute_taxonomy_merkle_root(
+        &self,
+        taxonomy_version: &TaxonomyVersion,
+    ) -> Result<MerkleHash> {
         // The taxonomy root is already computed and stored in the version
         Ok(taxonomy_version.root_hash.clone())
     }
 
     /// Generate ETag from dual roots
     fn generate_etag(sequence_root: &MerkleHash, taxonomy_root: &MerkleHash) -> String {
-        format!("W/\"{}-{}\"",
+        format!(
+            "W/\"{}-{}\"",
             &sequence_root.to_string()[..8],
             &taxonomy_root.to_string()[..8]
         )
+    }
+
+    /// Load discrepancies for a specific time
+    fn load_discrepancies_for_time(&self, valid_time: i64) -> Result<Vec<String>> {
+        // Load from RocksDB temporal column family
+        let backend = self.storage.chunk_storage();
+        let discrepancy_key = format!("discrepancies:{}", valid_time);
+
+        if let Some(cf) = backend.db.cf_handle("temporal") {
+            if let Ok(Some(data)) = backend.db.get_cf(&cf, discrepancy_key.as_bytes()) {
+                // Deserialize discrepancies from RocksDB
+                let discrepancies: Vec<String> = rmp_serde::from_slice(&data)
+                    .or_else(|_| serde_json::from_slice(&data))
+                    .unwrap_or_default();
+                return Ok(discrepancies);
+            }
+        }
+
+        // No discrepancies found for this time
+        Ok(Vec::new())
+    }
+
+    /// Track removed sequences between versions
+    fn track_removals(
+        &self,
+        old_snapshot: &DatabaseSnapshot,
+        new_snapshot: &DatabaseSnapshot,
+    ) -> Result<usize> {
+        let old_chunks: HashSet<_> = old_snapshot
+            .manifest
+            .chunk_index()
+            .map(|index| index.iter().map(|m| m.hash.clone()).collect())
+            .unwrap_or_else(HashSet::new);
+        let new_chunks: HashSet<_> = new_snapshot
+            .manifest
+            .chunk_index()
+            .map(|index| index.iter().map(|m| m.hash.clone()).collect())
+            .unwrap_or_else(HashSet::new);
+
+        let removed: Vec<_> = old_chunks.difference(&new_chunks).collect();
+
+        // Store removal information in RocksDB
+        if !removed.is_empty() {
+            let removal_key = format!(
+                "removals:{}:{}",
+                new_snapshot
+                    .manifest
+                    .sequence_version()
+                    .unwrap_or_else(|| "unknown".to_string()),
+                new_snapshot
+                    .manifest
+                    .taxonomy_version()
+                    .unwrap_or_else(|| "unknown".to_string())
+            );
+
+            let backend = self.storage.chunk_storage();
+            if let Some(cf) = backend.db.cf_handle("temporal") {
+                let removal_data = rmp_serde::to_vec(&removed)?;
+                backend
+                    .db
+                    .put_cf(&cf, removal_key.as_bytes(), &removal_data)?;
+            };
+        }
+
+        Ok(removed.len())
     }
 
     /// Compare two temporal coordinates and return differences
@@ -189,9 +290,12 @@ impl BiTemporalDatabase {
         let snapshot1 = self.query_at(coord1.sequence_time, coord1.taxonomy_time)?;
         let snapshot2 = self.query_at(coord2.sequence_time, coord2.taxonomy_time)?;
 
+        // Track removals between snapshots
+        let sequences_removed = self.track_removals(&snapshot1, &snapshot2)?;
+
         Ok(TemporalDiff {
             sequences_added: snapshot2.sequence_count() - snapshot1.sequence_count(),
-            sequences_removed: 0,  // TODO: Implement removal tracking
+            sequences_removed,
             taxonomic_changes: self.compare_taxonomies(&snapshot1, &snapshot2)?,
             coord1,
             coord2,
@@ -208,16 +312,10 @@ impl BiTemporalDatabase {
 
         // Get all unique taxon IDs from both snapshots
         let chunks1 = snapshot1.chunks();
-        let taxa1: HashSet<_> = chunks1
-            .iter()
-            .flat_map(|c| c.taxon_ids.iter())
-            .collect();
+        let taxa1: HashSet<_> = chunks1.iter().flat_map(|c| c.taxon_ids.iter()).collect();
 
         let chunks2 = snapshot2.chunks();
-        let taxa2: HashSet<_> = chunks2
-            .iter()
-            .flat_map(|c| c.taxon_ids.iter())
-            .collect();
+        let taxa2: HashSet<_> = chunks2.iter().flat_map(|c| c.taxon_ids.iter()).collect();
 
         // Find new taxa
         for taxon in taxa2.difference(&taxa1) {
@@ -278,12 +376,13 @@ impl BiTemporalDatabase {
 
 /// A snapshot of the database at a specific bi-temporal coordinate
 pub struct DatabaseSnapshot {
-    manifest: Manifest,
-    storage: Arc<SEQUOIAStorage>,
+    pub manifest: Manifest,
+    #[allow(dead_code)]
+    storage: Arc<SequoiaStorage>,
 }
 
 impl DatabaseSnapshot {
-    fn from_manifest(manifest: Manifest, storage: Arc<SEQUOIAStorage>) -> Self {
+    fn from_manifest(manifest: Manifest, storage: Arc<SequoiaStorage>) -> Self {
         Self { manifest, storage }
     }
 
@@ -295,37 +394,47 @@ impl DatabaseSnapshot {
     /// Get the temporal coordinate of this snapshot
     pub fn coordinate(&self) -> Option<BiTemporalCoordinate> {
         // Get from manifest data
-        self.manifest.get_data()
+        self.manifest
+            .get_data()
             .and_then(|data| data.temporal_coordinate.clone())
     }
 
     /// Export this snapshot as FASTA
     pub fn export_fasta(&self, path: &Path) -> Result<()> {
+        use crate::operations::FastaAssembler;
         use std::fs::File;
         use std::io::Write;
-        use crate::operations::FastaAssembler;
 
         let mut file = File::create(path)?;
 
         // Write bi-temporal header
         if let Some(coord) = self.coordinate() {
             writeln!(file, "; SEQUOIA Bi-Temporal Export")?;
-            writeln!(file, "; Sequence Date: {}", coord.sequence_time.format("%Y-%m-%d %H:%M:%S"))?;
-            writeln!(file, "; Taxonomy Date: {}", coord.taxonomy_time.format("%Y-%m-%d %H:%M:%S"))?;
+            writeln!(
+                file,
+                "; Sequence Date: {}",
+                coord.sequence_time.format("%Y-%m-%d %H:%M:%S")
+            )?;
+            writeln!(
+                file,
+                "; Taxonomy Date: {}",
+                coord.taxonomy_time.format("%Y-%m-%d %H:%M:%S")
+            )?;
             writeln!(file, "; Sequence Root: {}", self.sequence_root())?;
             writeln!(file, "; Taxonomy Root: {}", self.taxonomy_root())?;
         }
 
         // Use assembler to export sequences
         let assembler = FastaAssembler::new(&self.storage);
-        let chunk_hashes: Vec<_> = self.chunks()
-            .iter()
-            .map(|c| c.hash.clone())
-            .collect();
+        let chunk_hashes: Vec<_> = self.chunks().iter().map(|c| c.hash.clone()).collect();
 
         let sequence_count = assembler.stream_assembly(&chunk_hashes, &mut file)?;
 
-        println!("Exported {} sequences to {}", sequence_count, path.display());
+        println!(
+            "Exported {} sequences to {}",
+            sequence_count,
+            path.display()
+        );
         Ok(())
     }
 
@@ -336,12 +445,16 @@ impl DatabaseSnapshot {
 
     /// Get taxonomy root
     pub fn taxonomy_root(&self) -> MerkleHash {
-        self.manifest.get_taxonomy_root().unwrap_or_else(|| SHA256Hash::zero())
+        self.manifest
+            .get_taxonomy_root()
+            .unwrap_or_else(|| SHA256Hash::zero())
     }
 
     /// Get sequence root
     pub fn sequence_root(&self) -> MerkleHash {
-        self.manifest.get_sequence_root().unwrap_or_else(|| SHA256Hash::zero())
+        self.manifest
+            .get_sequence_root()
+            .unwrap_or_else(|| SHA256Hash::zero())
     }
 }
 
@@ -377,9 +490,10 @@ mod tests {
     use super::*;
 
     #[test]
+    #[serial_test::serial]
     fn test_bi_temporal_empty_database() -> Result<()> {
         let env = talaria_test::TestEnvironment::new()?;
-        let storage = Arc::new(SEQUOIAStorage::new(&env.sequences_dir())?);
+        let storage = Arc::new(SequoiaStorage::new(&env.sequences_dir())?);
         let mut db = BiTemporalDatabase::new(storage)?;
 
         // Query at current time on empty database should fail gracefully
@@ -389,8 +503,10 @@ mod tests {
         // Should get an error about no versions
         assert!(result.is_err());
         if let Err(err) = result {
-            assert!(err.to_string().contains("No sequence version") ||
-                    err.to_string().contains("No taxonomy version"));
+            assert!(
+                err.to_string().contains("No sequence version")
+                    || err.to_string().contains("No taxonomy version")
+            );
         }
 
         Ok(())

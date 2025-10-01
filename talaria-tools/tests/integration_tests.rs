@@ -1,6 +1,9 @@
-use talaria_tools::manager::ToolManager;
-use talaria_tools::optimizers::{blast::BlastOptimizer, generic::GenericOptimizer, kraken::KrakenOptimizer, lambda::LambdaOptimizer};
 use talaria_bio::sequence::Sequence;
+use talaria_tools::manager::ToolManager;
+use talaria_tools::optimizers::{
+    blast::BlastOptimizer, generic::GenericOptimizer, kraken::KrakenOptimizer,
+    lambda::LambdaOptimizer,
+};
 use tempfile::TempDir;
 
 /// Helper to create test sequences with various properties
@@ -12,8 +15,14 @@ fn create_diverse_sequences() -> Vec<Sequence> {
     sequences.push(Sequence::new("ecoli_2".to_string(), b"GCTAGCTAGCTA".to_vec()).with_taxon(562));
     sequences.push(Sequence::new("human_1".to_string(), b"TTAATTAATTAA".to_vec()).with_taxon(9606));
     sequences.push(Sequence::new("human_2".to_string(), b"CCGGCCGGCCGG".to_vec()).with_taxon(9606));
-    sequences.push(Sequence::new("unknown_1".to_string(), b"AAAATTTTGGGGCCCC".to_vec()));
-    sequences.push(Sequence::new("unknown_2".to_string(), b"TTTTAAAACCCCGGGG".to_vec()));
+    sequences.push(Sequence::new(
+        "unknown_1".to_string(),
+        b"AAAATTTTGGGGCCCC".to_vec(),
+    ));
+    sequences.push(Sequence::new(
+        "unknown_2".to_string(),
+        b"TTTTAAAACCCCGGGG".to_vec(),
+    ));
 
     sequences
 }
@@ -35,7 +44,10 @@ fn test_tool_manager_workflow() {
     // Test version comparison
     use std::cmp::Ordering;
     assert_eq!(manager.compare_versions("1.0.0", "2.0.0"), Ordering::Less);
-    assert_eq!(manager.compare_versions("2.0.0", "1.0.0"), Ordering::Greater);
+    assert_eq!(
+        manager.compare_versions("2.0.0", "1.0.0"),
+        Ordering::Greater
+    );
     assert_eq!(manager.compare_versions("1.0.0", "1.0.0"), Ordering::Equal);
 }
 
@@ -185,7 +197,11 @@ fn test_large_dataset_optimization() {
     for i in 0..1000 {
         let len = (i % 100) + 1;
         let seq = vec![b'A'; len];
-        let taxon = if i % 3 == 0 { Some((i % 10) as u32) } else { None };
+        let taxon = if i % 3 == 0 {
+            Some((i % 10) as u32)
+        } else {
+            None
+        };
 
         let mut sequence = Sequence::new(format!("seq_{}", i), seq);
         if let Some(t) = taxon {
@@ -205,7 +221,12 @@ fn test_large_dataset_optimization() {
     for (i, optimizer) in optimizers.iter().enumerate() {
         let mut seq_copy = sequences.clone();
         optimizer(&mut seq_copy);
-        assert_eq!(seq_copy.len(), 1000, "Optimizer {} changed sequence count", i);
+        assert_eq!(
+            seq_copy.len(),
+            1000,
+            "Optimizer {} changed sequence count",
+            i
+        );
     }
 }
 
@@ -227,7 +248,10 @@ fn test_reduction_preparation_workflow() {
     let mut taxon_groups = std::collections::HashMap::new();
     for seq in &sequences {
         let taxon = seq.taxon_id.unwrap_or(0);
-        taxon_groups.entry(taxon).or_insert_with(Vec::new).push(seq.id.clone());
+        taxon_groups
+            .entry(taxon)
+            .or_insert_with(Vec::new)
+            .push(seq.id.clone());
     }
 
     // Verify workflow results

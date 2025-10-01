@@ -21,6 +21,7 @@ pub fn create_spinner(message: &str) -> ProgressBar {
             .unwrap(),
     );
     pb.set_message(message.to_string());
-    // Don't use steady_tick - causes ETA miscalculation
+    // Enable steady tick for spinners - only progress bars have ETA issues
+    pb.enable_steady_tick(std::time::Duration::from_millis(100));
     pb
 }

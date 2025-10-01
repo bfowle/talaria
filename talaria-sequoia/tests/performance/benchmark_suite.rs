@@ -8,7 +8,7 @@
 /// - Network efficiency: <5% download for updates
 
 use talaria_sequoia::{
-    SEQUOIARepository, SEQUOIAStorage, SequenceIndices, SHA256Hash,
+    SequoiaRepository, SequoiaStorage, SequenceIndices, SHA256Hash,
     TaxonId, DatabaseSource, ChunkManifest, BiTemporalDatabase,
 };
 use talaria_bio::sequence::Sequence;
@@ -24,7 +24,7 @@ fn benchmark_import_speed() -> Result<()> {
     println!("\n=== Import Speed Benchmark ===");
 
     let temp_dir = TempDir::new()?;
-    let storage = Arc::new(SEQUOIAStorage::new(temp_dir.path())?);
+    let storage = Arc::new(SequoiaStorage::new(temp_dir.path())?);
     let indices = storage.get_indices()?;
 
     // Generate test sequences
@@ -93,7 +93,7 @@ fn benchmark_taxonomy_query_latency() -> Result<()> {
     println!("\n=== Taxonomy Query Latency Benchmark ===");
 
     let temp_dir = TempDir::new()?;
-    let storage = Arc::new(SEQUOIAStorage::new(temp_dir.path())?);
+    let storage = Arc::new(SequoiaStorage::new(temp_dir.path())?);
     let indices = storage.get_indices()?;
 
     // Pre-populate with sequences across multiple taxa
@@ -150,7 +150,7 @@ fn benchmark_bloom_filter() -> Result<()> {
     println!("\n=== Bloom Filter Performance Benchmark ===");
 
     let temp_dir = TempDir::new()?;
-    let storage = Arc::new(SEQUOIAStorage::new(temp_dir.path())?);
+    let storage = Arc::new(SequoiaStorage::new(temp_dir.path())?);
     let indices = storage.get_indices()?;
 
     // Add sequences
@@ -218,7 +218,7 @@ fn benchmark_update_check() -> Result<()> {
     println!("\n=== Update Check Benchmark ===");
 
     let temp_dir = TempDir::new()?;
-    let mut repository = SEQUOIARepository::init(temp_dir.path())?;
+    let mut repository = SequoiaRepository::init(temp_dir.path())?;
 
     // Create two manifests with differences
     let chunks1: Vec<ChunkManifest> = (0..1000)
@@ -300,7 +300,7 @@ fn benchmark_memory_usage() -> Result<()> {
     println!("\n=== Memory Usage Benchmark ===");
 
     let temp_dir = TempDir::new()?;
-    let storage = Arc::new(SEQUOIAStorage::new(temp_dir.path())?);
+    let storage = Arc::new(SequoiaStorage::new(temp_dir.path())?);
     let indices = storage.get_indices()?;
 
     // Get initial memory usage
@@ -357,7 +357,7 @@ fn benchmark_bitemporal_queries() -> Result<()> {
     println!("\n=== Bi-Temporal Query Benchmark ===");
 
     let temp_dir = TempDir::new()?;
-    let storage = Arc::new(SEQUOIAStorage::new(temp_dir.path())?);
+    let storage = Arc::new(SequoiaStorage::new(temp_dir.path())?);
     let mut db = BiTemporalDatabase::new(storage.clone())?;
 
     // Note: This would need actual temporal data to test properly

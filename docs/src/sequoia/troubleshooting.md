@@ -187,7 +187,7 @@ talaria reduce -d ncbi/nr -o reduced.fasta -r 0.3
 # Process smaller database
 talaria reduce -d uniprot/swissprot -o reduced.fasta -r 0.3
 
-# Use file-based reduction instead of SEQUOIA
+# Use direct RocksDB operations instead of SEQUOIA abstractions
 talaria reduce -i sequences.fasta -o reduced.fasta -r 0.3
 ```
 

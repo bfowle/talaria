@@ -27,6 +27,14 @@ pub struct UpdateArgs {
     /// Database repository path (default: ${TALARIA_HOME}/databases)
     #[arg(long)]
     pub db_path: Option<std::path::PathBuf>,
+
+    /// Report output file path
+    #[arg(long = "report-output", value_name = "FILE")]
+    pub report_output: Option<std::path::PathBuf>,
+
+    /// Report output format (text, html, json, csv)
+    #[arg(long = "report-format", value_name = "FORMAT", default_value = "text")]
+    pub report_format: String,
 }
 
 pub fn run(args: UpdateArgs) -> Result<()> {
@@ -170,6 +178,64 @@ pub fn run(args: UpdateArgs) -> Result<()> {
     ];
     tree_section("Summary", summary_items, true);
 
+    // Generate report if requested
+    if let Some(report_path) = &args.report_output {
+        use talaria_sequoia::operations::{UpdateResult, DatabaseComparison, ChunkAnalysis, SequenceAnalysis, TaxonomyAnalysis, StorageMetrics};
+
+        // Build empty comparison (not applicable for update operations)
+        let comparison = DatabaseComparison {
+            chunk_analysis: ChunkAnalysis {
+                total_chunks_a: 0,
+                total_chunks_b: 0,
+                shared_chunks: Vec::new(),
+                unique_to_a: Vec::new(),
+                unique_to_b: Vec::new(),
+                shared_percentage_a: 0.0,
+                shared_percentage_b: 0.0,
+            },
+            sequence_analysis: SequenceAnalysis {
+                total_sequences_a: 0,
+                total_sequences_b: 0,
+                shared_sequences: 0,
+                unique_to_a: 0,
+                unique_to_b: 0,
+                sample_shared_ids: Vec::new(),
+                sample_unique_a_ids: Vec::new(),
+                sample_unique_b_ids: Vec::new(),
+                shared_percentage_a: 0.0,
+                shared_percentage_b: 0.0,
+            },
+            taxonomy_analysis: TaxonomyAnalysis {
+                total_taxa_a: 0,
+                total_taxa_b: 0,
+                shared_taxa: Vec::new(),
+                unique_to_a: Vec::new(),
+                unique_to_b: Vec::new(),
+                top_shared_taxa: Vec::new(),
+                shared_percentage_a: 0.0,
+                shared_percentage_b: 0.0,
+            },
+            storage_metrics: StorageMetrics {
+                size_a_bytes: 0,
+                size_b_bytes: 0,
+                dedup_savings_bytes: 0,
+                dedup_ratio_a: 0.0,
+                dedup_ratio_b: 0.0,
+            },
+        };
+
+        let result = UpdateResult {
+            updated_databases: updates_available.iter().map(|(name, _, _)| name.clone()).collect(),
+            failed_databases: errors.iter().map(|(name, err)| (name.clone(), err.clone())).collect(),
+            dry_run: args.dry_run,
+            comparison,
+            duration: std::time::Duration::from_secs(0),
+        };
+
+        crate::cli::commands::save_report(&result, &args.report_format, report_path)?;
+        success(&format!("Report saved to {}", report_path.display()));
+    }
+
     Ok(())
 }
 
@@ -240,6 +306,14 @@ fn check_database_update(
                     Ok(UpdateStatus::UpdateAvailable {
                         current: "none".to_string(),
                         latest: "downloaded".to_string(),
+                    })
+                }
+                Ok(talaria_sequoia::database::DownloadResult::AlreadyExists { .. }) => {
+                    Ok(UpdateStatus::UpToDate {
+                        version: manager
+                            .get_current_version_info(&source)
+                            .map(|v| v.timestamp)
+                            .unwrap_or_else(|_| "unknown".to_string()),
                     })
                 }
                 Err(_) => Ok(UpdateStatus::NotFound),

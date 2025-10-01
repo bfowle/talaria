@@ -1,12 +1,12 @@
+use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 /// Real-time throughput monitoring and performance tracking
 ///
 /// This module provides live monitoring of processing throughput,
 /// identifies bottlenecks, and provides optimization recommendations.
-
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
-use std::collections::VecDeque;
-use serde::{Serialize, Deserialize};
 
 /// Moving window for calculating throughput averages
 const WINDOW_SIZE: usize = 100;
@@ -34,6 +34,7 @@ struct MonitorInner {
     /// Moving window of throughput samples
     sequence_throughput: VecDeque<f64>,
     byte_throughput: VecDeque<f64>,
+    chunk_throughput: VecDeque<f64>,
     /// Current batch size
     current_batch_size: usize,
     /// Performance bottlenecks detected
@@ -97,6 +98,7 @@ impl ThroughputMonitor {
                 total_chunks: 0,
                 sequence_throughput: VecDeque::with_capacity(WINDOW_SIZE),
                 byte_throughput: VecDeque::with_capacity(WINDOW_SIZE),
+                chunk_throughput: VecDeque::with_capacity(WINDOW_SIZE),
                 current_batch_size: 1000,
                 bottlenecks: Vec::new(),
                 metrics_history: Vec::new(),
@@ -106,7 +108,7 @@ impl ThroughputMonitor {
 
     /// Record sequences processed
     pub fn record_sequences(&self, count: usize, bytes: usize) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         inner.total_sequences += count as u64;
         inner.total_bytes += bytes as u64;
 
@@ -115,6 +117,7 @@ impl ThroughputMonitor {
         if elapsed > 0.0 {
             let seq_per_sec = inner.total_sequences as f64 / elapsed;
             let mb_per_sec = (inner.total_bytes as f64 / 1_000_000.0) / elapsed;
+            let chunks_per_sec = inner.total_chunks as f64 / elapsed;
 
             // Update moving averages
             if inner.sequence_throughput.len() >= WINDOW_SIZE {
@@ -129,32 +132,116 @@ impl ThroughputMonitor {
 
             // Check if we should report
             if inner.last_report_time.elapsed() >= Duration::from_secs(REPORT_INTERVAL_SECS) {
-                self.report_metrics(&mut inner);
+                // Extract data needed for metrics calculation before calling methods that might lock
+                let current_throughput = inner.sequence_throughput.back().cloned().unwrap_or(0.0);
+                let elapsed = inner.start_time.elapsed();
+                let batch_size = inner.current_batch_size;
+
+                // Store throughput in history
+                inner.sequence_throughput.push_back(seq_per_sec);
+                if inner.sequence_throughput.len() > WINDOW_SIZE {
+                    inner.sequence_throughput.pop_front();
+                }
+
+                inner.byte_throughput.push_back(mb_per_sec);
+                if inner.byte_throughput.len() > WINDOW_SIZE {
+                    inner.byte_throughput.pop_front();
+                }
+
+                inner.chunk_throughput.push_back(chunks_per_sec);
+                if inner.chunk_throughput.len() > WINDOW_SIZE {
+                    inner.chunk_throughput.pop_front();
+                }
+
                 inner.last_report_time = Instant::now();
+
+                // Drop the lock before calling methods
+                drop(inner);
+
+                // Now we can safely calculate memory and CPU usage
+                let memory_mb = self.get_current_memory_mb();
+                let cpu_percent = self.estimate_cpu_usage_from_throughput(current_throughput);
+
+                // Create and log performance snapshot
+                let snapshot = PerformanceSnapshot {
+                    timestamp: elapsed,
+                    sequences_per_sec: seq_per_sec,
+                    mb_per_sec,
+                    chunks_per_sec,
+                    batch_size,
+                    memory_mb,
+                    cpu_percent,
+                };
+
+                // Log the metrics
+                tracing::info!(
+                    "Performance: {:.0} seq/s, {:.1} MB/s, {:.0} chunks/s | Batch: {} | Memory: {} MB | CPU: {:.0}%",
+                    snapshot.sequences_per_sec,
+                    snapshot.mb_per_sec,
+                    snapshot.chunks_per_sec,
+                    snapshot.batch_size,
+                    snapshot.memory_mb,
+                    snapshot.cpu_percent
+                );
+
+                // Store snapshot and detect bottlenecks
+                {
+                    let mut inner = self.inner.lock();
+                    inner.metrics_history.push(snapshot);
+                    inner.bottlenecks = self.detect_bottlenecks();
+                    for bottleneck in &inner.bottlenecks {
+                        tracing::warn!("Bottleneck detected: {:?}", bottleneck);
+                    }
+                }
+            } else {
+                // Just update the throughput windows
+                inner.sequence_throughput.push_back(seq_per_sec);
+                if inner.sequence_throughput.len() > WINDOW_SIZE {
+                    inner.sequence_throughput.pop_front();
+                }
+
+                inner.byte_throughput.push_back(mb_per_sec);
+                if inner.byte_throughput.len() > WINDOW_SIZE {
+                    inner.byte_throughput.pop_front();
+                }
+
+                inner.chunk_throughput.push_back(chunks_per_sec);
+                if inner.chunk_throughput.len() > WINDOW_SIZE {
+                    inner.chunk_throughput.pop_front();
+                }
             }
         }
     }
 
     /// Record chunks created
     pub fn record_chunks(&self, count: usize) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         inner.total_chunks += count as u64;
     }
 
     /// Update current batch size
     pub fn update_batch_size(&self, size: usize) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         inner.current_batch_size = size;
     }
 
     /// Detect performance bottlenecks
     pub fn detect_bottlenecks(&self) -> Vec<Bottleneck> {
-        let inner = self.inner.lock().unwrap();
         let mut bottlenecks = Vec::new();
+
+        // Extract data we need from inner to avoid holding lock
+        let (current_throughput, sequence_throughput, byte_throughput) = {
+            let inner = self.inner.lock();
+            (
+                inner.sequence_throughput.back().cloned().unwrap_or(0.0),
+                inner.sequence_throughput.clone(),
+                inner.byte_throughput.clone(),
+            )
+        };
 
         // Check CPU utilization
         let cpu_cores = num_cpus::get();
-        let cpu_usage = self.estimate_cpu_usage();
+        let cpu_usage = self.estimate_cpu_usage_from_throughput(current_throughput);
 
         if cpu_usage > 0.9 * (cpu_cores as f64) {
             bottlenecks.push(Bottleneck::CpuBound {
@@ -176,7 +263,9 @@ impl ThroughputMonitor {
         }
 
         // Check I/O bottlenecks
-        if let Some(io_bottleneck) = self.check_io_bottleneck(&inner) {
+        if let Some(io_bottleneck) =
+            self.check_io_bottleneck_from_data(&sequence_throughput, &byte_throughput)
+        {
             bottlenecks.push(io_bottleneck);
         }
 
@@ -185,7 +274,7 @@ impl ThroughputMonitor {
 
     /// Generate performance report
     pub fn generate_report(&self) -> PerformanceReport {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock();
         let duration = inner.start_time.elapsed();
 
         let avg_seq_per_sec = if !inner.sequence_throughput.is_empty() {
@@ -200,7 +289,11 @@ impl ThroughputMonitor {
             0.0
         };
 
-        let peak_seq_per_sec = inner.sequence_throughput.iter().cloned().fold(0.0, f64::max);
+        let peak_seq_per_sec = inner
+            .sequence_throughput
+            .iter()
+            .cloned()
+            .fold(0.0, f64::max);
         let peak_mb_per_sec = inner.byte_throughput.iter().cloned().fold(0.0, f64::max);
 
         let recommendations = self.generate_recommendations(&inner);
@@ -222,7 +315,7 @@ impl ThroughputMonitor {
 
     /// Get current throughput
     pub fn current_throughput(&self) -> (f64, f64) {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock();
 
         let seq_per_sec = inner.sequence_throughput.back().cloned().unwrap_or(0.0);
         let mb_per_sec = inner.byte_throughput.back().cloned().unwrap_or(0.0);
@@ -232,50 +325,10 @@ impl ThroughputMonitor {
 
     /// Private helper methods
 
-    fn report_metrics(&self, inner: &mut MonitorInner) {
-        let elapsed = inner.start_time.elapsed();
-        let seq_per_sec = inner.total_sequences as f64 / elapsed.as_secs_f64();
-        let mb_per_sec = (inner.total_bytes as f64 / 1_000_000.0) / elapsed.as_secs_f64();
-        let chunks_per_sec = inner.total_chunks as f64 / elapsed.as_secs_f64();
-
-        // Create performance snapshot
-        let snapshot = PerformanceSnapshot {
-            timestamp: elapsed,
-            sequences_per_sec: seq_per_sec,
-            mb_per_sec,
-            chunks_per_sec,
-            batch_size: inner.current_batch_size,
-            memory_mb: self.get_current_memory_mb(),
-            cpu_percent: self.estimate_cpu_usage(),
-        };
-
-        inner.metrics_history.push(snapshot.clone());
-
-        // Log the metrics
-        tracing::info!(
-            "Performance: {:.0} seq/s, {:.1} MB/s, {:.0} chunks/s | Batch: {} | Memory: {} MB | CPU: {:.0}%",
-            snapshot.sequences_per_sec,
-            snapshot.mb_per_sec,
-            snapshot.chunks_per_sec,
-            snapshot.batch_size,
-            snapshot.memory_mb,
-            snapshot.cpu_percent
-        );
-
-        // Detect and log bottlenecks
-        inner.bottlenecks = self.detect_bottlenecks();
-        for bottleneck in &inner.bottlenecks {
-            tracing::warn!("Bottleneck detected: {:?}", bottleneck);
-        }
-    }
-
-    fn estimate_cpu_usage(&self) -> f64 {
+    fn estimate_cpu_usage_from_throughput(&self, current_throughput: f64) -> f64 {
         // Simplified CPU estimation based on throughput
         // In production, use proper CPU monitoring
-        let inner = self.inner.lock().unwrap();
-        let current_throughput = inner.sequence_throughput.back().cloned().unwrap_or(0.0);
         let max_theoretical = 200_000.0; // Theoretical max sequences/sec
-
         (current_throughput / max_theoretical) * num_cpus::get() as f64
     }
 
@@ -304,13 +357,23 @@ impl ThroughputMonitor {
         }
     }
 
-    fn check_io_bottleneck(&self, inner: &MonitorInner) -> Option<Bottleneck> {
+    fn check_io_bottleneck_from_data(
+        &self,
+        _seq_throughput: &VecDeque<f64>,
+        byte_throughput: &VecDeque<f64>,
+    ) -> Option<Bottleneck> {
         // Check if throughput is limited by I/O
-        let mb_per_sec = inner.byte_throughput.back().cloned().unwrap_or(0.0);
+        let mb_per_sec = byte_throughput.back().cloned().unwrap_or(0.0);
 
         // Typical SSD can do 500+ MB/s
         // If we're processing less than 50 MB/s, might be I/O bound
-        if mb_per_sec < 50.0 && inner.total_bytes > 100_000_000 {
+        // Check if we have processed significant data
+        let total_bytes = {
+            let inner = self.inner.lock();
+            inner.total_bytes
+        };
+
+        if mb_per_sec < 50.0 && total_bytes > 100_000_000 {
             Some(Bottleneck::IoBound {
                 read_mb_sec: mb_per_sec,
                 write_mb_sec: mb_per_sec / 2.0, // Assume write is half
@@ -326,19 +389,33 @@ impl ThroughputMonitor {
         for bottleneck in &inner.bottlenecks {
             match bottleneck {
                 Bottleneck::CpuBound { .. } => {
-                    recommendations.push("Consider using release build for better performance".to_string());
+                    recommendations
+                        .push("Consider using release build for better performance".to_string());
                     recommendations.push("Increase batch size to reduce overhead".to_string());
                 }
                 Bottleneck::MemoryBound { available_mb, .. } => {
-                    recommendations.push(format!("Reduce batch size - only {} MB available", available_mb));
+                    recommendations.push(format!(
+                        "Reduce batch size - only {} MB available",
+                        available_mb
+                    ));
                     recommendations.push("Close other applications to free memory".to_string());
                 }
                 Bottleneck::IoBound { read_mb_sec, .. } => {
-                    recommendations.push(format!("I/O limited to {:.1} MB/s - consider faster storage", read_mb_sec));
-                    recommendations.push("Use SSD instead of HDD for better performance".to_string());
+                    recommendations.push(format!(
+                        "I/O limited to {:.1} MB/s - consider faster storage",
+                        read_mb_sec
+                    ));
+                    recommendations
+                        .push("Use SSD instead of HDD for better performance".to_string());
                 }
-                Bottleneck::SingleThreaded { cpu_cores, utilized } => {
-                    recommendations.push(format!("Using only {} of {} cores - enable parallel processing", utilized, cpu_cores));
+                Bottleneck::SingleThreaded {
+                    cpu_cores,
+                    utilized,
+                } => {
+                    recommendations.push(format!(
+                        "Using only {} of {} cores - enable parallel processing",
+                        utilized, cpu_cores
+                    ));
                     recommendations.push("Increase batch size to utilize more cores".to_string());
                 }
                 _ => {}
@@ -347,7 +424,8 @@ impl ThroughputMonitor {
 
         // General recommendations based on metrics
         if inner.current_batch_size < 1000 {
-            recommendations.push("Batch size is very small - consider increasing to 5000+".to_string());
+            recommendations
+                .push("Batch size is very small - consider increasing to 5000+".to_string());
         }
 
         let avg_seq_per_sec = if !inner.sequence_throughput.is_empty() {
@@ -357,7 +435,8 @@ impl ThroughputMonitor {
         };
 
         if avg_seq_per_sec < 10_000.0 {
-            recommendations.push("Performance is below expected - ensure using release build".to_string());
+            recommendations
+                .push("Performance is below expected - ensure using release build".to_string());
         }
 
         recommendations
@@ -372,13 +451,20 @@ impl PerformanceReport {
         output.push_str(&format!("=== Performance Report ===\n"));
         output.push_str(&format!("Duration: {:.1}s\n", self.duration.as_secs_f64()));
         output.push_str(&format!("Total Sequences: {}\n", self.total_sequences));
-        output.push_str(&format!("Total Data: {:.1} MB\n", self.total_bytes as f64 / 1_000_000.0));
+        output.push_str(&format!(
+            "Total Data: {:.1} MB\n",
+            self.total_bytes as f64 / 1_000_000.0
+        ));
         output.push_str(&format!("Total Chunks: {}\n", self.total_chunks));
         output.push_str(&format!("\nThroughput:\n"));
-        output.push_str(&format!("  Average: {:.0} seq/s, {:.1} MB/s\n",
-            self.avg_sequences_per_sec, self.avg_mb_per_sec));
-        output.push_str(&format!("  Peak: {:.0} seq/s, {:.1} MB/s\n",
-            self.peak_sequences_per_sec, self.peak_mb_per_sec));
+        output.push_str(&format!(
+            "  Average: {:.0} seq/s, {:.1} MB/s\n",
+            self.avg_sequences_per_sec, self.avg_mb_per_sec
+        ));
+        output.push_str(&format!(
+            "  Peak: {:.0} seq/s, {:.1} MB/s\n",
+            self.peak_sequences_per_sec, self.peak_mb_per_sec
+        ));
 
         if !self.bottlenecks.is_empty() {
             output.push_str(&format!("\nBottlenecks Detected:\n"));
@@ -407,7 +493,8 @@ impl PerformanceReport {
         let mut csv = String::from("timestamp_sec,sequences_per_sec,mb_per_sec,chunks_per_sec,batch_size,memory_mb,cpu_percent\n");
 
         for snapshot in &self.metrics_history {
-            csv.push_str(&format!("{:.1},{:.0},{:.1},{:.0},{},{},{:.1}\n",
+            csv.push_str(&format!(
+                "{:.1},{:.0},{:.1},{:.0},{},{},{:.1}\n",
                 snapshot.timestamp.as_secs_f64(),
                 snapshot.sequences_per_sec,
                 snapshot.mb_per_sec,

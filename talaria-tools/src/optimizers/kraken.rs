@@ -27,9 +27,9 @@ mod tests {
             Sequence::new("seq1".to_string(), b"ATCG".to_vec()).with_taxon(100),
             Sequence::new("seq2".to_string(), b"GC".to_vec()).with_taxon(50),
             Sequence::new("seq3".to_string(), b"ATCGATCG".to_vec()).with_taxon(50),
-            Sequence::new("seq4".to_string(), b"TTAA".to_vec()),  // No taxon
+            Sequence::new("seq4".to_string(), b"TTAA".to_vec()), // No taxon
             Sequence::new("seq5".to_string(), b"GGCCTTAA".to_vec()).with_taxon(100),
-            Sequence::new("seq6".to_string(), b"A".to_vec()),  // No taxon
+            Sequence::new("seq6".to_string(), b"A".to_vec()), // No taxon
         ]
     }
 
@@ -49,16 +49,16 @@ mod tests {
 
         // Should be sorted by (taxon_id, length)
         // taxon 0 (None) comes first, sorted by length
-        assert_eq!(sequences[0].id, "seq6");  // No taxon, length 1
-        assert_eq!(sequences[1].id, "seq4");  // No taxon, length 4
+        assert_eq!(sequences[0].id, "seq6"); // No taxon, length 1
+        assert_eq!(sequences[1].id, "seq4"); // No taxon, length 4
 
         // taxon 50, sorted by length
-        assert_eq!(sequences[2].id, "seq2");  // Taxon 50, length 2
-        assert_eq!(sequences[3].id, "seq3");  // Taxon 50, length 8
+        assert_eq!(sequences[2].id, "seq2"); // Taxon 50, length 2
+        assert_eq!(sequences[3].id, "seq3"); // Taxon 50, length 8
 
         // taxon 100, sorted by length
-        assert_eq!(sequences[4].id, "seq1");  // Taxon 100, length 4
-        assert_eq!(sequences[5].id, "seq5");  // Taxon 100, length 8
+        assert_eq!(sequences[4].id, "seq1"); // Taxon 100, length 4
+        assert_eq!(sequences[5].id, "seq5"); // Taxon 100, length 8
     }
 
     #[test]
@@ -74,9 +74,8 @@ mod tests {
     #[test]
     fn test_optimize_for_kraken_single() {
         let optimizer = KrakenOptimizer::new();
-        let mut sequences = vec![
-            Sequence::new("only".to_string(), b"ATCG".to_vec()).with_taxon(42)
-        ];
+        let mut sequences =
+            vec![Sequence::new("only".to_string(), b"ATCG".to_vec()).with_taxon(42)];
 
         optimizer.optimize_for_kraken(&mut sequences);
 
@@ -96,9 +95,9 @@ mod tests {
         optimizer.optimize_for_kraken(&mut sequences);
 
         // All have taxon 0 (None), should be sorted by length only
-        assert_eq!(sequences[0].id, "short");   // length 2
-        assert_eq!(sequences[1].id, "medium");  // length 8
-        assert_eq!(sequences[2].id, "long");    // length 12
+        assert_eq!(sequences[0].id, "short"); // length 2
+        assert_eq!(sequences[1].id, "medium"); // length 8
+        assert_eq!(sequences[2].id, "long"); // length 12
     }
 
     #[test]
@@ -129,9 +128,7 @@ mod tests {
         for i in 0..20 {
             let taxon = if i % 2 == 0 { 10 } else { 20 };
             let seq = vec![b'A'; i + 1];
-            sequences.push(
-                Sequence::new(format!("seq_{}", i), seq).with_taxon(taxon)
-            );
+            sequences.push(Sequence::new(format!("seq_{}", i), seq).with_taxon(taxon));
         }
 
         optimizer.optimize_for_kraken(&mut sequences);

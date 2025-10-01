@@ -1,5 +1,5 @@
 use crate::sequence::Sequence;
-use talaria_core::error::TalariaError;
+use anyhow::Result;
 use flate2::read::GzDecoder;
 use memmap2::Mmap;
 use nom::{
@@ -13,7 +13,7 @@ use rayon::prelude::*;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::Path;
-use anyhow::Result;
+use talaria_core::error::TalariaError;
 
 /// Parse a FASTA header line
 fn parse_header(input: &[u8]) -> IResult<&[u8], (&str, Option<&str>)> {
@@ -486,13 +486,15 @@ pub fn parse_fasta_parallel<P: AsRef<Path>>(
     let mut pos = 0;
 
     while pos < mmap.len() {
-        if pos > 0 && mmap[pos] == b'>' && (pos == 0 || mmap[pos - 1] == b'\n')
+        if pos > 0
+            && mmap[pos] == b'>'
+            && (pos == 0 || mmap[pos - 1] == b'\n')
             && boundaries
                 .last()
                 .is_none_or(|&last| pos - last >= chunk_size)
-            {
-                boundaries.push(pos);
-            }
+        {
+            boundaries.push(pos);
+        }
         pos += 1;
     }
     boundaries.push(mmap.len());
@@ -589,7 +591,9 @@ mod tests {
             Some(9606)
         );
         assert_eq!(
-            extract_taxon_id("UniRef50_A0A0E3J5A9 Cluster: PREDICTED: mucin-5AC n=2 Tax=Equus TaxID=9796"),
+            extract_taxon_id(
+                "UniRef50_A0A0E3J5A9 Cluster: PREDICTED: mucin-5AC n=2 Tax=Equus TaxID=9796"
+            ),
             Some(9796)
         );
         // Mixed formats - TaxID takes priority

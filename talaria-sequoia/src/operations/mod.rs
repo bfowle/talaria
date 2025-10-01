@@ -33,10 +33,10 @@
 //! # use std::path::PathBuf;
 //! # fn main() -> Result<()> {
 //! use talaria_sequoia::operations::{ReductionManager, ReductionManifest};
-//! use talaria_sequoia::SEQUOIAStorage;
+//! use talaria_sequoia::SequoiaStorage;
 //!
 //! # let storage_path = PathBuf::from("/tmp/storage");
-//! let storage = SEQUOIAStorage::new(&storage_path)?;
+//! let storage = SequoiaStorage::new(&storage_path)?;
 //! let mut manager = ReductionManager::new(storage);
 //! // Save and load reduction manifests
 //! # use talaria_sequoia::operations::ReductionParameters;
@@ -57,22 +57,38 @@ pub mod database_diff;
 pub mod differ;
 pub mod migrator;
 pub mod reducer;
+pub mod reduction;
 pub mod reference_selector;
 pub mod reference_selector_optimized;
-pub mod reduction;
+pub mod results;
 pub mod selection;
 pub mod state;
 pub mod validator;
 
 // Re-export main types
-pub use assembler::{FastaAssembler, AssemblyResult, AssemblyBuilder};
-pub use database_diff::{DatabaseDiffer, DatabaseComparison, ChunkAnalysis, SequenceAnalysis,
-                         TaxonomyAnalysis, TaxonDistribution, StorageMetrics, format_bytes};
-pub use differ::{TemporalManifestDiffer, StandardTemporalManifestDiffer, DiffResult,
-                 DiffOptions, ChangeType, ChunkChange, DiffStats};
-pub use reduction::{ReductionManifest, ReductionParameters, ReferenceChunk,
-                    DeltaChunkRef, ReductionStatistics, ReductionManager};
+pub use assembler::{AssemblyBuilder, AssemblyResult, FastaAssembler};
+pub use database_diff::{
+    format_bytes, ChunkAnalysis, DatabaseComparison, DatabaseDiffer, SequenceAnalysis,
+    StorageMetrics, TaxonDistribution, TaxonomyAnalysis,
+};
+pub use differ::{
+    ChangeType, ChunkChange, DiffOptions, DiffResult, DiffStats, StandardTemporalManifestDiffer,
+    TemporalManifestDiffer,
+};
 pub use reducer::Reducer;
-pub use reference_selector::{SelectionAlgorithm, ReferenceSelectorImpl, SelectionResult};
-pub use selection::traits::{ReferenceSelector, AlignmentBasedSelector, TraitSelectionResult, SelectionStats, AlignmentScore, RecommendedParams};
-pub use state::{ProcessingState, ProcessingStateManager, OperationType, SourceInfo};
+pub use reduction::{
+    DeltaChunkRef, ReductionManager, ReductionManifest, ReductionParameters, ReductionStatistics,
+    ReferenceChunk,
+};
+pub use reference_selector::{ReferenceSelectorImpl, SelectionAlgorithm, SelectionResult};
+pub use selection::traits::{
+    AlignmentBasedSelector, AlignmentScore, RecommendedParams, ReferenceSelector, SelectionStats,
+    TraitSelectionResult,
+};
+pub use state::{OperationType, ProcessingState, ProcessingStateManager, SourceInfo};
+pub use results::{
+    CompositionStats, DiscrepancyResult, GarbageCollectionResult, HistoryResult, MirrorResult,
+    OptimizationResult, ReconstructionResult, ReductionResult, StatsResult,
+    TaxonomyComparison, TaxonomyCoverageInfo, TaxonomyCoverageResult, UpdateCheckResult,
+    UpdateResult, ValidationResult, VersionHistoryEntry, VerificationResult, DatabaseInfoResult,
+};

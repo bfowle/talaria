@@ -610,7 +610,9 @@ mod tests {
         assert_eq!(optimizer.chunk_cache.len(), 3);
 
         // Verify compressed flag detected
-        let compressed_count = optimizer.chunk_cache.values()
+        let compressed_count = optimizer
+            .chunk_cache
+            .values()
             .filter(|info| info.compressed)
             .count();
         assert_eq!(compressed_count, 1);
@@ -704,7 +706,9 @@ mod tests {
 
         assert_eq!(analysis.chunk_count, 2);
         assert!(analysis.total_size > 0);
-        assert!(analysis.potential_savings.contains_key(&StorageStrategy::Compression));
+        assert!(analysis
+            .potential_savings
+            .contains_key(&StorageStrategy::Compression));
     }
 
     #[tokio::test]
@@ -801,7 +805,9 @@ mod tests {
         assert_eq!(results[0].strategy, StorageStrategy::Compression);
 
         // Dry run should not actually compress
-        let uncompressed_count = optimizer.chunk_cache.values()
+        let uncompressed_count = optimizer
+            .chunk_cache
+            .values()
             .filter(|info| !info.compressed)
             .count();
         assert!(uncompressed_count > 0);
@@ -851,7 +857,10 @@ mod tests {
             },
         );
 
-        let impact = optimizer.estimate_impact(StorageStrategy::Compression).await.unwrap();
+        let impact = optimizer
+            .estimate_impact(StorageStrategy::Compression)
+            .await
+            .unwrap();
         assert!(impact > 0);
         assert!(impact < 3000); // Should be less than original size
     }

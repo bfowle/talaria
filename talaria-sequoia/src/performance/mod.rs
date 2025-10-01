@@ -1,22 +1,14 @@
-/// Performance monitoring and optimization module
-
-pub mod memory_monitor;
 pub mod adaptive;
+pub mod deadlock_detector;
+pub mod lock_free_monitor;
+/// Performance monitoring and optimization module
+pub mod memory_monitor;
 pub mod throughput;
 
+pub use adaptive::{AdaptiveConfig, AdaptiveConfigBuilder, AdaptiveManager, PerformanceMetrics};
+pub use lock_free_monitor::LockFreeThroughputMonitor;
 pub use memory_monitor::{MemoryMonitor, MemoryStats};
-pub use adaptive::{
-    AdaptiveManager,
-    AdaptiveConfig,
-    AdaptiveConfigBuilder,
-    PerformanceMetrics,
-};
-pub use throughput::{
-    ThroughputMonitor,
-    PerformanceReport,
-    PerformanceSnapshot,
-    Bottleneck,
-};
+pub use throughput::{Bottleneck, PerformanceReport, PerformanceSnapshot, ThroughputMonitor};
 
 /// Get system information for performance tuning
 pub fn get_system_info() -> SystemInfo {

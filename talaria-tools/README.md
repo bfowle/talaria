@@ -116,7 +116,7 @@ pub struct AlignmentConfig {
 
 ### 2. LAMBDA Aligner (`aligners/lambda/`)
 
-The primary aligner implementation, optimized for protein sequence alignment with SEQUOIA integration.
+The primary aligner implementation, optimized for protein sequence alignment with Sequoia integration.
 
 #### Key Features
 

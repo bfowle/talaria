@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
-use talaria_sequoia::{SEQUOIARepository, VerificationResult};
-use talaria_core::system::paths;
+use crate::cli::global_config;
 use clap::Args;
 use colored::*;
-use crate::cli::global_config;
+use talaria_core::system::paths;
+use talaria_sequoia::{SequoiaRepository, VerificationResult};
 
 #[derive(Args)]
 pub struct VerifyArgs {
@@ -32,21 +32,21 @@ pub struct VerifyArgs {
 pub fn run(args: VerifyArgs) -> anyhow::Result<()> {
     let base_path = if let Some(db_ref) = &args.database {
         // Parse database reference to handle database[@version][:profile]
-        let db_ref_parsed = talaria_utils::database::database_ref::parse_database_reference(db_ref)?;
+        let db_ref_parsed =
+            talaria_utils::database::database_ref::parse_database_reference(db_ref)?;
 
-        // Build the path to the database version directory
-        let versions_dir = paths::talaria_databases_dir().join("versions");
-        let db_path = versions_dir
-            .join(&db_ref_parsed.source)
-            .join(&db_ref_parsed.dataset);
+        // Verify database exists using DatabaseManager
+        use talaria_sequoia::database::DatabaseManager;
+        let manager = DatabaseManager::new(None)?;
+        let db_name = format!("{}/{}", db_ref_parsed.source, db_ref_parsed.dataset);
+        manager
+            .list_databases()?
+            .iter()
+            .find(|db| db.name == db_name || db.name.ends_with(&db_name))
+            .ok_or_else(|| anyhow::anyhow!("Database not found: {}", db_name))?;
 
-        // Use specified version or "current"
-        let version = db_ref_parsed.version.as_deref().unwrap_or("current");
-        let version_path = db_path.join(version);
-
-        // For profiles, we still verify the main database, not the profile subdirectory
-        // The profile information could be used to verify profile-specific configurations
-        version_path
+        // Use unified RocksDB path
+        paths::talaria_databases_dir()
     } else {
         paths::talaria_databases_dir()
     };
@@ -64,7 +64,7 @@ pub fn run(args: VerifyArgs) -> anyhow::Result<()> {
         base_path.display()
     );
 
-    let repo = SEQUOIARepository::open(&base_path)?;
+    let repo = SequoiaRepository::open(&base_path)?;
 
     let result = if args.structure_only {
         verify_structure(&repo)?
@@ -75,7 +75,9 @@ pub fn run(args: VerifyArgs) -> anyhow::Result<()> {
                 // Create a simple success result
                 VerificationResult {
                     valid: true,
-                    chunks_verified: repo.manifest.get_data()
+                    chunks_verified: repo
+                        .manifest
+                        .get_data()
                         .map(|m| m.chunk_index.len())
                         .unwrap_or(0),
                     invalid_chunks: Vec::new(),
@@ -94,7 +96,9 @@ pub fn run(args: VerifyArgs) -> anyhow::Result<()> {
                     // Continue with verification result
                     VerificationResult {
                         valid: true,
-                        chunks_verified: repo.manifest.get_data()
+                        chunks_verified: repo
+                            .manifest
+                            .get_data()
                             .map(|m| m.chunk_index.len())
                             .unwrap_or(0),
                         invalid_chunks: Vec::new(),
@@ -127,8 +131,10 @@ pub fn run(args: VerifyArgs) -> anyhow::Result<()> {
     }
 }
 
-fn verify_structure(repo: &SEQUOIARepository) -> anyhow::Result<VerificationResult> {
-    let manifest_data = repo.manifest.get_data()
+fn verify_structure(repo: &SequoiaRepository) -> anyhow::Result<VerificationResult> {
+    let manifest_data = repo
+        .manifest
+        .get_data()
         .ok_or_else(|| anyhow::anyhow!("No manifest loaded"))?;
 
     let mut warnings = Vec::new();
@@ -141,17 +147,15 @@ fn verify_structure(repo: &SEQUOIARepository) -> anyhow::Result<VerificationResu
 
     // Check for orphaned chunks
     let stored_chunks = repo.storage.list_all_chunks()?;
-    let manifest_chunks: std::collections::HashSet<_> = manifest_data.chunk_index
+    let manifest_chunks: std::collections::HashSet<_> = manifest_data
+        .chunk_index
         .iter()
         .map(|c| c.hash.clone())
         .collect();
 
     for chunk_hash in &stored_chunks {
         if !manifest_chunks.contains(chunk_hash) {
-            warnings.push(format!(
-                "Orphaned chunk found: {}",
-                chunk_hash.to_hex()
-            ));
+            warnings.push(format!("Orphaned chunk found: {}", chunk_hash.to_hex()));
         }
     }
 
@@ -197,7 +201,11 @@ fn display_results(result: &VerificationResult, verbose: bool) -> anyhow::Result
     );
 
     if !result.invalid_chunks.is_empty() {
-        println!("\n{} ({}):", "Invalid chunks".red().bold(), result.invalid_chunks.len());
+        println!(
+            "\n{} ({}):",
+            "Invalid chunks".red().bold(),
+            result.invalid_chunks.len()
+        );
         for (i, chunk_hash) in result.invalid_chunks.iter().enumerate() {
             if !verbose && i >= 5 {
                 println!("  ... and {} more", result.invalid_chunks.len() - 5);

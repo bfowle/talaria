@@ -5,6 +5,12 @@ use serde::{Deserialize, Serialize};
 // Re-export only primitive types from talaria-core
 pub use talaria_core::types::{SHA256Hash, TaxonId};
 
+// Re-export storage types from talaria-storage to avoid duplication
+pub use talaria_storage::types::{
+    CanonicalSequence, ChunkClassification, ChunkFormat, ChunkManifest, SequenceRepresentation,
+    SequenceRepresentations, SequenceRef,
+};
+
 // Custom serialization module for DateTime to handle MessagePack
 mod datetime_serde {
     use chrono::{DateTime, TimeZone, Utc};
@@ -105,14 +111,7 @@ impl BiTemporalCoordinate {
 
 // TaxonId is now imported from talaria_core::types
 
-/// Reference to a sequence within a chunk
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SequenceRef {
-    pub chunk_hash: SHA256Hash,
-    pub offset: usize,
-    pub length: usize,
-    pub sequence_id: String,
-}
+// SequenceRef is now imported from talaria_storage::types
 
 /// Discrepancy between taxonomy annotations
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -302,8 +301,8 @@ pub struct ChunkingStrategy {
 impl Default for ChunkingStrategy {
     fn default() -> Self {
         Self {
-            target_chunk_size: 10 * 1024 * 1024,  // 10MB
-            max_chunk_size: 50 * 1024 * 1024,     // 50MB
+            target_chunk_size: 10 * 1024 * 1024, // 10MB
+            max_chunk_size: 50 * 1024 * 1024,    // 50MB
             min_sequences_per_chunk: 10,
             taxonomic_coherence: 0.8,
             special_taxa: Vec::new(),
@@ -328,65 +327,11 @@ pub enum ChunkStrategy {
 // Re-export from talaria-core
 pub use talaria_core::types::UpdateStatus;
 
-/// Classification of chunk content with embedded metrics
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum ChunkClassification {
-    /// Full sequence data in FASTA format
-    Full,
-    /// Delta-compressed sequences referencing other chunks
-    Delta {
-        reference_hash: SHA256Hash,
-        compression_ratio: f32,
-    },
-    /// Index chunk for fast lookups
-    Index,
-    /// Metadata-only chunk
-    Metadata,
-}
+// ChunkClassification moved to talaria_storage::types
 
-/// Compression format for chunks
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum ChunkFormat {
-    /// Legacy JSON + gzip format (for backward compatibility)
-    JsonGzip,
-    /// Binary MessagePack for metadata + Zstd for sequences
-    #[default]
-    Binary,
-    /// Binary with dictionary-based compression
-    BinaryDict { dict_id: u32 },
-}
+// ChunkFormat is now imported from talaria_storage::types
 
-
-impl ChunkFormat {
-    /// Get the file extension for this format
-    pub fn extension(&self) -> &str {
-        // All formats use .tal extension for consistency
-        ".tal"
-    }
-
-    /// Detect format from file contents
-    pub fn detect(data: &[u8]) -> Self {
-        // Check for gzip magic bytes (1f 8b)
-        if data.len() >= 2 && data[0] == 0x1f && data[1] == 0x8b {
-            return ChunkFormat::JsonGzip;
-        }
-
-        // Check for Zstandard magic bytes (28 b5 2f fd)
-        if data.len() >= 4
-            && data[0] == 0x28
-            && data[1] == 0xb5
-            && data[2] == 0x2f
-            && data[3] == 0xfd
-        {
-            // Could be Binary or BinaryDict, check for dictionary
-            // For now, assume Binary (dictionary detection would need more context)
-            return ChunkFormat::Binary;
-        }
-
-        // Default to legacy format if unknown
-        ChunkFormat::JsonGzip
-    }
-}
+// ChunkFormat impl moved to talaria_storage::types
 
 /// Delta chunk containing compressed sequence differences
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -512,176 +457,22 @@ pub use talaria_core::SequenceType;
 // DatabaseSource from talaria-core
 pub use talaria_core::types::database::DatabaseSource;
 
-/// Canonical sequence - the pure biological sequence data
-/// This is what gets deduplicated across all databases
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CanonicalSequence {
-    /// Hash of the sequence content ONLY (not headers)
-    pub sequence_hash: SHA256Hash,
+// CanonicalSequence is now imported from talaria_storage::types
 
-    /// The actual sequence data (amino acids or nucleotides)
-    #[serde(with = "serde_bytes")]
-    pub sequence: Vec<u8>,
+// CanonicalSequence impl moved to talaria_storage::types
 
-    /// Length of the sequence
-    pub length: usize,
+// SequenceRepresentation is now imported from talaria_storage::types
 
-    /// Type of sequence
-    pub sequence_type: SequenceType,
+// SequenceRepresentations is now imported from talaria_storage::types
 
-    /// CRC64 checksum for quick validation
-    pub checksum: u64,
+// SequenceRepresentations impl moved to talaria_storage::types
 
-    /// When this sequence was first seen (across all databases)
-    #[serde(with = "datetime_serde")]
-    pub first_seen: DateTime<Utc>,
+// Indexable impl for SequenceRepresentations - may need to be reimplemented if needed
 
-    /// When this sequence was last seen
-    #[serde(with = "datetime_serde")]
-    pub last_seen: DateTime<Utc>,
-}
+// ChunkManifest is now imported from talaria_storage::types
 
-impl ContentAddressable for CanonicalSequence {
-    fn content_hash(&self) -> SHA256Hash {
-        self.sequence_hash.clone()
-    }
-
-    fn to_bytes(&self) -> Result<Vec<u8>, anyhow::Error> {
-        Ok(rmp_serde::to_vec(self)?)
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<Self, anyhow::Error> {
-        Ok(rmp_serde::from_slice(bytes)?)
-    }
-}
-
-/// Database-specific representation of a sequence
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SequenceRepresentation {
-    /// Which database this representation comes from
-    pub source: DatabaseSource,
-
-    /// Original FASTA header from this database
-    pub header: String,
-
-    /// Extracted accession numbers
-    pub accessions: Vec<String>,
-
-    /// Description parsed from header
-    pub description: Option<String>,
-
-    /// Taxonomic ID (may differ between databases!)
-    pub taxon_id: Option<TaxonId>,
-
-    /// Database-specific metadata
-    pub metadata: HashMap<String, String>,
-
-    /// When we last saw this representation
-    #[serde(with = "datetime_serde")]
-    pub timestamp: DateTime<Utc>,
-}
-
-/// Collection of all representations for a canonical sequence
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SequenceRepresentations {
-    /// Hash of the canonical sequence this represents
-    pub canonical_hash: SHA256Hash,
-
-    /// All known representations
-    pub representations: Vec<SequenceRepresentation>,
-}
-
-impl Representable for SequenceRepresentations {
-    fn representations(&self) -> &[SequenceRepresentation] {
-        &self.representations
-    }
-
-    fn add_representation(&mut self, repr: SequenceRepresentation) {
-        // Check if we already have a representation from this source
-        if let Some(existing) = self.representations.iter_mut()
-            .find(|r| r.source == repr.source && r.header == repr.header) {
-            // Update timestamp
-            existing.timestamp = repr.timestamp;
-        } else {
-            self.representations.push(repr);
-        }
-    }
-
-    fn get_representation(&self, source: &DatabaseSource) -> Option<&SequenceRepresentation> {
-        self.representations.iter()
-            .find(|r| r.source == *source)
-    }
-}
-
-impl Indexable for SequenceRepresentations {
-    fn index_keys(&self) -> Vec<String> {
-        self.representations.iter()
-            .flat_map(|r| r.accessions.clone())
-            .collect()
-    }
-
-    fn taxon_id(&self) -> Option<TaxonId> {
-        // Return the most common taxon_id from all representations
-        let mut taxon_counts: HashMap<TaxonId, usize> = HashMap::new();
-        for repr in &self.representations {
-            if let Some(taxon) = repr.taxon_id {
-                *taxon_counts.entry(taxon).or_default() += 1;
-            }
-        }
-        taxon_counts.into_iter()
-            .max_by_key(|(_, count)| *count)
-            .map(|(taxon, _)| taxon)
-    }
-}
-
-/// Chunk manifest - references to canonical sequences instead of containing them
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChunkManifest {
-    /// Hash of this manifest (computed from sequence_refs)
-    pub chunk_hash: SHA256Hash,
-
-    /// References to canonical sequences
-    pub sequence_refs: Vec<SHA256Hash>,
-
-    /// Taxonomic scope of this chunk
-    pub taxon_ids: Vec<TaxonId>,
-
-    /// Organization strategy
-    pub chunk_type: ChunkClassification,
-
-    /// Statistics
-    pub total_size: usize,
-    pub sequence_count: usize,
-
-    /// Temporal metadata
-    #[serde(with = "datetime_serde")]
-    pub created_at: DateTime<Utc>,
-
-    /// Version information
-    pub taxonomy_version: SHA256Hash,
-    pub sequence_version: SHA256Hash,
-}
-
-impl ContentAddressable for ChunkManifest {
-    fn content_hash(&self) -> SHA256Hash {
-        // Hash is computed from the sorted sequence references
-        let mut refs = self.sequence_refs.clone();
-        refs.sort();
-        let data: Vec<u8> = refs.iter()
-            .flat_map(|h| h.as_bytes().iter())
-            .copied()
-            .collect();
-        SHA256Hash::compute(&data)
-    }
-
-    fn to_bytes(&self) -> Result<Vec<u8>, anyhow::Error> {
-        Ok(rmp_serde::to_vec(self)?)
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<Self, anyhow::Error> {
-        Ok(rmp_serde::from_slice(bytes)?)
-    }
-}
+// ChunkManifest impls moved to talaria_storage::types
+// Note: MerkleVerifiable trait may need to be implemented locally if needed
 
 impl MerkleVerifiable for ChunkManifest {
     fn merkle_root(&self) -> MerkleHash {
@@ -727,5 +518,3 @@ impl MerkleVerifiable for ChunkManifest {
         current == self.merkle_root()
     }
 }
-
-use std::collections::HashMap;

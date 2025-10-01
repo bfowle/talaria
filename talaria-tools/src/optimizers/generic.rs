@@ -46,11 +46,11 @@ mod tests {
         optimizer.optimize(&mut sequences);
 
         // Should be sorted by length in descending order (longest first)
-        assert_eq!(sequences[0].id, "long");    // 16 bp
-        assert_eq!(sequences[1].id, "medium");  // 8 bp
+        assert_eq!(sequences[0].id, "long"); // 16 bp
+        assert_eq!(sequences[1].id, "medium"); // 8 bp
         assert_eq!(sequences[2].id, "medium2"); // 8 bp
-        assert_eq!(sequences[3].id, "short");   // 2 bp
-        assert_eq!(sequences[4].id, "tiny");    // 1 bp
+        assert_eq!(sequences[3].id, "short"); // 2 bp
+        assert_eq!(sequences[4].id, "tiny"); // 1 bp
 
         // Verify actual lengths are descending
         for i in 0..sequences.len() - 1 {
@@ -71,9 +71,7 @@ mod tests {
     #[test]
     fn test_optimize_single() {
         let optimizer = GenericOptimizer::new();
-        let mut sequences = vec![
-            Sequence::new("only".to_string(), b"ATCGATCG".to_vec())
-        ];
+        let mut sequences = vec![Sequence::new("only".to_string(), b"ATCGATCG".to_vec())];
 
         optimizer.optimize(&mut sequences);
 
@@ -140,7 +138,10 @@ mod tests {
             assert!(
                 sequences[i].len() >= sequences[i + 1].len(),
                 "Sequence at {} (len {}) should be >= sequence at {} (len {})",
-                i, sequences[i].len(), i + 1, sequences[i + 1].len()
+                i,
+                sequences[i].len(),
+                i + 1,
+                sequences[i + 1].len()
             );
         }
     }

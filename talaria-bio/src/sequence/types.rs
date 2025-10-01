@@ -273,7 +273,7 @@ impl TaxonomyResolver for Sequence {
                 vec![TaxonomyDiscrepancy {
                     sequence_id: self.id.clone(),
                     conflicts: candidates,
-                    resolution_strategy: "priority-based",
+                    resolution_strategy: "priority-based".to_string(),
                 }]
             }
             _ => vec![],
@@ -295,9 +295,7 @@ impl TaxonomyEnrichable for Sequence {
     }
 
     fn enrich_from_header(&mut self) {
-        if let Some(taxid) =
-            crate::taxonomy::parse_taxonomy_from_description(&self.description)
-        {
+        if let Some(taxid) = crate::taxonomy::parse_taxonomy_from_description(&self.description) {
             self.taxonomy_sources.header_parsed = Some(taxid);
         }
     }
@@ -349,8 +347,12 @@ mod tests {
 
         for seq_data in protein_seqs {
             let seq = Sequence::new("prot".to_string(), seq_data);
-            assert_eq!(seq.detect_type(), SequenceType::Protein,
-                "Failed to detect protein for: {}", seq.to_string());
+            assert_eq!(
+                seq.detect_type(),
+                SequenceType::Protein,
+                "Failed to detect protein for: {}",
+                seq.to_string()
+            );
         }
 
         // Test nucleotide detection - only A, T, G, C, N
@@ -363,8 +365,12 @@ mod tests {
 
         for seq_data in nucleotide_seqs {
             let seq = Sequence::new("nucl".to_string(), seq_data);
-            assert_eq!(seq.detect_type(), SequenceType::Nucleotide,
-                "Failed to detect nucleotide for: {}", seq.to_string());
+            assert_eq!(
+                seq.detect_type(),
+                SequenceType::Nucleotide,
+                "Failed to detect nucleotide for: {}",
+                seq.to_string()
+            );
         }
     }
 
@@ -373,16 +379,20 @@ mod tests {
         // Test sequences with ambiguous amino acids
         let ambiguous_seqs = vec![
             (b"ATGXYZ".to_vec(), true),  // Contains X, Y, Z
-            (b"ABCDEFG".to_vec(), true),  // Contains B
-            (b"JKLMNO".to_vec(), true),   // Contains J, O
-            (b"ACDEFG".to_vec(), false),  // No ambiguous residues
-            (b"ATGC".to_vec(), false),    // DNA, no ambiguous
+            (b"ABCDEFG".to_vec(), true), // Contains B
+            (b"JKLMNO".to_vec(), true),  // Contains J, O
+            (b"ACDEFG".to_vec(), false), // No ambiguous residues
+            (b"ATGC".to_vec(), false),   // DNA, no ambiguous
         ];
 
         for (seq_data, expected) in ambiguous_seqs {
             let seq = Sequence::new("test".to_string(), seq_data.clone());
-            assert_eq!(seq.has_ambiguous_residues(), expected,
-                "Ambiguous detection failed for: {:?}", seq_data);
+            assert_eq!(
+                seq.has_ambiguous_residues(),
+                expected,
+                "Ambiguous detection failed for: {:?}",
+                seq_data
+            );
         }
     }
 

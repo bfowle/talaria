@@ -54,18 +54,18 @@ pub struct AddArgs {
 }
 
 pub fn run(args: AddArgs) -> anyhow::Result<()> {
-    use talaria_bio::parse_fasta;
-    use talaria_sequoia::chunker::{TaxonomicChunker, ChunkingStrategy};
-    use talaria_sequoia::storage::SequenceStorage;
-    use talaria_sequoia::MerkleDAG;
-    use talaria_sequoia::{
-        BiTemporalCoordinate, ManifestMetadata, DatabaseSource, UniProtDatabase, NCBIDatabase,
-        SHA256Hash, SHA256HashExt, SerializedMerkleTree, TemporalManifest,
-    };
     use crate::cli::formatting::output::*;
-    use talaria_sequoia::database::DatabaseManager;
     use crate::cli::progress::{create_progress_bar, create_spinner};
     use chrono::Utc;
+    use std::sync::Arc;
+    use talaria_bio::parse_fasta;
+    use talaria_sequoia::chunker::{ChunkingStrategy, TaxonomicChunker};
+    use talaria_sequoia::database::DatabaseManager;
+    use talaria_sequoia::MerkleDAG;
+    use talaria_sequoia::{
+        BiTemporalCoordinate, DatabaseSource, ManifestMetadata, NCBIDatabase, SHA256Hash,
+        SHA256HashExt, SerializedMerkleTree, TemporalManifest, UniProtDatabase,
+    };
 
     // Validate input file
     if !args.input.exists() {
@@ -89,14 +89,13 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     // Initialize paths
     use talaria_core::system::paths;
     let base_path = paths::talaria_databases_dir();
-    let sequences_path = base_path.join("sequences");
 
-    // Create DatabaseManager first (it will initialize SEQUOIAStorage which creates a SequenceStorage)
+    // Create DatabaseManager first (it will initialize SequoiaStorage which creates a SequenceStorage)
     let manager = DatabaseManager::new(Some(base_path.to_string_lossy().to_string()))?;
 
-    // Now create our own SequenceStorage for chunk processing
-    // This will reuse the existing PackedSequenceStorage index
-    let sequence_storage = SequenceStorage::new(&sequences_path)?;
+    // Reuse the existing SequenceStorage from the DatabaseManager's repository
+    // This avoids double-initialization of RocksDB
+    let sequence_storage = Arc::clone(&manager.get_repository().storage.sequence_storage);
 
     // Get initial stats for deduplication tracking
     let initial_stats = sequence_storage.get_stats()?;
@@ -161,11 +160,8 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
         DatabaseSource::Custom(format!("{}/{}", args.source, dataset))
     };
     let strategy = ChunkingStrategy::default();
-    let mut chunker = TaxonomicChunker::new(
-        strategy,
-        sequence_storage,
-        database_source_enum.clone(),
-    );
+    let mut chunker =
+        TaxonomicChunker::new(strategy, sequence_storage, database_source_enum.clone());
 
     // Process sequences with canonical storage
     action("Processing sequences with deduplication...");
@@ -201,10 +197,26 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     if args.show_dedup_stats || deduplicated > 0 {
         println!();
         subsection_header("Deduplication Statistics");
-        tree_item(false, "Total sequences in file", Some(&format_number(sequence_count)));
-        tree_item(false, "New unique sequences", Some(&format_number(new_sequences)));
-        tree_item(false, "Deduplicated (already existed)", Some(&format_number(deduplicated)));
-        tree_item(true, "Space saved", Some(&format!("{:.1}%", dedup_percentage)));
+        tree_item(
+            false,
+            "Total sequences in file",
+            Some(&format_number(sequence_count)),
+        );
+        tree_item(
+            false,
+            "New unique sequences",
+            Some(&format_number(new_sequences)),
+        );
+        tree_item(
+            false,
+            "Deduplicated (already existed)",
+            Some(&format_number(deduplicated)),
+        );
+        tree_item(
+            true,
+            "Space saved",
+            Some(&format!("{:.1}%", dedup_percentage)),
+        );
 
         if deduplicated > 0 {
             println!();
@@ -217,7 +229,11 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
 
     println!();
     action("Creating chunk manifests...");
-    tree_item(false, "Manifests created", Some(&format_number(chunk_manifests.len())));
+    tree_item(
+        false,
+        "Manifests created",
+        Some(&format_number(chunk_manifests.len())),
+    );
 
     // Convert ChunkManifests to ManifestMetadata for compatibility
     let pb = create_progress_bar(chunk_manifests.len() as u64, "Storing manifests");
@@ -311,63 +327,71 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     println!();
     subsection_header("Summary");
     tree_item(false, "Version", Some(&version));
-    tree_item(false, "Total sequences", Some(&format_number(sequence_count)));
-    tree_item(false, "Unique sequences stored", Some(&format_number(new_sequences)));
-    tree_item(false, "Chunk manifests", Some(&format_number(chunk_infos.len())));
+    tree_item(
+        false,
+        "Total sequences",
+        Some(&format_number(sequence_count)),
+    );
+    tree_item(
+        false,
+        "Unique sequences stored",
+        Some(&format_number(new_sequences)),
+    );
+    tree_item(
+        false,
+        "Chunk manifests",
+        Some(&format_number(chunk_infos.len())),
+    );
     tree_item(true, "Location", Some(&db_path.display().to_string()));
 
     // Show global repository stats
     let global_stats = chunker.sequence_storage.get_stats()?;
     println!();
     subsection_header("Global Repository Statistics");
-    tree_item(false, "Total unique sequences", Some(&format_number(global_stats.total_sequences.unwrap_or(0))));
-    tree_item(false, "Total representations", Some(&format_number(global_stats.total_representations.unwrap_or(0))));
-    tree_item(false, "Average representations per sequence",
-        Some(&format!("{:.2}", global_stats.deduplication_ratio)));
-    tree_item(true, "Total storage used",
-        Some(&format_bytes(global_stats.total_size as u64)));
+    tree_item(
+        false,
+        "Total unique sequences",
+        Some(&format_number(global_stats.total_sequences.unwrap_or(0))),
+    );
+    tree_item(
+        false,
+        "Total representations",
+        Some(&format_number(
+            global_stats.total_representations.unwrap_or(0),
+        )),
+    );
+    tree_item(
+        false,
+        "Average representations per sequence",
+        Some(&format!("{:.2}", global_stats.deduplication_ratio)),
+    );
+    tree_item(
+        true,
+        "Total storage used",
+        Some(&format_bytes(global_stats.total_size as u64)),
+    );
 
     println!();
     info("💡 Tip: Sequences are now stored canonically and deduplicated across ALL databases!");
-    info("    Any identical sequences in future imports will automatically reference existing data.");
+    info(
+        "    Any identical sequences in future imports will automatically reference existing data.",
+    );
 
     Ok(())
 }
 
-// Helper function to load taxonomy mappings
+// Helper function to load taxonomy mappings using unified TaxonomyProvider
 fn load_taxonomy_mappings() -> anyhow::Result<HashMap<String, talaria_sequoia::TaxonId>> {
-    use talaria_core::system::paths;
+    use talaria_utils::taxonomy::{load_taxonomy_mappings as load_mappings, TaxonomyMappingSource};
 
-    let prot_acc_path = paths::talaria_databases_dir()
-        .join("taxonomy")
-        .join("current")
-        .join("prot.accession2taxid.gz");
+    // Use NCBI mappings for the add command (most common case)
+    let mappings: HashMap<String, u32> = load_mappings(TaxonomyMappingSource::NCBI)?;
 
-    let mut mapping = HashMap::new();
-
-    if prot_acc_path.exists() {
-        use flate2::read::GzDecoder;
-        use std::fs::File;
-        use std::io::{BufRead, BufReader};
-
-        let file = File::open(&prot_acc_path)?;
-        let decoder = GzDecoder::new(file);
-        let reader = BufReader::new(decoder);
-
-        for line in reader.lines().skip(1) {
-            // Skip header
-            let line = line?;
-            let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() >= 3 {
-                let accession = parts[1].to_string();
-                if let Ok(taxid) = parts[2].parse::<u32>() {
-                    mapping.insert(accession, talaria_sequoia::TaxonId(taxid));
-                }
-            }
-        }
-    }
-
-    Ok(mapping)
+    // Convert to TaxonId type
+    Ok(mappings
+        .into_iter()
+        .map(|(k, v)| (k, talaria_sequoia::TaxonId(v)))
+        .collect())
 }
 
 use talaria_utils::display::format::format_bytes;

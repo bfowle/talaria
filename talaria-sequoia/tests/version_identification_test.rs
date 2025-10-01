@@ -99,10 +99,7 @@ impl VersionIdentifier {
         level[0].clone()
     }
 
-    fn compute_similarities(
-        &self,
-        chunks: &[SHA256Hash],
-    ) -> Vec<(&TemporalManifest, f64)> {
+    fn compute_similarities(&self, chunks: &[SHA256Hash]) -> Vec<(&TemporalManifest, f64)> {
         let mut similarities = Vec::new();
 
         for manifest in &self.known_manifests {
@@ -187,8 +184,8 @@ pub enum VersionInfo {
 
 #[test]
 fn test_identify_exact_version() {
-    use talaria_sequoia::{ManifestMetadata, TemporalManifest};
     use chrono::Utc;
+    use talaria_sequoia::{ManifestMetadata, TemporalManifest};
 
     let sequences = vec![
         Sequence {
@@ -259,8 +256,8 @@ fn test_identify_exact_version() {
 
 #[test]
 fn test_identify_modified_version() {
-    use talaria_sequoia::{ManifestMetadata, TemporalManifest};
     use chrono::Utc;
+    use talaria_sequoia::{ManifestMetadata, TemporalManifest};
 
     // Create enough sequences to form multiple chunks
     let mut original_sequences = Vec::new();
@@ -389,8 +386,8 @@ fn test_identify_unknown_version() {
 
 #[test]
 fn test_multi_taxon_version_identification() {
-    use talaria_sequoia::{ManifestMetadata, TemporalManifest};
     use chrono::Utc;
+    use talaria_sequoia::{ManifestMetadata, TemporalManifest};
 
     let sequences = vec![
         Sequence {

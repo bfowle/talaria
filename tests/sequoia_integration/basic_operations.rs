@@ -1,6 +1,6 @@
 use talaria_bio::sequence::Sequence;
 use talaria_sequoia::{
-    SEQUOIARepository, ChunkMetadata, ChunkingStrategy, FastaAssembler, SHA256Hash, TaxonId,
+    SequoiaRepository, ChunkMetadata, ChunkingStrategy, FastaAssembler, SHA256Hash, TaxonId,
     TaxonomicChunker, TemporalManifest,
 };
 use talaria_cli::TargetAligner;
@@ -29,9 +29,9 @@ fn create_test_manifest(version: &str, seq_version: &str, tax_version: &str) -> 
     }
 }
 
-fn setup_test_sequoia() -> (TempDir, SEQUOIARepository) {
+fn setup_test_sequoia() -> (TempDir, SequoiaRepository) {
     let temp_dir = TempDir::new().unwrap();
-    let repo = SEQUOIARepository::init(temp_dir.path()).unwrap();
+    let repo = SequoiaRepository::init(temp_dir.path()).unwrap();
     (temp_dir, repo)
 }
 

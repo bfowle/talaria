@@ -246,7 +246,10 @@ impl NCBIDownloader {
                     }
 
                     progress.set_message(&format!("Warning: {}", error_msg));
-                    progress.set_message(&format!("Attempting to continue download (error {}/{})", consecutive_errors, MAX_ERRORS));
+                    progress.set_message(&format!(
+                        "Attempting to continue download (error {}/{})",
+                        consecutive_errors, MAX_ERRORS
+                    ));
 
                     // Brief pause before continuing
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;

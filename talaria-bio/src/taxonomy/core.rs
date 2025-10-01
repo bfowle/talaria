@@ -489,14 +489,14 @@ impl TaxonomyResolution {
 }
 
 /// Represents a taxonomy discrepancy
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TaxonomyDiscrepancy {
     /// ID of the sequence with discrepancy
     pub sequence_id: String,
     /// Conflicting taxonomy assignments
     pub conflicts: Vec<(TaxonomySource, u32)>,
     /// How the conflict was resolved
-    pub resolution_strategy: &'static str,
+    pub resolution_strategy: String,
 }
 
 /// Trait for resolving taxonomy from multiple sources

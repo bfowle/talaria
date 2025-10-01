@@ -4,14 +4,15 @@ use anyhow::Result;
 use serial_test::serial;
 use std::fs;
 use std::path::PathBuf;
-use tempfile::TempDir;
+use talaria_core::system::paths::bypass_cache_for_tests;
+use talaria_core::{DatabaseSource, UniProtDatabase};
+use talaria_test::fixtures::test_database_source;
 use talaria_sequoia::download::{
-    workspace::{DownloadState, Stage, get_download_workspace, DownloadLock},
     manager::{DownloadManager, DownloadOptions},
     progress::DownloadProgress,
+    workspace::{get_download_workspace, DownloadLock, DownloadState, Stage},
 };
-use talaria_core::{DatabaseSource, UniProtDatabase};
-use talaria_core::system::paths::bypass_cache_for_tests;
+use tempfile::TempDir;
 
 // Static initializer to enable bypass for all tests
 use std::sync::Once;
@@ -105,8 +106,14 @@ async fn test_disk_full_during_decompression() -> Result<()> {
     let resumed_state = DownloadState::load(&state_path)?;
 
     // Verify compressed file is preserved for retry
-    assert!(resumed_state.files.preserve_on_failure.contains(&compressed_file));
-    assert!(compressed_file.exists(), "Compressed file should be preserved for retry");
+    assert!(resumed_state
+        .files
+        .preserve_on_failure
+        .contains(&compressed_file));
+    assert!(
+        compressed_file.exists(),
+        "Compressed file should be preserved for retry"
+    );
 
     std::env::remove_var("TALARIA_DATA_DIR");
     Ok(())
@@ -134,7 +141,10 @@ async fn test_lock_conflict_handling() -> Result<()> {
     let lock_result = DownloadLock::try_acquire(&workspace);
     // TODO: Fix DownloadLock to detect stale locks from non-existent processes
     // For now, we just check that lock acquisition fails (current behavior)
-    assert!(lock_result.is_err(), "Lock acquisition currently fails for any existing lock file");
+    assert!(
+        lock_result.is_err(),
+        "Lock acquisition currently fails for any existing lock file"
+    );
 
     std::env::remove_var("TALARIA_DATA_DIR");
     Ok(())
@@ -148,7 +158,7 @@ async fn test_recovery_from_partial_download() -> Result<()> {
     std::env::set_var("TALARIA_DATA_DIR", &temp_dir.path());
     std::env::set_var("TALARIA_PRESERVE_ON_FAILURE", "1");
 
-    let source = DatabaseSource::Test;
+    let source = test_database_source("error_scenario");
     let workspace = get_download_workspace(&source);
     let state_path = workspace.join("state.json");
 
@@ -174,7 +184,11 @@ async fn test_recovery_from_partial_download() -> Result<()> {
     let resumed_state = DownloadState::load(&state_path)?;
 
     match &resumed_state.stage {
-        Stage::Downloading { bytes_done, total_bytes, .. } => {
+        Stage::Downloading {
+            bytes_done,
+            total_bytes,
+            ..
+        } => {
             assert_eq!(*bytes_done, 1024);
             assert_eq!(*total_bytes, 4096);
         }
@@ -183,7 +197,10 @@ async fn test_recovery_from_partial_download() -> Result<()> {
 
     // Verify partial file is preserved
     assert!(partial_file.exists(), "Partial file should be preserved");
-    assert!(resumed_state.files.preserve_on_failure.contains(&partial_file));
+    assert!(resumed_state
+        .files
+        .preserve_on_failure
+        .contains(&partial_file));
 
     std::env::remove_var("TALARIA_DATA_DIR");
     std::env::remove_var("TALARIA_PRESERVE_ON_FAILURE");
@@ -197,7 +214,7 @@ async fn test_invalid_checksum_handling() -> Result<()> {
     let temp_dir = TempDir::new()?;
     std::env::set_var("TALARIA_DATA_DIR", &temp_dir.path());
 
-    let source = DatabaseSource::Test;
+    let source = test_database_source("error_scenario");
     let workspace = get_download_workspace(&source);
     let state_path = workspace.join("state.json");
 
@@ -221,7 +238,10 @@ async fn test_invalid_checksum_handling() -> Result<()> {
 
     let resumed_state = DownloadState::load(&state_path)?;
     assert!(matches!(resumed_state.stage, Stage::Verifying { .. }));
-    assert!(resumed_state.files.preserve_on_failure.contains(&downloaded_file));
+    assert!(resumed_state
+        .files
+        .preserve_on_failure
+        .contains(&downloaded_file));
 
     std::env::remove_var("TALARIA_DATA_DIR");
     Ok(())
@@ -234,7 +254,7 @@ async fn test_processing_failure_recovery() -> Result<()> {
     let temp_dir = TempDir::new()?;
     std::env::set_var("TALARIA_DATA_DIR", &temp_dir.path());
 
-    let source = DatabaseSource::Test;
+    let source = test_database_source("error_scenario");
     let workspace = get_download_workspace(&source);
     let state_path = workspace.join("state.json");
 
@@ -269,11 +289,20 @@ async fn test_processing_failure_recovery() -> Result<()> {
 
     // Should be able to restore to last checkpoint
     failed_state.restore_last_checkpoint()?;
-    assert!(matches!(failed_state.stage, Stage::Processing { chunks_done: 50, .. }));
+    assert!(matches!(
+        failed_state.stage,
+        Stage::Processing {
+            chunks_done: 50,
+            ..
+        }
+    ));
 
     // Verify decompressed file is preserved
     assert!(decompressed_file.exists());
-    assert!(failed_state.files.preserve_on_failure.contains(&decompressed_file));
+    assert!(failed_state
+        .files
+        .preserve_on_failure
+        .contains(&decompressed_file));
 
     std::env::remove_var("TALARIA_DATA_DIR");
     Ok(())
@@ -286,7 +315,7 @@ async fn test_concurrent_download_attempt_rejection() -> Result<()> {
     let temp_dir = TempDir::new()?;
     std::env::set_var("TALARIA_DATA_DIR", &temp_dir.path());
 
-    let source = DatabaseSource::Test;
+    let source = test_database_source("error_scenario");
     let workspace = get_download_workspace(&source);
 
     // First download acquires lock
@@ -319,7 +348,7 @@ async fn test_cleanup_old_failed_downloads() -> Result<()> {
         let source = match i {
             0 => DatabaseSource::UniProt(UniProtDatabase::SwissProt),
             1 => DatabaseSource::UniProt(UniProtDatabase::TrEMBL),
-            _ => DatabaseSource::Test,
+            _ => test_database_source("concurrent"),
         };
 
         let workspace = get_download_workspace(&source);

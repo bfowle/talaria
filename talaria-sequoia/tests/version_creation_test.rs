@@ -2,11 +2,11 @@
 use anyhow::Result;
 use serial_test::serial;
 use std::fs;
-use tempfile::TempDir;
-use talaria_sequoia::database::DatabaseManager;
-use talaria_core::{DatabaseSource, UniProtDatabase};
 use talaria_bio::sequence::Sequence;
 use talaria_bio::taxonomy::TaxonomySources;
+use talaria_core::{DatabaseSource, UniProtDatabase};
+use talaria_sequoia::database::DatabaseManager;
+use tempfile::TempDir;
 
 #[test]
 #[serial]
@@ -26,7 +26,7 @@ fn test_single_version_creation_for_batch_processing() -> Result<()> {
                 id: format!("SEQ_{}_{}|Test sequence", batch_num, seq_num),
                 description: None,
                 sequence: vec![b'A'; 100], // Simple test sequence
-                taxon_id: Some(9606), // Human
+                taxon_id: Some(9606),      // Human
                 taxonomy_sources: TaxonomySources::default(), // Empty taxonomy sources
             });
         }
@@ -38,7 +38,8 @@ fn test_single_version_creation_for_batch_processing() -> Result<()> {
     manager.chunk_sequences_direct(all_sequences, &source)?;
 
     // Check versions directory
-    let versions_dir = temp_dir.path()
+    let versions_dir = temp_dir
+        .path()
         .join("databases")
         .join("versions")
         .join("uniprot")
@@ -59,7 +60,12 @@ fn test_single_version_creation_for_batch_processing() -> Result<()> {
         })
         .collect();
 
-    assert_eq!(entries.len(), 1, "Expected exactly 1 version directory, found {}", entries.len());
+    assert_eq!(
+        entries.len(),
+        1,
+        "Expected exactly 1 version directory, found {}",
+        entries.len()
+    );
 
     // Clean up
     std::env::remove_var("TALARIA_DATA_DIR");
@@ -82,7 +88,10 @@ fn test_streaming_mode_single_version() -> Result<()> {
     // Write enough sequences to trigger streaming mode (>100MB)
     for i in 0..100_000 {
         writeln!(fasta_file, ">SEQ_{} Test sequence", i)?;
-        writeln!(fasta_file, "ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT")?;
+        writeln!(
+            fasta_file,
+            "ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT"
+        )?;
     }
     fasta_file.sync_all()?;
 
@@ -91,10 +100,11 @@ fn test_streaming_mode_single_version() -> Result<()> {
     let source = DatabaseSource::UniProt(UniProtDatabase::UniRef50);
 
     // Process file in streaming mode (should still create only ONE version)
-    manager.chunk_database(&fasta_path, &source)?;
+    manager.chunk_database(&fasta_path, &source, None)?;
 
     // Check versions directory
-    let versions_dir = temp_dir.path()
+    let versions_dir = temp_dir
+        .path()
         .join("databases")
         .join("versions")
         .join("uniprot")
@@ -113,8 +123,12 @@ fn test_streaming_mode_single_version() -> Result<()> {
         })
         .collect();
 
-    assert_eq!(entries.len(), 1,
-        "Expected exactly 1 version directory in streaming mode, found {}", entries.len());
+    assert_eq!(
+        entries.len(),
+        1,
+        "Expected exactly 1 version directory in streaming mode, found {}",
+        entries.len()
+    );
 
     // Clean up
     std::env::remove_var("TALARIA_DATA_DIR");

@@ -2,7 +2,6 @@
 
 /// Structured output formatter for CLI commands
 /// Provides Claude Code-style formatting with sections and progress tracking
-
 use colored::*;
 use std::fmt;
 

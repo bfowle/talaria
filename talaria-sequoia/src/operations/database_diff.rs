@@ -1,11 +1,9 @@
 /// Comprehensive database comparison functionality
-use crate::{
-    SEQUOIARepository, SHA256Hash, TaxonId, ChunkManifest,
-};
+use crate::{ChunkManifest, SequoiaRepository, SHA256Hash, TaxonId};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use serde::{Serialize, Deserialize};
 
 /// Comprehensive database comparison result
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -111,17 +109,36 @@ pub struct StorageMetrics {
 
 /// Database comparison engine
 pub struct DatabaseDiffer {
-    repo_a: SEQUOIARepository,
-    repo_b: SEQUOIARepository,
+    repo_a: SequoiaRepository,
+    repo_b: SequoiaRepository,
 }
 
 impl DatabaseDiffer {
     /// Create a new database differ
     pub fn new(path_a: &Path, path_b: &Path) -> Result<Self> {
-        let repo_a = SEQUOIARepository::open(path_a)?;
-        let repo_b = SEQUOIARepository::open(path_b)?;
+        let repo_a = SequoiaRepository::open(path_a)?;
+        let repo_b = SequoiaRepository::open(path_b)?;
 
         Ok(Self { repo_a, repo_b })
+    }
+
+    /// Compare two database manifests directly (for databases in shared RocksDB)
+    pub fn compare_manifests(
+        manifest_a: &crate::TemporalManifest,
+        manifest_b: &crate::TemporalManifest,
+        taxonomy_manager: Option<&crate::taxonomy::TaxonomyManager>,
+    ) -> Result<DatabaseComparison> {
+        let chunk_analysis = Self::compare_chunks_from_manifests(manifest_a, manifest_b);
+        let sequence_analysis = Self::compare_sequences_from_manifests(manifest_a, manifest_b);
+        let taxonomy_analysis = Self::compare_taxonomies_from_manifests(manifest_a, manifest_b, taxonomy_manager);
+        let storage_metrics = Self::calculate_storage_from_manifests(manifest_a, manifest_b);
+
+        Ok(DatabaseComparison {
+            chunk_analysis,
+            sequence_analysis,
+            taxonomy_analysis,
+            storage_metrics,
+        })
     }
 
     /// Perform comprehensive database comparison
@@ -189,21 +206,25 @@ impl DatabaseDiffer {
         let unique_to_b_set: HashSet<_> = set_b.difference(&set_a).cloned().collect();
 
         // Get sample IDs for display
-        let sample_shared_ids: Vec<String> = shared.iter()
+        let sample_shared_ids: Vec<String> = shared
+            .iter()
             .take(10)
             .filter_map(|hash| {
-                seq_id_map_a.get(hash)
+                seq_id_map_a
+                    .get(hash)
                     .or_else(|| seq_id_map_b.get(hash))
                     .cloned()
             })
             .collect();
 
-        let sample_unique_a_ids: Vec<String> = unique_to_a_set.iter()
+        let sample_unique_a_ids: Vec<String> = unique_to_a_set
+            .iter()
             .take(5)
             .filter_map(|hash| seq_id_map_a.get(hash).cloned())
             .collect();
 
-        let sample_unique_b_ids: Vec<String> = unique_to_b_set.iter()
+        let sample_unique_b_ids: Vec<String> = unique_to_b_set
+            .iter()
             .take(5)
             .filter_map(|hash| seq_id_map_b.get(hash).cloned())
             .collect();
@@ -248,13 +269,15 @@ impl DatabaseDiffer {
         let unique_to_b: Vec<_> = set_b.difference(&set_a).cloned().collect();
 
         // Get top shared taxa by total sequence count
-        let mut top_shared: Vec<TaxonDistribution> = shared.iter()
+        let mut top_shared: Vec<TaxonDistribution> = shared
+            .iter()
             .filter_map(|taxon_id| {
                 let count_a = taxa_counts_a.get(taxon_id)?;
                 let count_b = taxa_counts_b.get(taxon_id)?;
 
                 // Try to get taxon name from taxonomy manager
-                let taxon_name = self.get_taxon_name(&self.repo_a, *taxon_id)
+                let taxon_name = self
+                    .get_taxon_name(&self.repo_a, *taxon_id)
                     .unwrap_or_else(|| format!("TaxID {}", taxon_id.0));
 
                 Some(TaxonDistribution {
@@ -314,15 +337,16 @@ impl DatabaseDiffer {
     }
 
     /// Get all chunk hashes from a repository
-    fn get_all_chunk_hashes(&self, repo: &SEQUOIARepository) -> Result<Vec<SHA256Hash>> {
+    fn get_all_chunk_hashes(&self, repo: &SequoiaRepository) -> Result<Vec<SHA256Hash>> {
         // Get chunks from storage directly
         repo.storage.list_chunks()
     }
 
     /// Get all sequence hashes and their IDs from a repository
-    fn get_all_sequence_hashes(&self, repo: &SEQUOIARepository)
-        -> Result<(Vec<SHA256Hash>, HashMap<SHA256Hash, String>)>
-    {
+    fn get_all_sequence_hashes(
+        &self,
+        repo: &SequoiaRepository,
+    ) -> Result<(Vec<SHA256Hash>, HashMap<SHA256Hash, String>)> {
         let mut all_sequences = Vec::new();
         let mut id_map = HashMap::new();
 
@@ -349,9 +373,10 @@ impl DatabaseDiffer {
     }
 
     /// Get taxonomy distribution from a repository
-    fn get_taxonomy_distribution(&self, repo: &SEQUOIARepository)
-        -> Result<(Vec<TaxonId>, HashMap<TaxonId, usize>)>
-    {
+    fn get_taxonomy_distribution(
+        &self,
+        repo: &SequoiaRepository,
+    ) -> Result<(Vec<TaxonId>, HashMap<TaxonId, usize>)> {
         let mut taxa_counts: HashMap<TaxonId, usize> = HashMap::new();
 
         // Get all chunks from storage
@@ -373,10 +398,211 @@ impl DatabaseDiffer {
     }
 
     /// Get taxon name from taxonomy manager
-    fn get_taxon_name(&self, _repo: &SEQUOIARepository, taxon_id: TaxonId) -> Option<String> {
+    fn get_taxon_name(&self, _repo: &SequoiaRepository, taxon_id: TaxonId) -> Option<String> {
         // Try to get taxon info from taxonomy manager
         // For now, just return the taxon ID as string since get_taxon_info doesn't exist
         Some(format!("TaxID {}", taxon_id.0))
+    }
+
+    /// Compare chunks from manifests (static method for shared RocksDB)
+    fn compare_chunks_from_manifests(
+        manifest_a: &crate::TemporalManifest,
+        manifest_b: &crate::TemporalManifest,
+    ) -> ChunkAnalysis {
+        let chunks_a: Vec<_> = manifest_a.chunk_index.iter().map(|m| m.hash.clone()).collect();
+        let chunks_b: Vec<_> = manifest_b.chunk_index.iter().map(|m| m.hash.clone()).collect();
+
+        let set_a: HashSet<_> = chunks_a.iter().cloned().collect();
+        let set_b: HashSet<_> = chunks_b.iter().cloned().collect();
+
+        let shared: Vec<_> = set_a.intersection(&set_b).cloned().collect();
+        let unique_to_a: Vec<_> = set_a.difference(&set_b).cloned().collect();
+        let unique_to_b: Vec<_> = set_b.difference(&set_a).cloned().collect();
+
+        let total_a = chunks_a.len();
+        let total_b = chunks_b.len();
+        let shared_count = shared.len();
+
+        ChunkAnalysis {
+            total_chunks_a: total_a,
+            total_chunks_b: total_b,
+            shared_chunks: shared,
+            unique_to_a,
+            unique_to_b,
+            shared_percentage_a: if total_a > 0 {
+                (shared_count as f64 / total_a as f64) * 100.0
+            } else {
+                0.0
+            },
+            shared_percentage_b: if total_b > 0 {
+                (shared_count as f64 / total_b as f64) * 100.0
+            } else {
+                0.0
+            },
+        }
+    }
+
+    /// Compare sequences from manifests
+    fn compare_sequences_from_manifests(
+        manifest_a: &crate::TemporalManifest,
+        manifest_b: &crate::TemporalManifest,
+    ) -> SequenceAnalysis {
+        let seq_count_a: usize = manifest_a.chunk_index.iter().map(|m| m.sequence_count).sum();
+        let seq_count_b: usize = manifest_b.chunk_index.iter().map(|m| m.sequence_count).sum();
+
+        // Calculate shared sequences based on shared chunks
+        let chunks_a: HashSet<_> = manifest_a.chunk_index.iter().map(|m| m.hash.clone()).collect();
+        let chunks_b: HashSet<_> = manifest_b.chunk_index.iter().map(|m| m.hash.clone()).collect();
+        let shared_chunk_hashes: HashSet<_> = chunks_a.intersection(&chunks_b).cloned().collect();
+
+        // Count sequences in shared chunks
+        let shared_seq_count: usize = manifest_a
+            .chunk_index
+            .iter()
+            .filter(|m| shared_chunk_hashes.contains(&m.hash))
+            .map(|m| m.sequence_count)
+            .sum();
+
+        let unique_to_a = seq_count_a.saturating_sub(shared_seq_count);
+        let unique_to_b = seq_count_b.saturating_sub(shared_seq_count);
+
+        let shared_pct_a = if seq_count_a > 0 {
+            (shared_seq_count as f64 / seq_count_a as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        let shared_pct_b = if seq_count_b > 0 {
+            (shared_seq_count as f64 / seq_count_b as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        SequenceAnalysis {
+            total_sequences_a: seq_count_a,
+            total_sequences_b: seq_count_b,
+            shared_sequences: shared_seq_count,
+            unique_to_a,
+            unique_to_b,
+            sample_shared_ids: vec![],
+            sample_unique_a_ids: vec![],
+            sample_unique_b_ids: vec![],
+            shared_percentage_a: shared_pct_a,
+            shared_percentage_b: shared_pct_b,
+        }
+    }
+
+    /// Compare taxonomies from manifests
+    fn compare_taxonomies_from_manifests(
+        manifest_a: &crate::TemporalManifest,
+        manifest_b: &crate::TemporalManifest,
+        taxonomy_manager: Option<&crate::taxonomy::TaxonomyManager>,
+    ) -> TaxonomyAnalysis {
+        // Collect all unique taxon IDs from each manifest
+        let mut taxa_a = HashSet::new();
+        let mut taxa_b = HashSet::new();
+        let mut taxa_counts_a: HashMap<TaxonId, usize> = HashMap::new();
+        let mut taxa_counts_b: HashMap<TaxonId, usize> = HashMap::new();
+
+        for chunk_meta in &manifest_a.chunk_index {
+            for taxon_id in &chunk_meta.taxon_ids {
+                taxa_a.insert(*taxon_id);
+                *taxa_counts_a.entry(*taxon_id).or_insert(0) += chunk_meta.sequence_count;
+            }
+        }
+
+        for chunk_meta in &manifest_b.chunk_index {
+            for taxon_id in &chunk_meta.taxon_ids {
+                taxa_b.insert(*taxon_id);
+                *taxa_counts_b.entry(*taxon_id).or_insert(0) += chunk_meta.sequence_count;
+            }
+        }
+
+        let shared: Vec<_> = taxa_a.intersection(&taxa_b).cloned().collect();
+        let unique_to_a: Vec<_> = taxa_a.difference(&taxa_b).cloned().collect();
+        let unique_to_b: Vec<_> = taxa_b.difference(&taxa_a).cloned().collect();
+
+        // Get top shared taxa
+        let mut top_shared: Vec<TaxonDistribution> = shared
+            .iter()
+            .filter_map(|taxon_id| {
+                let count_a = taxa_counts_a.get(taxon_id)?;
+                let count_b = taxa_counts_b.get(taxon_id)?;
+
+                // Try to get scientific name from taxonomy manager
+                let taxon_name = if let Some(tax_mgr) = taxonomy_manager {
+                    if let Some(node) = tax_mgr.get_node(taxon_id) {
+                        node.name.clone()
+                    } else {
+                        format!("TaxID {}", taxon_id.0)
+                    }
+                } else {
+                    format!("TaxID {}", taxon_id.0)
+                };
+
+                Some(TaxonDistribution {
+                    taxon_id: *taxon_id,
+                    taxon_name,
+                    count_in_a: *count_a,
+                    count_in_b: *count_b,
+                })
+            })
+            .collect();
+
+        top_shared.sort_by_key(|d| std::cmp::Reverse(d.count_in_a + d.count_in_b));
+        top_shared.truncate(10);
+
+        let total_a = taxa_a.len();
+        let total_b = taxa_b.len();
+        let shared_count = shared.len();
+
+        TaxonomyAnalysis {
+            total_taxa_a: total_a,
+            total_taxa_b: total_b,
+            shared_taxa: shared,
+            unique_to_a,
+            unique_to_b,
+            top_shared_taxa: top_shared,
+            shared_percentage_a: if total_a > 0 {
+                (shared_count as f64 / total_a as f64) * 100.0
+            } else {
+                0.0
+            },
+            shared_percentage_b: if total_b > 0 {
+                (shared_count as f64 / total_b as f64) * 100.0
+            } else {
+                0.0
+            },
+        }
+    }
+
+    /// Calculate storage metrics from manifests
+    fn calculate_storage_from_manifests(
+        manifest_a: &crate::TemporalManifest,
+        manifest_b: &crate::TemporalManifest,
+    ) -> StorageMetrics {
+        let size_a: usize = manifest_a.chunk_index.iter().map(|m| m.size).sum();
+        let size_b: usize = manifest_b.chunk_index.iter().map(|m| m.size).sum();
+
+        // Calculate shared chunks for dedup savings
+        let chunks_a: HashSet<_> = manifest_a.chunk_index.iter().map(|m| &m.hash).collect();
+        let chunks_b: HashSet<_> = manifest_b.chunk_index.iter().map(|m| &m.hash).collect();
+        let shared_hashes: HashSet<_> = chunks_a.intersection(&chunks_b).cloned().collect();
+
+        let dedup_savings: usize = manifest_a
+            .chunk_index
+            .iter()
+            .filter(|m| shared_hashes.contains(&m.hash))
+            .map(|m| m.size)
+            .sum();
+
+        StorageMetrics {
+            size_a_bytes: size_a,
+            size_b_bytes: size_b,
+            dedup_savings_bytes: dedup_savings,
+            dedup_ratio_a: 1.0, // Would need actual compression info
+            dedup_ratio_b: 1.0,
+        }
     }
 }
 
@@ -397,4 +623,3 @@ pub fn format_bytes(bytes: usize) -> String {
         format!("{:.2} {}", size, UNITS[unit_index])
     }
 }
-

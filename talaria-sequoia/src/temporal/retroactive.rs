@@ -10,26 +10,26 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
 
-use talaria_bio::formats::fasta::parse_fasta_from_bytes;
-use talaria_bio::sequence::Sequence;
-use crate::storage::SEQUOIAStorage;
+use crate::storage::SequoiaStorage;
 use crate::taxonomy::TaxonomyManager;
 use crate::temporal::{SequenceVersion, TaxonomyVersion, TemporalIndex};
 use crate::traits::temporal::*;
-use crate::types::{SHA256HashExt, BiTemporalCoordinate, SHA256Hash, TaxonId};
-use crate::SEQUOIARepository;
+use crate::types::{BiTemporalCoordinate, SHA256Hash, SHA256HashExt, TaxonId};
+use crate::SequoiaRepository;
+use talaria_bio::formats::fasta::parse_fasta_from_bytes;
+use talaria_bio::sequence::Sequence;
 
 /// Core engine for retroactive temporal analysis
 pub struct RetroactiveAnalyzer {
     temporal_index: TemporalIndex,
-    storage: SEQUOIAStorage,
+    storage: SequoiaStorage,
     taxonomy_manager: TaxonomyManager,
 }
 
 impl RetroactiveAnalyzer {
     /// Create a new retroactive analyzer
     pub fn new(
-        storage: SEQUOIAStorage,
+        storage: SequoiaStorage,
         temporal_index: TemporalIndex,
         taxonomy_manager: TaxonomyManager,
     ) -> Self {
@@ -40,8 +40,8 @@ impl RetroactiveAnalyzer {
         }
     }
 
-    /// Create from SEQUOIARepository
-    pub fn from_repository(repository: SEQUOIARepository) -> Self {
+    /// Create from SequoiaRepository
+    pub fn from_repository(repository: SequoiaRepository) -> Self {
         Self {
             temporal_index: repository.temporal,
             storage: repository.storage,
@@ -51,7 +51,7 @@ impl RetroactiveAnalyzer {
 
     /// Initialize from a base path
     pub fn from_path(base_path: &std::path::Path) -> Result<Self> {
-        let storage = SEQUOIAStorage::open(base_path)?;
+        let storage = SequoiaStorage::open(base_path)?;
         let temporal_index = TemporalIndex::load(base_path)?;
         let taxonomy_manager = TaxonomyManager::load(base_path)?;
 

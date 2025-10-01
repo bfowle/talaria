@@ -1,14 +1,20 @@
 //! Version and update related types
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// Database version information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseVersionInfo {
     pub timestamp: String,
+    pub created_at: DateTime<Utc>,
     pub upstream_version: Option<String>,
+    pub source: String,
+    pub dataset: String,
     pub aliases: Vec<String>,
+    pub chunk_count: usize,
+    pub sequence_count: usize,
+    pub total_size: u64,
 }
 
 /// Temporal version information for bi-temporal tracking

@@ -1,7 +1,7 @@
 /// Benchmarks for critical storage paths
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use tempfile::TempDir;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::collections::HashMap;
+use tempfile::TempDir;
 
 // Mock types for benchmarking
 mod types {
@@ -36,15 +36,9 @@ fn bench_hash_computation(c: &mut Criterion) {
         let data = vec![0u8; size];
 
         group.throughput(Throughput::Bytes(size as u64));
-        group.bench_with_input(
-            BenchmarkId::from_parameter(size),
-            &data,
-            |b, data| {
-                b.iter(|| {
-                    SHA256Hash::compute(black_box(data))
-                });
-            }
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(size), &data, |b, data| {
+            b.iter(|| SHA256Hash::compute(black_box(data)));
+        });
     }
 
     group.finish();
@@ -64,32 +58,22 @@ fn bench_chunk_storage(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(size as u64));
 
         // Benchmark write
-        group.bench_with_input(
-            BenchmarkId::new("write", size),
-            &data,
-            |b, data| {
-                b.iter(|| {
-                    let path = chunks_dir.join(format!("{}_{}", hash.to_hex(), rand::random::<u32>()));
-                    std::fs::write(&path, black_box(data)).unwrap();
-                    std::fs::remove_file(path).unwrap(); // Clean up
-                });
-            }
-        );
+        group.bench_with_input(BenchmarkId::new("write", size), &data, |b, data| {
+            b.iter(|| {
+                let path = chunks_dir.join(format!("{}_{}", hash.to_hex(), rand::random::<u32>()));
+                std::fs::write(&path, black_box(data)).unwrap();
+                std::fs::remove_file(path).unwrap(); // Clean up
+            });
+        });
 
         // Setup for read benchmark
         let read_path = chunks_dir.join(hash.to_hex());
         std::fs::write(&read_path, &data).unwrap();
 
         // Benchmark read
-        group.bench_with_input(
-            BenchmarkId::new("read", size),
-            &read_path,
-            |b, path| {
-                b.iter(|| {
-                    std::fs::read(black_box(path)).unwrap()
-                });
-            }
-        );
+        group.bench_with_input(BenchmarkId::new("read", size), &read_path, |b, path| {
+            b.iter(|| std::fs::read(black_box(path)).unwrap());
+        });
     }
 
     group.finish();
@@ -97,10 +81,10 @@ fn bench_chunk_storage(c: &mut Criterion) {
 
 /// Benchmark compression operations
 fn bench_compression(c: &mut Criterion) {
-    use flate2::write::GzEncoder;
     use flate2::read::GzDecoder;
+    use flate2::write::GzEncoder;
     use flate2::Compression;
-    use std::io::{Write, Read};
+    use std::io::{Read, Write};
 
     let mut group = c.benchmark_group("compression");
 
@@ -111,17 +95,13 @@ fn bench_compression(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(size as u64));
 
         // Benchmark compression
-        group.bench_with_input(
-            BenchmarkId::new("gzip_compress", size),
-            &data,
-            |b, data| {
-                b.iter(|| {
-                    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-                    encoder.write_all(black_box(data)).unwrap();
-                    encoder.finish().unwrap()
-                });
-            }
-        );
+        group.bench_with_input(BenchmarkId::new("gzip_compress", size), &data, |b, data| {
+            b.iter(|| {
+                let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+                encoder.write_all(black_box(data)).unwrap();
+                encoder.finish().unwrap()
+            });
+        });
 
         // Create compressed data for decompression benchmark
         let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
@@ -139,7 +119,7 @@ fn bench_compression(c: &mut Criterion) {
                     decoder.read_to_end(&mut decompressed).unwrap();
                     decompressed
                 });
-            }
+            },
         );
     }
 
@@ -168,10 +148,8 @@ fn bench_index_operations(c: &mut Criterion) {
             BenchmarkId::new("lookup", num_entries),
             &search_hash,
             |b, hash| {
-                b.iter(|| {
-                    index.get(black_box(hash))
-                });
-            }
+                b.iter(|| index.get(black_box(hash)));
+            },
         );
 
         // Benchmark insertion
@@ -185,7 +163,7 @@ fn bench_index_operations(c: &mut Criterion) {
                     index.insert(hash, vec![format!("new_seq_{}", n)]);
                     index.remove(&hash); // Clean up for next iteration
                 });
-            }
+            },
         );
     }
 
@@ -214,26 +192,14 @@ fn bench_cache_operations(c: &mut Criterion) {
         let miss_key = SHA256Hash::compute(b"nonexistent");
 
         // Benchmark cache hit
-        group.bench_with_input(
-            BenchmarkId::new("cache_hit", size),
-            &hit_key,
-            |b, key| {
-                b.iter(|| {
-                    cache.get(black_box(key))
-                });
-            }
-        );
+        group.bench_with_input(BenchmarkId::new("cache_hit", size), &hit_key, |b, key| {
+            b.iter(|| cache.get(black_box(key)));
+        });
 
         // Benchmark cache miss
-        group.bench_with_input(
-            BenchmarkId::new("cache_miss", size),
-            &miss_key,
-            |b, key| {
-                b.iter(|| {
-                    cache.get(black_box(key))
-                });
-            }
-        );
+        group.bench_with_input(BenchmarkId::new("cache_miss", size), &miss_key, |b, key| {
+            b.iter(|| cache.get(black_box(key)));
+        });
 
         // Benchmark concurrent reads
         let cache_clone = Arc::clone(&cache);
@@ -244,11 +210,9 @@ fn bench_cache_operations(c: &mut Criterion) {
                 b.iter(|| {
                     let cache = Arc::clone(&cache_clone);
                     let key = *key;
-                    std::thread::spawn(move || {
-                        cache.get(&key)
-                    }).join().unwrap()
+                    std::thread::spawn(move || cache.get(&key)).join().unwrap()
                 });
-            }
+            },
         );
     }
 
@@ -290,7 +254,7 @@ fn bench_deduplication(c: &mut Criterion) {
                         .collect();
                     black_box(duplicates)
                 });
-            }
+            },
         );
     }
 
@@ -323,10 +287,8 @@ fn bench_manifest_serialization(c: &mut Criterion) {
             BenchmarkId::new("serialize", num_chunks),
             &manifest,
             |b, manifest| {
-                b.iter(|| {
-                    serde_json::to_string(black_box(manifest)).unwrap()
-                });
-            }
+                b.iter(|| serde_json::to_string(black_box(manifest)).unwrap());
+            },
         );
 
         let serialized = serde_json::to_string(&manifest).unwrap();
@@ -338,7 +300,7 @@ fn bench_manifest_serialization(c: &mut Criterion) {
                 b.iter(|| {
                     let _: serde_json::Value = serde_json::from_str(black_box(serialized)).unwrap();
                 });
-            }
+            },
         );
     }
 
@@ -369,7 +331,7 @@ fn bench_optimization_analysis(c: &mut Criterion) {
                         .collect();
                     black_box(compressible)
                 });
-            }
+            },
         );
 
         group.bench_with_input(
@@ -384,7 +346,7 @@ fn bench_optimization_analysis(c: &mut Criterion) {
                         .sum();
                     black_box(savings)
                 });
-            }
+            },
         );
     }
 
@@ -427,7 +389,7 @@ fn bench_concurrent_writes(c: &mut Criterion) {
                         handle.join().unwrap();
                     }
                 });
-            }
+            },
         );
     }
 
@@ -448,7 +410,9 @@ fn bench_metadata_io(c: &mut Criterion) {
         }
 
         let content = metadata.join("\n");
-        let file_path = temp_dir.path().join(format!("metadata_{}.dat", num_entries));
+        let file_path = temp_dir
+            .path()
+            .join(format!("metadata_{}.dat", num_entries));
 
         group.throughput(Throughput::Bytes(content.len() as u64));
 
@@ -460,7 +424,7 @@ fn bench_metadata_io(c: &mut Criterion) {
                 b.iter(|| {
                     std::fs::write(&file_path, black_box(content)).unwrap();
                 });
-            }
+            },
         );
 
         // Setup for read
@@ -471,10 +435,8 @@ fn bench_metadata_io(c: &mut Criterion) {
             BenchmarkId::new("read", num_entries),
             &file_path,
             |b, path| {
-                b.iter(|| {
-                    std::fs::read_to_string(black_box(path)).unwrap()
-                });
-            }
+                b.iter(|| std::fs::read_to_string(black_box(path)).unwrap());
+            },
         );
 
         // Benchmark parse
@@ -488,7 +450,7 @@ fn bench_metadata_io(c: &mut Criterion) {
                         black_box(parts);
                     }
                 });
-            }
+            },
         );
     }
 

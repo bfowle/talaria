@@ -1,7 +1,6 @@
-use crate::verification::merkle::MerkleDAG;
 /// Manifest management for SEQUOIA with ETag-based update checking
-use crate::types::{*, SHA256HashExt};
-use talaria_utils::display::progress::create_progress_bar;
+use crate::types::{SHA256HashExt, *};
+use crate::verification::merkle::MerkleDAG;
 use anyhow::{Context, Result};
 use chrono::Utc;
 use reqwest::header::{ETAG, IF_NONE_MATCH};
@@ -9,6 +8,7 @@ use reqwest::StatusCode;
 use serde_json;
 use std::fs;
 use std::path::{Path, PathBuf};
+use talaria_utils::display::progress::create_progress_bar;
 
 /// Magic bytes for Talaria manifest format: "TAL" + version byte
 pub const TALARIA_MAGIC: &[u8] = b"TAL\x01";
@@ -412,15 +412,41 @@ impl Manifest {
             if let Some(new_chunk) = new.chunk_index.iter().find(|nc| nc.hash == chunk_info.hash) {
                 // If the same chunk has different taxon_ids, it might be reclassified
                 if chunk_info.taxon_ids != new_chunk.taxon_ids {
-                    // This chunk has been reclassified
-                    // Note: We'd need to load chunk data to get actual taxon IDs
-                    // For now, just record that there was a reclassification
-                    reclassifications.push(Reclassification {
-                        taxon_id: TaxonId(0), // Placeholder - would need chunk data
-                        old_parent: TaxonId(0),
-                        new_parent: TaxonId(0),
-                        reason: "Taxonomy version change detected".to_string(),
-                    });
+                    // Find which taxa were reclassified
+                    let old_set: std::collections::HashSet<_> =
+                        chunk_info.taxon_ids.iter().collect();
+                    let new_set: std::collections::HashSet<_> =
+                        new_chunk.taxon_ids.iter().collect();
+
+                    // Taxa that changed (present in both but potentially with different parents)
+                    for taxon_id in old_set.intersection(&new_set) {
+                        // Extract the actual taxon_id from the intersection
+                        let tid = **taxon_id;
+
+                        // Find the parent taxa by looking at the chunk metadata
+                        // The parent is typically the first taxon in a hierarchically organized chunk
+                        let old_parent = chunk_info
+                            .taxon_ids
+                            .first()
+                            .filter(|&p| p != &tid)
+                            .cloned()
+                            .unwrap_or(tid);
+                        let new_parent = new_chunk
+                            .taxon_ids
+                            .first()
+                            .filter(|&p| p != &tid)
+                            .cloned()
+                            .unwrap_or(tid);
+
+                        if old_parent != new_parent {
+                            reclassifications.push(Reclassification {
+                                taxon_id: tid,
+                                old_parent,
+                                new_parent,
+                                reason: "Taxonomy version change detected".to_string(),
+                            });
+                        }
+                    }
                 }
             }
         }
@@ -642,13 +668,43 @@ impl Manifest {
 
         Ok(())
     }
+
+    /// Get the version from the manifest
+    pub fn version(&self) -> Option<String> {
+        self.data.as_ref().map(|m| m.version.clone())
+    }
+
+    /// Get the sequence version from the manifest
+    pub fn sequence_version(&self) -> Option<String> {
+        self.data.as_ref().map(|m| m.sequence_version.clone())
+    }
+
+    /// Get the taxonomy version from the manifest
+    pub fn taxonomy_version(&self) -> Option<String> {
+        self.data.as_ref().map(|m| m.taxonomy_version.clone())
+    }
+
+    /// Get the chunk index from the manifest
+    pub fn chunk_index(&self) -> Option<&Vec<ManifestMetadata>> {
+        self.data.as_ref().map(|m| &m.chunk_index)
+    }
+
+    /// Get the wrapped TemporalManifest data
+    pub fn data(&self) -> Option<&TemporalManifest> {
+        self.data.as_ref()
+    }
+
+    /// Check if the manifest has data
+    pub fn has_data(&self) -> bool {
+        self.data.is_some()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use chrono::Utc;
+    use tempfile::TempDir;
 
     fn create_test_manifest() -> TemporalManifest {
         TemporalManifest {
@@ -704,7 +760,10 @@ mod tests {
 
         assert_eq!(ManifestFormat::from_path(json_path), ManifestFormat::Json);
         assert_eq!(ManifestFormat::from_path(tal_path), ManifestFormat::Talaria);
-        assert_eq!(ManifestFormat::from_path(unknown_path), ManifestFormat::Talaria); // Default
+        assert_eq!(
+            ManifestFormat::from_path(unknown_path),
+            ManifestFormat::Talaria
+        ); // Default
     }
 
     #[test]
@@ -805,8 +864,8 @@ mod tests {
 
         // Invalid: No version
         let mut no_version = create_test_manifest();
-        no_version.version = String::new();  // Empty version instead of None
-        // assert!(Manifest::validate_manifest(&no_version).is_err());
+        no_version.version = String::new(); // Empty version instead of None
+                                            // assert!(Manifest::validate_manifest(&no_version).is_err());
 
         // Invalid: Empty chunk index
         let mut empty_chunks = create_test_manifest();

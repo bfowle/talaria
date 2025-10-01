@@ -1,9 +1,9 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use talaria_tools::optimizers::{
-    blast::BlastOptimizer, generic::GenericOptimizer,
-    kraken::KrakenOptimizer, lambda::LambdaOptimizer
-};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use talaria_bio::sequence::Sequence;
+use talaria_tools::optimizers::{
+    blast::BlastOptimizer, generic::GenericOptimizer, kraken::KrakenOptimizer,
+    lambda::LambdaOptimizer,
+};
 
 // Note: Parser benchmarks removed as parser module is not publicly exposed
 
@@ -14,7 +14,11 @@ fn create_test_sequences(count: usize) -> Vec<Sequence> {
         .map(|i| {
             let len = (i % 100) + 50; // Vary lengths between 50-150
             let seq = vec![b'A'; len];
-            let taxon = if i % 3 == 0 { Some((i % 1000) as u32) } else { None };
+            let taxon = if i % 3 == 0 {
+                Some((i % 1000) as u32)
+            } else {
+                None
+            };
 
             let mut sequence = Sequence::new(format!("seq_{}", i), seq);
             if let Some(t) = taxon {
@@ -43,7 +47,7 @@ fn bench_sequence_optimization(c: &mut Criterion) {
                     let mut s = seqs.clone();
                     optimizer.optimize_for_blast(black_box(&mut s))
                 })
-            }
+            },
         );
 
         group.bench_with_input(
@@ -55,7 +59,7 @@ fn bench_sequence_optimization(c: &mut Criterion) {
                     let mut s = seqs.clone();
                     optimizer.optimize_for_lambda(black_box(&mut s))
                 })
-            }
+            },
         );
 
         group.bench_with_input(
@@ -67,7 +71,7 @@ fn bench_sequence_optimization(c: &mut Criterion) {
                     let mut s = seqs.clone();
                     optimizer.optimize_for_kraken(black_box(&mut s))
                 })
-            }
+            },
         );
 
         group.bench_with_input(
@@ -79,7 +83,7 @@ fn bench_sequence_optimization(c: &mut Criterion) {
                     let mut s = seqs.clone();
                     optimizer.optimize(black_box(&mut s))
                 })
-            }
+            },
         );
     }
 
@@ -100,9 +104,7 @@ fn bench_taxonomy_mapping(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("prepare_mapping", size),
             &sequences,
-            |b, seqs| {
-                b.iter(|| optimizer.prepare_taxonomy_mapping(black_box(seqs)))
-            }
+            |b, seqs| b.iter(|| optimizer.prepare_taxonomy_mapping(black_box(seqs))),
         );
     }
 

@@ -1,18 +1,19 @@
 /// Taxonomic chunker that creates manifests referencing canonical sequences
 use crate::storage::sequence::SequenceStorage;
-use crate::types::{
-    ChunkManifest, ChunkClassification, DatabaseSource, SHA256Hash, TaxonId,
-};
+use crate::types::{ChunkClassification, ChunkManifest, DatabaseSource, SHA256Hash, TaxonId};
 use anyhow::Result;
 use chrono::Utc;
 use std::collections::HashMap;
+use std::sync::Arc;
 use talaria_bio::sequence::Sequence;
-use talaria_utils::display::progress::{create_progress_bar, create_spinner, create_hidden_progress_bar};
+use talaria_utils::display::progress::{
+    create_hidden_progress_bar, create_progress_bar, create_spinner,
+};
 
 /// Taxonomic chunker that works with canonical sequences
 pub struct TaxonomicChunker {
     strategy: super::ChunkingStrategy,
-    pub sequence_storage: SequenceStorage,
+    pub sequence_storage: Arc<SequenceStorage>,
     database_source: DatabaseSource,
     quiet_mode: bool,
 }
@@ -20,7 +21,7 @@ pub struct TaxonomicChunker {
 impl TaxonomicChunker {
     pub fn new(
         strategy: super::ChunkingStrategy,
-        sequence_storage: SequenceStorage,
+        sequence_storage: Arc<SequenceStorage>,
         database_source: DatabaseSource,
     ) -> Self {
         Self {
@@ -73,7 +74,8 @@ impl TaxonomicChunker {
         // Set quiet mode and use progress callback
         let was_quiet = self.quiet_mode;
         self.quiet_mode = true;
-        let result = self.chunk_sequences_canonical_internal(sequences, progress_callback, is_final_batch);
+        let result =
+            self.chunk_sequences_canonical_internal(sequences, progress_callback, is_final_batch);
         self.quiet_mode = was_quiet;
         result
     }
@@ -103,12 +105,9 @@ impl TaxonomicChunker {
 
         // Step 1: Pre-process sequences in parallel to prepare data
         let storing_progress = if self.quiet_mode {
-            create_hidden_progress_bar()  // Hidden progress bar for quiet mode
+            create_hidden_progress_bar() // Hidden progress bar for quiet mode
         } else {
-            create_progress_bar(
-                sequences.len() as u64,
-                "Processing sequences",
-            )
+            create_progress_bar(sequences.len() as u64, "Processing sequences")
         };
 
         // Process sequences in parallel to prepare headers and convert to strings
@@ -126,13 +125,11 @@ impl TaxonomicChunker {
                 );
 
                 // Convert sequence to string
-                let sequence_str = String::from_utf8(seq.sequence.clone())
-                    .unwrap_or_else(|_| String::new());
+                let sequence_str =
+                    String::from_utf8(seq.sequence.clone()).unwrap_or_else(|_| String::new());
 
                 // Get taxonomic classification
-                let taxon_id = seq.taxon_id
-                    .map(|t| TaxonId(t))
-                    .unwrap_or(TaxonId(0));
+                let taxon_id = seq.taxon_id.map(|t| TaxonId(t)).unwrap_or(TaxonId(0));
 
                 (seq.id.clone(), header, sequence_str, taxon_id)
             })
@@ -147,7 +144,7 @@ impl TaxonomicChunker {
 
         // Step 2: Store sequences in parallel batches (optimized for performance)
         let storing_progress = if self.quiet_mode {
-            create_hidden_progress_bar()  // Hidden progress bar for quiet mode
+            create_hidden_progress_bar() // Hidden progress bar for quiet mode
         } else {
             create_progress_bar(
                 prepared_sequences.len() as u64,
@@ -156,7 +153,7 @@ impl TaxonomicChunker {
         };
 
         // Optimized batch sizes for high-throughput processing
-        const BATCH_SIZE: usize = 200_000;     // Process 200k sequences at once (increased from 50k)
+        const BATCH_SIZE: usize = 200_000; // Process 200k sequences at once (increased from 50k)
         const MINI_BATCH_SIZE: usize = 50_000; // Larger mini-batches for better throughput (increased from 10k)
         let mut all_results = Vec::with_capacity(prepared_sequences.len());
         let mut dedup_count = 0;
@@ -171,7 +168,11 @@ impl TaxonomicChunker {
                 let batch_data: Vec<(&str, &str, crate::types::DatabaseSource)> = mini_chunk
                     .iter()
                     .map(|(_, header, sequence_str, _)| {
-                        (sequence_str.as_str(), header.as_str(), self.database_source.clone())
+                        (
+                            sequence_str.as_str(),
+                            header.as_str(),
+                            self.database_source.clone(),
+                        )
                     })
                     .collect();
 
@@ -179,7 +180,9 @@ impl TaxonomicChunker {
                 let batch_results = self.sequence_storage.store_sequences_batch(batch_data)?;
 
                 // Track results
-                for ((id, _, _, taxon_id), (hash, is_new)) in mini_chunk.iter().zip(batch_results.iter()) {
+                for ((id, _, _, taxon_id), (hash, is_new)) in
+                    mini_chunk.iter().zip(batch_results.iter())
+                {
                     if *is_new {
                         new_count += 1;
                     } else {
@@ -193,10 +196,16 @@ impl TaxonomicChunker {
 
                 // Update progress callback less frequently to reduce overhead
                 mini_batch_count += 1;
-                if mini_batch_count % 5 == 0 {  // Update every 50k sequences
+                if mini_batch_count % 5 == 0 {
+                    // Update every 50k sequences
                     if let Some(ref callback) = progress_callback {
-                        callback(all_results.len(), &format!("Storing sequences ({} new, {} dedup)",
-                            new_count, dedup_count));
+                        callback(
+                            all_results.len(),
+                            &format!(
+                                "Storing sequences ({} new, {} dedup)",
+                                new_count, dedup_count
+                            ),
+                        );
                     }
                 }
             }
@@ -225,17 +234,15 @@ impl TaxonomicChunker {
 
         // Step 2: Group sequences by taxonomy
         let grouping_progress = if self.quiet_mode {
-            create_hidden_progress_bar()  // Hidden progress bar for quiet mode
+            create_hidden_progress_bar() // Hidden progress bar for quiet mode
         } else {
-            create_progress_bar(
-                sequence_records.len() as u64,
-                "Grouping by taxonomy",
-            )
+            create_progress_bar(sequence_records.len() as u64, "Grouping by taxonomy")
         };
 
         let mut taxon_groups: HashMap<TaxonId, Vec<SHA256Hash>> = HashMap::new();
         for (hash, taxon_id, _) in &sequence_records {
-            taxon_groups.entry(*taxon_id)
+            taxon_groups
+                .entry(*taxon_id)
                 .or_default()
                 .push(hash.clone());
             grouping_progress.inc(1);
@@ -245,11 +252,15 @@ impl TaxonomicChunker {
 
         // Notify progress callback about grouping completion
         if let Some(ref callback) = progress_callback {
-            callback(sequence_records.len(), &format!("Grouped into {} taxa", taxon_groups.len()));
+            callback(
+                sequence_records.len(),
+                &format!("Grouped into {} taxa", taxon_groups.len()),
+            );
         }
         if !self.quiet_mode {
             // Show sample of taxon IDs for debugging
-            let sample_taxids: Vec<String> = taxon_groups.keys()
+            let sample_taxids: Vec<String> = taxon_groups
+                .keys()
                 .take(3)
                 .map(|tid| format!("{}", tid.0))
                 .collect();
@@ -260,34 +271,103 @@ impl TaxonomicChunker {
             } else {
                 format!(" (taxon_ids: {})", sample_taxids.join(", "))
             };
-            println!("Grouped into {} taxonomic groups{}", taxon_groups.len(), taxid_info);
+            println!(
+                "Grouped into {} taxonomic groups{}",
+                taxon_groups.len(),
+                taxid_info
+            );
         }
 
         // Step 3: Create chunk manifests
         let chunking_progress = if self.quiet_mode {
-            create_hidden_progress_bar()  // Hidden progress bar for quiet mode
+            create_hidden_progress_bar() // Hidden progress bar for quiet mode
         } else {
-            create_progress_bar(
-                taxon_groups.len() as u64,
-                "Creating chunk manifests",
-            )
+            create_progress_bar(taxon_groups.len() as u64, "Creating chunk manifests")
         };
 
-        // Parallelize manifest creation for all taxonomic groups
-        let manifest_results: Result<Vec<_>> = taxon_groups
-            .into_par_iter()
-            .map(|(taxon_id, sequence_hashes)| {
-                let result = self.create_manifests_for_group(taxon_id, sequence_hashes);
-                chunking_progress.inc(1);
-                result
-            })
-            .collect();
+        // Compute versions ONCE before parallel processing to avoid file system contention
+        let taxonomy_version = self.get_taxonomy_version();
+        let sequence_version = self.get_sequence_version();
 
-        // Flatten the results
-        let mut manifests: Vec<ChunkManifest> = manifest_results?
-            .into_iter()
-            .flatten()
-            .collect();
+        // Process taxonomic groups in chunks to avoid thread pool saturation
+        // IMPORTANT: Processing all 10,000+ groups in parallel causes deadlock
+
+        // Convert HashMap to Vec for chunking
+        let taxa_vec: Vec<_> = taxon_groups.into_iter().collect();
+
+        // Use adaptive chunk size based on number of taxonomic groups
+        let num_taxa = taxa_vec.len();
+        let parallel_chunk_size = if num_taxa > 5000 {
+            // Very large number of taxa - use smaller chunks to avoid overwhelming the system
+            10
+        } else if num_taxa > 1000 {
+            // Large number of taxa - use moderate chunks
+            25
+        } else if num_taxa > 100 {
+            // Moderate number - can handle larger chunks
+            50
+        } else {
+            // Small number - process more in parallel
+            100
+        };
+
+        if !self.quiet_mode && num_taxa > 1000 {
+            println!(
+                "Processing {} taxonomic groups in chunks of {} (large dataset mode)",
+                num_taxa, parallel_chunk_size
+            );
+        }
+
+        let mut all_manifest_results = Vec::new();
+        let total_chunks = (taxa_vec.len() + parallel_chunk_size - 1) / parallel_chunk_size;
+
+        for (chunk_idx, chunk) in taxa_vec.chunks(parallel_chunk_size).enumerate() {
+            // Add progress reporting for large datasets
+            if !self.quiet_mode {
+                if num_taxa > 5000 && chunk_idx % 100 == 0 {
+                    println!(
+                        "  Processing taxonomic chunk {}/{}",
+                        chunk_idx + 1,
+                        total_chunks
+                    );
+                } else if num_taxa > 1000 && chunk_idx % 10 == 0 {
+                    eprintln!(
+                        "DEBUG: Processing chunk {}/{} ({} taxa in this chunk)",
+                        chunk_idx + 1,
+                        total_chunks,
+                        chunk.len()
+                    );
+                }
+            }
+
+            // Process this chunk in parallel
+            let chunk_results: Result<Vec<_>> = chunk
+                .par_iter()
+                .map(|(taxon_id, sequence_hashes)| {
+                    self.create_manifests_for_group(
+                        *taxon_id,
+                        sequence_hashes.clone(),
+                        taxonomy_version.clone(),
+                        sequence_version.clone(),
+                    )
+                })
+                .collect();
+
+            // Collect results from this chunk
+            match chunk_results {
+                Ok(results) => all_manifest_results.extend(results),
+                Err(e) => return Err(e),
+            }
+
+            // Update progress based on chunks processed
+            let progress = ((chunk_idx + 1) as u64 * chunking_progress.length().unwrap_or(0))
+                / total_chunks as u64;
+            chunking_progress.set_position(progress);
+        }
+
+        // Flatten all results
+        let mut manifests: Vec<ChunkManifest> =
+            all_manifest_results.into_iter().flatten().collect();
 
         chunking_progress.finish_and_clear();
         if !self.quiet_mode {
@@ -297,10 +377,12 @@ impl TaxonomicChunker {
         // Step 4: Apply special taxa rules
         if !self.quiet_mode {
             let special_progress = create_spinner("Applying special taxa rules");
-            manifests = self.apply_special_taxa_rules(manifests)?;
+            manifests =
+                self.apply_special_taxa_rules(manifests, taxonomy_version, sequence_version)?;
             special_progress.finish_and_clear();
         } else {
-            manifests = self.apply_special_taxa_rules(manifests)?;
+            manifests =
+                self.apply_special_taxa_rules(manifests, taxonomy_version, sequence_version)?;
         }
 
         Ok(manifests)
@@ -311,6 +393,8 @@ impl TaxonomicChunker {
         &self,
         taxon_id: TaxonId,
         sequence_hashes: Vec<SHA256Hash>,
+        taxonomy_version: SHA256Hash,
+        sequence_version: SHA256Hash,
     ) -> Result<Vec<ChunkManifest>> {
         let mut manifests = Vec::new();
         let mut current_refs = Vec::new();
@@ -329,7 +413,12 @@ impl TaxonomicChunker {
             {
                 // Create manifest
                 if !current_refs.is_empty() {
-                    manifests.push(self.create_manifest(vec![taxon_id], current_refs)?);
+                    manifests.push(self.create_manifest(
+                        vec![taxon_id],
+                        current_refs,
+                        taxonomy_version.clone(),
+                        sequence_version.clone(),
+                    )?);
                 }
 
                 // Start new manifest
@@ -343,7 +432,12 @@ impl TaxonomicChunker {
 
         // Create final manifest
         if !current_refs.is_empty() {
-            manifests.push(self.create_manifest(vec![taxon_id], current_refs)?);
+            manifests.push(self.create_manifest(
+                vec![taxon_id],
+                current_refs,
+                taxonomy_version,
+                sequence_version,
+            )?);
         }
 
         Ok(manifests)
@@ -354,6 +448,8 @@ impl TaxonomicChunker {
         &self,
         taxon_ids: Vec<TaxonId>,
         sequence_refs: Vec<SHA256Hash>,
+        taxonomy_version: SHA256Hash,
+        sequence_version: SHA256Hash,
     ) -> Result<ChunkManifest> {
         // Compute manifest hash from sorted references
         let mut sorted_refs = sequence_refs.clone();
@@ -365,9 +461,8 @@ impl TaxonomicChunker {
             .collect();
         let chunk_hash = SHA256Hash::compute(&manifest_data);
 
-        // Get version hashes
-        let taxonomy_version = self.get_taxonomy_version();
-        let sequence_version = self.get_sequence_version();
+        // Versions are now passed as parameters to avoid file system contention
+        // No longer calling self.get_taxonomy_version() from parallel context
 
         Ok(ChunkManifest {
             chunk_hash,
@@ -386,7 +481,14 @@ impl TaxonomicChunker {
     fn apply_special_taxa_rules(
         &self,
         manifests: Vec<ChunkManifest>,
+        taxonomy_version: SHA256Hash,
+        sequence_version: SHA256Hash,
     ) -> Result<Vec<ChunkManifest>> {
+        // Skip special taxa rules for very large datasets to avoid performance issues
+        if manifests.len() > 1000 {
+            return Ok(manifests);
+        }
+
         let mut final_manifests = Vec::new();
         let mut special_taxa_manifests: HashMap<TaxonId, Vec<ChunkManifest>> = HashMap::new();
 
@@ -402,11 +504,11 @@ impl TaxonomicChunker {
 
         // Pathogenic organisms (grouped together for efficiency)
         let pathogens = vec![
-            TaxonId(1773),   // Mycobacterium tuberculosis
-            TaxonId(210),    // Helicobacter pylori
-            TaxonId(573),    // Klebsiella pneumoniae
-            TaxonId(1280),   // Staphylococcus aureus
-            TaxonId(1313),   // Streptococcus pneumoniae
+            TaxonId(1773), // Mycobacterium tuberculosis
+            TaxonId(210),  // Helicobacter pylori
+            TaxonId(573),  // Klebsiella pneumoniae
+            TaxonId(1280), // Staphylococcus aureus
+            TaxonId(1313), // Streptococcus pneumoniae
         ];
 
         for manifest in manifests {
@@ -453,11 +555,14 @@ impl TaxonomicChunker {
                     .flat_map(|m| m.sequence_refs.clone())
                     .collect();
 
-                if all_refs.len() < 1000 {  // Max sequences per chunk
+                if all_refs.len() < 1000 {
+                    // Max sequences per chunk
                     // Create single manifest for all pathogens
                     let pathogen_manifest = self.create_manifest(
                         pathogens.clone(),
                         all_refs,
+                        taxonomy_version,
+                        sequence_version,
                     )?;
                     final_manifests.push(pathogen_manifest);
                 } else {
@@ -477,7 +582,8 @@ impl TaxonomicChunker {
         // Get actual taxonomy version from taxonomy manager
         use talaria_core::system::paths;
 
-        if let Ok(tax_mgr) = crate::taxonomy::TaxonomyManager::new(&paths::talaria_databases_dir()) {
+        if let Ok(tax_mgr) = crate::taxonomy::TaxonomyManager::new(&paths::talaria_databases_dir())
+        {
             if tax_mgr.has_taxonomy() {
                 tax_mgr
                     .get_taxonomy_root()

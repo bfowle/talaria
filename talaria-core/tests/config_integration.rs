@@ -1,7 +1,7 @@
-/// Integration tests for configuration loading and saving
-use talaria_core::config::{Config, load_config, save_config, default_config};
-use talaria_test::{TestEnvironment, TestConfig};
 use std::fs;
+/// Integration tests for configuration loading and saving
+use talaria_core::config::{default_config, load_config, save_config, Config};
+use talaria_test::{TestConfig, TestEnvironment};
 
 #[test]
 fn test_config_loading_from_multiple_sources() {
@@ -68,7 +68,10 @@ retention_count = 3
     let config = load_config(&config_file).unwrap();
 
     // Config file values should be loaded (not overridden by env vars)
-    assert_eq!(config.database.database_dir, Some("/original/path".to_string()));
+    assert_eq!(
+        config.database.database_dir,
+        Some("/original/path".to_string())
+    );
     assert_eq!(config.database.retention_count, 3);
 
     // Note: Path functions would use env vars, but config loading doesn't override
@@ -156,13 +159,22 @@ fn test_config_serialization_preservation() {
 
     // Verify all fields preserved
     assert_eq!(config.reduction.target_ratio, loaded.reduction.target_ratio);
-    assert_eq!(config.reduction.similarity_threshold, loaded.reduction.similarity_threshold);
-    assert_eq!(config.reduction.taxonomy_aware, loaded.reduction.taxonomy_aware);
+    assert_eq!(
+        config.reduction.similarity_threshold,
+        loaded.reduction.similarity_threshold
+    );
+    assert_eq!(
+        config.reduction.taxonomy_aware,
+        loaded.reduction.taxonomy_aware
+    );
     assert_eq!(config.alignment.algorithm, loaded.alignment.algorithm);
     assert_eq!(config.output.compress_output, loaded.output.compress_output);
     assert_eq!(config.performance.chunk_size, loaded.performance.chunk_size);
     assert_eq!(config.database.database_dir, loaded.database.database_dir);
-    assert_eq!(config.database.preferred_mirror, loaded.database.preferred_mirror);
+    assert_eq!(
+        config.database.preferred_mirror,
+        loaded.database.preferred_mirror
+    );
 }
 
 #[test]
@@ -230,7 +242,10 @@ preferred_mirror = "ebi"
 
     // Should be valid TOML
     let reloaded = load_config(&output_file).unwrap();
-    assert_eq!(config.reduction.target_ratio, reloaded.reduction.target_ratio);
+    assert_eq!(
+        config.reduction.target_ratio,
+        reloaded.reduction.target_ratio
+    );
 }
 
 #[test]
@@ -277,8 +292,14 @@ algorithm = "algorithm:with:colons"
     fs::write(&config_file, content).unwrap();
 
     let config = load_config(&config_file).unwrap();
-    assert_eq!(config.database.database_dir, Some("/path/with spaces/and-dashes/under_scores".to_string()));
-    assert_eq!(config.database.preferred_mirror, Some("mirror-with-special.chars_123".to_string()));
+    assert_eq!(
+        config.database.database_dir,
+        Some("/path/with spaces/and-dashes/under_scores".to_string())
+    );
+    assert_eq!(
+        config.database.preferred_mirror,
+        Some("mirror-with-special.chars_123".to_string())
+    );
     assert_eq!(config.alignment.algorithm, "algorithm:with:colons");
 
     // Save and reload to ensure round-trip works

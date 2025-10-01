@@ -6,7 +6,7 @@ use talaria_bio::sequence::Sequence;
 use talaria_sequoia::retroactive::RetroactiveAnalyzer;
 use talaria_sequoia::traits::temporal::*;
 use talaria_sequoia::types::{BiTemporalCoordinate, TaxonId};
-use talaria_sequoia::{SEQUOIARepository, TaxonomyEvolutionTracker};
+use talaria_sequoia::{SequoiaRepository, TaxonomyEvolutionTracker};
 use tempfile::TempDir;
 
 /// Create test sequences with taxonomic assignments
@@ -71,8 +71,8 @@ fn create_reclassified_sequences() -> Vec<Sequence> {
 }
 
 /// Setup test repository with temporal data
-async fn setup_test_repository(base_path: PathBuf) -> Result<SEQUOIARepository> {
-    let mut repo = SEQUOIARepository::init(&base_path)?;
+async fn setup_test_repository(base_path: PathBuf) -> Result<SequoiaRepository> {
+    let mut repo = SequoiaRepository::init(&base_path)?;
 
     // Create initial snapshot (March 2023)
     let march_2023 = Utc.with_ymd_and_hms(2023, 3, 15, 0, 0, 0).unwrap();
@@ -94,7 +94,7 @@ async fn setup_test_repository(base_path: PathBuf) -> Result<SEQUOIARepository> 
 }
 
 async fn store_temporal_snapshot(
-    repo: &mut SEQUOIARepository,
+    repo: &mut SequoiaRepository,
     sequences: Vec<Sequence>,
     coordinate: BiTemporalCoordinate,
 ) -> Result<()> {

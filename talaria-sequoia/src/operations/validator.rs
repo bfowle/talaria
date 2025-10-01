@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
-use talaria_bio::sequence::Sequence;
-use talaria_bio::compression::DeltaRecord;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::Path;
+use talaria_bio::compression::DeltaRecord;
+use talaria_bio::sequence::Sequence;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationMetrics {
@@ -168,7 +168,8 @@ impl ValidatorImpl {
     fn parse_m8<P: AsRef<Path>>(
         &self,
         path: P,
-    ) -> Result<std::collections::HashMap<String, Vec<String>>, talaria_core::error::TalariaError> {
+    ) -> Result<std::collections::HashMap<String, Vec<String>>, talaria_core::error::TalariaError>
+    {
         use std::collections::HashMap;
         use std::fs::File;
         use std::io::{BufRead, BufReader};

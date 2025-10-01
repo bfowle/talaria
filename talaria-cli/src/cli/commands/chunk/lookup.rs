@@ -1,8 +1,8 @@
-use talaria_sequoia::SHA256Hash;
 use crate::cli::formatting::output::*;
 use anyhow::{Context, Result};
 use clap::Args;
 use std::path::PathBuf;
+use talaria_sequoia::SHA256Hash;
 
 /// Trait for different lookup strategies
 pub trait ChunkLookupStrategy {
@@ -436,7 +436,11 @@ pub fn run(args: LookupArgs) -> Result<()> {
                 println!("{}", m.chunk.hash);
             }
         }
-        OutputFormat::Yaml | OutputFormat::Tsv | OutputFormat::Fasta | OutputFormat::Summary | OutputFormat::Detailed => {
+        OutputFormat::Yaml
+        | OutputFormat::Tsv
+        | OutputFormat::Fasta
+        | OutputFormat::Summary
+        | OutputFormat::Detailed => {
             // Default to text output for unsupported formats
             for (i, m) in matches.iter().enumerate() {
                 if i > 0 {
@@ -460,9 +464,9 @@ fn build_chunk_index_for_version(
     database: Option<&str>,
     version: Option<&str>,
 ) -> Result<ChunkIndex> {
-    use talaria_sequoia::Manifest;
-    use talaria_core::system::paths;
     use glob::glob;
+    use talaria_core::system::paths;
+    use talaria_sequoia::Manifest;
 
     let databases_dir = paths::talaria_databases_dir();
     action(&format!(
@@ -526,65 +530,65 @@ fn build_chunk_index_for_version(
             for path in paths.flatten() {
                 // Try to load the manifest
                 match Manifest::load_file(&path) {
-                        Ok(manifest) => {
-                            // Get database name from path
-                            let database_name = extract_database_name(&path);
+                    Ok(manifest) => {
+                        // Get database name from path
+                        let database_name = extract_database_name(&path);
 
-                            // Process chunks from manifest
-                            if let Some(temporal_manifest) = manifest.get_data() {
-                                for chunk_meta in &temporal_manifest.chunk_index {
-                                    // Create ChunkInfo from metadata
-                                    let chunk_info = ChunkDisplayInfo {
-                                        hash: chunk_meta.hash.clone(),
-                                        database: database_name.clone(),
-                                        version: temporal_manifest.version.clone(),
-                                        taxonomy: extract_taxonomy_info(chunk_meta),
-                                        sequence_count: chunk_meta.sequence_count,
-                                        size: chunk_meta.size as u64,
-                                        compressed_size: chunk_meta
-                                            .compressed_size
-                                            .unwrap_or(chunk_meta.size)
-                                            as u64,
-                                        compression_ratio: if let Some(compressed) =
-                                            chunk_meta.compressed_size
-                                        {
-                                            chunk_meta.size as f32 / compressed as f32
-                                        } else {
-                                            1.0
-                                        },
-                                        reference_sequences: Vec::new(), // Not available in ManifestMetadata
-                                        created_at: temporal_manifest.created_at.to_rfc3339(),
-                                    };
+                        // Process chunks from manifest
+                        if let Some(temporal_manifest) = manifest.get_data() {
+                            for chunk_meta in &temporal_manifest.chunk_index {
+                                // Create ChunkInfo from metadata
+                                let chunk_info = ChunkDisplayInfo {
+                                    hash: chunk_meta.hash.clone(),
+                                    database: database_name.clone(),
+                                    version: temporal_manifest.version.clone(),
+                                    taxonomy: extract_taxonomy_info(chunk_meta),
+                                    sequence_count: chunk_meta.sequence_count,
+                                    size: chunk_meta.size as u64,
+                                    compressed_size: chunk_meta
+                                        .compressed_size
+                                        .unwrap_or(chunk_meta.size)
+                                        as u64,
+                                    compression_ratio: if let Some(compressed) =
+                                        chunk_meta.compressed_size
+                                    {
+                                        chunk_meta.size as f32 / compressed as f32
+                                    } else {
+                                        1.0
+                                    },
+                                    reference_sequences: Vec::new(), // Not available in ManifestMetadata
+                                    created_at: temporal_manifest.created_at.to_rfc3339(),
+                                };
 
-                                    // Index by hash
-                                    let hash = chunk_meta.hash.clone();
-                                    index.by_hash.insert(hash.clone(), chunk_info.clone());
+                                // Index by hash
+                                let hash = chunk_meta.hash.clone();
+                                index.by_hash.insert(hash.clone(), chunk_info.clone());
 
-                                    // Index by database
+                                // Index by database
+                                index
+                                    .by_database
+                                    .entry(database_name.clone())
+                                    .or_default()
+                                    .insert(hash.clone());
+
+                                // Index by taxonomy
+                                for tax_info in &chunk_info.taxonomy {
                                     index
-                                        .by_database
-                                        .entry(database_name.clone())
+                                        .by_taxid
+                                        .entry(tax_info.taxid)
                                         .or_default()
-                                        .insert(hash.clone());
-
-                                    // Index by taxonomy
-                                    for tax_info in &chunk_info.taxonomy {
-                                        index
-                                            .by_taxid
-                                            .entry(tax_info.taxid)
-                                            .or_default()
-                                            .push(hash.clone());
-                                    }
-
-                                    // Note: Accession indexing would require loading full chunk data
+                                        .push(hash.clone());
                                 }
+
+                                // Note: Accession indexing would require loading full chunk data
                             }
                         }
-                        Err(_) => {
-                            // Skip manifests we can't read
-                            continue;
-                        }
                     }
+                    Err(_) => {
+                        // Skip manifests we can't read
+                        continue;
+                    }
+                }
             }
         }
     }
@@ -593,9 +597,9 @@ fn build_chunk_index_for_version(
 }
 
 fn build_chunk_index() -> Result<ChunkIndex> {
-    use talaria_sequoia::Manifest;
-    use talaria_core::system::paths;
     use glob::glob;
+    use talaria_core::system::paths;
+    use talaria_sequoia::Manifest;
 
     let databases_dir = paths::talaria_databases_dir();
     action("Building chunk index from local manifests...");
@@ -626,65 +630,65 @@ fn build_chunk_index() -> Result<ChunkIndex> {
             for path in paths.flatten() {
                 // Try to load the manifest
                 match Manifest::load_file(&path) {
-                        Ok(manifest) => {
-                            // Get database name from path
-                            let database_name = extract_database_name(&path);
+                    Ok(manifest) => {
+                        // Get database name from path
+                        let database_name = extract_database_name(&path);
 
-                            // Process chunks from manifest
-                            if let Some(temporal_manifest) = manifest.get_data() {
-                                for chunk_meta in &temporal_manifest.chunk_index {
-                                    // Create ChunkInfo from metadata
-                                    let chunk_info = ChunkDisplayInfo {
-                                        hash: chunk_meta.hash.clone(),
-                                        database: database_name.clone(),
-                                        version: temporal_manifest.version.clone(),
-                                        taxonomy: extract_taxonomy_info(chunk_meta),
-                                        sequence_count: chunk_meta.sequence_count,
-                                        size: chunk_meta.size as u64,
-                                        compressed_size: chunk_meta
-                                            .compressed_size
-                                            .unwrap_or(chunk_meta.size)
-                                            as u64,
-                                        compression_ratio: if let Some(compressed) =
-                                            chunk_meta.compressed_size
-                                        {
-                                            chunk_meta.size as f32 / compressed as f32
-                                        } else {
-                                            1.0
-                                        },
-                                        reference_sequences: Vec::new(), // Not available in ManifestMetadata
-                                        created_at: temporal_manifest.created_at.to_rfc3339(),
-                                    };
+                        // Process chunks from manifest
+                        if let Some(temporal_manifest) = manifest.get_data() {
+                            for chunk_meta in &temporal_manifest.chunk_index {
+                                // Create ChunkInfo from metadata
+                                let chunk_info = ChunkDisplayInfo {
+                                    hash: chunk_meta.hash.clone(),
+                                    database: database_name.clone(),
+                                    version: temporal_manifest.version.clone(),
+                                    taxonomy: extract_taxonomy_info(chunk_meta),
+                                    sequence_count: chunk_meta.sequence_count,
+                                    size: chunk_meta.size as u64,
+                                    compressed_size: chunk_meta
+                                        .compressed_size
+                                        .unwrap_or(chunk_meta.size)
+                                        as u64,
+                                    compression_ratio: if let Some(compressed) =
+                                        chunk_meta.compressed_size
+                                    {
+                                        chunk_meta.size as f32 / compressed as f32
+                                    } else {
+                                        1.0
+                                    },
+                                    reference_sequences: Vec::new(), // Not available in ManifestMetadata
+                                    created_at: temporal_manifest.created_at.to_rfc3339(),
+                                };
 
-                                    // Index by hash
-                                    let hash = chunk_meta.hash.clone();
-                                    index.by_hash.insert(hash.clone(), chunk_info.clone());
+                                // Index by hash
+                                let hash = chunk_meta.hash.clone();
+                                index.by_hash.insert(hash.clone(), chunk_info.clone());
 
-                                    // Index by database (use HashSet to avoid duplicates)
+                                // Index by database (use HashSet to avoid duplicates)
+                                index
+                                    .by_database
+                                    .entry(database_name.clone())
+                                    .or_default()
+                                    .insert(hash.clone());
+
+                                // Index by taxonomy
+                                for tax_info in &chunk_info.taxonomy {
                                     index
-                                        .by_database
-                                        .entry(database_name.clone())
+                                        .by_taxid
+                                        .entry(tax_info.taxid)
                                         .or_default()
-                                        .insert(hash.clone());
-
-                                    // Index by taxonomy
-                                    for tax_info in &chunk_info.taxonomy {
-                                        index
-                                            .by_taxid
-                                            .entry(tax_info.taxid)
-                                            .or_default()
-                                            .push(hash.clone());
-                                    }
-
-                                    // Note: Accession indexing would require loading full chunk data
+                                        .push(hash.clone());
                                 }
+
+                                // Note: Accession indexing would require loading full chunk data
                             }
                         }
-                        Err(_) => {
-                            // Skip manifests we can't read
-                            continue;
-                        }
                     }
+                    Err(_) => {
+                        // Skip manifests we can't read
+                        continue;
+                    }
+                }
             }
         }
     }

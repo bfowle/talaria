@@ -72,8 +72,9 @@ impl TaxonomyManifest {
         use anyhow::Context;
 
         if path.extension().and_then(|s| s.to_str()) == Some("json") {
-            let content = std::fs::read_to_string(path)
-                .with_context(|| format!("Failed to read manifest file as UTF-8: {}", path.display()))?;
+            let content = std::fs::read_to_string(path).with_context(|| {
+                format!("Failed to read manifest file as UTF-8: {}", path.display())
+            })?;
             Ok(serde_json::from_str(&content)?)
         } else {
             // Try MessagePack format (binary format, don't read as string)

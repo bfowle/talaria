@@ -33,7 +33,9 @@ fn test_path_construction_consistency() {
         // Test manifest paths
         let manifest = manifest_path("uniprot", "swissprot");
         assert!(manifest.to_string_lossy().contains("manifests"));
-        assert!(manifest.to_string_lossy().contains("uniprot-swissprot.json"));
+        assert!(manifest
+            .to_string_lossy()
+            .contains("uniprot-swissprot.json"));
 
         // Test taxonomy paths
         let tax_version = talaria_taxonomy_version_dir("2024_01");
@@ -94,8 +96,8 @@ fn test_path_descriptions() {
 
 #[test]
 fn test_utc_timestamp_generation() {
-    use talaria_core::system::paths::generate_utc_timestamp;
     use chrono::Utc;
+    use talaria_core::system::paths::generate_utc_timestamp;
 
     let timestamp1 = generate_utc_timestamp();
     std::thread::sleep(std::time::Duration::from_millis(1100)); // Sleep > 1 second
@@ -136,8 +138,8 @@ fn test_workspace_directory_structure() {
 
         // Should end with "talaria" (the workspace subdirectory)
         assert!(
-            workspace.to_string_lossy().ends_with("talaria") ||
-            workspace.to_string_lossy().contains("talaria"),
+            workspace.to_string_lossy().ends_with("talaria")
+                || workspace.to_string_lossy().contains("talaria"),
             "Workspace path should contain 'talaria': {}",
             workspace.display()
         );
@@ -163,7 +165,8 @@ fn test_path_hierarchy() {
         assert!(
             seq_dir.starts_with(&db_dir),
             "Sequence dir {:?} should be under databases dir {:?}",
-            seq_dir, db_dir
+            seq_dir,
+            db_dir
         );
 
         // Packs should be under sequences
@@ -171,7 +174,8 @@ fn test_path_hierarchy() {
         assert!(
             packs_dir.starts_with(&seq_dir),
             "Packs dir {:?} should be under sequences dir {:?}",
-            packs_dir, seq_dir
+            packs_dir,
+            seq_dir
         );
 
         // Indices should be under sequences
@@ -179,7 +183,8 @@ fn test_path_hierarchy() {
         assert!(
             indices_dir.starts_with(&seq_dir),
             "Indices dir {:?} should be under sequences dir {:?}",
-            indices_dir, seq_dir
+            indices_dir,
+            seq_dir
         );
 
         // Index file should be under indices
@@ -187,7 +192,8 @@ fn test_path_hierarchy() {
         assert!(
             index_file.starts_with(&indices_dir),
             "Index file {:?} should be under indices dir {:?}",
-            index_file, indices_dir
+            index_file,
+            indices_dir
         );
 
         // Taxonomy should be under databases
@@ -195,7 +201,8 @@ fn test_path_hierarchy() {
         assert!(
             tax_dir.starts_with(&db_dir),
             "Taxonomy dir {:?} should be under databases dir {:?}",
-            tax_dir, db_dir
+            tax_dir,
+            db_dir
         );
 
         // Specific taxonomy version should be under taxonomy
@@ -203,7 +210,8 @@ fn test_path_hierarchy() {
         assert!(
             tax_ver.starts_with(&tax_dir),
             "Taxonomy version {:?} should be under taxonomy dir {:?}",
-            tax_ver, tax_dir
+            tax_ver,
+            tax_dir
         );
 
         // Storage (chunks) should be under databases
@@ -211,7 +219,8 @@ fn test_path_hierarchy() {
         assert!(
             storage_dir.starts_with(&db_dir),
             "Storage dir {:?} should be under databases dir {:?}",
-            storage_dir, db_dir
+            storage_dir,
+            db_dir
         );
     });
 }
@@ -249,7 +258,10 @@ fn test_manifest_path_formatting() {
         assert!(
             path_str.ends_with(expected_suffix),
             "Manifest path for {}/{} should end with {}, got: {}",
-            source, dataset, expected_suffix, path_str
+            source,
+            dataset,
+            expected_suffix,
+            path_str
         );
 
         assert!(
@@ -281,20 +293,23 @@ fn test_database_path_formatting() {
         assert!(
             path_str.contains(source),
             "Database path should contain source '{}': {}",
-            source, path_str
+            source,
+            path_str
         );
 
         assert!(
             path_str.contains(dataset),
             "Database path should contain dataset '{}': {}",
-            dataset, path_str
+            dataset,
+            path_str
         );
 
         // Should end with dataset
         assert!(
             path_str.ends_with(dataset),
             "Database path should end with dataset '{}': {}",
-            dataset, path_str
+            dataset,
+            path_str
         );
     }
 }
@@ -349,7 +364,10 @@ fn test_path_length_limits() {
         talaria_home(),
         talaria_databases_dir(),
         canonical_sequence_storage_dir(),
-        database_path("very_long_source_name", "extremely_long_dataset_name_with_many_characters"),
+        database_path(
+            "very_long_source_name",
+            "extremely_long_dataset_name_with_many_characters",
+        ),
     ];
 
     for path in paths {
@@ -361,7 +379,8 @@ fn test_path_length_limits() {
         assert!(
             path_len < 1024,
             "Path length ({}) exceeds reasonable limit: {}",
-            path_len, path_str
+            path_len,
+            path_str
         );
     }
 }

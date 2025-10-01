@@ -1,10 +1,10 @@
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fs;
 /// State validation and recovery mechanisms
 use std::path::PathBuf;
-use std::collections::HashMap;
-use anyhow::{Result, Context};
-use tracing::{info, warn, error, debug};
-use serde::{Serialize, Deserialize};
-use std::fs;
+use tracing::{debug, error, info, warn};
 
 /// Result of state validation
 #[derive(Debug, Clone)]
@@ -88,14 +88,20 @@ impl DownloadStateValidator {
                         // Check referenced files exist
                         if let Some(files) = state.get("files").and_then(|f| f.as_object()) {
                             for (name, info) in files {
-                                if let Some(path) = info.get("compressed").and_then(|p| p.as_str()) {
+                                if let Some(path) = info.get("compressed").and_then(|p| p.as_str())
+                                {
                                     let file_path = PathBuf::from(path);
                                     if !file_path.exists() {
                                         issues.push(ValidationIssue {
                                             severity: IssueSeverity::Warning,
                                             component: "download_state".to_string(),
-                                            description: format!("Referenced file missing: {}", name),
-                                            recovery_suggestion: Some("Will re-download missing file".to_string()),
+                                            description: format!(
+                                                "Referenced file missing: {}",
+                                                name
+                                            ),
+                                            recovery_suggestion: Some(
+                                                "Will re-download missing file".to_string(),
+                                            ),
                                         });
                                     }
                                 }
@@ -192,8 +198,12 @@ impl StateValidator for DownloadStateValidator {
         all_issues.extend(self.check_workspace_integrity());
 
         // Determine overall result
-        let has_critical = all_issues.iter().any(|i| i.severity == IssueSeverity::Critical);
-        let has_error = all_issues.iter().any(|i| i.severity == IssueSeverity::Error);
+        let has_critical = all_issues
+            .iter()
+            .any(|i| i.severity == IssueSeverity::Critical);
+        let has_error = all_issues
+            .iter()
+            .any(|i| i.severity == IssueSeverity::Error);
 
         if all_issues.is_empty() {
             Ok(ValidationResult::Valid)
@@ -249,8 +259,7 @@ impl StateValidator for DownloadStateValidator {
 
                 // Remove state file
                 if self.state_path.exists() {
-                    fs::remove_file(&self.state_path)
-                        .context("Failed to remove state file")?;
+                    fs::remove_file(&self.state_path).context("Failed to remove state file")?;
                 }
 
                 // Clean workspace
@@ -263,9 +272,9 @@ impl StateValidator for DownloadStateValidator {
 
                 Ok(())
             }
-            RecoveryStrategy::Abort => {
-                Err(anyhow::anyhow!("Operation aborted due to validation issues"))
-            }
+            RecoveryStrategy::Abort => Err(anyhow::anyhow!(
+                "Operation aborted due to validation issues"
+            )),
         }
     }
 
@@ -445,9 +454,7 @@ impl StateValidator for DatabaseStateValidator {
                 error!("Database reset requested - this would delete all data!");
                 Err(anyhow::anyhow!("Database reset must be done manually"))
             }
-            RecoveryStrategy::Abort => {
-                Err(anyhow::anyhow!("Database validation failed"))
-            }
+            RecoveryStrategy::Abort => Err(anyhow::anyhow!("Database validation failed")),
         }
     }
 
@@ -473,15 +480,19 @@ impl ValidationUtils {
                     debug!("{} validation passed", validator.component_name());
                 }
                 ValidationResult::Recoverable(issues) => {
-                    warn!("{} has {} recoverable issues",
-                          validator.component_name(),
-                          issues.len());
+                    warn!(
+                        "{} has {} recoverable issues",
+                        validator.component_name(),
+                        issues.len()
+                    );
                     all_issues.extend(issues);
                 }
                 ValidationResult::Corrupted(issues) => {
-                    error!("{} validation failed with {} critical issues",
-                           validator.component_name(),
-                           issues.len());
+                    error!(
+                        "{} validation failed with {} critical issues",
+                        validator.component_name(),
+                        issues.len()
+                    );
                     has_errors = true;
                     all_issues.extend(issues);
                 }
@@ -489,7 +500,10 @@ impl ValidationUtils {
         }
 
         if has_errors {
-            Err(anyhow::anyhow!("Validation failed with {} issues", all_issues.len()))
+            Err(anyhow::anyhow!(
+                "Validation failed with {} issues",
+                all_issues.len()
+            ))
         } else if !all_issues.is_empty() {
             warn!("Validation completed with {} warnings", all_issues.len());
             Ok(())
@@ -512,11 +526,15 @@ impl ValidationUtils {
                     report.push_str("Status: ✓ Valid\n");
                 }
                 ValidationResult::Recoverable(issues) => {
-                    report.push_str(&format!("Status: ⚠ Recoverable ({} issues)\n", issues.len()));
+                    report.push_str(&format!(
+                        "Status: ⚠ Recoverable ({} issues)\n",
+                        issues.len()
+                    ));
                     for issue in issues {
-                        report.push_str(&format!("  - {}: {}\n",
-                                                issue.severity as i32,
-                                                issue.description));
+                        report.push_str(&format!(
+                            "  - {}: {}\n",
+                            issue.severity as i32, issue.description
+                        ));
                         if let Some(suggestion) = &issue.recovery_suggestion {
                             report.push_str(&format!("    → {}\n", suggestion));
                         }
@@ -525,9 +543,10 @@ impl ValidationUtils {
                 ValidationResult::Corrupted(issues) => {
                     report.push_str(&format!("Status: ✗ Corrupted ({} issues)\n", issues.len()));
                     for issue in issues {
-                        report.push_str(&format!("  - {}: {}\n",
-                                                issue.severity as i32,
-                                                issue.description));
+                        report.push_str(&format!(
+                            "  - {}: {}\n",
+                            issue.severity as i32, issue.description
+                        ));
                         if let Some(suggestion) = &issue.recovery_suggestion {
                             report.push_str(&format!("    → {}\n", suggestion));
                         }
@@ -575,7 +594,9 @@ mod tests {
 
         match result {
             ValidationResult::Corrupted(issues) => {
-                assert!(issues.iter().any(|i| i.description.contains("does not exist")));
+                assert!(issues
+                    .iter()
+                    .any(|i| i.description.contains("does not exist")));
             }
             _ => panic!("Expected corrupted state for missing database"),
         }

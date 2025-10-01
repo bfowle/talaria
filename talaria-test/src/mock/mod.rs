@@ -3,16 +3,14 @@
 //! Provides mock versions of core components for unit testing.
 
 mod aligner;
-mod taxonomy;
 mod download;
 mod download_state;
+mod taxonomy;
 
 pub use aligner::{MockAligner, MockAlignerConfig};
-pub use taxonomy::{MockTaxonomyManager, MockTaxonomyEntry};
-pub use download::{MockDownloadSource, TestDatabaseMetadata, create_test_download_state};
+pub use download::{create_test_download_state, MockDownloadSource, TestDatabaseMetadata};
 pub use download_state::{
+    create_completed_download_state, create_download_state_at_stage, create_mock_compressed_file,
     setup_test_download_workspace,
-    create_mock_compressed_file,
-    create_completed_download_state,
-    create_download_state_at_stage,
 };
+pub use taxonomy::{MockTaxonomyEntry, MockTaxonomyManager};

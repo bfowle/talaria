@@ -2,16 +2,17 @@
 
 /// Database download implementation using content-addressed storage
 use crate::cli::commands::database::download::DownloadArgs;
-use crate::cli::formatting::{format_number, print_tip, TaskList, TaskStatus};
-use talaria_utils::display::format::format_bytes;
 use crate::cli::formatting::output::*;
-use talaria_sequoia::database::{DatabaseManager, DownloadResult};
-use talaria_sequoia::download::DatabaseSource;
+use crate::cli::formatting::{format_number, print_tip, TaskList, TaskStatus};
 use crate::cli::progress::create_spinner;
 use anyhow::Result;
 use colored::Colorize;
 use indicatif::ProgressBar;
 use std::sync::{Arc, Mutex};
+use talaria_sequoia::database::{DatabaseManager, DownloadResult};
+use talaria_sequoia::download::{DatabaseSource, Stage};
+// format_bytes moved to stats command only
+// use talaria_utils::display::format::format_bytes;
 
 pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource) -> Result<()> {
     // Apply CLI flag overrides for environment variables
@@ -24,6 +25,9 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
     if args.preserve_lambda_on_failure {
         std::env::set_var("TALARIA_PRESERVE_LAMBDA_ON_FAILURE", "1");
     }
+    if args.keep_workspace {
+        std::env::set_var("TALARIA_PRESERVE_DOWNLOADS", "1");
+    }
 
     // Handle continue/resume flag alias
     let resume = args.resume || args.continue_download;
@@ -31,7 +35,12 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
     // Set verbosity level
     if args.quiet {
         std::env::set_var("TALARIA_LOG", "error");
-    } else if std::env::var("TALARIA_VERBOSE").unwrap_or_default().parse::<u8>().unwrap_or(0) > 0 {
+    } else if std::env::var("TALARIA_VERBOSE")
+        .unwrap_or_default()
+        .parse::<u8>()
+        .unwrap_or(0)
+        > 0
+    {
         std::env::set_var("TALARIA_LOG", "debug");
     }
 
@@ -64,13 +73,18 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
     manager.ensure_version_integrity(&database_source)?;
 
     // Check for resumable operations BEFORE creating the task list UI
+    // Declare workspace_state outside the blocks so it can be used later
+    use talaria_sequoia::download::find_existing_workspace_for_source;
+    let workspace_state = if resume {
+        find_existing_workspace_for_source(&database_source)?
+    } else {
+        None
+    };
+
     if resume && !args.quiet {
         println!();
         let spinner = create_spinner("Checking for resumable state...");
 
-        // First check for existing downloads in workspace
-        use talaria_sequoia::download::{find_existing_workspace_for_source, Stage};
-        let workspace_state = find_existing_workspace_for_source(&database_source)?;
         let found_workspace = workspace_state.is_some();
 
         // Then check for SEQUOIA processing states
@@ -78,13 +92,20 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
         spinner.finish_and_clear();
 
         // Report workspace state
-        if let Some((workspace_path, state)) = workspace_state {
+        if let Some((ref workspace_path, ref state)) = workspace_state {
             if state.stage == Stage::Complete {
-                println!("  {} Found complete download ready for processing", "●".green());
+                println!(
+                    "  {} Found complete download ready for processing",
+                    "●".green()
+                );
                 if let Some(decompressed) = state.files.decompressed.as_ref() {
                     if let Ok(metadata) = decompressed.metadata() {
                         let size_gb = metadata.len() as f64 / 1_073_741_824.0;
-                        println!("    └─ Using existing {:.1}GB file from {}", size_gb, workspace_path.display());
+                        println!(
+                            "    └─ Using existing {:.1}GB file from {}",
+                            size_gb,
+                            workspace_path.display()
+                        );
                     }
                 }
             } else {
@@ -98,13 +119,20 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
             if found_workspace {
                 println!();
             }
-            println!("  {} Found {} SEQUOIA processing operation(s) to resume", "●".cyan(), resumable_ops.len());
+            println!(
+                "  {} Found {} SEQUOIA processing operation(s) to resume",
+                "●".cyan(),
+                resumable_ops.len()
+            );
             for (i, (op_id, state)) in resumable_ops.iter().enumerate() {
                 let is_last = i == resumable_ops.len() - 1;
                 tree_item(is_last, &format!("{}: {}", op_id, state.summary()), None);
             }
         } else if !found_workspace {
-            println!("  {} No resumable state found - will start fresh download", "○".white());
+            println!(
+                "  {} No resumable state found - will start fresh download",
+                "○".white()
+            );
         }
     } else if resume && args.quiet {
         // In quiet mode, still check but don't print
@@ -131,6 +159,15 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
 
     // Mark init as complete since we already did it
     task_list.update_task(init_task, TaskStatus::Complete);
+
+    // If we found a complete download workspace, mark check and download as complete
+    if let Some((_, state)) = &workspace_state {
+        if state.stage == Stage::Complete {
+            // Check and download are already complete - now processing the file
+            task_list.update_task(check_task, TaskStatus::Complete);
+            task_list.update_task(download_task, TaskStatus::Complete);
+        }
+    }
 
     // Create a shared task list for progress callback
     let shared_task_list = Arc::new(Mutex::new(task_list));
@@ -223,17 +260,23 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
             if let Some(s) = spinner.take() {
                 s.finish_and_clear();
             }
-        } else if msg.contains("Downloading full database") {
+        } else if msg.contains("Downloading full database") || msg.contains("Downloading database file") {
+            tl.update_task(check_task, TaskStatus::Complete);
             tl.update_task(download_task, TaskStatus::InProgress);
-            tl.pause_updates();
             drop(tl);
 
             if let Some(s) = spinner.take() {
                 s.finish_and_clear();
             }
-            println!("\n  {} Download", "○".dimmed());
-            println!("{}", msg);
-        } else if msg.contains("SEQUOIA manifest already exists") || msg.contains("SEQUOIA manifest was created") {
+            *spinner = Some(create_spinner(msg));
+        } else if msg.contains("Download complete") {
+            if let Some(s) = spinner.take() {
+                s.finish_and_clear();
+            }
+            println!("  {} Download complete", "✓".green());
+        } else if msg.contains("SEQUOIA manifest already exists")
+            || msg.contains("SEQUOIA manifest was created")
+        {
             // Show manifest exists - no processing needed
             if let Some(s) = spinner.take() {
                 s.finish_and_clear();
@@ -257,7 +300,9 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
             drop(tl);
 
             println!("  {} {}", "▶".cyan(), msg);
-        } else if msg.contains("Reading sequences from FASTA") || msg.contains("Processing FASTA file") {
+        } else if msg.contains("Reading sequences from FASTA")
+            || msg.contains("Processing FASTA file")
+        {
             // Clear download phase, start processing
             tl.resume_updates();
             tl.update_task(download_task, TaskStatus::Complete);
@@ -283,7 +328,8 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
             println!("{}", msg);
         } else if msg.contains("Creating taxonomy-aware chunks") {
             *spinner = Some(create_spinner("Creating taxonomy-aware chunks..."));
-        } else if msg.contains("Processed") && msg.contains("sequences") && msg.contains("batches") {
+        } else if msg.contains("Processed") && msg.contains("sequences") && msg.contains("batches")
+        {
             // Batch progress update - just print it
             println!("  {}", msg);
         } else if msg.contains("Processing final batch") {
@@ -335,9 +381,13 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
             println!("  {} {}", "✓".green(), msg);
         } else if msg.contains("Taxonomy data not loaded") || msg.contains("WARNING: No taxonomy") {
             println!("  {} {}", "⚠".yellow(), msg);
-        } else if msg.contains("Taxonomy directory not found") || msg.contains("Found taxonomy") || msg.contains("Found NCBI") {
+        } else if msg.contains("Taxonomy directory not found")
+            || msg.contains("Found taxonomy")
+            || msg.contains("Found NCBI")
+        {
             println!("    {}", msg);
-        } else if msg.contains("To download taxonomy") || msg.contains("talaria database download") {
+        } else if msg.contains("To download taxonomy") || msg.contains("talaria database download")
+        {
             println!("    {}", msg.dimmed());
         } else if msg.contains("Continuing with placeholder") {
             println!("  {} {}", "→".yellow(), msg);
@@ -358,10 +408,18 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
         runtime.block_on(async { manager.check_for_updates(&database_source, progress).await })?
     } else if args.force {
         // Force download even if up-to-date (clears resume state)
-        runtime.block_on(async { manager.force_download_clear_resume(&database_source, progress).await })?
+        runtime.block_on(async {
+            manager
+                .force_download_clear_resume(&database_source, progress)
+                .await
+        })?
     } else if resume {
         // Use resume-enabled download when --resume flag is set
-        runtime.block_on(async { manager.download_with_resume(&database_source, true, progress).await })?
+        runtime.block_on(async {
+            manager
+                .download_with_resume(&database_source, true, progress)
+                .await
+        })?
     } else {
         // Normal download (idempotent)
         runtime.block_on(async { manager.download(&database_source, progress).await })?
@@ -380,7 +438,10 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
             DownloadResult::UpToDate => {
                 // Tasks already marked as skipped
             }
-            DownloadResult::Updated { .. } | DownloadResult::InitialDownload { .. } | DownloadResult::Downloaded { .. } => {
+            DownloadResult::Updated { .. }
+            | DownloadResult::InitialDownload { .. }
+            | DownloadResult::Downloaded { .. }
+            | DownloadResult::AlreadyExists { .. } => {
                 tl.update_task(manifest_task, TaskStatus::Complete);
             }
         }
@@ -396,7 +457,7 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
         info(&format!("Exporting database to {}", output_doc.display()));
 
         // Use the export command to create the FASTA file
-        use crate::cli::commands::database::export::{ExportArgs, ExportFormat, run as export_run};
+        use crate::cli::commands::database::export::{run as export_run, ExportArgs, ExportFormat};
         let export_args = ExportArgs {
             database: format!("{}", database_source),
             output: Some(output_doc.clone()),
@@ -508,44 +569,29 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
                 print_tip("Set TALARIA_MANIFEST_SERVER to enable incremental updates from a manifest server");
             }
         }
-        DownloadResult::Downloaded { total_chunks, total_size } => {
+        DownloadResult::Downloaded {
+            total_chunks,
+            total_size,
+        } => {
             println!("{}", "─".repeat(80).dimmed());
             success("Database downloaded successfully!");
             info(&format!("Downloaded {} chunks", total_chunks));
             info(&format!("Total size: {} bytes", total_size));
         }
+        DownloadResult::AlreadyExists {
+            total_chunks,
+            total_size,
+        } => {
+            println!("{}", "─".repeat(80).dimmed());
+            success("Database already exists locally!");
+            info(&format!("Total chunks: {}", total_chunks));
+            info(&format!("Total size: {} bytes", total_size));
+            info("No download needed - database is already available");
+        }
     }
 
-    // Show stats in a tree format
-    let stats = manager.get_stats()?;
-
-    println!();
-    subsection_header("Repository Statistics");
-    tree_item(
-        false,
-        "Total chunks",
-        Some(&format_number(stats.total_chunks)),
-    );
-    tree_item(
-        false,
-        "Total size",
-        Some(&format_bytes(stats.total_size as u64)),
-    );
-    tree_item(
-        false,
-        "Compressed chunks",
-        Some(&format_number(stats.compressed_chunks)),
-    );
-    tree_item(
-        false,
-        "Deduplication ratio",
-        Some(&format!("{:.2}x", stats.deduplication_ratio)),
-    );
-    tree_item(
-        true,
-        "Databases managed",
-        Some(&format_number(stats.database_count)),
-    );
+    // Repository statistics are now only shown via `database stats` command
+    // Not displayed during download to reduce clutter
 
     println!();
 

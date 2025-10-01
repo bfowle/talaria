@@ -1,4 +1,3 @@
-use talaria_sequoia::download::{DatabaseSource, DownloadProgress, UniProtDatabase};
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::{
     backend::Backend,
@@ -12,6 +11,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
+use talaria_sequoia::download::{DatabaseSource, DownloadProgress, UniProtDatabase};
 
 pub struct DownloadWizard {
     state: WizardState,
@@ -172,7 +172,6 @@ pub fn run_download_wizard<B: Backend>(terminal: &mut Terminal<B>) -> io::Result
                     DatabaseSource::UniProt(db) => wizard.output_dir.join(format!("{}.fasta", db)),
                     DatabaseSource::NCBI(db) => wizard.output_dir.join(format!("{}.fasta", db)),
                     DatabaseSource::Custom(path) => PathBuf::from(path),
-                    DatabaseSource::Test => wizard.output_dir.join("test.fasta"),
                 };
 
                 wizard.message = format!("Downloading to {}...", output_file.display());
@@ -198,8 +197,12 @@ pub fn run_download_wizard<B: Backend>(terminal: &mut Terminal<B>) -> io::Result
                         }
                     }));
 
-                    talaria_sequoia::download::download_database(source_clone, &output_file, &mut progress)
-                        .await
+                    talaria_sequoia::download::download_database(
+                        source_clone,
+                        &output_file,
+                        &mut progress,
+                    )
+                    .await
                 });
 
                 match result {
@@ -316,8 +319,10 @@ fn draw_wizard(f: &mut Frame, wizard: &mut DownloadWizard) {
         WizardState::Downloading => {
             let progress_val = *wizard.progress.lock().unwrap();
 
-            let content = [wizard.message.clone(),
-                format!("\n\nProgress: {:.1}%", progress_val)]
+            let content = [
+                wizard.message.clone(),
+                format!("\n\nProgress: {:.1}%", progress_val),
+            ]
             .join("");
 
             let para = Paragraph::new(content)

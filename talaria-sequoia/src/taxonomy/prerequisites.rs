@@ -49,27 +49,44 @@ impl TaxonomyPrerequisites {
 
     /// Download taxonomy database
     fn download_taxonomy(&self) -> Result<()> {
+        use flate2::read::GzDecoder;
         use std::fs;
+        use tar::Archive;
 
         println!("Downloading NCBI taxonomy database...");
 
         // Create directory if needed
         fs::create_dir_all(&self.taxonomy_dir)?;
 
-        // TODO: Implement actual download from NCBI FTP
-        // For now, create placeholder files
-        let nodes_path = self.taxonomy_dir.join("nodes.dmp");
-        let names_path = self.taxonomy_dir.join("names.dmp");
+        // Download from NCBI FTP
+        let taxdump_url = "https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz";
+        let taxdump_file = self.taxonomy_dir.join("taxdump.tar.gz");
 
-        if !nodes_path.exists() {
-            fs::write(&nodes_path, "# Placeholder nodes.dmp\n")?;
-        }
+        // Download the file synchronously using blocking client
+        let runtime = tokio::runtime::Runtime::new()?;
+        let bytes = runtime.block_on(async {
+            let response = reqwest::get(taxdump_url).await?;
+            response.bytes().await
+        })?;
 
-        if !names_path.exists() {
-            fs::write(&names_path, "# Placeholder names.dmp\n")?;
-        }
+        println!(
+            "  Writing taxonomy archive ({:.2} MB)...",
+            bytes.len() as f64 / 1_048_576.0
+        );
+        fs::write(&taxdump_file, bytes)?;
 
-        println!("  ✓ Taxonomy database downloaded");
+        println!("  Extracting taxonomy files...");
+
+        // Extract the tar.gz file
+        let tar_gz = fs::File::open(&taxdump_file)?;
+        let tar = GzDecoder::new(tar_gz);
+        let mut archive = Archive::new(tar);
+        archive.unpack(&self.taxonomy_dir)?;
+
+        // Clean up tar file
+        fs::remove_file(taxdump_file).ok();
+
+        println!("  ✓ Taxonomy database downloaded and extracted");
 
         Ok(())
     }

@@ -1,19 +1,19 @@
+use super::progress::DownloadProgress;
 /// Resumable downloader that integrates with ProcessingState
 use super::resume::{DownloadResumeState, ResumeDownload};
-use super::progress::DownloadProgress;
-use crate::storage::SEQUOIAStorage;
+use crate::storage::SequoiaStorage;
 use crate::types::SHA256Hash;
 use anyhow::{Context, Result};
 use flate2::read::GzDecoder;
+use futures_util::StreamExt;
 use reqwest::Client;
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufReader, Write};
 use std::path::Path;
-use futures_util::StreamExt;
 
 pub struct ResumableDownloader {
     client: Client,
-    storage: Option<SEQUOIAStorage>,
+    storage: Option<SequoiaStorage>,
     operation_id: Option<String>,
 }
 
@@ -26,7 +26,7 @@ impl ResumableDownloader {
         }
     }
 
-    pub fn with_storage(mut self, storage: SEQUOIAStorage, operation_id: String) -> Self {
+    pub fn with_storage(mut self, storage: SequoiaStorage, operation_id: String) -> Self {
         self.storage = Some(storage);
         self.operation_id = Some(operation_id);
         self
@@ -60,7 +60,8 @@ impl ResumableDownloader {
                 _ => {
                     // State invalid, start fresh
                     progress.set_message("Previous download state invalid, starting fresh");
-                    let state = DownloadResumeState::new(url.to_string(), output_path.to_path_buf());
+                    let state =
+                        DownloadResumeState::new(url.to_string(), output_path.to_path_buf());
                     // Clean up any partial files
                     if state.temp_path.exists() {
                         std::fs::remove_file(&state.temp_path).ok();
@@ -131,7 +132,7 @@ impl ResumableDownloader {
                 // Update processing state if we have storage
                 if let Some(storage) = &self.storage {
                     let completed_chunks = vec![SHA256Hash::compute(
-                        &resume_state.bytes_downloaded.to_le_bytes()
+                        &resume_state.bytes_downloaded.to_le_bytes(),
                     )];
                     storage.update_processing_state(&completed_chunks)?;
                 }
@@ -151,17 +152,16 @@ impl ResumableDownloader {
         let mut request = self.client.get(&state.url);
         if state.bytes_downloaded > 0 && supports_resume {
             request = request.header("Range", format!("bytes={}-", state.bytes_downloaded));
-            progress.set_message(&format!(
-                "Resuming from byte {}",
-                state.bytes_downloaded
-            ));
+            progress.set_message(&format!("Resuming from byte {}", state.bytes_downloaded));
         }
 
         let response = request.send().await.context("Failed to start download")?;
 
         // Check response status
         if state.bytes_downloaded > 0
-            && response.status() != reqwest::StatusCode::PARTIAL_CONTENT && supports_resume {
+            && response.status() != reqwest::StatusCode::PARTIAL_CONTENT
+            && supports_resume
+        {
             // Server doesn't actually support resume despite headers
             return Err(anyhow::anyhow!(
                 "Server reported resume support but didn't return partial content"
@@ -276,6 +276,7 @@ mod tests {
 
     // Simple unit tests without mock server
     #[test]
+    #[serial_test::serial]
     fn test_resumable_downloader_creation() {
         let client = reqwest::Client::new();
         let downloader = ResumableDownloader::new(client);
@@ -284,13 +285,14 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_resumable_downloader_with_storage() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let client = reqwest::Client::new();
-        let storage = crate::storage::SEQUOIAStorage::new(temp_dir.path())?;
+        let storage = crate::storage::SequoiaStorage::new(temp_dir.path())?;
 
-        let downloader = ResumableDownloader::new(client)
-            .with_storage(storage, "test-op".to_string());
+        let downloader =
+            ResumableDownloader::new(client).with_storage(storage, "test-op".to_string());
 
         assert!(downloader.storage.is_some());
         assert_eq!(downloader.operation_id, Some("test-op".to_string()));
@@ -299,6 +301,7 @@ mod tests {
 
     // Test the download state management without actual network calls
     #[tokio::test]
+    #[serial_test::serial]
     async fn test_download_state_management() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let output_path = temp_dir.path().join("test.txt");

@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
+use super::types::*;
 /// Storage trait hierarchy for Talaria
 ///
 /// Provides abstractions for different storage backends including
 /// local filesystem, cloud storage, and content-addressed storage.
 use anyhow::Result;
-use super::types::*;
 
 /// Basic chunk storage operations
 pub trait ChunkStorage: Send + Sync {
@@ -162,7 +162,10 @@ mod tests {
         fn store_chunk(&self, data: &[u8], compress: bool) -> Result<SHA256Hash> {
             let hash = SHA256Hash::compute(data);
             self.chunks.lock().unwrap().insert(hash, data.to_vec());
-            self.compressed_chunks.lock().unwrap().insert(hash, compress);
+            self.compressed_chunks
+                .lock()
+                .unwrap()
+                .insert(hash, compress);
             Ok(hash)
         }
 
@@ -364,10 +367,7 @@ mod tests {
         }
 
         // Wait for all threads and collect hashes
-        let hashes: Vec<_> = handles
-            .into_iter()
-            .map(|h| h.join().unwrap())
-            .collect();
+        let hashes: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
 
         // Verify all chunks are stored
         for hash in &hashes {

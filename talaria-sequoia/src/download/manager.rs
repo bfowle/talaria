@@ -1,18 +1,20 @@
 /// Download manager with state machine coordination
 use anyhow::{bail, Context, Result};
+use flate2::read::GzDecoder;
 use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
-use flate2::read::GzDecoder;
-use tracing::{info, warn, error, debug};
+use tracing::{debug, error, info, warn};
 
-use super::workspace::{DownloadState, DownloadLock, FileTracking, Stage,
-                       get_download_workspace, find_existing_workspace_for_source};
-use super::{DownloadProgress, UniProtDownloader, NCBIDownloader};
-use talaria_core::{DatabaseSource, NCBIDatabase, UniProtDatabase};
-use crate::resilience::{RetryPolicy, with_retry};
-use crate::resilience::{StateValidator, ValidationResult, RecoveryStrategy};
+use super::workspace::{
+    find_existing_workspace_for_source, get_download_workspace, DownloadLock, DownloadState,
+    FileTracking, Stage,
+};
+use super::{DownloadProgress, NCBIDownloader, UniProtDownloader};
 use crate::resilience::validation::DownloadStateValidator;
+use crate::resilience::{with_retry, RetryPolicy};
+use crate::resilience::{RecoveryStrategy, StateValidator, ValidationResult};
+use talaria_core::{DatabaseSource, NCBIDatabase, UniProtDatabase};
 
 /// Options for download behavior
 #[derive(Debug, Clone)]
@@ -33,7 +35,7 @@ impl Default for DownloadOptions {
     fn default() -> Self {
         Self {
             skip_verify: false,
-            resume: true, // Resume by default
+            resume: true,              // Resume by default
             preserve_on_failure: true, // Keep files on failure by default
             preserve_always: false,
             force: false,
@@ -78,7 +80,10 @@ impl DownloadManager {
     ) -> Result<PathBuf> {
         // Try to find existing workspace if resuming
         let (workspace, mut state) = if options.resume && !options.force {
-            progress.set_message(&format!("Searching for existing downloads of {}...", source));
+            progress.set_message(&format!(
+                "Searching for existing downloads of {}...",
+                source
+            ));
 
             match find_existing_workspace_for_source(&source)? {
                 Some((existing_workspace, existing_state)) => {
@@ -91,7 +96,10 @@ impl DownloadManager {
                 None => {
                     progress.set_message("No existing download found, starting fresh");
                     let new_workspace = get_download_workspace(&source);
-                    (new_workspace.clone(), DownloadState::new(source.clone(), new_workspace))
+                    (
+                        new_workspace.clone(),
+                        DownloadState::new(source.clone(), new_workspace),
+                    )
                 }
             }
         } else {
@@ -101,7 +109,10 @@ impl DownloadManager {
                 progress.set_message("Force mode: removing existing workspace and starting fresh");
                 fs::remove_dir_all(&new_workspace)?;
             }
-            (new_workspace.clone(), DownloadState::new(source.clone(), new_workspace))
+            (
+                new_workspace.clone(),
+                DownloadState::new(source.clone(), new_workspace),
+            )
         };
 
         let state_path = workspace.join("state.json");
@@ -116,8 +127,12 @@ impl DownloadManager {
                     info!("Download state validation passed");
                 }
                 ValidationResult::Recoverable(issues) => {
-                    warn!("Found {} recoverable issues in download state", issues.len());
-                    let mut validator_mut = DownloadStateValidator::new(state_path.clone(), workspace.clone());
+                    warn!(
+                        "Found {} recoverable issues in download state",
+                        issues.len()
+                    );
+                    let mut validator_mut =
+                        DownloadStateValidator::new(state_path.clone(), workspace.clone());
                     validator_mut.recover(&issues, RecoveryStrategy::AutoRepair)?;
                 }
                 ValidationResult::Corrupted(issues) => {
@@ -126,7 +141,8 @@ impl DownloadManager {
                         warn!("Preserving corrupted state for debugging");
                     }
                     // Reset to fresh state
-                    let mut validator_mut = DownloadStateValidator::new(state_path.clone(), workspace.clone());
+                    let mut validator_mut =
+                        DownloadStateValidator::new(state_path.clone(), workspace.clone());
                     validator_mut.recover(&issues, RecoveryStrategy::Reset)?;
                     state = DownloadState::new(source.clone(), workspace.clone());
                 }
@@ -151,7 +167,11 @@ impl DownloadManager {
 
             // Provide stage-specific details
             match &state.stage {
-                Stage::Downloading { bytes_done, total_bytes, .. } => {
+                Stage::Downloading {
+                    bytes_done,
+                    total_bytes,
+                    ..
+                } => {
                     if *total_bytes > 0 {
                         let percent = (*bytes_done as f64 / *total_bytes as f64 * 100.0) as u32;
                         progress.set_message(&format!(
@@ -167,13 +187,19 @@ impl DownloadManager {
                         if let Ok(metadata) = source_file.metadata() {
                             progress.set_message(&format!(
                                 "Resuming decompression of {} ({})",
-                                source_file.file_name().unwrap_or_default().to_string_lossy(),
+                                source_file
+                                    .file_name()
+                                    .unwrap_or_default()
+                                    .to_string_lossy(),
                                 format_bytes(metadata.len())
                             ));
                         }
                     }
                 }
-                Stage::Processing { chunks_done, total_chunks } => {
+                Stage::Processing {
+                    chunks_done,
+                    total_chunks,
+                } => {
                     if *total_chunks > 0 {
                         progress.set_message(&format!(
                             "Resuming processing: {} of {} chunks complete",
@@ -185,7 +211,10 @@ impl DownloadManager {
                 }
                 Stage::Complete => {
                     // Don't show download messages since it's already done
-                    let final_path = state.files.decompressed.as_ref()
+                    let final_path = state
+                        .files
+                        .decompressed
+                        .as_ref()
                         .ok_or_else(|| anyhow::anyhow!("Complete but no output file"))?;
                     if final_path.exists() {
                         let file_size = final_path.metadata()?.len();
@@ -195,7 +224,9 @@ impl DownloadManager {
                             file_size as f64 / 1_073_741_824.0
                         ));
                     } else {
-                        progress.set_message("Download marked complete but file missing, will re-download...");
+                        progress.set_message(
+                            "Download marked complete but file missing, will re-download...",
+                        );
                     }
                 }
                 _ => {
@@ -205,8 +236,8 @@ impl DownloadManager {
         }
 
         // Acquire lock
-        let _lock = DownloadLock::try_acquire(&workspace)
-            .context("Failed to acquire download lock")?;
+        let _lock =
+            DownloadLock::try_acquire(&workspace).context("Failed to acquire download lock")?;
 
         // Set preserve options in environment for child processes
         if options.preserve_on_failure {
@@ -217,12 +248,9 @@ impl DownloadManager {
         }
 
         // Execute state machine
-        let result = self.execute_state_machine(
-            &mut state,
-            &state_path,
-            options.clone(),
-            progress
-        ).await;
+        let result = self
+            .execute_state_machine(&mut state, &state_path, options.clone(), progress)
+            .await;
 
         // Handle result and cleanup
         match result {
@@ -231,10 +259,8 @@ impl DownloadManager {
                 // The DatabaseManager still needs to process the files.
                 // Cleanup will happen after DatabaseManager processes the files.
                 if options.preserve_always || options.preserve_on_failure {
-                    progress.set_message(&format!(
-                        "Workspace preserved at: {}",
-                        workspace.display()
-                    ));
+                    progress
+                        .set_message(&format!("Workspace preserved at: {}", workspace.display()));
                 }
                 // Note: Workspace cleanup should be done by the caller after processing
                 Ok(output_path)
@@ -286,7 +312,9 @@ impl DownloadManager {
                     })?;
                 }
 
-                Stage::Downloading { bytes_done, url, .. } => {
+                Stage::Downloading {
+                    bytes_done, url, ..
+                } => {
                     if *bytes_done > 0 {
                         progress.set_message(&format!(
                             "Resuming download from byte position {}...",
@@ -296,22 +324,22 @@ impl DownloadManager {
                         progress.set_message("Starting fresh database download...");
                     }
 
-                    let (compressed_file, _total_bytes) = self.download_file(
-                        &state.source,
-                        &state.workspace,
-                        url,
-                        *bytes_done,
-                        options.skip_verify,
-                        progress,
-                    ).await?;
+                    let (compressed_file, _total_bytes) = self
+                        .download_file(
+                            &state.source,
+                            &state.workspace,
+                            url,
+                            *bytes_done,
+                            options.skip_verify,
+                            progress,
+                        )
+                        .await?;
 
                     state.files.compressed = Some(compressed_file.clone());
                     state.files.track_temp_file(compressed_file.clone());
                     state.files.preserve_on_failure(compressed_file.clone());
 
-                    state.transition_to(Stage::Verifying {
-                        checksum: None,
-                    })?;
+                    state.transition_to(Stage::Verifying { checksum: None })?;
                 }
 
                 Stage::Verifying { .. } => {
@@ -319,14 +347,34 @@ impl DownloadManager {
                         progress.set_message("Skipping verification");
                     } else {
                         progress.set_message("Verifying download...");
-                        // TODO: Implement checksum verification
+
+                        // Verify checksum if available
+                        let compressed = state
+                            .files
+                            .compressed
+                            .as_ref()
+                            .ok_or_else(|| anyhow::anyhow!("No compressed file found"))?;
+
+                        // Try to download and verify checksum files
+                        let checksum_verified =
+                            self.verify_checksum(&compressed, &state, &options).await?;
+
+                        if checksum_verified {
+                            progress.set_message("✓ Checksum verification passed");
+                        } else {
+                            progress.set_message("⚠ No checksum available for verification");
+                        }
                     }
 
-                    let compressed = state.files.compressed.as_ref()
+                    let compressed = state
+                        .files
+                        .compressed
+                        .as_ref()
                         .ok_or_else(|| anyhow::anyhow!("No compressed file found"))?;
 
                     // Determine target name
-                    let decompressed = if compressed.extension() == Some(std::ffi::OsStr::new("gz")) {
+                    let decompressed = if compressed.extension() == Some(std::ffi::OsStr::new("gz"))
+                    {
                         state.workspace.join(compressed.file_stem().unwrap())
                     } else {
                         state.workspace.join("decompressed.fasta")
@@ -338,7 +386,10 @@ impl DownloadManager {
                     })?;
                 }
 
-                Stage::Decompressing { source_file, target_file } => {
+                Stage::Decompressing {
+                    source_file,
+                    target_file,
+                } => {
                     if !source_file.exists() {
                         bail!("Compressed file not found: {}", source_file.display());
                     }
@@ -377,7 +428,10 @@ impl DownloadManager {
                     })?;
                 }
 
-                Stage::Processing { chunks_done, total_chunks } => {
+                Stage::Processing {
+                    chunks_done,
+                    total_chunks,
+                } => {
                     if *chunks_done > 0 || *total_chunks > 0 {
                         progress.set_message(&format!(
                             "Resuming processing: {} of {} chunks complete",
@@ -387,7 +441,10 @@ impl DownloadManager {
                         progress.set_message("Processing downloaded file...");
                     }
 
-                    let _decompressed = state.files.decompressed.as_ref()
+                    let _decompressed = state
+                        .files
+                        .decompressed
+                        .as_ref()
                         .ok_or_else(|| anyhow::anyhow!("No decompressed file found"))?;
 
                     // Just return the decompressed file
@@ -401,7 +458,10 @@ impl DownloadManager {
                     progress.set_message("Finalizing download...");
 
                     // Move to final location if needed
-                    let final_path = state.files.decompressed.as_ref()
+                    let final_path = state
+                        .files
+                        .decompressed
+                        .as_ref()
                         .ok_or_else(|| anyhow::anyhow!("No output file"))?
                         .clone();
 
@@ -414,14 +474,18 @@ impl DownloadManager {
 
                 Stage::Complete => {
                     // Download is complete, return the decompressed file path
-                    let final_path = state.files.decompressed.as_ref()
+                    let final_path = state
+                        .files
+                        .decompressed
+                        .as_ref()
                         .ok_or_else(|| anyhow::anyhow!("Complete but no output file"))?;
 
                     // Verify the file still exists
                     if !final_path.exists() {
                         // File was deleted, need to restart
                         progress.set_message("Downloaded file missing, restarting download...");
-                        progress.set_message("Downloading full database (this may take a while)...");
+                        progress
+                            .set_message("Downloading full database (this may take a while)...");
                         state.transition_to(Stage::Initializing)?;
                         continue;
                     }
@@ -446,7 +510,7 @@ impl DownloadManager {
     /// Initialize workspace structure
     fn initialize_workspace(&self, workspace: &Path) -> Result<()> {
         fs::create_dir_all(workspace)?;
-        fs::create_dir_all(workspace.join("chunks"))?;
+        // Note: chunks/ directory removed - data streams directly to RocksDB
         Ok(())
     }
 
@@ -476,16 +540,24 @@ impl DownloadManager {
             DatabaseSource::UniProt(db) => {
                 let base = "https://ftp.ebi.ac.uk/pub/databases/uniprot";
                 Ok(match db {
-                    UniProtDatabase::SwissProt =>
-                        format!("{}/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz", base),
-                    UniProtDatabase::TrEMBL =>
-                        format!("{}/current_release/knowledgebase/complete/uniprot_trembl.fasta.gz", base),
-                    UniProtDatabase::UniRef50 =>
-                        format!("{}/current_release/uniref/uniref50/uniref50.fasta.gz", base),
-                    UniProtDatabase::UniRef90 =>
-                        format!("{}/current_release/uniref/uniref90/uniref90.fasta.gz", base),
-                    UniProtDatabase::UniRef100 =>
-                        format!("{}/current_release/uniref/uniref100/uniref100.fasta.gz", base),
+                    UniProtDatabase::SwissProt => format!(
+                        "{}/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz",
+                        base
+                    ),
+                    UniProtDatabase::TrEMBL => format!(
+                        "{}/current_release/knowledgebase/complete/uniprot_trembl.fasta.gz",
+                        base
+                    ),
+                    UniProtDatabase::UniRef50 => {
+                        format!("{}/current_release/uniref/uniref50/uniref50.fasta.gz", base)
+                    }
+                    UniProtDatabase::UniRef90 => {
+                        format!("{}/current_release/uniref/uniref90/uniref90.fasta.gz", base)
+                    }
+                    UniProtDatabase::UniRef100 => format!(
+                        "{}/current_release/uniref/uniref100/uniref100.fasta.gz",
+                        base
+                    ),
                     _ => bail!("Unsupported UniProt database: {:?}", db),
                 })
             }
@@ -494,11 +566,21 @@ impl DownloadManager {
                 Ok(match db {
                     NCBIDatabase::NR => format!("{}/blast/db/FASTA/nr.gz", base),
                     NCBIDatabase::NT => format!("{}/blast/db/FASTA/nt.gz", base),
-                    NCBIDatabase::RefSeqProtein => format!("{}/refseq/release/complete/complete.protein.faa.gz", base),
-                    NCBIDatabase::RefSeqGenomic => format!("{}/refseq/release/complete/complete.genomic.fna.gz", base),
+                    NCBIDatabase::RefSeqProtein => {
+                        format!("{}/refseq/release/complete/complete.protein.faa.gz", base)
+                    }
+                    NCBIDatabase::RefSeqGenomic => {
+                        format!("{}/refseq/release/complete/complete.genomic.fna.gz", base)
+                    }
                     NCBIDatabase::Taxonomy => format!("{}/pub/taxonomy/taxdump.tar.gz", base),
-                    NCBIDatabase::ProtAccession2TaxId => format!("{}/pub/taxonomy/accession2taxid/prot.accession2taxid.gz", base),
-                    NCBIDatabase::NuclAccession2TaxId => format!("{}/pub/taxonomy/accession2taxid/nucl_gb.accession2taxid.gz", base),
+                    NCBIDatabase::ProtAccession2TaxId => format!(
+                        "{}/pub/taxonomy/accession2taxid/prot.accession2taxid.gz",
+                        base
+                    ),
+                    NCBIDatabase::NuclAccession2TaxId => format!(
+                        "{}/pub/taxonomy/accession2taxid/nucl_gb.accession2taxid.gz",
+                        base
+                    ),
                     _ => bail!("Unsupported NCBI database: {:?}", db),
                 })
             }
@@ -517,7 +599,9 @@ impl DownloadManager {
         progress: &mut DownloadProgress,
     ) -> Result<(PathBuf, u64)> {
         // Determine filename
-        let filename = url.split('/').last()
+        let filename = url
+            .split('/')
+            .last()
             .ok_or_else(|| anyhow::anyhow!("Invalid URL"))?;
         let _temp_path = workspace.join(format!("{}.part", filename));
         let final_path = workspace.join(filename);
@@ -536,23 +620,19 @@ impl DownloadManager {
                 let downloader = UniProtDownloader::new();
                 info!("Starting UniProt download from {}", url);
                 // Download compressed file to workspace
-                downloader.download_compressed_with_resume(
-                    url,
-                    &final_path,
-                    progress,
-                    resume_from > 0,
-                ).await.context("Failed to download UniProt file")?;
+                downloader
+                    .download_compressed_with_resume(url, &final_path, progress, resume_from > 0)
+                    .await
+                    .context("Failed to download UniProt file")?;
             }
             DatabaseSource::NCBI(_) => {
                 let downloader = NCBIDownloader::new();
                 info!("Starting NCBI download from {}", url);
                 // Download compressed file to workspace
-                downloader.download_compressed_with_resume(
-                    url,
-                    &final_path,
-                    progress,
-                    resume_from > 0,
-                ).await.context("Failed to download NCBI file")?;
+                downloader
+                    .download_compressed_with_resume(url, &final_path, progress, resume_from > 0)
+                    .await
+                    .context("Failed to download NCBI file")?;
             }
             _ => bail!("Unsupported source for download"),
         }
@@ -569,22 +649,18 @@ impl DownloadManager {
             || {
                 debug!("Decompressing {:?} to {:?}", source, target);
 
-                let input = File::open(source)
-                    .context("Failed to open compressed file")?;
+                let input = File::open(source).context("Failed to open compressed file")?;
                 let mut decoder = GzDecoder::new(BufReader::new(input));
-                let mut output = File::create(target)
-                    .context("Failed to create output file")?;
+                let mut output = File::create(target).context("Failed to create output file")?;
 
-                std::io::copy(&mut decoder, &mut output)
-                    .context("Failed to decompress data")?;
-                output.sync_all()
-                    .context("Failed to sync output file")?;
+                std::io::copy(&mut decoder, &mut output).context("Failed to decompress data")?;
+                output.sync_all().context("Failed to sync output file")?;
 
                 info!("Successfully decompressed file");
                 Ok(())
             },
             &retry_policy,
-            "File decompression"
+            "File decompression",
         )
     }
 
@@ -658,11 +734,96 @@ impl DownloadManager {
         Ok(())
     }
 
+    /// Verify checksum of downloaded file
+    async fn verify_checksum(
+        &self,
+        file_path: &Path,
+        state: &DownloadState,
+        _options: &DownloadOptions,
+    ) -> Result<bool> {
+        use sha2::{Digest, Sha256};
+        use std::io::Read;
+
+        // Try common checksum file extensions
+        let checksum_extensions = vec![".sha256", ".md5", ".sha256sum", ".md5sum"];
+        let file_name = file_path.file_name().unwrap().to_str().unwrap();
+
+        // Get base URL from the source
+        let base_url = self.get_source_url(&state.source);
+
+        for ext in &checksum_extensions {
+            let checksum_url = format!("{}/{}{}", base_url, file_name, ext);
+            let _checksum_file = state.workspace.join(format!("{}{}", file_name, ext));
+
+            // Try to download checksum file
+            let client = reqwest::Client::new();
+            match client.get(&checksum_url).send().await {
+                Ok(response) if response.status().is_success() => {
+                    let checksum_content = response.text().await?;
+
+                    // Parse checksum (format: "hash  filename" or just "hash")
+                    let expected_hash = checksum_content
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("")
+                        .to_lowercase();
+
+                    if expected_hash.is_empty() {
+                        continue;
+                    }
+
+                    // Compute actual file hash
+                    let mut file = std::fs::File::open(file_path)?;
+                    let mut hasher = Sha256::new();
+                    let mut buffer = vec![0; 8192];
+
+                    loop {
+                        let bytes_read = file.read(&mut buffer)?;
+                        if bytes_read == 0 {
+                            break;
+                        }
+                        hasher.update(&buffer[..bytes_read]);
+                    }
+
+                    let actual_hash = format!("{:x}", hasher.finalize());
+
+                    if actual_hash == expected_hash {
+                        return Ok(true);
+                    } else {
+                        bail!(
+                            "Checksum verification failed: expected {}, got {}",
+                            expected_hash,
+                            actual_hash
+                        );
+                    }
+                }
+                _ => {
+                    // Checksum file not available, continue trying other extensions
+                    continue;
+                }
+            }
+        }
+
+        // No checksum file found
+        Ok(false)
+    }
+
+    /// Get the base URL for a database source
+    fn get_source_url(&self, source: &DatabaseSource) -> String {
+        match source {
+            DatabaseSource::NCBI(_) => "https://ftp.ncbi.nlm.nih.gov/pub/taxonomy".to_string(),
+            DatabaseSource::UniProt(_) => {
+                "https://ftp.uniprot.org/pub/databases/uniprot".to_string()
+            }
+            DatabaseSource::Custom(url) => url.clone(),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use talaria_test::fixtures::test_database_source;
     use tempfile::TempDir;
 
     #[test]
@@ -680,22 +841,32 @@ mod tests {
         let manager = DownloadManager::new().unwrap();
 
         // Test SwissProt URL
-        let url = manager.get_download_url(&DatabaseSource::UniProt(UniProtDatabase::SwissProt)).unwrap();
+        let url = manager
+            .get_download_url(&DatabaseSource::UniProt(UniProtDatabase::SwissProt))
+            .unwrap();
         assert!(url.contains("uniprot_sprot.fasta.gz"));
         assert!(url.contains("ftp.ebi.ac.uk"));
 
         // Test TrEMBL URL
-        let url = manager.get_download_url(&DatabaseSource::UniProt(UniProtDatabase::TrEMBL)).unwrap();
+        let url = manager
+            .get_download_url(&DatabaseSource::UniProt(UniProtDatabase::TrEMBL))
+            .unwrap();
         assert!(url.contains("uniprot_trembl.fasta.gz"));
 
         // Test UniRef URLs
-        let url = manager.get_download_url(&DatabaseSource::UniProt(UniProtDatabase::UniRef50)).unwrap();
+        let url = manager
+            .get_download_url(&DatabaseSource::UniProt(UniProtDatabase::UniRef50))
+            .unwrap();
         assert!(url.contains("uniref50/uniref50.fasta.gz"));
 
-        let url = manager.get_download_url(&DatabaseSource::UniProt(UniProtDatabase::UniRef90)).unwrap();
+        let url = manager
+            .get_download_url(&DatabaseSource::UniProt(UniProtDatabase::UniRef90))
+            .unwrap();
         assert!(url.contains("uniref90/uniref90.fasta.gz"));
 
-        let url = manager.get_download_url(&DatabaseSource::UniProt(UniProtDatabase::UniRef100)).unwrap();
+        let url = manager
+            .get_download_url(&DatabaseSource::UniProt(UniProtDatabase::UniRef100))
+            .unwrap();
         assert!(url.contains("uniref100/uniref100.fasta.gz"));
     }
 
@@ -704,30 +875,44 @@ mod tests {
         let manager = DownloadManager::new().unwrap();
 
         // Test NR URL
-        let url = manager.get_download_url(&DatabaseSource::NCBI(NCBIDatabase::NR)).unwrap();
+        let url = manager
+            .get_download_url(&DatabaseSource::NCBI(NCBIDatabase::NR))
+            .unwrap();
         assert!(url.contains("blast/db/FASTA/nr.gz"));
         assert!(url.contains("ftp.ncbi.nlm.nih.gov"));
 
         // Test NT URL
-        let url = manager.get_download_url(&DatabaseSource::NCBI(NCBIDatabase::NT)).unwrap();
+        let url = manager
+            .get_download_url(&DatabaseSource::NCBI(NCBIDatabase::NT))
+            .unwrap();
         assert!(url.contains("blast/db/FASTA/nt.gz"));
 
         // Test RefSeq URLs
-        let url = manager.get_download_url(&DatabaseSource::NCBI(NCBIDatabase::RefSeqProtein)).unwrap();
+        let url = manager
+            .get_download_url(&DatabaseSource::NCBI(NCBIDatabase::RefSeqProtein))
+            .unwrap();
         assert!(url.contains("complete.protein.faa.gz"));
 
-        let url = manager.get_download_url(&DatabaseSource::NCBI(NCBIDatabase::RefSeqGenomic)).unwrap();
+        let url = manager
+            .get_download_url(&DatabaseSource::NCBI(NCBIDatabase::RefSeqGenomic))
+            .unwrap();
         assert!(url.contains("complete.genomic.fna.gz"));
 
         // Test Taxonomy URL
-        let url = manager.get_download_url(&DatabaseSource::NCBI(NCBIDatabase::Taxonomy)).unwrap();
+        let url = manager
+            .get_download_url(&DatabaseSource::NCBI(NCBIDatabase::Taxonomy))
+            .unwrap();
         assert!(url.contains("taxonomy/taxdump.tar.gz"));
 
         // Test Accession2TaxId URLs
-        let url = manager.get_download_url(&DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId)).unwrap();
+        let url = manager
+            .get_download_url(&DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId))
+            .unwrap();
         assert!(url.contains("prot.accession2taxid.gz"));
 
-        let url = manager.get_download_url(&DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId)).unwrap();
+        let url = manager
+            .get_download_url(&DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId))
+            .unwrap();
         assert!(url.contains("nucl_gb.accession2taxid.gz"));
     }
 
@@ -739,7 +924,7 @@ mod tests {
         let result = manager.get_download_url(&DatabaseSource::Custom("test".to_string()));
         assert!(result.is_err());
 
-        let result = manager.get_download_url(&DatabaseSource::Test);
+        let result = manager.get_download_url(&test_database_source("download_manager"));
         assert!(result.is_err());
     }
 
@@ -751,9 +936,8 @@ mod tests {
         let manager = DownloadManager::new().unwrap();
         manager.initialize_workspace(&workspace).unwrap();
 
-        // Check directories were created
+        // Check workspace was created
         assert!(workspace.exists());
-        assert!(workspace.join("chunks").exists());
     }
 
     #[test]
@@ -799,12 +983,19 @@ mod tests {
 
         // Test with TALARIA_PRESERVE_ALWAYS
         std::env::set_var("TALARIA_PRESERVE_ALWAYS", "1");
-        manager.cleanup_workspace(&workspace, &files, false).unwrap();
-        assert!(test_file.exists(), "File should be preserved with TALARIA_PRESERVE_ALWAYS");
+        manager
+            .cleanup_workspace(&workspace, &files, false)
+            .unwrap();
+        assert!(
+            test_file.exists(),
+            "File should be preserved with TALARIA_PRESERVE_ALWAYS"
+        );
         std::env::remove_var("TALARIA_PRESERVE_ALWAYS");
 
         // Test normal cleanup
-        manager.cleanup_workspace(&workspace, &files, false).unwrap();
+        manager
+            .cleanup_workspace(&workspace, &files, false)
+            .unwrap();
         assert!(!test_file.exists(), "File should be cleaned up normally");
     }
 
@@ -832,10 +1023,12 @@ mod tests {
         std::env::set_var("TALARIA_PRESERVE_ON_FAILURE", "1");
         manager.cleanup_workspace(&workspace, &files, true).unwrap();
 
-        assert!(important_file.exists(), "Important file should be preserved");
+        assert!(
+            important_file.exists(),
+            "Important file should be preserved"
+        );
         assert!(!temp_file.exists(), "Temp file should be cleaned");
 
         std::env::remove_var("TALARIA_PRESERVE_ON_FAILURE");
     }
 }
-

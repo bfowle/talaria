@@ -5,13 +5,12 @@
 /// - Rebuilding indices for faster queries
 /// - Removing obsolete temporal versions
 /// - Consolidating small chunks
-
 use anyhow::{anyhow, Result};
 use clap::Args;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::path::PathBuf;
-use talaria_core::system::paths::talaria_home;
-use talaria_sequoia::SEQUOIARepository;
+use talaria_core::system::paths::talaria_databases_dir;
+use talaria_sequoia::SequoiaRepository;
 
 #[derive(Debug, Args)]
 pub struct OptimizeCmd {
@@ -42,6 +41,14 @@ pub struct OptimizeCmd {
     /// Show detailed statistics
     #[arg(long)]
     stats: bool,
+
+    /// Report output file path
+    #[arg(long = "report-output", value_name = "FILE")]
+    report_output: Option<PathBuf>,
+
+    /// Report output format (text, html, json, csv)
+    #[arg(long = "report-format", value_name = "FORMAT", default_value = "text")]
+    report_format: String,
 }
 
 impl OptimizeCmd {
@@ -51,9 +58,9 @@ impl OptimizeCmd {
 
         println!("🔧 Optimizing SEQUOIA database: {}", self.database);
 
-        // Open repository at the root databases path
-        let base_path = talaria_home().join("databases");
-        let mut repository = SEQUOIARepository::open(&base_path)?;
+        // Open repository at the unified RocksDB path
+        let base_path = talaria_databases_dir();
+        let mut repository = SequoiaRepository::open(&base_path)?;
 
         // Get current statistics
         if self.stats {
@@ -110,37 +117,59 @@ impl OptimizeCmd {
             println!("\n⚠️  This was a dry run. No changes were made.");
         }
 
+        // Generate report if requested
+        if let Some(report_path) = &self.report_output {
+            use talaria_sequoia::operations::OptimizationResult;
+            use std::time::Duration;
+
+            // Get storage stats for space calculations
+            let storage_stats = repository.storage.get_statistics()?;
+            let space_before = storage_stats.total_size + total_saved;
+
+            let result = OptimizationResult {
+                success: true,
+                space_before: space_before as u64,
+                space_after: storage_stats.total_size as u64,
+                chunks_compacted: if self.repack { storage_stats.chunk_count } else { 0 },
+                indices_rebuilt: if self.rebuild_indices { 3 } else { 0 }, // Estimate: chunk, sequence, taxonomy
+                compaction_performed: self.repack,
+                defragmentation_performed: self.repack,
+                duration: Duration::from_secs(0), // TODO: Track actual duration
+            };
+
+            crate::cli::commands::save_report(&result, &self.report_format, report_path)?;
+            println!("✓ Report saved to {}", report_path.display());
+        }
+
         Ok(())
     }
 
     fn get_database_path(&self) -> Result<PathBuf> {
-        let parts: Vec<&str> = self.database.split('/').collect();
-        if parts.len() != 2 {
-            return Err(anyhow!("Invalid database reference: {}", self.database));
-        }
+        // Use DatabaseManager to verify database exists
+        use talaria_sequoia::database::DatabaseManager;
 
-        let path = talaria_home()
-            .join("databases")
-            .join("versions")
-            .join(parts[0])
-            .join(parts[1])
-            .join("current");
+        let manager = DatabaseManager::new(None)?;
+        manager
+            .list_databases()?
+            .iter()
+            .find(|db| db.name == self.database || db.name.ends_with(&self.database))
+            .ok_or_else(|| anyhow!("Database not found: {}", self.database))?;
 
-        if !path.exists() {
-            return Err(anyhow!("Database not found: {}", self.database));
-        }
-
-        Ok(path)
+        // Return the unified RocksDB path
+        Ok(talaria_databases_dir())
     }
 
-    fn print_current_stats(&self, repository: &SEQUOIARepository) -> Result<()> {
+    fn print_current_stats(&self, repository: &SequoiaRepository) -> Result<()> {
         println!("\n📊 Current Database Statistics:");
 
         // Get storage stats
         let storage_stats = repository.storage.get_statistics()?;
         println!("  Total chunks: {}", storage_stats.chunk_count);
         println!("  Total size: {} MB", storage_stats.total_size / 1_048_576);
-        println!("  Compression ratio: {:.1}%", storage_stats.compression_ratio * 100.0);
+        println!(
+            "  Compression ratio: {:.1}%",
+            storage_stats.compression_ratio * 100.0
+        );
 
         // Get temporal stats
         let temporal_stats = repository.temporal.get_statistics()?;
@@ -150,7 +179,7 @@ impl OptimizeCmd {
         Ok(())
     }
 
-    fn repack_chunks(&self, repository: &mut SEQUOIARepository, dry_run: bool) -> Result<usize> {
+    fn repack_chunks(&self, repository: &mut SequoiaRepository, dry_run: bool) -> Result<usize> {
         println!("\n📦 Repacking chunks for better compression...");
 
         // Get all chunks
@@ -170,18 +199,22 @@ impl OptimizeCmd {
                         space_saved += saved;
                     } else {
                         // Estimate savings
-                        space_saved += ((1.0 - self.compression_target) * metadata.size as f32) as usize;
+                        space_saved +=
+                            ((1.0 - self.compression_target) * metadata.size as f32) as usize;
                     }
                     repacked_count += 1;
                 }
             }
         }
 
-        println!("  Repacked {} chunks, saved {} bytes", repacked_count, space_saved);
+        println!(
+            "  Repacked {} chunks, saved {} bytes",
+            repacked_count, space_saved
+        );
         Ok(space_saved)
     }
 
-    fn rebuild_indices(&self, repository: &mut SEQUOIARepository, dry_run: bool) -> Result<()> {
+    fn rebuild_indices(&self, repository: &mut SequoiaRepository, dry_run: bool) -> Result<()> {
         println!("\n🔍 Rebuilding indices for faster queries...");
 
         if !dry_run {
@@ -202,7 +235,12 @@ impl OptimizeCmd {
         Ok(())
     }
 
-    fn prune_temporal(&self, repository: &mut SEQUOIARepository, days: u32, dry_run: bool) -> Result<usize> {
+    fn prune_temporal(
+        &self,
+        repository: &mut SequoiaRepository,
+        days: u32,
+        dry_run: bool,
+    ) -> Result<usize> {
         println!("\n🕐 Pruning temporal versions older than {} days...", days);
 
         let cutoff = chrono::Utc::now() - chrono::Duration::days(days as i64);

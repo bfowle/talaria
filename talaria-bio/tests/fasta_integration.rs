@@ -1,9 +1,9 @@
+use std::fs;
+use std::io::Write;
 /// Integration tests for FASTA parsing and writing
 use talaria_bio::formats::fasta::{parse_fasta, parse_fasta_parallel, write_fasta};
 use talaria_bio::sequence::Sequence;
 use tempfile::NamedTempFile;
-use std::io::Write;
-use std::fs;
 
 #[test]
 fn test_fasta_round_trip() {
@@ -146,9 +146,9 @@ ATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGC
     assert_eq!(sequences.len(), 3);
 
     // Check sequence lengths - they were wrapped differently but should be parsed correctly
-    assert_eq!(sequences[0].sequence.len(), 120);  // 2 lines of 60 chars
-    assert_eq!(sequences[1].sequence.len(), 152);  // 2 lines: 76 + 76 chars
-    assert_eq!(sequences[2].sequence.len(), 120);  // single line
+    assert_eq!(sequences[0].sequence.len(), 120); // 2 lines of 60 chars
+    assert_eq!(sequences[1].sequence.len(), 152); // 2 lines: 76 + 76 chars
+    assert_eq!(sequences[2].sequence.len(), 120); // single line
 }
 
 #[test]
@@ -175,9 +175,21 @@ MGSSHHHHHHSSGLVPRGSHMASMTGGQQMGRGSEF
     assert_eq!(sequences[2].id, "tr|Q9Y6K1|Q9Y6K1_HUMAN");
 
     // Check descriptions
-    assert!(sequences[0].description.as_ref().unwrap().contains("Green fluorescent protein"));
-    assert!(sequences[1].description.as_ref().unwrap().contains("hypothetical protein"));
-    assert!(sequences[2].description.as_ref().unwrap().contains("DNA-binding protein"));
+    assert!(sequences[0]
+        .description
+        .as_ref()
+        .unwrap()
+        .contains("Green fluorescent protein"));
+    assert!(sequences[1]
+        .description
+        .as_ref()
+        .unwrap()
+        .contains("hypothetical protein"));
+    assert!(sequences[2]
+        .description
+        .as_ref()
+        .unwrap()
+        .contains("DNA-binding protein"));
 }
 
 #[test]
@@ -243,14 +255,18 @@ fn test_large_file_performance() {
     assert_eq!(sequences.len(), 10000);
 
     // Should parse 10MB file in reasonable time (< 5 seconds)
-    assert!(duration.as_secs() < 5, "Parsing took too long: {:?}", duration);
+    assert!(
+        duration.as_secs() < 5,
+        "Parsing took too long: {:?}",
+        duration
+    );
 }
 
 #[test]
 fn test_memory_mapped_parsing() {
     // Test memory-mapped file parsing for large files
-    use talaria_bio::formats::fasta::parse_fasta_from_bytes;
     use memmap2::MmapOptions;
+    use talaria_bio::formats::fasta::parse_fasta_from_bytes;
 
     let mut temp_file = NamedTempFile::new().unwrap();
 

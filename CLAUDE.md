@@ -24,6 +24,143 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Remove old code paths rather than maintaining multiple versions
 - When in doubt, choose the simpler approach
 
+### CRITICAL: Never Pollute Production Code with Test-Only Variants
+
+**This is a fundamental anti-pattern that MUST be avoided at all costs.**
+
+#### The Problem
+Adding test-specific variants to production enums, structs, or APIs creates technical debt and blurs the separation between production and test code.
+
+**Anti-pattern (FORBIDDEN):**
+```rust
+pub enum DatabaseSource {
+    UniProt(UniProtDatabase),
+    NCBI(NCBIDatabase),
+    Custom(String),
+    Test,  // ❌ WRONG - test pollution in production enum
+}
+
+pub struct Config {
+    pub database: String,
+    pub is_test_mode: bool,  // ❌ WRONG - test flag in production struct
+}
+```
+
+#### The Solution
+Use proper testing methodologies that keep test code separate from production code.
+
+**Correct approach:**
+```rust
+// Production code stays clean - no test-specific variants
+pub enum DatabaseSource {
+    UniProt(UniProtDatabase),
+    NCBI(NCBIDatabase),
+    Custom(String),
+}
+
+// In tests - use real variants or proper mocking
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_something() {
+        // Option 1: Use a real variant with test data
+        let source = DatabaseSource::Custom("test_database".to_string());
+
+        // Option 2: Use mockall for complex behavior
+        let mock_source = MockDatabaseSource::new();
+        mock_source.expect_fetch().returning(|_| Ok(test_data()));
+
+        // Option 3: Use builder pattern from talaria-test crate
+        let source = TestDatabaseBuilder::new()
+            .with_name("test")
+            .build();
+    }
+}
+```
+
+#### Proper Testing Practices
+
+**1. Use Existing Variants with Test Data**
+```rust
+// Good - uses Custom variant for testing
+let test_source = DatabaseSource::Custom("integration_test".to_string());
+```
+
+**2. Create Test Fixtures in talaria-test Crate**
+```rust
+// In talaria-test/src/fixtures.rs
+pub struct TestDatabaseBuilder {
+    name: String,
+    sequences: Vec<Sequence>,
+}
+
+impl TestDatabaseBuilder {
+    pub fn new() -> Self { /* ... */ }
+    pub fn with_name(mut self, name: &str) -> Self { /* ... */ }
+    pub fn build(self) -> DatabaseSource { /* ... */ }
+}
+```
+
+**3. Use mockall for Interface Mocking**
+```rust
+#[cfg(test)]
+use mockall::{automock, predicate::*};
+
+#[automock]
+pub trait DatabaseProvider {
+    fn fetch_sequences(&self) -> Result<Vec<Sequence>>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_with_mock() {
+        let mut mock = MockDatabaseProvider::new();
+        mock.expect_fetch_sequences()
+            .returning(|| Ok(vec![test_sequence()]));
+    }
+}
+```
+
+**4. Use Conditional Compilation for Test Utilities**
+```rust
+#[cfg(test)]
+impl DatabaseSource {
+    /// Test-only constructor - only available in test builds
+    pub fn new_test(name: &str) -> Self {
+        Self::Custom(name.to_string())
+    }
+}
+```
+
+#### What This Prevents
+- **Code Bloat**: Production binaries don't carry test-only code
+- **API Confusion**: Users don't see test variants in documentation
+- **Maintenance Burden**: No need to handle test cases in production match statements
+- **Security**: Test-only paths can't be accidentally triggered in production
+- **Clean Architecture**: Clear separation between production and test concerns
+
+#### Guidelines Summary
+1. **NEVER** add test-specific enum variants to production enums
+2. **NEVER** add `is_test`, `test_mode`, or similar flags to production structs
+3. **ALWAYS** use existing variants with test data for simple cases
+4. **ALWAYS** use mockall or similar for complex mocking needs
+5. **ALWAYS** put test fixtures in the `talaria-test` crate
+6. **ALWAYS** use `#[cfg(test)]` for test-only implementations
+7. **ALWAYS** question if production code needs to know about testing
+
+#### Examples in Talaria
+- ✅ Use `DatabaseSource::Custom("test".to_string())` in tests
+- ✅ Create `TestSequenceBuilder` in `talaria-test`
+- ✅ Mock interfaces with `mockall`
+- ❌ Don't add `DatabaseSource::Test`
+- ❌ Don't add `Config { test_mode: bool }`
+- ❌ Don't add `if cfg!(test)` branches in production logic
+
 ## Commit Message Guidelines
 
 This project follows the [Conventional Commits](https://www.conventionalcommits.org/) specification for commit messages. This provides a standardized format that enables automated tooling and clear communication of changes.

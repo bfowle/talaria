@@ -53,11 +53,19 @@ pub struct ReconstructArgs {
     /// Show version history for sequences
     #[arg(long)]
     pub show_versions: bool,
+
+    /// Report output file path
+    #[arg(long = "report-output", value_name = "FILE")]
+    pub report_output: Option<PathBuf>,
+
+    /// Report output format (text, html, json, csv)
+    #[arg(long = "report-format", value_name = "FORMAT", default_value = "text")]
+    pub report_format: String,
 }
 
 pub fn run(args: ReconstructArgs) -> anyhow::Result<()> {
-    use talaria_utils::display::format::{format_bytes, get_file_size};
     use indicatif::{ProgressBar, ProgressStyle};
+    use talaria_utils::display::format::{format_bytes, get_file_size};
 
     // Handle bi-temporal version queries
     if args.show_versions {
@@ -254,6 +262,11 @@ pub fn run(args: ReconstructArgs) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    // Save counts before values are moved
+    let total_references = references.len();
+    let total_deltas = deltas.len();
+    let requested_sequences = args.sequences.clone();
+
     // Reconstruct sequences
     let reconstructor = talaria_bio::compression::DeltaReconstructor::new();
     let reconstructed = if args.sequences.is_empty() {
@@ -282,9 +295,11 @@ pub fn run(args: ReconstructArgs) -> anyhow::Result<()> {
 
     subsection_header("Reconstruction Summary");
 
-    let summary_items = [("Total sequences", format_number(reconstructed.len())),
+    let summary_items = [
+        ("Total sequences", format_number(reconstructed.len())),
         ("Output file", output_path.display().to_string()),
-        ("File size", format_bytes(output_size))];
+        ("File size", format_bytes(output_size)),
+    ];
 
     for (i, (label, value)) in summary_items.iter().enumerate() {
         tree_item(i == summary_items.len() - 1, label, Some(value));
@@ -295,6 +310,40 @@ pub fn run(args: ReconstructArgs) -> anyhow::Result<()> {
     }
 
     success("Reconstruction complete!");
+
+    // Generate report if requested
+    if let Some(report_path) = &args.report_output {
+        use talaria_sequoia::operations::ReconstructionResult;
+        use std::time::Duration;
+
+        // Track which sequences failed (if any)
+        let failed_sequences: Vec<String> = if !requested_sequences.is_empty() {
+            let reconstructed_ids: std::collections::HashSet<String> =
+                reconstructed.iter().map(|s| s.id.clone()).collect();
+            requested_sequences
+                .iter()
+                .filter(|id| !reconstructed_ids.contains(*id))
+                .map(|id| id.clone())
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        let reconstruction_success = failed_sequences.is_empty();
+        let result = ReconstructionResult {
+            sequences_reconstructed: reconstructed.len(),
+            total_sequences: total_references + total_deltas,
+            reconstructed_sequences: reconstructed.len(),
+            failed_sequences,
+            output_file: output_path.display().to_string(),
+            output_size: output_size,
+            success: reconstruction_success,
+            duration: Duration::from_secs(0), // TODO: Track actual duration
+        };
+
+        crate::cli::commands::save_report(&result, &args.report_format, report_path)?;
+        success(&format!("Report saved to {}", report_path.display()));
+    }
 
     Ok(())
 }
@@ -334,9 +383,7 @@ fn reconstruct_from_sequoia(
     sequence_filter: Vec<String>,
     pb: indicatif::ProgressBar,
 ) -> anyhow::Result<()> {
-    use talaria_sequoia::{
-        FastaAssembler, DeltaReconstructor, SEQUOIAStorage,
-    };
+    use talaria_sequoia::{DeltaReconstructor, FastaAssembler, SequoiaStorage};
 
     use std::collections::HashSet;
 
@@ -346,12 +393,49 @@ fn reconstruct_from_sequoia(
     });
 
     // Open SEQUOIA storage
-    let storage = SEQUOIAStorage::open(&sequoia_path)?;
+    let storage = SequoiaStorage::open(&sequoia_path)?;
+
+    // Parse profile to extract database info if present (format: source/dataset:profile or just profile)
+    let (source, dataset, profile_name) = if profile.contains('/') && profile.contains(':') {
+        // Format: source/dataset:profile
+        let parts: Vec<&str> = profile.split(':').collect();
+        if parts.len() == 2 {
+            let db_parts: Vec<&str> = parts[0].split('/').collect();
+            if db_parts.len() == 2 {
+                (db_parts[0], db_parts[1], parts[1])
+            } else {
+                // Invalid format, try to list all profiles and find a match
+                return Err(anyhow::anyhow!(
+                    "Invalid profile format: '{}'. Use 'source/dataset:profile' or just 'profile'",
+                    profile
+                ));
+            }
+        } else {
+            return Err(anyhow::anyhow!(
+                "Invalid profile format: '{}'. Use 'source/dataset:profile' or just 'profile'",
+                profile
+            ));
+        }
+    } else {
+        // Just profile name - try to find it in any database
+        // For now, we'll require the full format
+        return Err(anyhow::anyhow!(
+            "Please specify the full profile path: 'source/dataset:{}'",
+            profile
+        ));
+    };
 
     // Load reduction manifest by profile
     let manifest = storage
-        .get_reduction_by_profile(profile)?
-        .ok_or_else(|| anyhow::anyhow!("Profile '{}' not found in SEQUOIA repository", profile))?;
+        .get_database_reduction_by_profile(source, dataset, profile_name)?
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Profile '{}' not found for database '{}/{}'",
+                profile_name,
+                source,
+                dataset
+            )
+        })?;
 
     pb.set_message(format!(
         "Found profile '{}' with {} reference chunks and {} delta chunks",
@@ -452,11 +536,9 @@ fn reconstruct_from_sequoia_database(
     sequence_filter: Vec<String>,
     pb: indicatif::ProgressBar,
 ) -> anyhow::Result<()> {
-    use talaria_sequoia::ReductionManifest;
-    use talaria_sequoia::{
-        FastaAssembler, DeltaReconstructor, SEQUOIAStorage,
-    };
     use std::collections::HashSet;
+    use talaria_sequoia::ReductionManifest;
+    use talaria_sequoia::{DeltaReconstructor, FastaAssembler, SequoiaStorage};
 
     let sequoia_path = sequoia_path.clone().unwrap_or_else(|| {
         use talaria_core::system::paths;
@@ -464,7 +546,7 @@ fn reconstruct_from_sequoia_database(
     });
 
     // Open SEQUOIA storage
-    let storage = SEQUOIAStorage::new(&sequoia_path)?;
+    let storage = SequoiaStorage::new(&sequoia_path)?;
 
     // Load reduction manifest from version-specific location
     let manifest_path = sequoia_path
@@ -593,15 +675,16 @@ fn reconstruct_from_sequoia_database(
 
 /// Show version history for a database
 fn show_version_history(args: &ReconstructArgs) -> anyhow::Result<()> {
-    use talaria_sequoia::TemporalIndex;
     use talaria_core::system::paths;
+    use talaria_sequoia::TemporalIndex;
 
     println!("🕐 Bi-temporal Version History");
     println!("─────────────────────────────");
 
     // Get SEQUOIA path
     let sequoia_path = args
-        .sequoia_path.clone()
+        .sequoia_path
+        .clone()
         .unwrap_or_else(paths::talaria_databases_dir);
 
     // Load temporal index
@@ -672,8 +755,14 @@ mod tests {
             show_versions: false,
         };
 
-        assert_eq!(args.references.as_ref().unwrap().to_str().unwrap(), "test_ref.fasta");
-        assert_eq!(args.output.as_ref().unwrap().to_str().unwrap(), "output.fasta");
+        assert_eq!(
+            args.references.as_ref().unwrap().to_str().unwrap(),
+            "test_ref.fasta"
+        );
+        assert_eq!(
+            args.output.as_ref().unwrap().to_str().unwrap(),
+            "output.fasta"
+        );
         assert!(args.deltas.is_some());
     }
 
@@ -757,8 +846,11 @@ mod tests {
             } else {
                 "fasta"
             };
-            assert_eq!(format, expected_format,
-                "Format detection failed for: {}", filename);
+            assert_eq!(
+                format, expected_format,
+                "Format detection failed for: {}",
+                filename
+            );
         }
     }
 
@@ -775,8 +867,11 @@ mod tests {
 
         for (batch_size, should_be_valid) in test_cases {
             let is_valid = batch_size.map_or(true, |s| s > 0);
-            assert_eq!(is_valid, should_be_valid,
-                "Batch size validation failed for: {:?}", batch_size);
+            assert_eq!(
+                is_valid, should_be_valid,
+                "Batch size validation failed for: {:?}",
+                batch_size
+            );
         }
     }
 
@@ -825,12 +920,7 @@ mod tests {
     #[test]
     fn test_version_string_format() {
         // Test version string format validation
-        let valid_versions = vec![
-            "abc123def456",
-            "1234567890abcdef",
-            "v1.0.0",
-            "2024-01-15",
-        ];
+        let valid_versions = vec!["abc123def456", "1234567890abcdef", "v1.0.0", "2024-01-15"];
 
         for version in valid_versions {
             assert!(!version.is_empty(), "Version string should not be empty");
@@ -893,8 +983,11 @@ mod tests {
         for (path_str, should_be_valid) in test_paths {
             let _path = Path::new(path_str);
             let is_valid = !path_str.is_empty();
-            assert_eq!(is_valid, should_be_valid,
-                "Path validation failed for: {}", path_str);
+            assert_eq!(
+                is_valid, should_be_valid,
+                "Path validation failed for: {}",
+                path_str
+            );
         }
     }
 

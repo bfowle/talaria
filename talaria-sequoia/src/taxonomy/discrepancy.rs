@@ -1,4 +1,4 @@
-use crate::storage::SEQUOIAStorage;
+use crate::storage::SequoiaStorage;
 /// Discrepancy detection between taxonomy and sequence annotations
 use crate::types::*;
 use anyhow::Result;
@@ -27,7 +27,6 @@ impl DiscrepancyDetector {
     pub fn set_taxonomy_mappings(&mut self, mappings: HashMap<String, TaxonId>) {
         self.taxonomy_mappings = mappings;
     }
-
 
     /// Detect discrepancies from manifest and sequences (new approach)
     pub fn detect_from_manifest(
@@ -124,7 +123,7 @@ impl DiscrepancyDetector {
     }
 
     /// Detect all discrepancies in the repository
-    pub fn detect_all(&self, storage: &SEQUOIAStorage) -> Result<Vec<TaxonomicDiscrepancy>> {
+    pub fn detect_all(&self, storage: &SequoiaStorage) -> Result<Vec<TaxonomicDiscrepancy>> {
         let mut discrepancies = Vec::new();
 
         // Scan storage for taxonomy discrepancies
@@ -172,7 +171,7 @@ impl DiscrepancyDetector {
     pub fn detect_in_chunk(
         &self,
         chunk: &ChunkManifest,
-        storage: &SEQUOIAStorage,
+        storage: &SequoiaStorage,
     ) -> Result<Vec<TaxonomicDiscrepancy>> {
         let mut discrepancies = Vec::new();
 
@@ -190,7 +189,8 @@ impl DiscrepancyDetector {
                         // Check for discrepancies between repr taxon and chunk taxon
                         if let Some(repr_taxon) = repr.taxon_id {
                             // Check if the taxon in representation matches chunk taxons
-                            if !chunk.taxon_ids.contains(&repr_taxon) && !chunk.taxon_ids.is_empty() {
+                            if !chunk.taxon_ids.contains(&repr_taxon) && !chunk.taxon_ids.is_empty()
+                            {
                                 discrepancies.push(TaxonomicDiscrepancy {
                                     sequence_id: accession.clone(),
                                     header_taxon: Some(repr_taxon),
@@ -391,11 +391,7 @@ impl DiscrepancyDetector {
             // Track common conflicts
             if let (Some(ref h), Some(ref m)) = (&disc.header_taxon, &disc.mapped_taxon) {
                 if h != m {
-                    let key = if h.0 < m.0 {
-                        (*h, *m)
-                    } else {
-                        (*m, *h)
-                    };
+                    let key = if h.0 < m.0 { (*h, *m) } else { (*m, *h) };
                     *common_conflicts.entry(key).or_default() += 1;
                 }
             }

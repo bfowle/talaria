@@ -1,16 +1,15 @@
+use anyhow::Result;
+use std::collections::HashSet;
+use talaria_core::{NCBIDatabase, SHA256Hash, TaxonId, UniProtDatabase};
 /// Cross-database deduplication test
 ///
 /// Verifies that loading the same sequence from UniProt, NCBI nr, and RefSeq
 /// results in only one copy being stored, achieving the 60% space saving target.
-
 use talaria_sequoia::{
-    storage::{SequenceStorage, SequenceIndices},
+    storage::{SequenceIndices, SequenceStorage},
     DatabaseSource,
 };
-use talaria_core::{SHA256Hash, TaxonId, UniProtDatabase, NCBIDatabase};
 use tempfile::TempDir;
-use anyhow::Result;
-use std::collections::HashSet;
 
 #[test]
 fn test_cross_database_deduplication() -> Result<()> {
@@ -134,18 +133,28 @@ fn test_cross_database_deduplication() -> Result<()> {
 
     // Calculate storage statistics
     let unique_sequences = canonical_hashes.len();
-    let storage_efficiency = ((total_sequences - unique_sequences) as f64 / total_sequences as f64) * 100.0;
+    let storage_efficiency =
+        ((total_sequences - unique_sequences) as f64 / total_sequences as f64) * 100.0;
 
     println!("\n=== Cross-Database Deduplication Results ===");
     println!("Total sequences imported: {}", total_sequences);
     println!("Unique sequences stored: {}", unique_sequences);
     println!("Storage efficiency: {:.1}%", storage_efficiency);
-    println!("Space saved: {} sequences not duplicated", total_sequences - unique_sequences);
+    println!(
+        "Space saved: {} sequences not duplicated",
+        total_sequences - unique_sequences
+    );
 
     // Verify deduplication worked
     assert_eq!(total_sequences, 6, "Should have imported 6 sequences total");
-    assert_eq!(unique_sequences, 4, "Should have 4 unique sequences (1 common + 3 unique)");
-    assert!(storage_efficiency >= 33.0, "Should achieve at least 33% storage efficiency");
+    assert_eq!(
+        unique_sequences, 4,
+        "Should have 4 unique sequences (1 common + 3 unique)"
+    );
+    assert!(
+        storage_efficiency >= 33.0,
+        "Should achieve at least 33% storage efficiency"
+    );
 
     // Test cross-database queries - all three accessions should map to same sequence
     assert!(indices.get_by_accession("sp|P12345|GFP_ECOLI").is_some());
@@ -155,8 +164,14 @@ fn test_cross_database_deduplication() -> Result<()> {
     let retrieved_hash1 = indices.get_by_accession("sp|P12345|GFP_ECOLI").unwrap();
     let retrieved_hash2 = indices.get_by_accession("NP_123456.1").unwrap();
     let retrieved_hash3 = indices.get_by_accession("YP_003456.1").unwrap();
-    assert_eq!(retrieved_hash1, retrieved_hash2, "UniProt and NCBI should map to same sequence");
-    assert_eq!(retrieved_hash2, retrieved_hash3, "NCBI and RefSeq should map to same sequence");
+    assert_eq!(
+        retrieved_hash1, retrieved_hash2,
+        "UniProt and NCBI should map to same sequence"
+    );
+    assert_eq!(
+        retrieved_hash2, retrieved_hash3,
+        "NCBI and RefSeq should map to same sequence"
+    );
 
     // Query by database should return correct counts
     let uniprot_seqs = indices.get_by_database(&uniprot_source);
@@ -169,8 +184,14 @@ fn test_cross_database_deduplication() -> Result<()> {
 
     // Verify bloom filter works
     let test_hash = SHA256Hash::compute(b"NONEXISTENTSEQUENCE");
-    assert!(!indices.sequence_exists(&test_hash), "Bloom filter should report non-existent sequence");
-    assert!(indices.sequence_exists(&hash1), "Bloom filter should report existing sequence");
+    assert!(
+        !indices.sequence_exists(&test_hash),
+        "Bloom filter should report non-existent sequence"
+    );
+    assert!(
+        indices.sequence_exists(&hash1),
+        "Bloom filter should report existing sequence"
+    );
 
     // Save indices and flush storage before getting stats
     storage.flush()?;
@@ -180,7 +201,10 @@ fn test_cross_database_deduplication() -> Result<()> {
     println!("\n=== Storage Statistics ===");
     println!("Total canonical sequences: {:?}", stats.total_sequences);
     println!("Total representations: {:?}", stats.total_representations);
-    println!("Deduplication ratio: {:.1}%", stats.deduplication_ratio * 100.0);
+    println!(
+        "Deduplication ratio: {:.1}%",
+        stats.deduplication_ratio * 100.0
+    );
 
     println!("\n✅ Cross-database deduplication test PASSED!");
     println!("   - Same sequence from 3 databases stored once");

@@ -21,30 +21,35 @@ impl DatabaseSourceExt for DatabaseSource {
     fn canonical_name(&self) -> String {
         match self {
             DatabaseSource::UniProt(db) => {
-                format!("uniprot_{}", match db {
-                    UniProtDatabase::SwissProt => "swissprot",
-                    UniProtDatabase::TrEMBL => "trembl",
-                    UniProtDatabase::UniRef50 => "uniref50",
-                    UniProtDatabase::UniRef90 => "uniref90",
-                    UniProtDatabase::UniRef100 => "uniref100",
-                    UniProtDatabase::IdMapping => "idmapping",
-                })
+                format!(
+                    "uniprot_{}",
+                    match db {
+                        UniProtDatabase::SwissProt => "swissprot",
+                        UniProtDatabase::TrEMBL => "trembl",
+                        UniProtDatabase::UniRef50 => "uniref50",
+                        UniProtDatabase::UniRef90 => "uniref90",
+                        UniProtDatabase::UniRef100 => "uniref100",
+                        UniProtDatabase::IdMapping => "idmapping",
+                    }
+                )
             }
             DatabaseSource::NCBI(db) => {
-                format!("ncbi_{}", match db {
-                    NCBIDatabase::NR => "nr",
-                    NCBIDatabase::NT => "nt",
-                    NCBIDatabase::RefSeq => "refseq",
-                    NCBIDatabase::RefSeqProtein => "refseq_protein",
-                    NCBIDatabase::RefSeqGenomic => "refseq_genomic",
-                    NCBIDatabase::GenBank => "genbank",
-                    NCBIDatabase::Taxonomy => "taxonomy",
-                    NCBIDatabase::ProtAccession2TaxId => "prot_accession2taxid",
-                    NCBIDatabase::NuclAccession2TaxId => "nucl_accession2taxid",
-                })
+                format!(
+                    "ncbi_{}",
+                    match db {
+                        NCBIDatabase::NR => "nr",
+                        NCBIDatabase::NT => "nt",
+                        NCBIDatabase::RefSeq => "refseq",
+                        NCBIDatabase::RefSeqProtein => "refseq_protein",
+                        NCBIDatabase::RefSeqGenomic => "refseq_genomic",
+                        NCBIDatabase::GenBank => "genbank",
+                        NCBIDatabase::Taxonomy => "taxonomy",
+                        NCBIDatabase::ProtAccession2TaxId => "prot_accession2taxid",
+                        NCBIDatabase::NuclAccession2TaxId => "nucl_accession2taxid",
+                    }
+                )
             }
             DatabaseSource::Custom(name) => format!("custom_{}", name.replace('/', "_")),
-            DatabaseSource::Test => "test".to_string(),
         }
     }
 
@@ -111,9 +116,7 @@ pub enum Stage {
         url: String,
     },
     /// Verifying checksums
-    Verifying {
-        checksum: Option<String>
-    },
+    Verifying { checksum: Option<String> },
     /// Decompressing file
     Decompressing {
         source_file: PathBuf,
@@ -122,7 +125,7 @@ pub enum Stage {
     /// Processing into chunks
     Processing {
         chunks_done: usize,
-        total_chunks: usize
+        total_chunks: usize,
     },
     /// Moving to final location
     Finalizing,
@@ -213,12 +216,16 @@ impl FileTracking {
 
     /// Check if we have a partial download to resume
     pub fn has_partial_download(&self) -> bool {
-        self.partial_compressed.as_ref().map(|p| p.exists()).unwrap_or(false)
+        self.partial_compressed
+            .as_ref()
+            .map(|p| p.exists())
+            .unwrap_or(false)
     }
 
     /// Get the size of partial download if exists
     pub fn partial_download_size(&self) -> Option<u64> {
-        self.partial_compressed.as_ref()
+        self.partial_compressed
+            .as_ref()
             .and_then(|path| path.metadata().ok())
             .map(|meta| meta.len())
     }
@@ -238,12 +245,15 @@ impl FileTracking {
         use std::fs;
 
         if is_compressed {
-            if let (Some(partial), Some(final_path)) = (&self.partial_compressed, &self.compressed) {
+            if let (Some(partial), Some(final_path)) = (&self.partial_compressed, &self.compressed)
+            {
                 fs::rename(partial, final_path)?;
                 self.partial_compressed = None;
             }
         } else {
-            if let (Some(partial), Some(final_path)) = (&self.partial_decompressed, &self.decompressed) {
+            if let (Some(partial), Some(final_path)) =
+                (&self.partial_decompressed, &self.decompressed)
+            {
                 fs::rename(partial, final_path)?;
                 self.partial_decompressed = None;
             }
@@ -305,7 +315,8 @@ impl DownloadState {
     pub fn load(path: &Path) -> Result<Self> {
         let mut file = File::open(path).context("Failed to open state file")?;
         let mut contents = String::new();
-        file.read_to_string(&mut contents).context("Failed to read state file")?;
+        file.read_to_string(&mut contents)
+            .context("Failed to read state file")?;
         serde_json::from_str(&contents).context("Failed to parse state file")
     }
 
@@ -447,7 +458,8 @@ pub fn get_download_workspace(source: &DatabaseSource) -> PathBuf {
     let db_id = source.canonical_name();
 
     // Version component (if available from source)
-    let version = source.version()
+    let version = source
+        .version()
         .unwrap_or_else(|| Utc::now().format("%Y%m%d").to_string());
 
     // Session component for uniqueness
@@ -486,9 +498,7 @@ fn generate_session_id(source: &DatabaseSource) -> String {
 #[cfg(unix)]
 fn is_process_alive(pid: u32) -> bool {
     // On Unix, send signal 0 to check if process exists
-    unsafe {
-        libc::kill(pid as i32, 0) == 0
-    }
+    unsafe { libc::kill(pid as i32, 0) == 0 }
 }
 
 #[cfg(not(unix))]
@@ -502,9 +512,7 @@ fn is_process_alive(pid: u32) -> bool {
         Command::new("tasklist")
             .args(&["/FI", &format!("PID eq {}", pid)])
             .output()
-            .map(|output| {
-                String::from_utf8_lossy(&output.stdout).contains(&pid.to_string())
-            })
+            .map(|output| String::from_utf8_lossy(&output.stdout).contains(&pid.to_string()))
             .unwrap_or(false)
     }
 
@@ -668,7 +676,9 @@ pub fn find_resumable_downloads() -> Result<Vec<DownloadState>> {
 
 /// Find existing workspace for a specific database source
 /// Returns the most recent matching workspace path and its state
-pub fn find_existing_workspace_for_source(source: &DatabaseSource) -> Result<Option<(PathBuf, DownloadState)>> {
+pub fn find_existing_workspace_for_source(
+    source: &DatabaseSource,
+) -> Result<Option<(PathBuf, DownloadState)>> {
     let downloads_dir = paths::talaria_downloads_dir();
 
     if !downloads_dir.exists() {
@@ -697,7 +707,10 @@ pub fn find_existing_workspace_for_source(source: &DatabaseSource) -> Result<Opt
                                 if let Ok(metadata) = state_path.metadata() {
                                     if let Ok(modified) = metadata.modified() {
                                         // Keep the most recent one
-                                        if best_match.as_ref().map_or(true, |(_,_,t)| modified > *t) {
+                                        if best_match
+                                            .as_ref()
+                                            .map_or(true, |(_, _, t)| modified > *t)
+                                        {
                                             best_match = Some((path.clone(), state, modified));
                                         }
                                     }
@@ -716,8 +729,8 @@ pub fn find_existing_workspace_for_source(source: &DatabaseSource) -> Result<Opt
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     fn create_test_workspace(source: &DatabaseSource, stage: Stage) -> Result<(TempDir, PathBuf)> {
         let temp_dir = TempDir::new()?;
@@ -725,10 +738,7 @@ mod tests {
         fs::create_dir_all(&downloads_dir)?;
 
         // Create workspace with deterministic name
-        let workspace = downloads_dir.join(format!(
-            "{}_20250101_test123",
-            source.canonical_name()
-        ));
+        let workspace = downloads_dir.join(format!("{}_20250101_test123", source.canonical_name()));
         fs::create_dir_all(&workspace)?;
 
         // Create state file
@@ -740,6 +750,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_find_existing_workspace_for_source_not_found() {
         let temp_dir = TempDir::new().unwrap();
         std::env::set_var("TALARIA_DATA_DIR", temp_dir.path());
@@ -752,6 +763,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_find_existing_workspace_single_match() {
         let temp_dir = TempDir::new().unwrap();
         std::env::set_var("TALARIA_DATA_DIR", temp_dir.path());
@@ -776,6 +788,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_find_existing_workspace_multiple_matches_returns_newest() {
         let temp_dir = TempDir::new().unwrap();
         std::env::set_var("TALARIA_DATA_DIR", temp_dir.path());
@@ -798,7 +811,10 @@ mod tests {
         let new_workspace = downloads_dir.join("uniprot_swissprot_20250102_new");
         fs::create_dir_all(&new_workspace).unwrap();
         let mut new_state = DownloadState::new(source.clone(), new_workspace.clone());
-        new_state.stage = Stage::Processing { chunks_done: 5, total_chunks: 10 };
+        new_state.stage = Stage::Processing {
+            chunks_done: 5,
+            total_chunks: 10,
+        };
         new_state.save(&new_workspace.join("state.json")).unwrap();
 
         let result = find_existing_workspace_for_source(&source).unwrap();
@@ -815,6 +831,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_find_existing_workspace_ignores_different_source() {
         let temp_dir = TempDir::new().unwrap();
         std::env::set_var("TALARIA_DATA_DIR", temp_dir.path());
@@ -838,6 +855,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_find_existing_workspace_handles_corrupted_state() {
         let temp_dir = TempDir::new().unwrap();
         std::env::set_var("TALARIA_DATA_DIR", temp_dir.path());
@@ -858,6 +876,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_database_source_canonical_name() {
         assert_eq!(
             DatabaseSource::UniProt(UniProtDatabase::SwissProt).canonical_name(),
@@ -874,15 +893,21 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_stage_is_complete() {
         assert!(Stage::Complete.is_complete());
         assert!(!Stage::Initializing.is_complete());
-        assert!(!Stage::Processing { chunks_done: 5, total_chunks: 10 }.is_complete());
+        assert!(!Stage::Processing {
+            chunks_done: 5,
+            total_chunks: 10
+        }
+        .is_complete());
         assert!(!Stage::Failed {
             error: "test".to_string(),
             recoverable: true,
             failed_at: Utc::now()
-        }.is_complete());
+        }
+        .is_complete());
     }
 }
 
@@ -909,7 +934,9 @@ pub fn cleanup_old_workspaces(max_age_hours: i64) -> Result<usize> {
                     // Can't read state, check directory age
                     if let Ok(metadata) = fs::metadata(&path) {
                         if let Ok(modified) = metadata.modified() {
-                            let age = SystemTime::now().duration_since(modified).unwrap_or_default();
+                            let age = SystemTime::now()
+                                .duration_since(modified)
+                                .unwrap_or_default();
                             age.as_secs() > (max_age_hours as u64 * 3600)
                         } else {
                             false
@@ -937,9 +964,11 @@ pub fn cleanup_old_workspaces(max_age_hours: i64) -> Result<usize> {
 #[cfg(test)]
 mod workspace_tests {
     use super::*;
+    use talaria_test::fixtures::test_database_source;
     use tempfile::TempDir;
 
     #[test]
+    #[serial_test::serial]
     fn test_download_state_serialization() {
         let temp_dir = TempDir::new().unwrap();
         let workspace = temp_dir.path().join("test_workspace");
@@ -966,6 +995,7 @@ mod workspace_tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_stage_transitions() {
         let workspace = PathBuf::from("/tmp/test");
         let mut state = DownloadState::new(
@@ -975,17 +1005,20 @@ mod workspace_tests {
 
         assert!(matches!(state.stage, Stage::Initializing));
 
-        state.transition_to(Stage::Downloading {
-            bytes_done: 0,
-            total_bytes: 1000,
-            url: "http://example.com".to_string(),
-        }).unwrap();
+        state
+            .transition_to(Stage::Downloading {
+                bytes_done: 0,
+                total_bytes: 1000,
+                url: "http://example.com".to_string(),
+            })
+            .unwrap();
 
         assert!(matches!(state.stage, Stage::Downloading { .. }));
         assert_eq!(state.checkpoints.len(), 1);
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_workspace_generation() {
         let source = DatabaseSource::UniProt(talaria_core::UniProtDatabase::SwissProt);
         let workspace = get_download_workspace(&source);
@@ -994,6 +1027,7 @@ mod workspace_tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_lock_acquisition() {
         let temp_dir = TempDir::new().unwrap();
         let workspace = temp_dir.path().join("test_workspace");
@@ -1013,6 +1047,7 @@ mod workspace_tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_canonical_name_generation() {
         // Test UniProt databases
         let source = DatabaseSource::UniProt(UniProtDatabase::SwissProt);
@@ -1038,12 +1073,13 @@ mod workspace_tests {
         let source = DatabaseSource::Custom("my/custom/db".to_string());
         assert_eq!(source.canonical_name(), "custom_my_custom_db");
 
-        // Test test database
-        let source = DatabaseSource::Test;
-        assert_eq!(source.canonical_name(), "test");
+        // Test test database with custom name
+        let source = test_database_source("workspace");
+        assert_eq!(source.canonical_name(), "custom_test_workspace");
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_file_tracking_operations() {
         let mut tracking = FileTracking::new();
 
@@ -1073,19 +1109,28 @@ mod workspace_tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_stage_transitions_and_names() {
         assert_eq!(Stage::Initializing.name(), "initializing");
-        assert_eq!(Stage::Downloading {
-            bytes_done: 0,
-            total_bytes: 100,
-            url: "test".to_string()
-        }.name(), "downloading");
+        assert_eq!(
+            Stage::Downloading {
+                bytes_done: 0,
+                total_bytes: 100,
+                url: "test".to_string()
+            }
+            .name(),
+            "downloading"
+        );
         assert_eq!(Stage::Complete.name(), "complete");
-        assert_eq!(Stage::Failed {
-            error: "test".to_string(),
-            recoverable: true,
-            failed_at: chrono::Utc::now()
-        }.name(), "failed");
+        assert_eq!(
+            Stage::Failed {
+                error: "test".to_string(),
+                recoverable: true,
+                failed_at: chrono::Utc::now()
+            }
+            .name(),
+            "failed"
+        );
 
         assert!(Stage::Complete.is_complete());
         assert!(!Stage::Initializing.is_complete());
@@ -1094,35 +1139,36 @@ mod workspace_tests {
             error: "test".to_string(),
             recoverable: true,
             failed_at: chrono::Utc::now()
-        }.is_failed());
+        }
+        .is_failed());
         assert!(!Stage::Complete.is_failed());
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_download_state_checkpoints() {
         let workspace = PathBuf::from("/tmp/test_workspace");
-        let mut state = DownloadState::new(
-            DatabaseSource::Test,
-            workspace.clone(),
-        );
+        let mut state = DownloadState::new(test_database_source("workspace"), workspace.clone());
 
         // Initial state - no checkpoints
         assert_eq!(state.checkpoints.len(), 0);
 
         // Transition to new stage - should create checkpoint
-        state.transition_to(Stage::Downloading {
-            bytes_done: 0,
-            total_bytes: 100,
-            url: "test".to_string(),
-        }).unwrap();
+        state
+            .transition_to(Stage::Downloading {
+                bytes_done: 0,
+                total_bytes: 100,
+                url: "test".to_string(),
+            })
+            .unwrap();
 
         assert_eq!(state.checkpoints.len(), 1);
         assert!(matches!(state.checkpoints[0].stage, Stage::Initializing));
 
         // Another transition
-        state.transition_to(Stage::Verifying {
-            checksum: None,
-        }).unwrap();
+        state
+            .transition_to(Stage::Verifying { checksum: None })
+            .unwrap();
 
         assert_eq!(state.checkpoints.len(), 2);
 
@@ -1135,9 +1181,10 @@ mod workspace_tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_session_id_uniqueness() {
         // Generate multiple session IDs for same source
-        let source = DatabaseSource::Test;
+        let source = test_database_source("workspace");
 
         let id1 = generate_session_id(&source);
         // Small delay to ensure different timestamp
@@ -1153,11 +1200,12 @@ mod workspace_tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_session_id_override() {
         // Test that TALARIA_SESSION environment variable works
         std::env::set_var("TALARIA_SESSION", "test_session");
 
-        let source = DatabaseSource::Test;
+        let source = test_database_source("workspace");
         let id = generate_session_id(&source);
 
         assert_eq!(id, "test_session");
@@ -1166,6 +1214,7 @@ mod workspace_tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_lock_info_parsing() {
         let temp_dir = TempDir::new().unwrap();
         let lock_file = temp_dir.path().join(".lock");
@@ -1189,6 +1238,7 @@ mod workspace_tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_workspace_path_generation() {
         // Set test environment
         let temp_dir = TempDir::new().unwrap();
@@ -1204,16 +1254,17 @@ mod workspace_tests {
         // Should have session ID suffix (8 hex chars)
         let name = workspace.file_name().unwrap().to_str().unwrap();
         let parts: Vec<&str> = name.split('_').collect();
-        assert!(parts.len() >= 3);  // name_version_session
-        assert_eq!(parts.last().unwrap().len(), 8);  // Session ID is 8 chars
+        assert!(parts.len() >= 3); // name_version_session
+        assert_eq!(parts.last().unwrap().len(), 8); // Session ID is 8 chars
 
         std::env::remove_var("TALARIA_DATA_DIR");
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_is_stale() {
         let workspace = PathBuf::from("/tmp/test");
-        let state = DownloadState::new(DatabaseSource::Test, workspace);
+        let state = DownloadState::new(test_database_source("stale_test"), workspace);
 
         // Fresh download should not be stale
         assert!(!state.is_stale(24));

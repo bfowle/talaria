@@ -1,3 +1,4 @@
+use chrono::Utc;
 /// Performance benchmarking suite for SEQUOIA architecture
 ///
 /// Benchmarks the 5 core principles:
@@ -6,20 +7,19 @@
 /// 3. Bi-Temporal Versioning (time-travel query performance)
 /// 4. Hierarchical Taxonomic Chunking (chunking throughput)
 /// 5. Delta Compression (graph centrality calculation)
-
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use talaria_sequoia::{
-    storage::{SEQUOIAStorage, SequenceStorage},
-    chunker::{ChunkingStrategy, TaxonomicChunker, HierarchicalTaxonomicChunker},
-    verification::merkle::MerkleDAG,
-    temporal::bi_temporal::BiTemporalDatabase,
-    types::{DatabaseSource, ManifestMetadata},
-};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use std::sync::Arc;
 use talaria_bio::sequence::Sequence;
 use talaria_core::{SHA256Hash, TaxonId};
+use talaria_test::fixtures::test_database_source;
+use talaria_sequoia::{
+    chunker::{ChunkingStrategy, HierarchicalTaxonomicChunker, TaxonomicChunker},
+    storage::{SequoiaStorage, SequenceStorage},
+    temporal::bi_temporal::BiTemporalDatabase,
+    types::{DatabaseSource, ManifestMetadata},
+    verification::merkle::MerkleDAG,
+};
 use tempfile::TempDir;
-use std::sync::Arc;
-use chrono::Utc;
 
 /// Generate test sequences of varying sizes
 fn generate_sequences(count: usize, avg_length: usize) -> Vec<Sequence> {
@@ -48,9 +48,7 @@ fn bench_content_addressing(c: &mut Criterion) {
 
         group.throughput(Throughput::Bytes(*size as u64));
         group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, _| {
-            b.iter(|| {
-                SHA256Hash::compute(black_box(&data))
-            });
+            b.iter(|| SHA256Hash::compute(black_box(&data)));
         });
     }
 
@@ -95,7 +93,7 @@ fn bench_bitemporal_queries(c: &mut Criterion) {
 
     // Create a test database with temporal data
     let temp_dir = TempDir::new().unwrap();
-    let storage = Arc::new(SEQUOIAStorage::new(temp_dir.path()).unwrap());
+    let storage = Arc::new(SequoiaStorage::new(temp_dir.path()).unwrap());
     let mut bitemporal_db = BiTemporalDatabase::new(storage).unwrap();
 
     // Benchmark querying at different time points
@@ -151,13 +149,15 @@ fn bench_hierarchical_chunking(c: &mut Criterion) {
                         let chunker = HierarchicalTaxonomicChunker::new(
                             ChunkingStrategy::default(),
                             storage,
-                            DatabaseSource::Test,
+                            test_database_source("bench"),
                             None,
                         );
                         (chunker, sequences.clone())
                     },
                     |(mut chunker, sequences)| {
-                        chunker.chunk_sequences_hierarchical(black_box(sequences)).unwrap()
+                        chunker
+                            .chunk_sequences_hierarchical(black_box(sequences))
+                            .unwrap()
                     },
                 );
             },
@@ -189,12 +189,14 @@ fn bench_standard_chunking(c: &mut Criterion) {
                         let chunker = TaxonomicChunker::new(
                             ChunkingStrategy::default(),
                             storage,
-                            DatabaseSource::Test,
+                            test_database_source("bench"),
                         );
                         (chunker, sequences.clone())
                     },
                     |(mut chunker, sequences)| {
-                        chunker.chunk_sequences_canonical(black_box(sequences)).unwrap()
+                        chunker
+                            .chunk_sequences_canonical(black_box(sequences))
+                            .unwrap()
                     },
                 );
             },
@@ -240,11 +242,9 @@ fn bench_deduplication(c: &mut Criterion) {
                     },
                     |(storage, sequences)| {
                         for (seq, header) in sequences {
-                            storage.store_sequence(
-                                &seq,
-                                &header,
-                                DatabaseSource::Test,
-                            ).unwrap();
+                            storage
+                                .store_sequence(&seq, &header, test_database_source("bench"))
+                                .unwrap();
                         }
                     },
                 );
@@ -270,7 +270,7 @@ fn bench_graph_centrality(c: &mut Criterion) {
 
         // Add edges (create a somewhat connected graph)
         for i in 0..*num_nodes {
-            for j in i+1..(*num_nodes).min(i+5) {
+            for j in i + 1..(*num_nodes).min(i + 5) {
                 let weight = 1.0 / (j - i) as f64;
                 graph.add_edge(nodes[i], nodes[j], weight);
             }
@@ -307,23 +307,19 @@ fn bench_storage_io(c: &mut Criterion) {
 
     // Benchmark chunk writing
     group.bench_function("chunk_write_1mb", |b| {
-        let storage = SEQUOIAStorage::new(temp_dir.path()).unwrap();
+        let storage = SequoiaStorage::new(temp_dir.path()).unwrap();
         let data = vec![b'A'; 1_000_000]; // 1MB
 
-        b.iter(|| {
-            storage.store_chunk(black_box(&data), false).unwrap()
-        });
+        b.iter(|| storage.store_chunk(black_box(&data), false).unwrap());
     });
 
     // Benchmark chunk reading
     group.bench_function("chunk_read_1mb", |b| {
-        let storage = SEQUOIAStorage::new(temp_dir.path()).unwrap();
+        let storage = SequoiaStorage::new(temp_dir.path()).unwrap();
         let data = vec![b'A'; 1_000_000]; // 1MB
         let hash = storage.store_chunk(&data, false).unwrap();
 
-        b.iter(|| {
-            storage.get_chunk(black_box(&hash)).unwrap()
-        });
+        b.iter(|| storage.get_chunk(black_box(&hash)).unwrap());
     });
 
     group.finish();

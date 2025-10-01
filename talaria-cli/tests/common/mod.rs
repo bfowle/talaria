@@ -2,8 +2,8 @@
 
 use anyhow::Result;
 use assert_cmd::Command;
-use std::fs;
 use std::collections::HashSet;
+use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
@@ -59,7 +59,8 @@ CGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCG
 TAGTAGTAGTAGTAGTAGTAGTAGTAGTAGTAGTAGTAGTAGTAG
 >seq4 Homo sapiens OX=9606
 CATCATCATCATCATCATCATCATCATCATCATCATCATCATCAT
-"#.to_string()
+"#
+    .to_string()
 }
 
 /// Create a FASTA with redundant sequences
@@ -74,7 +75,8 @@ ATGATGATGATGATGATGATGATGATGATGATGATGATGATGACG
 CGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCG
 >seq5 Another duplicate
 ATGATGATGATGATGATGATGATGATGATGATGATGATGATGATG
-"#.to_string()
+"#
+    .to_string()
 }
 
 /// Helper to run talaria CLI command
@@ -87,9 +89,12 @@ pub fn add_test_database(fasta_path: &Path, db_name: &str, temp_dir: &Path) -> R
     let mut cmd = talaria_cmd();
     cmd.arg("database")
         .arg("add")
-        .arg("--input").arg(fasta_path)
-        .arg("--name").arg(db_name)
-        .arg("--source").arg("local")
+        .arg("--input")
+        .arg(fasta_path)
+        .arg("--name")
+        .arg(db_name)
+        .arg("--source")
+        .arg("local")
         .env("TALARIA_HOME", temp_dir);
 
     let output = cmd.output().expect("Failed to execute command");
@@ -108,10 +113,14 @@ pub fn run_reduce(db_name: &str, output: &Path, temp_dir: &Path) -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("reduce")
         .arg(db_name)
-        .arg("-o").arg(output)
-        .arg("-m").arg(&delta_path)
-        .arg("--target-aligner").arg("generic")
-        .arg("--reduction-ratio").arg("0.5")
+        .arg("-o")
+        .arg(output)
+        .arg("-m")
+        .arg(&delta_path)
+        .arg("--target-aligner")
+        .arg("generic")
+        .arg("--reduction-ratio")
+        .arg("0.5")
         .env("TALARIA_HOME", temp_dir);
 
     let assert = cmd.assert();
@@ -123,9 +132,12 @@ pub fn run_reduce(db_name: &str, output: &Path, temp_dir: &Path) -> Result<()> {
 pub fn run_reconstruct(reference: &Path, deltas: &Path, output: &Path) -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("reconstruct")
-        .arg("--references").arg(reference)
-        .arg("--deltas").arg(deltas)
-        .arg("-o").arg(output);
+        .arg("--references")
+        .arg(reference)
+        .arg("--deltas")
+        .arg(deltas)
+        .arg("-o")
+        .arg(output);
 
     let assert = cmd.assert();
     assert.success();
@@ -136,8 +148,10 @@ pub fn run_reconstruct(reference: &Path, deltas: &Path, output: &Path) -> Result
 pub fn run_validate(original: &Path, reduced: &Path) -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("validate")
-        .arg("-o").arg(original)
-        .arg("-r").arg(reduced);
+        .arg("-o")
+        .arg(original)
+        .arg("-r")
+        .arg(reduced);
 
     let assert = cmd.assert();
     assert.success();
@@ -185,7 +199,9 @@ pub fn count_sequences(path: &Path) -> Result<usize> {
 /// Check if a FASTA file contains a specific sequence ID
 pub fn contains_sequence(path: &Path, seq_id: &str) -> Result<bool> {
     let content = fs::read_to_string(path)?;
-    Ok(content.lines().any(|l| l.starts_with('>') && l.contains(seq_id)))
+    Ok(content
+        .lines()
+        .any(|l| l.starts_with('>') && l.contains(seq_id)))
 }
 
 /// Create a corrupted FASTA for error testing
@@ -197,7 +213,8 @@ ATGXYZ123!@#
 ATGATGATGATGATGATGATGATGATGATGATGATGATGATGATG
 seq4 Missing header
 CGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCG
-"#.to_string()
+"#
+    .to_string()
 }
 
 /// Create a large FASTA for performance testing
@@ -239,8 +256,10 @@ impl MockLambda {
 
         #[cfg(windows)]
         {
-            fs::write(&mock_lambda.with_extension("bat"),
-                "@echo off\necho Mock LAMBDA output\nexit /b 0")?;
+            fs::write(
+                &mock_lambda.with_extension("bat"),
+                "@echo off\necho Mock LAMBDA output\nexit /b 0",
+            )?;
         }
 
         Ok(mock_lambda)

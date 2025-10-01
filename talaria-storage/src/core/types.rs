@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 
 // Re-export core types from talaria-core
 pub use talaria_core::{
-    SHA256Hash, TaxonId, ChunkInfo, ChunkMetadata, DeltaChunk, ChunkType as CoreChunkType,
-    StorageStats, GCResult, VerificationError, VerificationErrorType,
-    TaxonomyStats, SyncResult, RemoteStatus,
+    ChunkInfo, ChunkMetadata, ChunkType as CoreChunkType, DeltaChunk, GCResult, RemoteStatus,
+    SHA256Hash, StorageStats, SyncResult, TaxonId, TaxonomyStats, VerificationError,
+    VerificationErrorType,
 };
 
 // Placeholder types - these would come from talaria-sequoia if not for circular dependency

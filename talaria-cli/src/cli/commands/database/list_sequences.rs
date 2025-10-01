@@ -37,9 +37,9 @@ pub struct ListSequencesArgs {
 use talaria_core::OutputFormat;
 
 pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
-    use talaria_sequoia::database::DatabaseManager;
     use crate::cli::progress::create_spinner;
     use std::io::Write;
+    use talaria_sequoia::database::DatabaseManager;
     use talaria_sequoia::ReductionManifest;
 
     // Show loading spinner while initializing
@@ -54,7 +54,8 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
     let db_ref = talaria_utils::database::database_ref::parse_database_reference(&args.database)?;
 
     // Load appropriate manifest based on whether profile is specified
-    let (chunk_metadata, total_sequences, db_display_name) = if let Some(profile) = &db_ref.profile {
+    let (chunk_metadata, total_sequences, db_display_name) = if let Some(profile) = &db_ref.profile
+    {
         // Load reduction manifest for profile
         let versions_dir = talaria_core::system::paths::talaria_databases_dir().join("versions");
         let version = db_ref.version.as_deref().unwrap_or("current");
@@ -66,7 +67,12 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
             .join(format!("{}.tal", profile));
 
         if !profile_path.exists() {
-            anyhow::bail!("Profile '{}' not found for {}/{}", profile, db_ref.source, db_ref.dataset);
+            anyhow::bail!(
+                "Profile '{}' not found for {}/{}",
+                profile,
+                db_ref.source,
+                db_ref.dataset
+            );
         }
 
         // Read and parse reduction manifest
@@ -100,19 +106,14 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
         (manifest.chunk_index, total, display)
     };
 
-    eprintln!(
-        "\u{25cf} Loading sequences from {}",
-        db_display_name
-    );
+    eprintln!("\u{25cf} Loading sequences from {}", db_display_name);
     eprintln!("  Total chunks: {}", chunk_metadata.len());
     eprintln!("  Total sequences: {}", total_sequences);
 
     // Collect sequence information from chunks
     let mut all_sequences = Vec::new();
-    let pb = crate::cli::progress::create_progress_bar(
-        chunk_metadata.len() as u64,
-        "Reading chunks",
-    );
+    let pb =
+        crate::cli::progress::create_progress_bar(chunk_metadata.len() as u64, "Reading chunks");
 
     let mut missing_chunks = 0;
     let mut sequences_loaded = 0;
@@ -125,14 +126,18 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
             Ok(manifest) => {
                 // Load sequences from canonical storage
                 let remaining = args.limit.saturating_sub(sequences_loaded);
-                match manager.load_sequences_from_manifest(&manifest, args.filter.as_deref(), remaining) {
+                match manager.load_sequences_from_manifest(
+                    &manifest,
+                    args.filter.as_deref(),
+                    remaining,
+                ) {
                     Ok(sequences) => {
                         for (seq_id, _fasta_data) in sequences {
                             all_sequences.push(talaria_sequoia::SequenceRef {
                                 sequence_id: seq_id.clone(),
                                 chunk_hash: chunk_info.hash.clone(),
-                                offset: 0,  // Not used in new format
-                                length: 0,  // Not used in new format
+                                offset: 0, // Not used in new format
+                                length: 0, // Not used in new format
                             });
                             sequences_loaded += 1;
 
@@ -142,13 +147,19 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
                         }
                     }
                     Err(e) => {
-                        eprintln!("Warning: Failed to load sequences from chunk {}: {}", chunk_info.hash, e);
+                        eprintln!(
+                            "Warning: Failed to load sequences from chunk {}: {}",
+                            chunk_info.hash, e
+                        );
                         missing_chunks += 1;
                     }
                 }
             }
             Err(e) => {
-                eprintln!("Warning: Failed to load manifest for chunk {}: {}", chunk_info.hash, e);
+                eprintln!(
+                    "Warning: Failed to load manifest for chunk {}: {}",
+                    chunk_info.hash, e
+                );
                 missing_chunks += 1;
             }
         }
@@ -220,7 +231,11 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
                 )?;
             }
         }
-        OutputFormat::Yaml | OutputFormat::Csv | OutputFormat::Summary | OutputFormat::Detailed | OutputFormat::HashOnly => {
+        OutputFormat::Yaml
+        | OutputFormat::Csv
+        | OutputFormat::Summary
+        | OutputFormat::Detailed
+        | OutputFormat::HashOnly => {
             // Default to text for unsupported formats
             for seq_ref in &all_sequences {
                 writeln!(writer, "{}", seq_ref.sequence_id)?;

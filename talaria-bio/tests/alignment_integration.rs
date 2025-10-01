@@ -1,7 +1,9 @@
-/// Integration tests for sequence alignment functionality
-use talaria_bio::alignment::{Alignment, NeedlemanWunsch, Delta, BLOSUM62, NucleotideMatrix, ScoringMatrix};
-use talaria_bio::sequence::Sequence;
 use std::time::Instant;
+/// Integration tests for sequence alignment functionality
+use talaria_bio::alignment::{
+    Alignment, Delta, NeedlemanWunsch, NucleotideMatrix, ScoringMatrix, BLOSUM62,
+};
+use talaria_bio::sequence::Sequence;
 
 #[test]
 fn test_exact_match_alignment() {
@@ -27,11 +29,14 @@ fn test_single_mismatch_alignment() {
 
     assert!(alignment.identity > 0.8);
     assert_eq!(alignment.deltas.len(), 1);
-    assert_eq!(alignment.deltas[0], Delta {
-        position: 3,
-        reference: b'C',
-        query: b'G'
-    });
+    assert_eq!(
+        alignment.deltas[0],
+        Delta {
+            position: 3,
+            reference: b'C',
+            query: b'G'
+        }
+    );
 }
 
 #[test]
@@ -269,7 +274,14 @@ fn test_repeated_sequence_alignment() {
     let alignment = Alignment::global(&ref_seq, &query_seq);
 
     assert!(alignment.identity > 0.7);
-    assert_eq!(alignment.deltas.iter().filter(|d| d.reference == b'-' || d.query == b'-').count(), 2);
+    assert_eq!(
+        alignment
+            .deltas
+            .iter()
+            .filter(|d| d.reference == b'-' || d.query == b'-')
+            .count(),
+        2
+    );
 }
 
 #[test]

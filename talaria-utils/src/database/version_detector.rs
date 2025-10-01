@@ -541,10 +541,9 @@ impl VersionManager {
                     // Update system aliases based on current symlinks
                     version.aliases.system.clear();
                     for (alias, target) in &symlinks {
-                        if target == &version.timestamp
-                            && is_system_alias(alias) {
-                                version.aliases.system.push(alias.clone());
-                            }
+                        if target == &version.timestamp && is_system_alias(alias) {
+                            version.aliases.system.push(alias.clone());
+                        }
                     }
                     versions.push(version);
                 }

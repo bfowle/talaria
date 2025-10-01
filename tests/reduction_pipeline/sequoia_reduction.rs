@@ -207,7 +207,7 @@ fn test_reduction_references_existing_chunks() {
 #[test]
 fn test_reduction_creates_profile_not_database() {
     use std::fs;
-    use talaria_sequoia::SEQUOIARepository;
+    use talaria_sequoia::SequoiaRepository;
     use talaria_core::database_manager::DatabaseManager;
     use tempfile::TempDir;
 
@@ -256,10 +256,10 @@ fn test_reduction_creates_profile_not_database() {
     // }
 
     // 3. Simulate storing a reduction (without running full reduction pipeline)
-    // Since we can't access the repository directly, we need to use SEQUOIARepository directly
+    // Since we can't access the repository directly, we need to use SequoiaRepository directly
     // but we need to open the exact same path to share the storage
     let sequoia =
-        SEQUOIARepository::open(&db_path).unwrap_or_else(|_| SEQUOIARepository::init(&db_path).unwrap());
+        SequoiaRepository::open(&db_path).unwrap_or_else(|_| SequoiaRepository::init(&db_path).unwrap());
 
     use talaria_sequoia::reduction::{ReductionManifest, ReductionParameters};
 

@@ -39,8 +39,7 @@ impl Alignment {
             let aligner = NeedlemanWunsch::new(crate::alignment::scoring::BLOSUM62::new());
             aligner.align(&ref_seq.sequence, &query_seq.sequence)
         } else {
-            let aligner =
-                NeedlemanWunsch::new(crate::alignment::scoring::NucleotideMatrix::new());
+            let aligner = NeedlemanWunsch::new(crate::alignment::scoring::NucleotideMatrix::new());
             aligner.align(&ref_seq.sequence, &query_seq.sequence)
         }
     }

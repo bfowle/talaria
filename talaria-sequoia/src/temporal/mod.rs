@@ -1,19 +1,22 @@
 //! Temporal versioning and bi-temporal database functionality
 
-pub mod core;
 pub mod bi_temporal;
-pub mod retroactive;
+pub mod core;
 pub mod renderable;
+pub mod retroactive;
 pub mod version_store;
 
 // Re-export main types
 pub use core::{
-    VersionInfo, TemporalIndex, SequenceVersion, TaxonomyVersion,
-    TemporalCrossReference, SequenceMetadataHistory, TimestampedHeaderChange,
-    HeaderChangeType, ManifestRef, VersionRef, VersionType, TemporalStats,
-    TemporalState, TemporalQuery, Timeline, TimelineEvent, TimelineEventType
+    HeaderChangeType, ManifestRef, SequenceMetadataHistory, SequenceVersion, TaxonomyVersion,
+    TemporalCrossReference, TemporalIndex, TemporalQuery, TemporalState, TemporalStats, Timeline,
+    TimelineEvent, TimelineEventType, TimestampedHeaderChange, VersionRef, VersionType,
 };
-pub use bi_temporal::{BiTemporalDatabase, DatabaseSnapshot, TemporalDiff, TaxonomicChangeType};
+// Re-export VersionInfo from core module
+pub use bi_temporal::{BiTemporalDatabase, DatabaseSnapshot, TaxonomicChangeType, TemporalDiff};
 pub use retroactive::RetroactiveAnalyzer;
+pub use talaria_core::types::TemporalVersionInfo as VersionInfo;
 // TemporalRenderable is exported from traits module instead
-pub use version_store::{Version, ListOptions, VersionOperation, VersionStore, FilesystemVersionStore};
+pub use version_store::{
+    FilesystemVersionStore, ListOptions, Version, VersionOperation, VersionStore,
+};

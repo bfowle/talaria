@@ -88,9 +88,9 @@ pub(crate) fn stream_output_with_progress<R: Read + Send + 'static>(
         let mut errors = Vec::new();
 
         // Open output file if specified
-        let mut file_handle = output_file.as_ref().and_then(|path| {
-            std::fs::File::create(path).ok()
-        });
+        let mut file_handle = output_file
+            .as_ref()
+            .and_then(|path| std::fs::File::create(path).ok());
 
         loop {
             match reader.read(&mut byte) {
@@ -138,7 +138,8 @@ pub(crate) fn stream_output_with_progress<R: Read + Send + 'static>(
                                     if pct_pos > 0 {
                                         let before_pct = &line_str[..pct_pos];
                                         // Find the last number
-                                        let num_start = before_pct.rfind(|c: char| !c.is_ascii_digit() && c != '.')
+                                        let num_start = before_pct
+                                            .rfind(|c: char| !c.is_ascii_digit() && c != '.')
                                             .map(|i| i + 1)
                                             .unwrap_or(0);
                                         if let Ok(pct) = before_pct[num_start..].parse::<f32>() {
@@ -156,8 +157,12 @@ pub(crate) fn stream_output_with_progress<R: Read + Send + 'static>(
                                     for (i, part) in parts.iter().enumerate() {
                                         if *part == "of" && i > 0 && i + 1 < parts.len() {
                                             if let (Ok(current), Ok(total)) = (
-                                                parts[i - 1].trim_matches(|c: char| !c.is_ascii_digit()).parse::<usize>(),
-                                                parts[i + 1].trim_matches(|c: char| !c.is_ascii_digit()).parse::<usize>()
+                                                parts[i - 1]
+                                                    .trim_matches(|c: char| !c.is_ascii_digit())
+                                                    .parse::<usize>(),
+                                                parts[i + 1]
+                                                    .trim_matches(|c: char| !c.is_ascii_digit())
+                                                    .parse::<usize>(),
                                             ) {
                                                 if total > 0 {
                                                     let pct = (current * 100) / total;

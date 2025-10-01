@@ -1,8 +1,8 @@
 //! Configuration types for Talaria
 
+use crate::TalariaError;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use crate::TalariaError;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
@@ -79,23 +79,57 @@ pub struct DatabaseConfig {
 }
 
 // Default value functions
-fn default_target_ratio() -> f64 { 0.3 }
-fn default_min_sequence_length() -> usize { 50 }
-fn default_max_delta_distance() -> usize { 100 }
-fn default_similarity_threshold() -> f64 { 0.0 }
-fn default_taxonomy_aware() -> bool { false }
-fn default_gap_penalty() -> i32 { 20 }
-fn default_gap_extension() -> i32 { 10 }
-fn default_algorithm() -> String { "needleman-wunsch".to_string() }
-fn default_format() -> String { "fasta".to_string() }
-fn default_include_metadata() -> bool { true }
-fn default_compress_output() -> bool { false }
-fn default_chunk_size() -> usize { 10000 }
-fn default_batch_size() -> usize { 1000 }
-fn default_cache_alignments() -> bool { true }
-fn default_retention_count() -> usize { 3 }
-fn default_auto_update_check() -> bool { false }
-fn default_preferred_mirror() -> Option<String> { Some("ebi".to_string()) }
+fn default_target_ratio() -> f64 {
+    0.3
+}
+fn default_min_sequence_length() -> usize {
+    50
+}
+fn default_max_delta_distance() -> usize {
+    100
+}
+fn default_similarity_threshold() -> f64 {
+    0.0
+}
+fn default_taxonomy_aware() -> bool {
+    false
+}
+fn default_gap_penalty() -> i32 {
+    20
+}
+fn default_gap_extension() -> i32 {
+    10
+}
+fn default_algorithm() -> String {
+    "needleman-wunsch".to_string()
+}
+fn default_format() -> String {
+    "fasta".to_string()
+}
+fn default_include_metadata() -> bool {
+    true
+}
+fn default_compress_output() -> bool {
+    false
+}
+fn default_chunk_size() -> usize {
+    10000
+}
+fn default_batch_size() -> usize {
+    1000
+}
+fn default_cache_alignments() -> bool {
+    true
+}
+fn default_retention_count() -> usize {
+    3
+}
+fn default_auto_update_check() -> bool {
+    false
+}
+fn default_preferred_mirror() -> Option<String> {
+    Some("ebi".to_string())
+}
 
 impl Default for ReductionConfig {
     fn default() -> Self {
@@ -171,8 +205,8 @@ pub fn save_config<P: AsRef<Path>>(path: P, config: &Config) -> Result<(), Talar
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
     use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_default_config() {
@@ -213,7 +247,10 @@ mod tests {
         let config2 = default_config();
 
         // Both should produce identical configs
-        assert_eq!(config1.reduction.target_ratio, config2.reduction.target_ratio);
+        assert_eq!(
+            config1.reduction.target_ratio,
+            config2.reduction.target_ratio
+        );
         assert_eq!(config1.alignment.algorithm, config2.alignment.algorithm);
     }
 
@@ -272,7 +309,10 @@ preferred_mirror = "ncbi"
         assert_eq!(config.performance.batch_size, 500);
         assert!(!config.performance.cache_alignments);
 
-        assert_eq!(config.database.database_dir, Some("/custom/path".to_string()));
+        assert_eq!(
+            config.database.database_dir,
+            Some("/custom/path".to_string())
+        );
         assert_eq!(config.database.retention_count, 5);
         assert!(config.database.auto_update_check);
         assert_eq!(config.database.preferred_mirror, Some("ncbi".to_string()));
@@ -329,7 +369,7 @@ algorithm = "custom"
         assert!(result.is_err());
 
         match result.unwrap_err() {
-            TalariaError::Io(_) => {}, // Expected
+            TalariaError::Io(_) => {} // Expected
             _ => panic!("Expected Io error"),
         }
     }
@@ -345,8 +385,14 @@ algorithm = "custom"
         assert!(temp_file.path().exists());
         let loaded_config = load_config(temp_file.path()).unwrap();
 
-        assert_eq!(config.reduction.target_ratio, loaded_config.reduction.target_ratio);
-        assert_eq!(config.alignment.algorithm, loaded_config.alignment.algorithm);
+        assert_eq!(
+            config.reduction.target_ratio,
+            loaded_config.reduction.target_ratio
+        );
+        assert_eq!(
+            config.alignment.algorithm,
+            loaded_config.alignment.algorithm
+        );
     }
 
     #[test]
@@ -367,7 +413,10 @@ algorithm = "custom"
         assert_eq!(config.reduction.target_ratio, loaded.reduction.target_ratio);
         assert_eq!(config.alignment.algorithm, loaded.alignment.algorithm);
         assert_eq!(config.output.compress_output, loaded.output.compress_output);
-        assert_eq!(config.database.preferred_mirror, loaded.database.preferred_mirror);
+        assert_eq!(
+            config.database.preferred_mirror,
+            loaded.database.preferred_mirror
+        );
     }
 
     #[test]
@@ -377,7 +426,7 @@ algorithm = "custom"
 
         assert!(result.is_err());
         match result.unwrap_err() {
-            TalariaError::Io(_) => {}, // Expected
+            TalariaError::Io(_) => {} // Expected
             _ => panic!("Expected Io error for permission denied"),
         }
     }
@@ -389,7 +438,7 @@ algorithm = "custom"
         // Test edge values (avoiding usize::MAX which can't serialize as u64 in TOML)
         config.reduction.target_ratio = 0.0;
         config.reduction.min_sequence_length = 0;
-        config.reduction.max_delta_distance = 1_000_000_000;  // Large but serializable
+        config.reduction.max_delta_distance = 1_000_000_000; // Large but serializable
         config.alignment.gap_penalty = i32::MIN;
         config.alignment.gap_extension = i32::MAX;
 
@@ -398,8 +447,14 @@ algorithm = "custom"
         let loaded = load_config(temp_file.path()).unwrap();
 
         assert_eq!(config.reduction.target_ratio, loaded.reduction.target_ratio);
-        assert_eq!(config.reduction.max_delta_distance, loaded.reduction.max_delta_distance);
+        assert_eq!(
+            config.reduction.max_delta_distance,
+            loaded.reduction.max_delta_distance
+        );
         assert_eq!(config.alignment.gap_penalty, loaded.alignment.gap_penalty);
-        assert_eq!(config.alignment.gap_extension, loaded.alignment.gap_extension);
+        assert_eq!(
+            config.alignment.gap_extension,
+            loaded.alignment.gap_extension
+        );
     }
 }

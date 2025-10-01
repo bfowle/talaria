@@ -1,14 +1,14 @@
 /// Test concurrent download scenarios to verify workspace isolation and locking
 use anyhow::Result;
+use serial_test::serial;
 use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::sync::Semaphore;
-use serial_test::serial;
 
-use talaria_sequoia::download::{
-    workspace::{get_download_workspace, DownloadLock, DownloadState, find_resumable_downloads, Stage},
+use talaria_core::{DatabaseSource, NCBIDatabase, UniProtDatabase};
+use talaria_sequoia::download::workspace::{
+    find_resumable_downloads, get_download_workspace, DownloadLock, DownloadState, Stage,
 };
-use talaria_core::{DatabaseSource, UniProtDatabase, NCBIDatabase};
 
 // Import the bypass function for tests
 use talaria_core::system::paths::bypass_cache_for_tests;
@@ -106,8 +106,12 @@ async fn test_state_persistence_across_sessions() -> Result<()> {
 
     // Verify state was preserved
     assert_eq!(state1.id, state2.id);
-    assert!(matches!(state2.stage,
-        talaria_sequoia::download::workspace::Stage::Downloading { bytes_done: 1024, .. }
+    assert!(matches!(
+        state2.stage,
+        talaria_sequoia::download::workspace::Stage::Downloading {
+            bytes_done: 1024,
+            ..
+        }
     ));
 
     std::env::remove_var("TALARIA_DATA_DIR");
@@ -202,7 +206,11 @@ async fn test_concurrent_downloads_different_databases() -> Result<()> {
             let lock = DownloadLock::try_acquire(&workspace);
 
             // Each should succeed since they're different databases
-            assert!(lock.is_ok(), "Lock acquisition should succeed for {:?}", source);
+            assert!(
+                lock.is_ok(),
+                "Lock acquisition should succeed for {:?}",
+                source
+            );
 
             // Simulate some work
             tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
@@ -236,7 +244,10 @@ async fn test_stale_lock_cleanup() -> Result<()> {
 
     // Should be able to acquire lock (stale lock should be removed)
     let lock = DownloadLock::try_acquire(&workspace);
-    assert!(lock.is_ok(), "Should be able to acquire lock after stale lock cleanup");
+    assert!(
+        lock.is_ok(),
+        "Should be able to acquire lock after stale lock cleanup"
+    );
 
     Ok(())
 }
@@ -286,5 +297,8 @@ fn test_unique_session_ids() {
     let workspace2 = get_download_workspace(&source);
 
     // Workspaces should be different due to unique session IDs
-    assert_ne!(workspace1, workspace2, "Each download should get unique workspace");
+    assert_ne!(
+        workspace1, workspace2,
+        "Each download should get unique workspace"
+    );
 }

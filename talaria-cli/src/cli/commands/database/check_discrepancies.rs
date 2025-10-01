@@ -4,11 +4,11 @@ use clap::Args;
 use colored::Colorize;
 use std::collections::HashMap;
 
+use crate::cli::global_config;
+use crate::cli::progress::create_spinner;
+use talaria_sequoia::database::DatabaseManager;
 use talaria_sequoia::taxonomy::discrepancy::DiscrepancyDetector;
 use talaria_sequoia::{DiscrepancyType, TaxonId, TaxonomicDiscrepancy};
-use crate::cli::global_config;
-use talaria_sequoia::database::DatabaseManager;
-use crate::cli::progress::create_spinner;
 
 #[derive(Args)]
 pub struct CheckDiscrepanciesArgs {
@@ -20,9 +20,17 @@ pub struct CheckDiscrepanciesArgs {
     #[arg(short = 't', long = "type", value_name = "TYPE")]
     pub discrepancy_type: Option<String>,
 
-    /// Export results to JSON
+    /// Export results to JSON (deprecated: use --report-output with --report-format json)
     #[arg(long = "json", value_name = "FILE")]
     pub json_output: Option<String>,
+
+    /// Report output file path
+    #[arg(long = "report-output", value_name = "FILE")]
+    pub report_output: Option<std::path::PathBuf>,
+
+    /// Report output format (text, html, json, csv)
+    #[arg(long = "report-format", value_name = "FORMAT", default_value = "text")]
+    pub report_format: String,
 }
 
 pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
@@ -47,7 +55,12 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
             .join(format!("{}.tal", profile));
 
         if !profile_path.exists() {
-            anyhow::bail!("Profile '{}' not found for {}/{}", profile, db_ref.source, db_ref.dataset);
+            anyhow::bail!(
+                "Profile '{}' not found for {}/{}",
+                profile,
+                db_ref.source,
+                db_ref.dataset
+            );
         }
 
         // Read and parse reduction manifest
@@ -73,11 +86,17 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
 
         spinner.finish_and_clear();
         println!("\n{}", "═".repeat(60));
-        println!("{:^60}", format!("DISCREPANCY CHECK: {} (REDUCED)", args.database));
+        println!(
+            "{:^60}",
+            format!("DISCREPANCY CHECK: {} (REDUCED)", args.database)
+        );
         println!("{}", "═".repeat(60));
         println!();
 
-        (chunk_metadata, reduction_manifest.statistics.reference_sequences)
+        (
+            chunk_metadata,
+            reduction_manifest.statistics.reference_sequences,
+        )
     } else {
         // Load regular database manifest
         let manifest = manager.get_manifest(&args.database)?;
@@ -95,27 +114,45 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
     // Initialize the discrepancy detector
     let mut detector = DiscrepancyDetector::new();
 
-    // Load taxonomy mappings if available
+    // Load taxonomy mappings using unified TaxonomyProvider
     let spinner = create_spinner("Loading taxonomy mappings...");
-    let mapping_count = match manager.load_taxonomy_mappings(&args.database) {
-        Ok(mappings) => {
-            let count = mappings.len();
-            detector.set_taxonomy_mappings(mappings);
-            spinner.finish_and_clear();
-            println!("✓ Loaded {} taxonomy mappings", count);
-            count
-        }
-        Err(e) => {
-            spinner.finish_and_clear();
-            println!("ℹ No taxonomy mappings available: {}", e);
-            0
+    let mapping_count = {
+        // Parse database source to determine mapping type
+        use talaria_sequoia::download::parse_database_source;
+
+        match parse_database_source(&args.database) {
+            Ok(source) => {
+                match manager.get_taxonomy_mappings_for_source(&source) {
+                    Ok(mappings) => {
+                        let count = mappings.len();
+                        detector.set_taxonomy_mappings(mappings);
+                        spinner.finish_and_clear();
+                        println!("✓ Loaded {} taxonomy mappings", count);
+                        count
+                    }
+                    Err(e) => {
+                        spinner.finish_and_clear();
+                        println!("ℹ No taxonomy mappings available: {}", e);
+                        0
+                    }
+                }
+            }
+            Err(_) => {
+                // Custom database - no standard mappings
+                spinner.finish_and_clear();
+                println!("ℹ Custom database - no taxonomy mappings loaded");
+                0
+            }
         }
     };
 
     // Now analyze sequences for discrepancies with progress bar
     use talaria_utils::display::progress::create_progress_bar;
 
-    let progress = create_progress_bar(chunk_metadata.len() as u64, "Analyzing chunks for discrepancies");
+    let progress = create_progress_bar(
+        chunk_metadata.len() as u64,
+        "Analyzing chunks for discrepancies",
+    );
 
     let mut all_discrepancies = Vec::new();
     let mut chunk_count = 0;
@@ -125,7 +162,11 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
     // Process each chunk with progress feedback
     for chunk_meta in &chunk_metadata {
         chunk_count += 1;
-        progress.set_message(format!("Processing chunk {}/{}", chunk_count, chunk_metadata.len()));
+        progress.set_message(format!(
+            "Processing chunk {}/{}",
+            chunk_count,
+            chunk_metadata.len()
+        ));
 
         // Try new manifest-based approach
         match manager.load_manifest(&chunk_meta.hash) {
@@ -137,19 +178,28 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
 
                         // Detect discrepancies using the new method
                         if mapping_count > 0 {
-                            let chunk_discrepancies = detector.detect_from_manifest(&manifest, sequences);
+                            let chunk_discrepancies =
+                                detector.detect_from_manifest(&manifest, sequences);
                             all_discrepancies.extend(chunk_discrepancies);
                         }
                     }
                     Err(e) => {
                         failed_chunks += 1;
-                        tracing::debug!("Failed to load sequences for chunk {}: {}", chunk_meta.hash, e);
+                        tracing::debug!(
+                            "Failed to load sequences for chunk {}: {}",
+                            chunk_meta.hash,
+                            e
+                        );
                     }
                 }
             }
             Err(e) => {
                 failed_chunks += 1;
-                tracing::debug!("Failed to load manifest for chunk {}: {}", chunk_meta.hash, e);
+                tracing::debug!(
+                    "Failed to load manifest for chunk {}: {}",
+                    chunk_meta.hash,
+                    e
+                );
             }
         }
 
@@ -188,7 +238,10 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
             "{} No taxonomy mappings available - discrepancy detection skipped",
             "ℹ".blue().bold()
         );
-        println!("\n{}", "Tip: To enable discrepancy detection, ensure taxonomy data is available.".dimmed());
+        println!(
+            "\n{}",
+            "Tip: To enable discrepancy detection, ensure taxonomy data is available.".dimmed()
+        );
     } else {
         println!(
             "{} {} discrepancies found",
@@ -222,7 +275,7 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
         }
     }
 
-    // Export to JSON if requested
+    // Export to JSON if requested (deprecated)
     if let Some(json_path) = args.json_output {
         let json = serde_json::to_string_pretty(&filtered_discrepancies)?;
         std::fs::write(&json_path, json)?;
@@ -231,6 +284,46 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
             "✓".green().bold(),
             json_path.cyan()
         );
+    }
+
+    // Generate report if requested
+    if let Some(report_path) = &args.report_output {
+        use talaria_sequoia::operations::DiscrepancyResult;
+        use talaria_bio::taxonomy::{TaxonomyDiscrepancy, TaxonomySource};
+        use std::time::Duration;
+
+        let discrepancies: Vec<TaxonomyDiscrepancy> = filtered_discrepancies
+            .iter()
+            .map(|d| {
+                let mut conflicts = Vec::new();
+                if let Some(header_taxon) = d.header_taxon {
+                    conflicts.push((TaxonomySource::Header, header_taxon.0));
+                }
+                if let Some(mapped_taxon) = d.mapped_taxon {
+                    conflicts.push((TaxonomySource::Accession2Taxid, mapped_taxon.0));
+                }
+
+                TaxonomyDiscrepancy {
+                    sequence_id: d.sequence_id.clone(),
+                    conflicts,
+                    resolution_strategy: format_discrepancy_type(&d.discrepancy_type),
+                }
+            })
+            .collect();
+
+        let result = DiscrepancyResult {
+            discrepancies_found: !discrepancies.is_empty(),
+            sequences_checked: sequence_count,
+            discrepancies,
+            missing_sequences: Vec::new(),
+            duplicate_sequences: Vec::new(),
+            inconsistent_metadata: Vec::new(),
+            total_issues: filtered_discrepancies.len(),
+            duration: Duration::from_secs(0), // TODO: Track actual duration
+        };
+
+        crate::cli::commands::save_report(&result, &args.report_format, report_path)?;
+        println!("\n{} Report saved to {}", "✓".green().bold(), report_path.display());
     }
 
     Ok(())

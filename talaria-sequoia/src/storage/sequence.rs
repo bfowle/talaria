@@ -1,13 +1,13 @@
 /// Canonical sequence storage with cross-database deduplication
 use anyhow::{anyhow, Result};
+use dashmap::DashMap;
 use std::collections::HashMap;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::RwLock;
+use std::path::Path;
+use std::sync::Arc;
 
-use crate::types::{
-    CanonicalSequence, DatabaseSource, Representable, SHA256Hash,
-    SequenceRepresentation, SequenceRepresentations, SequenceType,
+use crate::types::{DatabaseSource, SHA256Hash, SequenceType};
+use talaria_storage::types::{
+    CanonicalSequence, SequenceRepresentation, SequenceRepresentations,
 };
 use chrono::Utc;
 
@@ -18,49 +18,14 @@ pub struct SequenceInfo {
     pub length: usize,
 }
 
-// Import the packed storage backend
-use super::packed::PackedSequenceStorage;
-
-/// Trait for sequence storage backends
-pub trait SequenceStorageBackend: Send + Sync {
-    /// Check if a canonical sequence exists
-    fn sequence_exists(&self, hash: &SHA256Hash) -> Result<bool>;
-
-    /// Store a canonical sequence
-    fn store_canonical(&self, sequence: &CanonicalSequence) -> Result<()>;
-
-    /// Load a canonical sequence
-    fn load_canonical(&self, hash: &SHA256Hash) -> Result<CanonicalSequence>;
-
-    /// Store representations for a sequence
-    fn store_representations(&self, representations: &SequenceRepresentations) -> Result<()>;
-
-    /// Load representations for a sequence
-    fn load_representations(&self, hash: &SHA256Hash) -> Result<SequenceRepresentations>;
-
-    /// Get storage statistics
-    fn get_stats(&self) -> Result<StorageStats>;
-
-    /// List all sequence hashes in storage
-    fn list_all_hashes(&self) -> Result<Vec<SHA256Hash>>;
-
-    /// Get the size of a sequence
-    fn get_sequence_size(&self, hash: &SHA256Hash) -> Result<usize>;
-
-    /// Remove a sequence from storage
-    fn remove_sequence(&self, hash: &SHA256Hash) -> Result<()>;
-
-    /// Flush any pending writes to disk
-    fn flush(&self) -> Result<()>;
-
-    /// Get a reference to self as Any for downcasting
-    fn as_any(&self) -> &dyn std::any::Any;
-}
+// Import RocksDB backend and the SequenceStorageBackend trait
+use talaria_storage::backend::{RocksDBBackend, RocksDBConfig, RocksDBIndexOps};
+use talaria_storage::types::SequenceStorageBackend;
 
 // Use StorageStats from talaria-core
 use talaria_core::StorageStats;
 
-// FileSystemStorage removed - using PackedSequenceStorage only
+// FileSystemStorage removed - using RocksDB backend only
 
 // Helper functions
 fn detect_sequence_type(sequence: &str) -> SequenceType {
@@ -69,7 +34,8 @@ fn detect_sequence_type(sequence: &str) -> SequenceType {
     let nucleotide_chars = ['A', 'T', 'G', 'C', 'U', 'N'];
 
     let total_chars = upper.len();
-    let nucleotide_count = upper.chars()
+    let nucleotide_count = upper
+        .chars()
         .filter(|c| nucleotide_chars.contains(c))
         .count();
 
@@ -116,9 +82,15 @@ fn extract_accessions_from_header(header: &str) -> Vec<String> {
                 }
             }
             // Handle NCBI format: gi|123456|ref|NP_123456.1|
-            else if parts.contains(&"ref") || parts.contains(&"gb") || parts.contains(&"emb") || parts.contains(&"dbj") {
+            else if parts.contains(&"ref")
+                || parts.contains(&"gb")
+                || parts.contains(&"emb")
+                || parts.contains(&"dbj")
+            {
                 for (i, &part) in parts.iter().enumerate() {
-                    if (part == "ref" || part == "gb" || part == "emb" || part == "dbj") && i + 1 < parts.len() {
+                    if (part == "ref" || part == "gb" || part == "emb" || part == "dbj")
+                        && i + 1 < parts.len()
+                    {
                         // Get the accession, removing version if present
                         let acc = parts[i + 1].split('.').next().unwrap_or(parts[i + 1]);
                         accessions.push(acc.to_string());
@@ -391,23 +363,47 @@ impl SequenceStorageBackend for FileSystemStorage {
 
 /// Main sequence storage interface
 pub struct SequenceStorage {
-    pub(crate) backend: Box<dyn SequenceStorageBackend>,
-    accession_index: RwLock<AccessionIndex>,
-    taxonomy_index: RwLock<TaxonomyIndex>,
+    /// Shared RocksDB backend for both storage and indices
+    pub(crate) backend: Arc<RocksDBBackend>,
+    /// Streaming mode flag - when true, skip index updates to save memory
+    streaming_mode: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl SequenceStorage {
-    pub fn new(base_path: &Path) -> Result<Self> {
-        let backend = Box::new(PackedSequenceStorage::new(base_path)?);
-        let indices_dir = base_path.join("indices");
+    /// Enable streaming mode - disables index updates to save memory
+    pub fn set_streaming_mode(&self, enabled: bool) {
+        use std::sync::atomic::Ordering;
+        self.streaming_mode.store(enabled, Ordering::Relaxed);
+        // No need to clear RocksDB indices - they're on disk
+    }
 
-        let accession_index = AccessionIndex::load_or_create(&indices_dir)?;
-        let taxonomy_index = TaxonomyIndex::load_or_create(&indices_dir)?;
+    /// Check if streaming mode is enabled
+    pub fn is_streaming_mode(&self) -> bool {
+        use std::sync::atomic::Ordering;
+        self.streaming_mode.load(Ordering::Relaxed)
+    }
+
+    /// Get a reference to the RocksDB backend for direct operations
+    pub fn get_rocksdb(&self) -> Arc<RocksDBBackend> {
+        Arc::clone(&self.backend)
+    }
+
+    /// Create with default configuration
+    pub fn new(base_path: &Path) -> Result<Self> {
+        Self::new_with_config(base_path, RocksDBConfig::default())
+    }
+
+    /// Create with specific RocksDB configuration
+    pub fn new_with_config(base_path: &Path, config: RocksDBConfig) -> Result<Self> {
+        tracing::info!("Initializing RocksDB storage backend");
+        let rocksdb_path = base_path.join("rocksdb");
+
+        // Create shared RocksDB backend for both storage and indices
+        let backend = Arc::new(RocksDBBackend::new_with_config(&rocksdb_path, config)?);
 
         Ok(Self {
             backend,
-            accession_index: RwLock::new(accession_index),
-            taxonomy_index: RwLock::new(taxonomy_index),
+            streaming_mode: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 
@@ -445,20 +441,48 @@ impl SequenceStorage {
             description: extract_description(header),
             taxon_id: extract_taxon_id(header),
             metadata: parse_metadata(header),
-            timestamp: Utc::now(),
+            last_seen: Utc::now(),
         };
 
         // Load existing representations or create new
         let mut representations = self.backend.load_representations(&canonical_hash)?;
 
-        // Update accession index
-        for accession in &representation.accessions {
-            self.accession_index.write().unwrap().insert(accession.clone(), canonical_hash.clone(), source.clone())?;
-        }
+        // Skip index updates in streaming mode to save memory
+        if !self.is_streaming_mode() {
+            // Update accession index in RocksDB
+            for accession in &representation.accessions {
+                let key = format!("acc:{}", accession);
 
-        // Update taxonomy index
-        if let Some(taxon_id) = representation.taxon_id {
-            self.taxonomy_index.write().unwrap().insert(taxon_id, canonical_hash.clone())?;
+                // Get existing entry or create new
+                let mut entry = if let Ok(Some(data)) = self.backend.get_index(&key) {
+                    bincode::deserialize::<AccessionEntry>(&data).unwrap_or_else(|_| {
+                        AccessionEntry {
+                            sequence_hash: canonical_hash.clone(),
+                            sources: Vec::new(),
+                        }
+                    })
+                } else {
+                    AccessionEntry {
+                        sequence_hash: canonical_hash.clone(),
+                        sources: Vec::new(),
+                    }
+                };
+
+                // Add source if not already present
+                if !entry.sources.contains(&source) {
+                    entry.sources.push(source.clone());
+                }
+
+                // Store updated entry
+                let data = bincode::serialize(&entry)?;
+                self.backend.put_index(&key, &data)?;
+            }
+
+            // Update taxonomy index in RocksDB
+            if let Some(taxon_id) = representation.taxon_id {
+                let key = format!("tax:{}", taxon_id.0);
+                self.backend.append_to_index_list(&key, &canonical_hash)?;
+            }
         }
 
         // Add representation and save
@@ -473,8 +497,8 @@ impl SequenceStorage {
 
     /// Save all indices to disk - call this after batch processing
     pub fn save_indices(&self) -> Result<()> {
-        self.accession_index.write().unwrap().save()?;
-        self.taxonomy_index.write().unwrap().save()?;
+        // Indices are already persisted in RocksDB, just flush to ensure durability
+        SequenceStorageBackend::flush(&self.backend)?;
         Ok(())
     }
 
@@ -483,38 +507,39 @@ impl SequenceStorage {
         &self,
         sequences: Vec<(&str, &str, DatabaseSource)>,
     ) -> Result<Vec<(SHA256Hash, bool)>> {
-        use dashmap::DashMap;
         use rayon::prelude::*;
-        use std::sync::Arc;
         use std::collections::HashSet;
 
-        // Pre-compute all hashes in parallel first
-        let hashes_and_data: Vec<_> = sequences
-            .par_iter()
-            .map(|(sequence, header, source)| {
-                let canonical_hash = SHA256Hash::compute(sequence.as_bytes());
-                (sequence, header, source, canonical_hash)
-            })
-            .collect();
+        // Pre-compute all hashes in parallel first - process in chunks to avoid thread explosion
+        const HASH_CHUNK_SIZE: usize = 1000;
+        let mut hashes_and_data = Vec::with_capacity(sequences.len());
 
-        // Batch check existence - parallel checking for performance
+        for chunk in sequences.chunks(HASH_CHUNK_SIZE) {
+            let chunk_results: Vec<_> = chunk
+                .par_iter()
+                .map(|(sequence, header, source)| {
+                    let canonical_hash = SHA256Hash::compute(sequence.as_bytes());
+                    (sequence, header, source, canonical_hash)
+                })
+                .collect();
+            hashes_and_data.extend(chunk_results);
+        }
+
+        // Batch check existence - MUCH faster with single operation
         let existing_hashes: HashSet<SHA256Hash> = {
             // Collect all hashes first
-            let all_hashes: Vec<_> = hashes_and_data.iter()
+            let all_hashes: Vec<_> = hashes_and_data
+                .iter()
                 .map(|(_, _, _, hash)| hash.clone())
                 .collect();
 
-            // Check existence in parallel using rayon
-            let existence_results: Vec<(SHA256Hash, bool)> = all_hashes
-                .par_iter()
-                .map(|hash| {
-                    let exists = self.backend.sequence_exists(hash).unwrap_or(false);
-                    (hash.clone(), exists)
-                })
-                .collect();
+            // Single batch existence check - no parallel overhead, no individual I/O
+            let existence_flags = self.backend.sequences_exist_batch(&all_hashes)?;
 
             // Build set of existing hashes
-            existence_results.into_iter()
+            all_hashes
+                .into_iter()
+                .zip(existence_flags)
                 .filter(|(_, exists)| *exists)
                 .map(|(hash, _)| hash)
                 .collect()
@@ -533,32 +558,29 @@ impl SequenceStorage {
         let new_sequences: Vec<_> = sequence_data
             .iter()
             .filter(|(_, _, _, _, is_new)| *is_new)
-            .map(|(sequence, _, _, hash, _)| {
-                CanonicalSequence {
-                    sequence_hash: hash.clone(),
-                    sequence: sequence.as_bytes().to_vec(),
-                    length: sequence.len(),
-                    sequence_type: detect_sequence_type(sequence),
-                    checksum: compute_crc64(sequence.as_bytes()),
-                    first_seen: Utc::now(),
-                    last_seen: Utc::now(),
-                }
+            .map(|(sequence, _, _, hash, _)| CanonicalSequence {
+                sequence_hash: hash.clone(),
+                sequence: sequence.as_bytes().to_vec(),
+                length: sequence.len(),
+                sequence_type: detect_sequence_type(sequence),
+                checksum: compute_crc64(sequence.as_bytes()),
+                first_seen: Utc::now(),
+                last_seen: Utc::now(),
             })
             .collect();
 
-        // Store all new canonical sequences in batch
-        for canonical in &new_sequences {
-            self.backend.store_canonical(&canonical)?;
-        }
+        // Store all new canonical sequences in batch for improved I/O performance
+        self.backend.store_canonical_batch(&new_sequences)?;
 
         // Group representations by hash
         let representations_map: Arc<DashMap<SHA256Hash, Vec<SequenceRepresentation>>> =
             Arc::new(DashMap::new());
 
-        // Create all representations in parallel
-        sequence_data
-            .par_iter()
-            .for_each(|(_, header, source, hash, _)| {
+        // Create all representations in parallel - process in chunks to avoid thread explosion
+        const REP_CHUNK_SIZE: usize = 1000;
+
+        for chunk in sequence_data.chunks(REP_CHUNK_SIZE) {
+            chunk.par_iter().for_each(|(_, header, source, hash, _)| {
                 let representation = SequenceRepresentation {
                     source: (*source).clone(),
                     header: header.to_string(),
@@ -566,10 +588,14 @@ impl SequenceStorage {
                     description: extract_description(header),
                     taxon_id: extract_taxon_id(header),
                     metadata: parse_metadata(header),
-                    timestamp: Utc::now(),
+                    last_seen: Utc::now(),
                 };
-                representations_map.entry(hash.clone()).or_default().push(representation);
+                representations_map
+                    .entry(hash.clone())
+                    .or_default()
+                    .push(representation);
             });
+        }
 
         // Load existing representations and merge
         for entry in representations_map.iter() {
@@ -577,17 +603,47 @@ impl SequenceStorage {
             let mut existing = self.backend.load_representations(hash)?;
 
             for rep in new_reps {
-                // Update indices
-                for accession in &rep.accessions {
-                    self.accession_index.write().unwrap().insert(
-                        accession.clone(),
-                        hash.clone(),
-                        rep.source.clone(),
-                    )?;
-                }
+                // Skip index updates in streaming mode to save memory
+                if !self.is_streaming_mode() {
+                    // Update accession index in RocksDB
+                    for accession in &rep.accessions {
+                        let key = format!("acc:{}", accession);
 
-                if let Some(taxon_id) = rep.taxon_id {
-                    self.taxonomy_index.write().unwrap().insert(taxon_id, hash.clone())?;
+                        // Get existing entry or create new
+                        let mut entry = if let Ok(Some(data)) = self.backend.get_index(&key) {
+                            bincode::deserialize::<AccessionEntry>(&data).unwrap_or_else(|_| {
+                                AccessionEntry {
+                                    sequence_hash: hash.clone(),
+                                    sources: Vec::new(),
+                                }
+                            })
+                        } else {
+                            AccessionEntry {
+                                sequence_hash: hash.clone(),
+                                sources: Vec::new(),
+                            }
+                        };
+
+                        // Add source if not already present
+                        if !entry.sources.contains(&rep.source) {
+                            entry.sources.push(rep.source.clone());
+                        }
+
+                        // Store updated entry
+                        if let Ok(data) = bincode::serialize(&entry) {
+                            if let Err(e) = self.backend.put_index(&key, &data) {
+                                tracing::warn!("Failed to update accession index: {}", e);
+                            }
+                        }
+                    }
+
+                    // Update taxonomy index in RocksDB
+                    if let Some(taxon_id) = rep.taxon_id {
+                        let key = format!("tax:{}", taxon_id.0);
+                        if let Err(e) = self.backend.append_to_index_list(&key, hash) {
+                            tracing::warn!("Failed to update taxonomy index: {}", e);
+                        }
+                    }
                 }
 
                 existing.add_representation(rep.clone());
@@ -612,10 +668,17 @@ impl SequenceStorage {
         let representations = self.backend.load_representations(hash)?;
 
         // Get the first ID from accessions or header
-        let id = representations.representations
+        let id = representations
+            .representations
             .first()
-            .and_then(|r| r.accessions.first().cloned()
-                .or_else(|| r.header.split_whitespace().next().map(|s| s.trim_start_matches('>').to_string())))
+            .and_then(|r| {
+                r.accessions.first().cloned().or_else(|| {
+                    r.header
+                        .split_whitespace()
+                        .next()
+                        .map(|s| s.trim_start_matches('>').to_string())
+                })
+            })
             .ok_or_else(|| anyhow!("No representations found for sequence"))?;
 
         Ok(SequenceInfo {
@@ -654,12 +717,19 @@ impl SequenceStorage {
 
     /// Find sequence by accession
     pub fn find_by_accession(&self, accession: &str) -> Result<Option<SHA256Hash>> {
-        self.accession_index.read().unwrap().get(accession)
+        let key = format!("acc:{}", accession);
+        if let Ok(Some(data)) = self.backend.get_index(&key) {
+            if let Ok(entry) = bincode::deserialize::<AccessionEntry>(&data) {
+                return Ok(Some(entry.sequence_hash));
+            }
+        }
+        Ok(None)
     }
 
     /// Find sequences by taxonomy
     pub fn find_by_taxon(&self, taxon_id: crate::types::TaxonId) -> Result<Vec<SHA256Hash>> {
-        self.taxonomy_index.read().unwrap().get(taxon_id)
+        let key = format!("tax:{}", taxon_id.0);
+        Ok(self.backend.get_index_list(&key)?)
     }
 
     /// Get storage statistics
@@ -675,6 +745,11 @@ impl SequenceStorage {
     /// Check if a canonical sequence exists
     pub fn canonical_exists(&self, hash: &SHA256Hash) -> Result<bool> {
         self.backend.sequence_exists(hash)
+    }
+
+    /// Check if multiple sequences exist (batch operation for performance)
+    pub fn canonical_exists_batch(&self, hashes: &[SHA256Hash]) -> Result<Vec<bool>> {
+        self.backend.sequences_exist_batch(hashes)
     }
 
     /// Load representations for a sequence
@@ -694,11 +769,22 @@ impl SequenceStorage {
 
     /// Remove a sequence from storage
     pub fn remove(&self, hash: &SHA256Hash) -> Result<()> {
-        // Remove from indices
-        self.accession_index.write().unwrap().remove_by_hash(hash);
-        self.taxonomy_index.write().unwrap().remove_by_hash(hash);
+        // First get the sequence to find its metadata
+        if let Ok(_seq) = self.backend.get_sequence(hash) {
+            // Note: Representation removal would require implementing
+            // get_representations method in RocksDBBackend
+            // For now, we'll just handle the basic removal
 
-        // Remove from backend
+            // Remove from similarity index if present
+            if let Ok(similar) = self.backend.get_similar_sequences(hash, 1.0) {
+                for similar_hash in similar {
+                    // Remove this hash from the similar sequence's index
+                    self.backend.remove_similarity_edge(hash, &similar_hash)?;
+                }
+            }
+        }
+
+        // Finally, remove the sequence itself from backend
         self.backend.remove_sequence(hash)
     }
 
@@ -706,44 +792,59 @@ impl SequenceStorage {
     pub fn rebuild_index(&self) -> Result<()> {
         println!("Rebuilding sequence storage indices...");
 
-        // First rebuild the backend's internal index
-        if let Some(packed) = self.backend.as_any().downcast_ref::<PackedSequenceStorage>() {
-            packed.rebuild_index()?;
-        }
-
-        // Clear existing secondary indices
-        {
-            let mut accession_idx = self.accession_index.write().unwrap();
-            accession_idx.entries.clear();
-        }
-        {
-            let mut taxonomy_idx = self.taxonomy_index.write().unwrap();
-            taxonomy_idx.taxonomy_map.clear();
-        }
+        // Clearing RocksDB indices would require iterating and deleting all keys
+        // For now, we'll overwrite as we go
 
         // Rebuild secondary indices from backend data
         let all_hashes = self.backend.list_all_hashes()?;
-        println!("  Rebuilding secondary indices for {} sequences", all_hashes.len());
+        println!(
+            "  Rebuilding secondary indices for {} sequences",
+            all_hashes.len()
+        );
 
         for hash in &all_hashes {
             // Load representations to rebuild indices
             if let Ok(representations) = self.backend.load_representations(hash) {
-                // Update accession index
-                {
-                    let mut accession_idx = self.accession_index.write().unwrap();
-                    for repr in &representations.representations {
-                        // Process all accessions for this representation
-                        for accession in &repr.accessions {
-                            accession_idx.insert(accession.clone(), hash.clone(), repr.source.clone())?;
+                // Update accession index in RocksDB
+                for repr in &representations.representations {
+                    // Process all accessions for this representation
+                    for accession in &repr.accessions {
+                        let key = format!("acc:{}", accession);
+
+                        // Get existing entry or create new
+                        let mut entry = if let Ok(Some(data)) = self.backend.get_index(&key) {
+                            bincode::deserialize::<AccessionEntry>(&data).unwrap_or_else(|_| {
+                                AccessionEntry {
+                                    sequence_hash: hash.clone(),
+                                    sources: Vec::new(),
+                                }
+                            })
+                        } else {
+                            AccessionEntry {
+                                sequence_hash: hash.clone(),
+                                sources: Vec::new(),
+                            }
+                        };
+
+                        // Add source if not already present
+                        if !entry.sources.contains(&repr.source) {
+                            entry.sources.push(repr.source.clone());
+                        }
+
+                        // Store updated entry
+                        if let Ok(data) = bincode::serialize(&entry) {
+                            if let Err(e) = self.backend.put_index(&key, &data) {
+                                tracing::warn!("Failed to update accession index: {}", e);
+                            }
                         }
                     }
                 }
 
-                // Update taxonomy index - check each representation for taxon_id
+                // Update taxonomy index in RocksDB
                 for repr in &representations.representations {
                     if let Some(taxon_id) = repr.taxon_id {
-                        let mut taxonomy_idx = self.taxonomy_index.write().unwrap();
-                        taxonomy_idx.insert(taxon_id, hash.clone())?;
+                        let key = format!("tax:{}", taxon_id.0);
+                        let _ = self.backend.append_to_index_list(&key, hash);
                     }
                 }
             }
@@ -759,130 +860,16 @@ impl SequenceStorage {
     /// Flush any pending writes to disk
     pub fn flush(&self) -> Result<()> {
         // Flush the backend
-        self.backend.flush()?;
+        SequenceStorageBackend::flush(&self.backend)?;
         // Save indices
         self.save_indices()
     }
-}
-
-/// Index for accession to sequence hash mapping
-struct AccessionIndex {
-    index_path: PathBuf,
-    entries: HashMap<String, AccessionEntry>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct AccessionEntry {
     sequence_hash: SHA256Hash,
     sources: Vec<DatabaseSource>,
-}
-
-impl AccessionIndex {
-    fn load_or_create(indices_dir: &Path) -> Result<Self> {
-        let index_path = indices_dir.join("accession_index.tal");
-
-        let entries = if index_path.exists() {
-            let data = fs::read(&index_path)?;
-            let decompressed = zstd::decode_all(&data[..])?;
-            rmp_serde::from_slice(&decompressed)?
-        } else {
-            HashMap::new()
-        };
-
-        Ok(Self {
-            index_path,
-            entries,
-        })
-    }
-
-    fn insert(&mut self, accession: String, hash: SHA256Hash, source: DatabaseSource) -> Result<()> {
-        match self.entries.get_mut(&accession) {
-            Some(entry) => {
-                if !entry.sources.contains(&source) {
-                    entry.sources.push(source);
-                }
-            }
-            None => {
-                self.entries.insert(
-                    accession,
-                    AccessionEntry {
-                        sequence_hash: hash,
-                        sources: vec![source],
-                    },
-                );
-            }
-        }
-        Ok(())
-    }
-
-    fn get(&self, accession: &str) -> Result<Option<SHA256Hash>> {
-        Ok(self.entries.get(accession).map(|e| e.sequence_hash.clone()))
-    }
-
-    fn save(&self) -> Result<()> {
-        let data = rmp_serde::to_vec(&self.entries)?;
-        let compressed = zstd::encode_all(&data[..], 3)?;
-        fs::write(&self.index_path, compressed)?;
-        Ok(())
-    }
-
-    fn remove_by_hash(&mut self, hash: &SHA256Hash) {
-        // Remove all entries that map to this hash
-        self.entries.retain(|_, entry| entry.sequence_hash != *hash);
-    }
-}
-
-/// Index for taxonomy to sequence mapping
-struct TaxonomyIndex {
-    index_path: PathBuf,
-    taxonomy_map: HashMap<crate::types::TaxonId, Vec<SHA256Hash>>,
-}
-
-impl TaxonomyIndex {
-    fn load_or_create(indices_dir: &Path) -> Result<Self> {
-        let index_path = indices_dir.join("taxonomy_index.tal");
-
-        let taxonomy_map = if index_path.exists() {
-            let data = fs::read(&index_path)?;
-            let decompressed = zstd::decode_all(&data[..])?;
-            rmp_serde::from_slice(&decompressed)?
-        } else {
-            HashMap::new()
-        };
-
-        Ok(Self {
-            index_path,
-            taxonomy_map,
-        })
-    }
-
-    fn insert(&mut self, taxon_id: crate::types::TaxonId, hash: SHA256Hash) -> Result<()> {
-        self.taxonomy_map
-            .entry(taxon_id)
-            .or_insert_with(Vec::new)
-            .push(hash);
-        Ok(())
-    }
-
-    fn get(&self, taxon_id: crate::types::TaxonId) -> Result<Vec<SHA256Hash>> {
-        Ok(self.taxonomy_map.get(&taxon_id).cloned().unwrap_or_default())
-    }
-
-    fn save(&self) -> Result<()> {
-        let data = rmp_serde::to_vec(&self.taxonomy_map)?;
-        let compressed = zstd::encode_all(&data[..], 3)?;
-        fs::write(&self.index_path, compressed)?;
-        Ok(())
-    }
-
-    fn remove_by_hash(&mut self, hash: &SHA256Hash) {
-        // Remove this hash from all taxonomy mappings
-        for (_, hashes) in self.taxonomy_map.iter_mut() {
-            hashes.retain(|h| h != hash);
-        }
-        // Remove any empty entries
-        self.taxonomy_map.retain(|_, hashes| !hashes.is_empty());
-    }
 }
 
 fn extract_description(header: &str) -> Option<String> {
@@ -938,7 +925,7 @@ fn parse_metadata(header: &str) -> HashMap<String, String> {
                 .unwrap_or(header.len());
 
             let value = header[start..end].trim().to_string();
-            metadata.insert(tag[..tag.len()-1].to_string(), value);
+            metadata.insert(tag[..tag.len() - 1].to_string(), value);
         }
     }
 
@@ -953,8 +940,8 @@ fn parse_metadata(header: &str) -> HashMap<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use crate::types::DatabaseSource;
+    use tempfile::TempDir;
 
     #[test]
     fn test_canonical_sequence_deduplication() {
@@ -967,8 +954,12 @@ mod tests {
         let header2 = ">seq2 different description";
         let source = DatabaseSource::Custom("custom/test".to_string());
 
-        let hash1 = seq_storage.store_sequence(sequence, header1, source.clone()).unwrap();
-        let hash2 = seq_storage.store_sequence(sequence, header2, source).unwrap();
+        let hash1 = seq_storage
+            .store_sequence(sequence, header1, source.clone())
+            .unwrap();
+        let hash2 = seq_storage
+            .store_sequence(sequence, header2, source)
+            .unwrap();
 
         // Should get the same hash for identical sequences
         assert_eq!(hash1, hash2);
@@ -991,14 +982,18 @@ mod tests {
         let header = ">test_seq test description";
         let source = DatabaseSource::Custom("custom/test".to_string());
 
-        let hash = seq_storage.store_sequence(sequence, header, source.clone()).unwrap();
+        let hash = seq_storage
+            .store_sequence(sequence, header, source.clone())
+            .unwrap();
         seq_storage.save_indices().unwrap();
 
         // Get stats before re-storing
         let stats_before = seq_storage.get_stats().unwrap();
 
         // Store the same sequence again
-        let hash2 = seq_storage.store_sequence(sequence, header, source).unwrap();
+        let hash2 = seq_storage
+            .store_sequence(sequence, header, source)
+            .unwrap();
         assert_eq!(hash, hash2);
 
         // Get stats after re-storing
@@ -1006,8 +1001,7 @@ mod tests {
 
         // Verify that the sequence count didn't increase (deduplication worked)
         assert_eq!(
-            stats_before.total_sequences,
-            stats_after.total_sequences,
+            stats_before.total_sequences, stats_after.total_sequences,
             "Sequence count should not increase for duplicate sequence"
         );
     }
@@ -1022,12 +1016,16 @@ mod tests {
         // Store from UniProt
         let uniprot_source = DatabaseSource::UniProt(talaria_core::UniProtDatabase::SwissProt);
         let uniprot_header = ">sp|P12345|PROT_HUMAN Protein from human";
-        let hash1 = seq_storage.store_sequence(sequence, uniprot_header, uniprot_source).unwrap();
+        let hash1 = seq_storage
+            .store_sequence(sequence, uniprot_header, uniprot_source)
+            .unwrap();
 
         // Store from NCBI (same sequence)
         let ncbi_source = DatabaseSource::NCBI(talaria_core::NCBIDatabase::NR);
         let ncbi_header = ">gi|123456789|ref|NP_123456.1| protein [Homo sapiens]";
-        let hash2 = seq_storage.store_sequence(sequence, ncbi_header, ncbi_source).unwrap();
+        let hash2 = seq_storage
+            .store_sequence(sequence, ncbi_header, ncbi_source)
+            .unwrap();
 
         // Should be deduplicated
         assert_eq!(hash1, hash2);
@@ -1038,7 +1036,10 @@ mod tests {
         // UniProt format extracts P12345 from sp|P12345|PROT_HUMAN
         assert!(seq_storage.find_by_accession("P12345").unwrap().is_some());
         // NCBI format extracts NP_123456 from gi|123456789|ref|NP_123456.1|
-        assert!(seq_storage.find_by_accession("NP_123456").unwrap().is_some());
+        assert!(seq_storage
+            .find_by_accession("NP_123456")
+            .unwrap()
+            .is_some());
     }
 
     #[test]
@@ -1052,7 +1053,9 @@ mod tests {
         for i in 0..100 {
             let sequence = format!("ACGT{}", "A".repeat(i));
             let header = format!(">seq{} description", i);
-            seq_storage.store_sequence(&sequence, &header, source.clone()).unwrap();
+            seq_storage
+                .store_sequence(&sequence, &header, source.clone())
+                .unwrap();
         }
 
         // Save indices once at the end

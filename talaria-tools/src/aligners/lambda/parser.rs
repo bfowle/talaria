@@ -17,10 +17,13 @@ pub(super) struct UniProtParser;
 
 impl AccessionParser for UniProtParser {
     fn can_parse(&self, header: &str) -> bool {
-        header.starts_with("sp|") || header.starts_with("tr|") ||
-        header.starts_with("sp_") || header.starts_with("tr_") ||
-        header.contains("|sp|") || header.contains("|tr|") ||
-        header.starts_with("UniRef")  // Add UniRef support
+        header.starts_with("sp|")
+            || header.starts_with("tr|")
+            || header.starts_with("sp_")
+            || header.starts_with("tr_")
+            || header.contains("|sp|")
+            || header.contains("|tr|")
+            || header.starts_with("UniRef") // Add UniRef support
     }
 
     fn parse_header(&self, header: &str) -> Vec<String> {
@@ -97,8 +100,10 @@ impl AccessionParser for NCBIParser {
 
             for (i, part) in parts.iter().enumerate() {
                 // Look for database indicators
-                if matches!(*part, "ref" | "gb" | "emb" | "dbj" | "pir" | "prf" | "tpg" | "tpe" | "tpd")
-                    && i + 1 < parts.len()
+                if matches!(
+                    *part,
+                    "ref" | "gb" | "emb" | "dbj" | "pir" | "prf" | "tpg" | "tpe" | "tpd"
+                ) && i + 1 < parts.len()
                 {
                     let acc = parts[i + 1];
                     // Add with and without version
@@ -122,10 +127,9 @@ impl AccessionParser for NCBIParser {
 
             // Handle gi numbers (legacy but still found)
             for (i, part) in parts.iter().enumerate() {
-                if *part == "gi" && i + 1 < parts.len()
-                    && parts[i + 1].parse::<u64>().is_ok() {
-                        accessions.push(parts[i + 1].to_string());
-                    }
+                if *part == "gi" && i + 1 < parts.len() && parts[i + 1].parse::<u64>().is_ok() {
+                    accessions.push(parts[i + 1].to_string());
+                }
             }
         }
 
@@ -156,11 +160,31 @@ impl NCBIParser {
         // RefSeq patterns: NP_, XP_, YP_, WP_, AP_, NM_, XM_, NR_, XR_, etc.
         if acc.len() >= 3 && acc.is_char_boundary(2) {
             let prefix = &acc[..2];
-            if matches!(prefix, "NP" | "XP" | "YP" | "WP" | "AP" |
-                               "NM" | "XM" | "NR" | "XR" | "NG" | "NC" |
-                               "NT" | "NW" | "NZ" | "AC" | "AE" | "AF" |
-                               "AJ" | "AM" | "AY" | "BK" | "CP" | "CU")
-                && acc.chars().nth(2) == Some('_')
+            if matches!(
+                prefix,
+                "NP" | "XP"
+                    | "YP"
+                    | "WP"
+                    | "AP"
+                    | "NM"
+                    | "XM"
+                    | "NR"
+                    | "XR"
+                    | "NG"
+                    | "NC"
+                    | "NT"
+                    | "NW"
+                    | "NZ"
+                    | "AC"
+                    | "AE"
+                    | "AF"
+                    | "AJ"
+                    | "AM"
+                    | "AY"
+                    | "BK"
+                    | "CP"
+                    | "CU"
+            ) && acc.chars().nth(2) == Some('_')
             {
                 return true;
             }
@@ -181,7 +205,10 @@ impl NCBIParser {
         // Note: Single letter + digits (e.g., P12345) is typically UniProt, not NCBI
         if acc.len() >= 7 && acc.len() <= 10 {
             let alpha_count = acc.chars().take_while(|c| c.is_ascii_alphabetic()).count();
-            let digit_count = acc[alpha_count..].chars().filter(|c| c.is_ascii_digit()).count();
+            let digit_count = acc[alpha_count..]
+                .chars()
+                .filter(|c| c.is_ascii_digit())
+                .count();
 
             if (2..=3).contains(&alpha_count) && digit_count >= 5 {
                 return true;
@@ -197,8 +224,9 @@ pub(super) struct PDBParser;
 
 impl AccessionParser for PDBParser {
     fn can_parse(&self, header: &str) -> bool {
-        header.contains("pdb|") ||
-        (header.len() >= 4 && self.looks_like_pdb(header.split_whitespace().next().unwrap_or("")))
+        header.contains("pdb|")
+            || (header.len() >= 4
+                && self.looks_like_pdb(header.split_whitespace().next().unwrap_or("")))
     }
 
     fn parse_header(&self, header: &str) -> Vec<String> {
@@ -213,8 +241,12 @@ impl AccessionParser for PDBParser {
                     // Sometimes chain is in next part
                     if i + 2 < parts.len() {
                         // Extract just the chain ID (typically first word/character)
-                        let chain_part = parts[i + 2].split_whitespace().next().unwrap_or(parts[i + 2]);
-                        if chain_part.len() <= 2 {  // Chain IDs are typically 1-2 chars
+                        let chain_part = parts[i + 2]
+                            .split_whitespace()
+                            .next()
+                            .unwrap_or(parts[i + 2]);
+                        if chain_part.len() <= 2 {
+                            // Chain IDs are typically 1-2 chars
                             accessions.push(format!("{}_{}", parts[i + 1], chain_part));
                         }
                     }
@@ -272,14 +304,27 @@ impl AccessionParser for GenericParser {
                 for (i, part) in parts_vec.iter().enumerate() {
                     if !part.is_empty() && part.len() > 2 {
                         // Skip database indicators and very short strings
-                        if !matches!(*part, "gi" | "ref" | "gb" | "emb" | "dbj" |
-                                          "pir" | "sp" | "tr" | "pdb" | "lcl" | "gnl") {
-
+                        if !matches!(
+                            *part,
+                            "gi" | "ref"
+                                | "gb"
+                                | "emb"
+                                | "dbj"
+                                | "pir"
+                                | "sp"
+                                | "tr"
+                                | "pdb"
+                                | "lcl"
+                                | "gnl"
+                        ) {
                             // Skip UniProt entry names (third field in sp|ACC|ENTRY_SPECIES format)
                             // Check if this looks like a UniProt header and we're at position 2
-                            if i == 2 && i < parts_vec.len() && parts_vec.len() >= 3 &&
-                               (parts_vec[0] == "sp" || parts_vec[0] == "tr") &&
-                               part.contains('_') {
+                            if i == 2
+                                && i < parts_vec.len()
+                                && parts_vec.len() >= 3
+                                && (parts_vec[0] == "sp" || parts_vec[0] == "tr")
+                                && part.contains('_')
+                            {
                                 // This is likely an entry name like Q0NJW0_VARV, skip it
                                 continue;
                             }
@@ -440,7 +485,8 @@ mod tests {
         let parser = UniProtParser;
 
         // Multiple pipes in description (no > prefix for individual parsers)
-        let header = "sp|P31946|1433B_HUMAN 14-3-3 protein beta/alpha OS=Homo sapiens GN=YWHAB PE=1 SV=3";
+        let header =
+            "sp|P31946|1433B_HUMAN 14-3-3 protein beta/alpha OS=Homo sapiens GN=YWHAB PE=1 SV=3";
         let accessions = parser.parse_header(header);
         assert!(accessions.contains(&"P31946".to_string()));
     }
@@ -560,9 +606,9 @@ mod tests {
         assert!(parser.looks_like_ncbi_accession("CAD98765"));
 
         // Invalid
-        assert!(!parser.looks_like_ncbi_accession("P12345"));  // UniProt
-        assert!(!parser.looks_like_ncbi_accession("1ABC"));     // PDB
-        assert!(!parser.looks_like_ncbi_accession("ABC"));      // Too short
+        assert!(!parser.looks_like_ncbi_accession("P12345")); // UniProt
+        assert!(!parser.looks_like_ncbi_accession("1ABC")); // PDB
+        assert!(!parser.looks_like_ncbi_accession("ABC")); // Too short
         assert!(!parser.looks_like_ncbi_accession("ABCD1234")); // Wrong pattern
     }
 
@@ -620,9 +666,9 @@ mod tests {
         assert!(parser.looks_like_pdb("3A4B"));
         assert!(parser.looks_like_pdb("1ABC_A"));
 
-        assert!(!parser.looks_like_pdb("ABC"));    // Too short
-        assert!(!parser.looks_like_pdb("ABCDE"));  // Too long
-        assert!(!parser.looks_like_pdb("AB-D"));   // Invalid char
+        assert!(!parser.looks_like_pdb("ABC")); // Too short
+        assert!(!parser.looks_like_pdb("ABCDE")); // Too long
+        assert!(!parser.looks_like_pdb("AB-D")); // Invalid char
     }
 
     #[test]
@@ -819,16 +865,7 @@ mod tests {
 
         // Various malformed inputs
         let malformed = vec![
-            "",
-            "|||",
-            "sp||",
-            "ref||",
-            "pdb||",
-            ">>>>>",
-            "   ",
-            "\n\n",
-            "sp|",
-            "|P12345|",
+            "", "|||", "sp||", "ref||", "pdb||", ">>>>>", "   ", "\n\n", "sp|", "|P12345|",
         ];
 
         for input in malformed {

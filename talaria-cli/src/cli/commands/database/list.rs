@@ -48,9 +48,9 @@ pub enum SortField {
 }
 
 pub fn run(args: ListArgs) -> anyhow::Result<()> {
-    use talaria_sequoia::database::DatabaseManager;
     use crate::cli::progress::create_spinner;
     use humansize::{format_size, BINARY};
+    use talaria_sequoia::database::DatabaseManager;
 
     // Check if we need bi-temporal listing
     if args.sequence_date.is_some() || args.taxonomy_date.is_some() {
@@ -62,6 +62,13 @@ pub fn run(args: ListArgs) -> anyhow::Result<()> {
     // Initialize database manager
     let spinner = create_spinner("Scanning for databases...");
     let manager = DatabaseManager::new(None)?;
+
+    // If --all-versions is specified, show version hierarchy
+    if args.all_versions {
+        spinner.finish_and_clear();
+        return run_all_versions_list(&manager);
+    }
+
     let databases = manager.list_databases()?;
     spinner.finish_and_clear();
 
@@ -151,29 +158,93 @@ pub fn run(args: ListArgs) -> anyhow::Result<()> {
         println!("{}", table);
     }
 
-    // Show repository stats as tree
-    let stats = manager.get_stats()?;
-    subsection_header("Repository Statistics");
-    let stats_items = [("Total chunks", format_number(stats.total_chunks)),
-        ("Total size", format_size(stats.total_size, BINARY)),
-        ("Compressed chunks", format_number(stats.compressed_chunks)),
-        (
-            "Deduplication ratio",
-            format!("{:.2}x", stats.deduplication_ratio),
-        )];
+    Ok(())
+}
 
-    for (i, (label, value)) in stats_items.iter().enumerate() {
-        tree_item(i == stats_items.len() - 1, label, Some(value));
+fn run_all_versions_list(manager: &talaria_sequoia::database::DatabaseManager) -> anyhow::Result<()> {
+    use humansize::{format_size, BINARY};
+    use std::collections::HashMap;
+
+    // Get all databases and group by source/dataset
+    let databases = manager.list_databases()?;
+
+    if databases.is_empty() {
+        empty("No databases found in repository");
+        info("Use 'talaria database download' to get started.");
+        return Ok(());
     }
+
+    // Group databases by source/dataset name
+    let mut grouped: HashMap<String, Vec<_>> = HashMap::new();
+    for db in databases {
+        grouped.entry(db.name.clone()).or_default().push(db);
+    }
+
+    // Sort by database name
+    let mut db_names: Vec<_> = grouped.keys().cloned().collect();
+    db_names.sort();
+
+    println!();
+    for (idx, db_name) in db_names.iter().enumerate() {
+        let versions = &grouped[db_name];
+        let is_last_db = idx == db_names.len() - 1;
+
+        // Database name with count
+        println!(
+            "{} {} {} {}",
+            "●".cyan().bold(),
+            db_name.bold(),
+            format!("({} version{})", versions.len(), if versions.len() == 1 { "" } else { "s" }).dimmed(),
+            format!("└ RocksDB: manifest:{}:*", db_name.replace('/', ":")).dimmed()
+        );
+
+        // Sort versions by date (newest first)
+        let mut sorted_versions = versions.clone();
+        sorted_versions.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+        // Show each version
+        for (v_idx, version) in sorted_versions.iter().enumerate() {
+            let is_last_version = v_idx == sorted_versions.len() - 1;
+            let prefix = if is_last_version { "└─" } else { "├─" };
+
+            // Check if this is current version by looking at version string
+            let is_current = version.reduction_profiles.is_empty(); // Simple heuristic for now
+
+            let version_marker = if is_current {
+                "▶".green().bold()
+            } else {
+                "○".dimmed()
+            };
+
+            println!(
+                "  {} {} {} {} {} {} {}",
+                prefix.dimmed(),
+                version_marker,
+                version.version.cyan(),
+                format!("({})", version.created_at.format("%Y-%m-%d %H:%M")).dimmed(),
+                format!("─").dimmed(),
+                format!("{} chunks", format_number(version.chunk_count)).dimmed(),
+                format!("({})", format_size(version.total_size, BINARY)).dimmed()
+            );
+        }
+
+        if !is_last_db {
+            println!();
+        }
+    }
+
+    println!();
+    info("Use 'talaria database versions list <database>' for detailed version info");
+    info(&format!("Storage location: {}", talaria_core::system::paths::talaria_databases_dir().join("sequences/rocksdb").display()));
 
     Ok(())
 }
 
 fn run_bitemporal_list(args: ListArgs) -> anyhow::Result<()> {
-    use talaria_sequoia::{BiTemporalDatabase, SEQUOIAStorage};
-    use chrono::{Utc, NaiveDate};
+    use chrono::{NaiveDate, Utc};
     use std::sync::Arc;
     use talaria_core::system::paths;
+    use talaria_sequoia::{BiTemporalDatabase, SequoiaStorage};
 
     // Parse the dates
     let sequence_date = if let Some(date_str) = &args.sequence_date {
@@ -198,8 +269,16 @@ fn run_bitemporal_list(args: ListArgs) -> anyhow::Result<()> {
 
     section_header("Bi-Temporal Database Listing");
 
-    tree_item(false, "Sequence Date", Some(&sequence_date.format("%Y-%m-%d").to_string()));
-    tree_item(false, "Taxonomy Date", Some(&taxonomy_date.format("%Y-%m-%d").to_string()));
+    tree_item(
+        false,
+        "Sequence Date",
+        Some(&sequence_date.format("%Y-%m-%d").to_string()),
+    );
+    tree_item(
+        false,
+        "Taxonomy Date",
+        Some(&taxonomy_date.format("%Y-%m-%d").to_string()),
+    );
 
     subsection_header("Available Databases");
 
@@ -229,9 +308,10 @@ fn run_bitemporal_list(args: ListArgs) -> anyhow::Result<()> {
                         let db_name = format!("{}/{}", source_str, dataset_str);
 
                         // Try to create bi-temporal database
-                        if let Ok(storage) = SEQUOIAStorage::new(&db_path) {
+                        if let Ok(storage) = SequoiaStorage::new(&db_path) {
                             let storage = Arc::new(storage);
-                            if let Ok(mut bitemporal_db) = BiTemporalDatabase::new(storage.clone()) {
+                            if let Ok(mut bitemporal_db) = BiTemporalDatabase::new(storage.clone())
+                            {
                                 // Check if we can query at these dates
                                 match bitemporal_db.query_at(sequence_date, taxonomy_date) {
                                     Ok(snapshot) => {
@@ -240,8 +320,20 @@ fn run_bitemporal_list(args: ListArgs) -> anyhow::Result<()> {
 
                                         let items = vec![
                                             ("Sequences", format_number(snapshot.sequence_count())),
-                                            ("Sequence Root", format!("{:8}...", &snapshot.sequence_root().to_string()[..8])),
-                                            ("Taxonomy Root", format!("{:8}...", &snapshot.taxonomy_root().to_string()[..8])),
+                                            (
+                                                "Sequence Root",
+                                                format!(
+                                                    "{:8}...",
+                                                    &snapshot.sequence_root().to_string()[..8]
+                                                ),
+                                            ),
+                                            (
+                                                "Taxonomy Root",
+                                                format!(
+                                                    "{:8}...",
+                                                    &snapshot.taxonomy_root().to_string()[..8]
+                                                ),
+                                            ),
                                         ];
 
                                         for (label, value) in &items {

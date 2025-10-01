@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 /// MMseqs2-specific optimizations for sensitive protein search
 ///
 /// MMseqs2 uses profile searches and cascaded clustering.
@@ -7,7 +8,6 @@
 /// 3. Optimizing for k-mer prefiltering
 /// 4. Maintaining sensitivity levels (s1-s7.5)
 use talaria_bio::sequence::Sequence;
-use std::collections::{HashMap, HashSet};
 
 #[allow(dead_code)]
 pub struct MMseqs2Optimizer {
@@ -221,10 +221,7 @@ impl MMseqs2Optimizer {
 
         for seq in sequences.drain(..) {
             let length_bin = (seq.len() / 50) * 50; // Bin by 50 AA increments
-            length_groups
-                .entry(length_bin)
-                .or_default()
-                .push(seq);
+            length_groups.entry(length_bin).or_default().push(seq);
         }
 
         // Select representatives from each length group

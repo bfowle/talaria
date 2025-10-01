@@ -2,14 +2,15 @@
 //!
 //! Provides specialized assertions for bioinformatics data.
 
-use talaria_core::types::{SHA256Hash, TaxonId};
 use std::collections::HashSet;
+use talaria_core::types::{SHA256Hash, TaxonId};
 
 /// Assert that two sequences are similar within a threshold
 pub fn assert_sequence_similarity(seq1: &str, seq2: &str, min_similarity: f64) {
     assert_eq!(seq1.len(), seq2.len(), "Sequences must have same length");
 
-    let matches = seq1.chars()
+    let matches = seq1
+        .chars()
         .zip(seq2.chars())
         .filter(|(a, b)| a == b)
         .count();
@@ -38,7 +39,8 @@ pub fn assert_valid_fasta(content: &str) {
             has_header = true;
         } else if !line.is_empty() {
             assert!(
-                line.chars().all(|c| "ATGCNRYKMSWBDHV-".contains(c.to_ascii_uppercase())),
+                line.chars()
+                    .all(|c| "ATGCNRYKMSWBDHV-".contains(c.to_ascii_uppercase())),
                 "Invalid sequence character found: {}",
                 line
             );
@@ -82,11 +84,7 @@ pub fn assert_taxonomy_filter(
 }
 
 /// Assert storage statistics are within expected ranges
-pub fn assert_storage_stats(
-    total_sequences: usize,
-    unique_sequences: usize,
-    min_dedup_ratio: f64,
-) {
+pub fn assert_storage_stats(total_sequences: usize, unique_sequences: usize, min_dedup_ratio: f64) {
     let dedup_ratio = if total_sequences > 0 {
         (total_sequences - unique_sequences) as f64 / total_sequences as f64
     } else {

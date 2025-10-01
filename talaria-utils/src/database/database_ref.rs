@@ -49,7 +49,6 @@ pub fn parse_database_reference(input: &str) -> Result<DatabaseReference> {
 }
 
 /// Parse a database reference in the format "source/dataset"
-/// This is the legacy function for backward compatibility
 ///
 /// # Examples
 /// - "uniprot/swissprot" -> ("uniprot", "swissprot")

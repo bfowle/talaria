@@ -4,11 +4,9 @@ pub mod stats;
 
 // Re-export commonly used types
 pub use core::{
-    TaxonomyDB, TaxonomyInfo, TaxonomySources, TaxonomicRank,
-    TaxonomySource, TaxonomyConfidence, TaxonomyResolution,
-    TaxonomyDiscrepancy, TaxonomyResolver, TaxonomyEnrichable,
-    SequenceProvider, parse_taxonomy_from_description, extract_accession_from_id,
-    ncbi
+    extract_accession_from_id, ncbi, parse_taxonomy_from_description, SequenceProvider,
+    TaxonomicRank, TaxonomyConfidence, TaxonomyDB, TaxonomyDiscrepancy, TaxonomyEnrichable,
+    TaxonomyInfo, TaxonomyResolution, TaxonomyResolver, TaxonomySource, TaxonomySources,
 };
-pub use formatter::{TaxonomyFormatter, StandardTaxonomyFormatter};
-pub use stats::{TaxonomyCoverage, RankStats, TaxonNode, CoverageComparison, format_tree};
+pub use formatter::{StandardTaxonomyFormatter, TaxonomyFormatter};
+pub use stats::{format_tree, CoverageComparison, RankStats, TaxonNode, TaxonomyCoverage};

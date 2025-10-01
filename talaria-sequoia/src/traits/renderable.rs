@@ -1,9 +1,9 @@
-use talaria_utils::display::TreeNode;
 /// Rendering traits for temporal data visualization
 ///
 /// These traits enable rich terminal visualization of temporal query results
 /// using the existing output utilities.
 use comfy_table::Table;
+use talaria_utils::display::TreeNode;
 
 /// Trait for rendering temporal data in various formats
 pub trait TemporalRenderable {

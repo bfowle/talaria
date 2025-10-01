@@ -65,7 +65,9 @@ pub struct SyncArgs {
 }
 
 pub fn run(args: SyncArgs) -> Result<()> {
-    use talaria_sequoia::cloud::{CloudConfig, CloudSyncManager, SyncDirection, SyncOptions, create_storage};
+    use talaria_sequoia::cloud::{
+        create_storage, CloudConfig, CloudSyncManager, SyncDirection, SyncOptions,
+    };
 
     // Store verbose flag before moving args
     let verbose = args.verbose();
@@ -79,15 +81,17 @@ pub fn run(args: SyncArgs) -> Result<()> {
     };
 
     if !local_path.exists() {
-        anyhow::bail!("SEQUOIA repository not found at {}. Initialize it first with 'talaria sequoia init'", local_path.display());
+        anyhow::bail!(
+            "SEQUOIA repository not found at {}. Initialize it first with 'talaria sequoia init'",
+            local_path.display()
+        );
     }
 
     // Create cloud configuration
     let config = match args.provider.to_lowercase().as_str() {
         "s3" => {
             let region = args.region.unwrap_or_else(|| {
-                std::env::var("AWS_DEFAULT_REGION")
-                    .unwrap_or_else(|_| "us-east-1".to_string())
+                std::env::var("AWS_DEFAULT_REGION").unwrap_or_else(|_| "us-east-1".to_string())
             });
 
             CloudConfig::S3 {
@@ -109,22 +113,15 @@ pub fn run(args: SyncArgs) -> Result<()> {
     };
 
     // Create cloud storage
-    let storage = tokio::runtime::Runtime::new()?.block_on(async {
-        create_storage(&config)
-    })?;
+    let storage = tokio::runtime::Runtime::new()?.block_on(async { create_storage(&config) })?;
 
     // Create sync manager
-    let sync_manager = CloudSyncManager::new(
-        storage,
-        local_path.clone(),
-        args.prefix.clone(),
-    );
+    let sync_manager = CloudSyncManager::new(storage, local_path.clone(), args.prefix.clone());
 
     // Show status if requested
     if args.status {
-        let status = tokio::runtime::Runtime::new()?.block_on(async {
-            sync_manager.get_status().await
-        })?;
+        let status =
+            tokio::runtime::Runtime::new()?.block_on(async { sync_manager.get_status().await })?;
 
         println!("\n{}", "═".repeat(60));
         println!("{:^60}", "CLOUD SYNC STATUS");
@@ -139,7 +136,11 @@ pub fn run(args: SyncArgs) -> Result<()> {
         println!("{} {}", "Cloud chunks:".bold(), status.cloud_chunks);
 
         if let Some(last_sync) = status.last_sync {
-            println!("{} {}", "Last sync:".bold(), last_sync.format("%Y-%m-%d %H:%M:%S UTC"));
+            println!(
+                "{} {}",
+                "Last sync:".bold(),
+                last_sync.format("%Y-%m-%d %H:%M:%S UTC")
+            );
         } else {
             println!("{} Never synced", "Last sync:".bold());
         }
@@ -173,12 +174,14 @@ pub fn run(args: SyncArgs) -> Result<()> {
     println!("{} Starting sync...", "►".cyan().bold());
 
     if args.dry_run {
-        println!("{} Running in dry-run mode (no changes will be made)", "[DRY RUN]".yellow().bold());
+        println!(
+            "{} Running in dry-run mode (no changes will be made)",
+            "[DRY RUN]".yellow().bold()
+        );
     }
 
-    let result = tokio::runtime::Runtime::new()?.block_on(async {
-        sync_manager.sync(&options).await
-    })?;
+    let result =
+        tokio::runtime::Runtime::new()?.block_on(async { sync_manager.sync(&options).await })?;
 
     // Update last sync time if not dry run
     if !args.dry_run {
@@ -192,7 +195,11 @@ pub fn run(args: SyncArgs) -> Result<()> {
     println!();
 
     if !result.uploaded.is_empty() {
-        println!("{} Uploaded {} files", "▲".green().bold(), result.uploaded.len());
+        println!(
+            "{} Uploaded {} files",
+            "▲".green().bold(),
+            result.uploaded.len()
+        );
         if verbose {
             for file in &result.uploaded[..5.min(result.uploaded.len())] {
                 println!("  • {}", file);
@@ -204,7 +211,11 @@ pub fn run(args: SyncArgs) -> Result<()> {
     }
 
     if !result.downloaded.is_empty() {
-        println!("{} Downloaded {} files", "▼".blue().bold(), result.downloaded.len());
+        println!(
+            "{} Downloaded {} files",
+            "▼".blue().bold(),
+            result.downloaded.len()
+        );
         if verbose {
             for file in &result.downloaded[..5.min(result.downloaded.len())] {
                 println!("  • {}", file);
@@ -216,15 +227,27 @@ pub fn run(args: SyncArgs) -> Result<()> {
     }
 
     if !result.deleted.is_empty() {
-        println!("{} Deleted {} files", "✗".red().bold(), result.deleted.len());
+        println!(
+            "{} Deleted {} files",
+            "✗".red().bold(),
+            result.deleted.len()
+        );
     }
 
     if !result.skipped.is_empty() {
-        println!("{} Skipped {} files (unchanged)", "○".white().bold(), result.skipped.len());
+        println!(
+            "{} Skipped {} files (unchanged)",
+            "○".white().bold(),
+            result.skipped.len()
+        );
     }
 
     if !result.errors.is_empty() {
-        println!("{} {} errors occurred", "⚠".red().bold(), result.errors.len());
+        println!(
+            "{} {} errors occurred",
+            "⚠".red().bold(),
+            result.errors.len()
+        );
         for (file, error) in &result.errors[..5.min(result.errors.len())] {
             println!("  • {}: {}", file, error);
         }
@@ -234,10 +257,16 @@ pub fn run(args: SyncArgs) -> Result<()> {
     }
 
     println!();
-    println!("{} {:.2} MB", "Data transferred:".bold(),
-             result.bytes_transferred as f64 / 1_048_576.0);
-    println!("{} {:.2} seconds", "Duration:".bold(),
-             result.duration.as_secs_f64());
+    println!(
+        "{} {:.2} MB",
+        "Data transferred:".bold(),
+        result.bytes_transferred as f64 / 1_048_576.0
+    );
+    println!(
+        "{} {:.2} seconds",
+        "Duration:".bold(),
+        result.duration.as_secs_f64()
+    );
 
     if result.bytes_transferred > 0 {
         let mbps = (result.bytes_transferred as f64 / 1_048_576.0) / result.duration.as_secs_f64();
@@ -247,7 +276,11 @@ pub fn run(args: SyncArgs) -> Result<()> {
     println!();
 
     if !result.errors.is_empty() {
-        println!("{} Sync completed with {} errors", "⚠".yellow().bold(), result.errors.len());
+        println!(
+            "{} Sync completed with {} errors",
+            "⚠".yellow().bold(),
+            result.errors.len()
+        );
     } else {
         println!("{} Sync completed successfully!", "✓".green().bold());
     }

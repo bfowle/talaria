@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 /// Diamond-specific optimizations for fast protein alignment
 ///
 /// Diamond uses a double-indexing strategy with seeds and reduced alphabet.
@@ -7,7 +8,6 @@
 /// 3. Preserving taxonomic representation for metagenomics
 /// 4. Optimizing for block-aligning algorithm
 use talaria_bio::sequence::Sequence;
-use std::collections::{HashMap, HashSet};
 
 #[allow(dead_code)]
 pub struct DiamondOptimizer {
@@ -66,10 +66,7 @@ impl DiamondOptimizer {
         // Group by taxonomy
         for seq in sequences.drain(..) {
             if let Some(taxon_id) = seq.taxon_id {
-                taxonomy_groups
-                    .entry(taxon_id)
-                    .or_default()
-                    .push(seq);
+                taxonomy_groups.entry(taxon_id).or_default().push(seq);
             } else {
                 no_taxonomy.push(seq);
             }

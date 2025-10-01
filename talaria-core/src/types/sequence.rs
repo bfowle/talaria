@@ -38,7 +38,8 @@ impl SequenceType {
             return Self::Unknown;
         }
 
-        let nucleotide_count = upper.chars()
+        let nucleotide_count = upper
+            .chars()
             .filter(|c| nucleotide_chars.contains(c))
             .count();
 

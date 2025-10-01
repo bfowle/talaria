@@ -1,4 +1,3 @@
-use talaria_bio::sequence::Sequence;
 use crate::temporal::{SequenceVersion, TaxonomyVersion};
 use crate::types::{BiTemporalCoordinate, SHA256Hash, TaxonId};
 /// Temporal query traits for bi-temporal SEQUOIA operations
@@ -9,6 +8,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use talaria_bio::sequence::Sequence;
 
 /// Core trait for temporal queries
 #[async_trait]

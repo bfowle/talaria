@@ -5,13 +5,13 @@ use colored::*;
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use crate::cli::formatting::format_number;
+use crate::cli::progress::create_spinner;
+use crate::cli::visualize::{ascii_histogram_categorized, sparkline, CategoryCounts};
 use talaria_bio::taxonomy::{ncbi, TaxonomyDB};
+use talaria_sequoia::database::DatabaseManager;
 use talaria_sequoia::manifest::Manifest;
 use talaria_sequoia::{ManifestMetadata, TaxonId, TemporalManifest};
-use crate::cli::formatting::format_number;
-use crate::cli::visualize::{ascii_histogram_categorized, sparkline, CategoryCounts};
-use talaria_sequoia::database::DatabaseManager;
-use crate::cli::progress::create_spinner;
 
 /// Trait for inspecting manifest contents
 pub trait ManifestInspector {
@@ -35,7 +35,8 @@ impl ManifestInspector for TemporalManifest {
         output.push_str(&format!("{}\n", "─".repeat(40)));
 
         // Group chunks by taxonomy level (keeping both name and ID)
-        let mut taxonomy_groups: BTreeMap<(String, TaxonId), Vec<&ManifestMetadata>> = BTreeMap::new();
+        let mut taxonomy_groups: BTreeMap<(String, TaxonId), Vec<&ManifestMetadata>> =
+            BTreeMap::new();
 
         // Try to load taxonomy database for better display
         let taxonomy_db = load_taxonomy_db().ok();
@@ -181,15 +182,23 @@ impl ManifestInspector for TemporalManifest {
         // Others - show top 3
         if !others.is_empty() {
             // Check if all organisms have unknown taxonomy
-            let all_unknown = others.iter().all(|((_, taxon_id), _, _, _)| taxon_id.0 == 0);
+            let all_unknown = others
+                .iter()
+                .all(|((_, taxon_id), _, _, _)| taxon_id.0 == 0);
 
-            if all_unknown && model_organisms.is_empty() && pathogens.is_empty() && environmental.is_empty() {
+            if all_unknown
+                && model_organisms.is_empty()
+                && pathogens.is_empty()
+                && environmental.is_empty()
+            {
                 output.push_str(&format!("\n  {} Other Organisms:\n", "●".white()));
-                output.push_str(&format!("    {} No taxonomy data available for this database\n", "ℹ".blue()));
+                output.push_str(&format!(
+                    "    {} No taxonomy data available for this database\n",
+                    "ℹ".blue()
+                ));
 
                 // Show summary for unknown organisms
-                for ((name, taxon_id), chunks, total_sequences, total_size) in
-                    others.iter().take(1)
+                for ((name, taxon_id), chunks, total_sequences, total_size) in others.iter().take(1)
                 {
                     output.push_str(&format_category_entry(
                         name,
@@ -246,7 +255,8 @@ impl ManifestInspector for TemporalManifest {
         output.push_str(&format!("{}\n", "─".repeat(40)));
 
         // Load taxonomy database for categorization
-        let taxonomy_path = talaria_core::system::paths::talaria_databases_dir().join("taxonomy/current");
+        let taxonomy_path =
+            talaria_core::system::paths::talaria_databases_dir().join("taxonomy/current");
         let names_path = taxonomy_path.join("names.dmp");
         let nodes_path = taxonomy_path.join("nodes.dmp");
 
@@ -520,7 +530,10 @@ impl ManifestInspector for talaria_sequoia::ReductionManifest {
         output.push_str(&format!("{}\n", "─".repeat(40)));
 
         // Group reference chunks by taxonomy
-        let mut taxonomy_groups: BTreeMap<(String, TaxonId), Vec<&talaria_sequoia::operations::ReferenceChunk>> = BTreeMap::new();
+        let mut taxonomy_groups: BTreeMap<
+            (String, TaxonId),
+            Vec<&talaria_sequoia::operations::ReferenceChunk>,
+        > = BTreeMap::new();
 
         // Try to load taxonomy database for better display
         let taxonomy_db = load_taxonomy_db().ok();
@@ -575,7 +588,12 @@ impl ManifestInspector for talaria_sequoia::ReductionManifest {
         }
 
         // Helper to format entries
-        let format_entry = |name: &str, taxon_id: &TaxonId, chunks: &[&talaria_sequoia::operations::ReferenceChunk], total_sequences: usize, total_size: usize| -> String {
+        let format_entry = |name: &str,
+                            taxon_id: &TaxonId,
+                            chunks: &[&talaria_sequoia::operations::ReferenceChunk],
+                            total_sequences: usize,
+                            total_size: usize|
+         -> String {
             let display_name = if name.starts_with("TaxID") {
                 name.to_string()
             } else {
@@ -593,38 +611,79 @@ impl ManifestInspector for talaria_sequoia::ReductionManifest {
         // Display categories
         if !model_organisms.is_empty() {
             output.push_str(&format!("\n  {} Model Organisms:\n", "●".green()));
-            for ((name, taxon_id), chunks, total_sequences, total_size) in model_organisms.iter().take(max_depth.min(5)) {
-                output.push_str(&format_entry(name, taxon_id, chunks, *total_sequences, *total_size));
+            for ((name, taxon_id), chunks, total_sequences, total_size) in
+                model_organisms.iter().take(max_depth.min(5))
+            {
+                output.push_str(&format_entry(
+                    name,
+                    taxon_id,
+                    chunks,
+                    *total_sequences,
+                    *total_size,
+                ));
             }
             if model_organisms.len() > 5 {
-                output.push_str(&format!("    └─ ... {} more model organisms\n", model_organisms.len() - 5));
+                output.push_str(&format!(
+                    "    └─ ... {} more model organisms\n",
+                    model_organisms.len() - 5
+                ));
             }
         }
 
         if !pathogens.is_empty() {
             output.push_str(&format!("\n  {} Pathogens:\n", "●".red()));
-            for ((name, taxon_id), chunks, total_sequences, total_size) in pathogens.iter().take(max_depth.min(5)) {
-                output.push_str(&format_entry(name, taxon_id, chunks, *total_sequences, *total_size));
+            for ((name, taxon_id), chunks, total_sequences, total_size) in
+                pathogens.iter().take(max_depth.min(5))
+            {
+                output.push_str(&format_entry(
+                    name,
+                    taxon_id,
+                    chunks,
+                    *total_sequences,
+                    *total_size,
+                ));
             }
             if pathogens.len() > 5 {
-                output.push_str(&format!("    └─ ... {} more pathogens\n", pathogens.len() - 5));
+                output.push_str(&format!(
+                    "    └─ ... {} more pathogens\n",
+                    pathogens.len() - 5
+                ));
             }
         }
 
         if !environmental.is_empty() {
             output.push_str(&format!("\n  {} Environmental:\n", "●".blue()));
-            for ((name, taxon_id), chunks, total_sequences, total_size) in environmental.iter().take(max_depth.min(5)) {
-                output.push_str(&format_entry(name, taxon_id, chunks, *total_sequences, *total_size));
+            for ((name, taxon_id), chunks, total_sequences, total_size) in
+                environmental.iter().take(max_depth.min(5))
+            {
+                output.push_str(&format_entry(
+                    name,
+                    taxon_id,
+                    chunks,
+                    *total_sequences,
+                    *total_size,
+                ));
             }
             if environmental.len() > 5 {
-                output.push_str(&format!("    └─ ... {} more environmental organisms\n", environmental.len() - 5));
+                output.push_str(&format!(
+                    "    └─ ... {} more environmental organisms\n",
+                    environmental.len() - 5
+                ));
             }
         }
 
         if !others.is_empty() {
             output.push_str(&format!("\n  {} Other Organisms:\n", "●".yellow()));
-            for ((name, taxon_id), chunks, total_sequences, total_size) in others.iter().take(max_depth.min(5)) {
-                output.push_str(&format_entry(name, taxon_id, chunks, *total_sequences, *total_size));
+            for ((name, taxon_id), chunks, total_sequences, total_size) in
+                others.iter().take(max_depth.min(5))
+            {
+                output.push_str(&format_entry(
+                    name,
+                    taxon_id,
+                    chunks,
+                    *total_sequences,
+                    *total_size,
+                ));
             }
             if others.len() > 5 {
                 output.push_str(&format!("    └─ ... {} more organisms\n", others.len() - 5));
@@ -632,11 +691,23 @@ impl ManifestInspector for talaria_sequoia::ReductionManifest {
         }
 
         // Summary
-        output.push_str(&format!("\nTotal reference chunks: {}\n", format_number(self.reference_chunks.len()).cyan()));
-        output.push_str(&format!("Total reference sequences: {}\n", format_number(self.statistics.reference_sequences).cyan()));
+        output.push_str(&format!(
+            "\nTotal reference chunks: {}\n",
+            format_number(self.reference_chunks.len()).cyan()
+        ));
+        output.push_str(&format!(
+            "Total reference sequences: {}\n",
+            format_number(self.statistics.reference_sequences).cyan()
+        ));
         if !self.delta_chunks.is_empty() {
-            output.push_str(&format!("Delta chunks: {}\n", format_number(self.delta_chunks.len()).cyan()));
-            output.push_str(&format!("Delta-encoded sequences: {}\n", format_number(self.statistics.child_sequences).cyan()));
+            output.push_str(&format!(
+                "Delta chunks: {}\n",
+                format_number(self.delta_chunks.len()).cyan()
+            ));
+            output.push_str(&format!(
+                "Delta-encoded sequences: {}\n",
+                format_number(self.statistics.child_sequences).cyan()
+            ));
         }
 
         Ok(output)
@@ -759,7 +830,10 @@ impl ManifestInspector for talaria_sequoia::ReductionManifest {
 
     fn inspect_centrality_metrics(&self) -> Result<String> {
         let mut output = String::new();
-        output.push_str(&format!("{}\n", "Reference Selection Metrics:".bold().green()));
+        output.push_str(&format!(
+            "{}\n",
+            "Reference Selection Metrics:".bold().green()
+        ));
         output.push_str(&format!("{}\n", "─".repeat(40)));
 
         // Display reduction parameters used
@@ -770,7 +844,10 @@ impl ManifestInspector for talaria_sequoia::ReductionManifest {
         if self.parameters.align_select {
             output.push_str("  ✓ Alignment-based selection\n");
         }
-        output.push_str(&format!("  Similarity threshold: {:.1}%\n", self.parameters.similarity_threshold * 100.0));
+        output.push_str(&format!(
+            "  Similarity threshold: {:.1}%\n",
+            self.parameters.similarity_threshold * 100.0
+        ));
 
         output.push_str(&format!("\nTop Reference Chunks (by sequence count):\n"));
 
@@ -784,8 +861,14 @@ impl ManifestInspector for talaria_sequoia::ReductionManifest {
                 i + 1,
                 &chunk.chunk_hash.to_hex()[..8]
             ));
-            output.push_str(&format!("     Sequences: {}\n", format_number(chunk.sequence_count).cyan()));
-            output.push_str(&format!("     Size: {:.2} MB\n", chunk.size as f64 / 1_048_576.0));
+            output.push_str(&format!(
+                "     Sequences: {}\n",
+                format_number(chunk.sequence_count).cyan()
+            ));
+            output.push_str(&format!(
+                "     Size: {:.2} MB\n",
+                chunk.size as f64 / 1_048_576.0
+            ));
             if !chunk.taxon_ids.is_empty() {
                 output.push_str(&format!("     Taxa: {} species\n", chunk.taxon_ids.len()));
             }
@@ -793,10 +876,16 @@ impl ManifestInspector for talaria_sequoia::ReductionManifest {
 
         // Coverage statistics
         output.push_str(&format!("\nCoverage Statistics:\n"));
-        output.push_str(&format!("  Total sequences: {}\n", format_number(self.statistics.original_sequences).cyan()));
-        output.push_str(&format!("  Reference sequences: {} ({:.1}%)\n",
+        output.push_str(&format!(
+            "  Total sequences: {}\n",
+            format_number(self.statistics.original_sequences).cyan()
+        ));
+        output.push_str(&format!(
+            "  Reference sequences: {} ({:.1}%)\n",
             format_number(self.statistics.reference_sequences).cyan(),
-            (self.statistics.reference_sequences as f64 / self.statistics.original_sequences as f64) * 100.0
+            (self.statistics.reference_sequences as f64
+                / self.statistics.original_sequences as f64)
+                * 100.0
         ));
 
         Ok(output)
@@ -804,12 +893,18 @@ impl ManifestInspector for talaria_sequoia::ReductionManifest {
 
     fn inspect_temporal_timeline(&self, _base_path: &Path, _database: &str) -> Result<String> {
         let mut output = String::new();
-        output.push_str(&format!("{}\n", "Temporal Version Timeline:".bold().green()));
+        output.push_str(&format!(
+            "{}\n",
+            "Temporal Version Timeline:".bold().green()
+        ));
         output.push_str(&format!("{}\n", "─".repeat(40)));
 
         // Display creation and version info
         output.push_str(&format!("\nReduction Profile: {}\n", self.profile));
-        output.push_str(&format!("Created: {}\n", self.created_at.format("%Y-%m-%d %H:%M:%S UTC")));
+        output.push_str(&format!(
+            "Created: {}\n",
+            self.created_at.format("%Y-%m-%d %H:%M:%S UTC")
+        ));
         output.push_str(&format!("Version: {}\n", self.version));
 
         if let Some(prev) = &self.previous_version {
@@ -891,10 +986,18 @@ pub fn run(args: InspectArgs) -> Result<()> {
     let base_path = talaria_core::system::paths::talaria_databases_dir();
     let db_path = if let Some(ver) = &version {
         // Version specified
-        base_path.join("versions").join(source).join(dataset).join(ver)
+        base_path
+            .join("versions")
+            .join(source)
+            .join(dataset)
+            .join(ver)
     } else {
         // Default to current version
-        base_path.join("versions").join(source).join(dataset).join("current")
+        base_path
+            .join("versions")
+            .join(source)
+            .join(dataset)
+            .join("current")
     };
 
     if !db_path.exists() {
@@ -959,7 +1062,13 @@ pub fn run(args: InspectArgs) -> Result<()> {
             }
         }
         OutputFormat::Detailed => {
-            display_detailed(&db_path, &database, version.as_deref(), profile.as_deref(), true)?;
+            display_detailed(
+                &db_path,
+                &database,
+                version.as_deref(),
+                profile.as_deref(),
+                true,
+            )?;
 
             // Show all visualizations in detailed mode
             println!();
@@ -975,7 +1084,12 @@ pub fn run(args: InspectArgs) -> Result<()> {
             );
         }
         OutputFormat::Json => display_json(&db_path, &database, version.as_deref())?,
-        OutputFormat::Text | OutputFormat::Yaml | OutputFormat::Csv | OutputFormat::Tsv | OutputFormat::Fasta | OutputFormat::HashOnly => {
+        OutputFormat::Text
+        | OutputFormat::Yaml
+        | OutputFormat::Csv
+        | OutputFormat::Tsv
+        | OutputFormat::Fasta
+        | OutputFormat::HashOnly => {
             // Default to summary display for unsupported formats
             display_summary(&db_path, &database, version.as_deref(), profile.as_deref())?;
         }
@@ -993,8 +1107,8 @@ fn handle_profile_manifest(
     profile: &str,
     args: &InspectArgs,
 ) -> Result<()> {
-    use talaria_sequoia::ReductionManifest;
     use anyhow::Context;
+    use talaria_sequoia::ReductionManifest;
 
     // Load the reduction manifest
     let profile_path = db_path.join("profiles").join(format!("{}.tal", profile));
@@ -1010,8 +1124,8 @@ fn handle_profile_manifest(
         content = content[4..].to_vec();
     }
 
-    let reduction_manifest: ReductionManifest = rmp_serde::from_slice(&content)
-        .context("Failed to parse reduction manifest")?;
+    let reduction_manifest: ReductionManifest =
+        rmp_serde::from_slice(&content).context("Failed to parse reduction manifest")?;
 
     // Determine which visualizations to show
     let show_tree = args.tree || args.all;
@@ -1032,15 +1146,36 @@ fn handle_profile_manifest(
             println!();
 
             println!("{}", "Reduction Statistics:".bold().green());
-            println!("  Original sequences: {}", format_number(reduction_manifest.statistics.original_sequences));
-            println!("  Reference sequences: {}", format_number(reduction_manifest.statistics.reference_sequences));
-            println!("  Delta-encoded sequences: {}", format_number(reduction_manifest.statistics.child_sequences));
-            println!("  Reduction ratio: {:.1}%", reduction_manifest.statistics.actual_reduction_ratio * 100.0);
+            println!(
+                "  Original sequences: {}",
+                format_number(reduction_manifest.statistics.original_sequences)
+            );
+            println!(
+                "  Reference sequences: {}",
+                format_number(reduction_manifest.statistics.reference_sequences)
+            );
+            println!(
+                "  Delta-encoded sequences: {}",
+                format_number(reduction_manifest.statistics.child_sequences)
+            );
+            println!(
+                "  Reduction ratio: {:.1}%",
+                reduction_manifest.statistics.actual_reduction_ratio * 100.0
+            );
 
             println!("\n{}", "Size Information:".bold().green());
-            println!("  Original size: {:.2} MB", reduction_manifest.statistics.original_size as f64 / 1_048_576.0);
-            println!("  Reduced size (references only): {:.2} MB", reduction_manifest.statistics.reduced_size as f64 / 1_048_576.0);
-            println!("  Total size with deltas: {:.2} MB", reduction_manifest.statistics.total_size_with_deltas as f64 / 1_048_576.0);
+            println!(
+                "  Original size: {:.2} MB",
+                reduction_manifest.statistics.original_size as f64 / 1_048_576.0
+            );
+            println!(
+                "  Reduced size (references only): {:.2} MB",
+                reduction_manifest.statistics.reduced_size as f64 / 1_048_576.0
+            );
+            println!(
+                "  Total size with deltas: {:.2} MB",
+                reduction_manifest.statistics.total_size_with_deltas as f64 / 1_048_576.0
+            );
 
             // Use ManifestInspector trait methods for visualizations
             if show_tree {
@@ -1060,19 +1195,39 @@ fn handle_profile_manifest(
 
             if show_temporal {
                 println!();
-                println!("{}", reduction_manifest.inspect_temporal_timeline(&db_path, database)?);
+                println!(
+                    "{}",
+                    reduction_manifest.inspect_temporal_timeline(&db_path, database)?
+                );
             }
 
             // If no specific visualizations requested, show basic metadata
             if !show_tree && !show_histogram && !show_centrality && !show_temporal {
                 println!("\n{}", "Storage Structure:".bold().green());
-                println!("  Reference chunks: {}", format_number(reduction_manifest.reference_chunks.len()));
-                println!("  Delta chunks: {}", format_number(reduction_manifest.delta_chunks.len()));
-                println!("  Source manifest: {}", reduction_manifest.source_manifest.to_hex());
+                println!(
+                    "  Reference chunks: {}",
+                    format_number(reduction_manifest.reference_chunks.len())
+                );
+                println!(
+                    "  Delta chunks: {}",
+                    format_number(reduction_manifest.delta_chunks.len())
+                );
+                println!(
+                    "  Source manifest: {}",
+                    reduction_manifest.source_manifest.to_hex()
+                );
 
                 println!("\n{}", "Metadata:".bold().green());
-                println!("  Reduction ID: {}", reduction_manifest.reduction_id.to_hex());
-                println!("  Created: {}", reduction_manifest.created_at.format("%Y-%m-%d %H:%M:%S UTC"));
+                println!(
+                    "  Reduction ID: {}",
+                    reduction_manifest.reduction_id.to_hex()
+                );
+                println!(
+                    "  Created: {}",
+                    reduction_manifest
+                        .created_at
+                        .format("%Y-%m-%d %H:%M:%S UTC")
+                );
             }
         }
         OutputFormat::Json => {
@@ -1096,9 +1251,17 @@ fn handle_profile_manifest(
             println!();
             println!("{}", reduction_manifest.inspect_centrality_metrics()?);
             println!();
-            println!("{}", reduction_manifest.inspect_temporal_timeline(&db_path, database)?);
+            println!(
+                "{}",
+                reduction_manifest.inspect_temporal_timeline(&db_path, database)?
+            );
         }
-        OutputFormat::Text | OutputFormat::Yaml | OutputFormat::Csv | OutputFormat::Tsv | OutputFormat::Fasta | OutputFormat::HashOnly => {
+        OutputFormat::Text
+        | OutputFormat::Yaml
+        | OutputFormat::Csv
+        | OutputFormat::Tsv
+        | OutputFormat::Fasta
+        | OutputFormat::HashOnly => {
             // Default to summary display for unsupported formats
             println!("{}", "Reduction Profile Information:".bold().green());
             println!("  Profile: {}", profile.cyan());
@@ -1133,7 +1296,12 @@ fn parse_database_spec(spec: &str) -> Result<(String, Option<String>, Option<Str
 }
 
 /// Display summary information
-fn display_summary(db_path: &Path, database: &str, version: Option<&str>, profile: Option<&str>) -> Result<()> {
+fn display_summary(
+    db_path: &Path,
+    database: &str,
+    version: Option<&str>,
+    profile: Option<&str>,
+) -> Result<()> {
     // Database version files
     let manifest_path = db_path.join("manifest.tal");
     let version_json = db_path.join("version.json");
@@ -1158,7 +1326,10 @@ fn display_summary(db_path: &Path, database: &str, version: Option<&str>, profil
     if manifest_path.exists() {
         println!("  {} Manifest found", "✓".green());
         let size = std::fs::metadata(&manifest_path)?.len();
-        println!("    Size: {}", talaria_utils::display::format::format_bytes(size));
+        println!(
+            "    Size: {}",
+            talaria_utils::display::format::format_bytes(size)
+        );
     } else {
         println!("  {} No manifest found", "✗".red());
     }

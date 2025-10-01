@@ -50,13 +50,13 @@ mod tests {
         optimizer.optimize_for_blast(&mut sequences);
 
         // Should be sorted by length in ascending order
-        assert_eq!(sequences[0].id, "tiny");    // 1 bp
-        // Next two are both 4bp, could be in either order
+        assert_eq!(sequences[0].id, "tiny"); // 1 bp
+                                             // Next two are both 4bp, could be in either order
         assert!(sequences[1].id == "small" || sequences[1].id == "small2");
         assert!(sequences[2].id == "small" || sequences[2].id == "small2");
         assert_ne!(sequences[1].id, sequences[2].id); // But they should be different
-        assert_eq!(sequences[3].id, "medium");  // 8 bp
-        assert_eq!(sequences[4].id, "large");   // 16 bp
+        assert_eq!(sequences[3].id, "medium"); // 8 bp
+        assert_eq!(sequences[4].id, "large"); // 16 bp
 
         // Verify actual lengths are ascending
         for i in 0..sequences.len() - 1 {
@@ -77,9 +77,7 @@ mod tests {
     #[test]
     fn test_optimize_for_blast_single() {
         let optimizer = BlastOptimizer::new();
-        let mut sequences = vec![
-            Sequence::new("only".to_string(), b"ATCGATCG".to_vec())
-        ];
+        let mut sequences = vec![Sequence::new("only".to_string(), b"ATCGATCG".to_vec())];
 
         optimizer.optimize_for_blast(&mut sequences);
 
@@ -149,7 +147,7 @@ mod tests {
         // Empty sequences should be first, then sorted by length
         assert_eq!(sequences[0].len(), 0);
         assert_eq!(sequences[1].len(), 0);
-        assert_eq!(sequences[2].len(), 2);  // "GC"
-        assert_eq!(sequences[3].len(), 4);  // "ATCG"
+        assert_eq!(sequences[2].len(), 2); // "GC"
+        assert_eq!(sequences[3].len(), 4); // "ATCG"
     }
 }

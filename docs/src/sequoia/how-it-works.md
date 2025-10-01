@@ -306,7 +306,7 @@ Here's how SEQUOIA organizes files on disk:
     └── indices/  # Optional index cache
 ```
 
-Each chunk is stored in a subdirectory based on its hash prefix for efficient filesystem access.
+Each chunk is stored in RocksDB column family with hash-based keys for efficient access.
 
 ## Summary
 

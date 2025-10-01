@@ -12,10 +12,12 @@ pub mod taxonomy;
 pub use sequence::{Sequence, SequenceType};
 
 // Re-export commonly used functions from formats module
-pub use formats::fasta::{parse_fasta, write_fasta, parse_fasta_parallel, parse_fasta_from_bytes};
+pub use formats::fasta::{parse_fasta, parse_fasta_from_bytes, parse_fasta_parallel, write_fasta};
 
 // Re-export commonly used taxonomy types
 pub use taxonomy::{TaxonomyDB, TaxonomyInfo, TaxonomySources};
 
 // Re-export clustering types
-pub use clustering::{PhylogeneticClusterer, TaxonomicCluster, ClusteringConfig, ClusteringRules, GroupingStrategy};
+pub use clustering::{
+    ClusteringConfig, ClusteringRules, GroupingStrategy, PhylogeneticClusterer, TaxonomicCluster,
+};

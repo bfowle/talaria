@@ -166,7 +166,10 @@ pub trait ResumeDownload {
     async fn supports_resume(&self, url: &str) -> Result<bool>;
 
     /// Get file metadata without downloading
-    async fn get_file_metadata(&self, url: &str) -> Result<(Option<u64>, Option<String>, Option<String>)>;
+    async fn get_file_metadata(
+        &self,
+        url: &str,
+    ) -> Result<(Option<u64>, Option<String>, Option<String>)>;
 }
 
 impl ResumeDownload for reqwest::Client {
@@ -195,7 +198,10 @@ impl ResumeDownload for reqwest::Client {
         Ok(test_response.status() == reqwest::StatusCode::PARTIAL_CONTENT)
     }
 
-    async fn get_file_metadata(&self, url: &str) -> Result<(Option<u64>, Option<String>, Option<String>)> {
+    async fn get_file_metadata(
+        &self,
+        url: &str,
+    ) -> Result<(Option<u64>, Option<String>, Option<String>)> {
         let response = self
             .head(url)
             .send()
@@ -246,10 +252,8 @@ mod tests {
         let state_path = temp_dir.path().join("download.state");
         let output_path = temp_dir.path().join("test.fasta");
 
-        let mut state = DownloadResumeState::new(
-            "https://example.com/file.gz".to_string(),
-            output_path,
-        );
+        let mut state =
+            DownloadResumeState::new("https://example.com/file.gz".to_string(), output_path);
         state.bytes_downloaded = 12345;
         state.total_size = Some(100000);
         state.etag = Some("abc123".to_string());
@@ -274,10 +278,8 @@ mod tests {
         // Create a partial file
         std::fs::write(&temp_path, b"partial content")?;
 
-        let mut state = DownloadResumeState::new(
-            "https://example.com/file.gz".to_string(),
-            output_path,
-        );
+        let mut state =
+            DownloadResumeState::new("https://example.com/file.gz".to_string(), output_path);
         state.temp_path = temp_path;
         state.bytes_downloaded = 15; // matches "partial content" length
 

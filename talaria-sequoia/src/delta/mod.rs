@@ -1,12 +1,11 @@
-/// Delta encoding and reconstruction module
-
-pub mod traits;
+pub mod canonical;
 pub mod generator;
 pub mod reconstructor;
-pub mod canonical;
+/// Delta encoding and reconstruction module
+pub mod traits;
 
 // Re-export main types
-pub use traits::{DeltaGenerator, DeltaGeneratorConfig, DeltaReconstructor};
+pub use canonical::{CanonicalDelta, CanonicalDeltaManager, Delta, DeltaOp};
 pub use generator::DeltaGenerator as SequenceDeltaGenerator;
 pub use reconstructor::{DeltaReconstructor as SequenceDeltaReconstructor, ReconstructorConfig};
-pub use canonical::{CanonicalDelta, CanonicalDeltaManager, Delta, DeltaOp};
+pub use traits::{DeltaGenerator, DeltaGeneratorConfig, DeltaReconstructor};

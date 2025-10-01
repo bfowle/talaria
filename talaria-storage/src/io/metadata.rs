@@ -2,16 +2,13 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
-use talaria_core::error::TalariaError;
 use talaria_bio::compression::delta::{format_deltas_dat, parse_deltas_dat};
+use talaria_core::error::TalariaError;
 
 // Re-export DeltaRecord so consumers don't need to import from talaria-bio
 pub use talaria_bio::compression::delta::DeltaRecord;
 
-pub fn write_metadata<P: AsRef<Path>>(
-    path: P,
-    deltas: &[DeltaRecord],
-) -> Result<(), TalariaError> {
+pub fn write_metadata<P: AsRef<Path>>(path: P, deltas: &[DeltaRecord]) -> Result<(), TalariaError> {
     let file = File::create(path)?;
     let mut writer = BufWriter::new(file);
 
@@ -118,27 +115,33 @@ mod tests {
                 child_id: "child1".to_string(),
                 reference_id: "ref1".to_string(),
                 taxon_id: Some(1),
-                deltas: vec![
-                    DeltaRange { start: 0, end: 3, substitution: vec![1, 2, 3] }
-                ],
+                deltas: vec![DeltaRange {
+                    start: 0,
+                    end: 3,
+                    substitution: vec![1, 2, 3],
+                }],
                 header_change: None,
             },
             DeltaRecord {
                 child_id: "child2".to_string(),
                 reference_id: "ref1".to_string(),
                 taxon_id: Some(1),
-                deltas: vec![
-                    DeltaRange { start: 4, end: 5, substitution: vec![4, 5] }
-                ],
+                deltas: vec![DeltaRange {
+                    start: 4,
+                    end: 5,
+                    substitution: vec![4, 5],
+                }],
                 header_change: None,
             },
             DeltaRecord {
                 child_id: "child3".to_string(),
                 reference_id: "ref2".to_string(),
                 taxon_id: Some(2),
-                deltas: vec![
-                    DeltaRange { start: 6, end: 9, substitution: vec![6, 7, 8, 9] }
-                ],
+                deltas: vec![DeltaRange {
+                    start: 6,
+                    end: 9,
+                    substitution: vec![6, 7, 8, 9],
+                }],
                 header_change: None,
             },
         ];
@@ -192,16 +195,17 @@ mod tests {
         let mut ref2children = std::collections::HashMap::new();
         ref2children.insert(
             "ref1".to_string(),
-            vec!["child1".to_string(), "child2".to_string(), "child3".to_string()],
+            vec![
+                "child1".to_string(),
+                "child2".to_string(),
+                "child3".to_string(),
+            ],
         );
         ref2children.insert(
             "ref2".to_string(),
             vec!["child4".to_string(), "child5".to_string()],
         );
-        ref2children.insert(
-            "ref3".to_string(),
-            vec!["child6".to_string()],
-        );
+        ref2children.insert("ref3".to_string(), vec!["child6".to_string()]);
 
         // Write
         write_ref2children(&file_path, &ref2children).unwrap();
@@ -263,14 +267,22 @@ mod tests {
                 child_id: "child-with-dash".to_string(),
                 reference_id: "ref_with_underscore".to_string(),
                 taxon_id: None,
-                deltas: vec![DeltaRange { start: 0, end: 1, substitution: vec![1] }],
+                deltas: vec![DeltaRange {
+                    start: 0,
+                    end: 1,
+                    substitution: vec![1],
+                }],
                 header_change: None,
             },
             DeltaRecord {
                 child_id: "child.with.dots".to_string(),
                 reference_id: "ref|with|pipes".to_string(),
                 taxon_id: None,
-                deltas: vec![DeltaRange { start: 2, end: 3, substitution: vec![2, 3] }],
+                deltas: vec![DeltaRange {
+                    start: 2,
+                    end: 3,
+                    substitution: vec![2, 3],
+                }],
                 header_change: None,
             },
         ];
@@ -351,16 +363,26 @@ mod tests {
             .into_iter()
             .filter(|(child, reference, _, _)| {
                 // Filter out empty, whitespace-only, or control-character-only strings
-                let child_valid = !child.trim().is_empty() &&
-                                  child.chars().any(|c| c.is_alphanumeric() || c.is_ascii_punctuation());
-                let ref_valid = !reference.trim().is_empty() &&
-                                reference.chars().any(|c| c.is_alphanumeric() || c.is_ascii_punctuation());
+                let child_valid = !child.trim().is_empty()
+                    && child
+                        .chars()
+                        .any(|c| c.is_alphanumeric() || c.is_ascii_punctuation());
+                let ref_valid = !reference.trim().is_empty()
+                    && reference
+                        .chars()
+                        .any(|c| c.is_alphanumeric() || c.is_ascii_punctuation());
                 child_valid && ref_valid
             })
             .map(|(child, reference, ops, taxon)| DeltaRecord {
                 // Sanitize by replacing all control characters with underscore
-                child_id: child.chars().map(|c| if c.is_control() { '_' } else { c }).collect(),
-                reference_id: reference.chars().map(|c| if c.is_control() { '_' } else { c }).collect(),
+                child_id: child
+                    .chars()
+                    .map(|c| if c.is_control() { '_' } else { c })
+                    .collect(),
+                reference_id: reference
+                    .chars()
+                    .map(|c| if c.is_control() { '_' } else { c })
+                    .collect(),
                 taxon_id: Some(taxon),
                 // Only create a DeltaRange if ops is not empty
                 deltas: if ops.is_empty() {
@@ -387,18 +409,18 @@ mod tests {
 
         match load_metadata(&file_path) {
             Ok(loaded) => {
-                loaded.len() == deltas.len() &&
-                loaded.iter().zip(deltas.iter()).all(|(l, d)| {
-                    l.child_id == d.child_id &&
-                    l.reference_id == d.reference_id &&
-                    l.taxon_id == d.taxon_id &&
-                    l.deltas.len() == d.deltas.len() &&
-                    l.deltas.iter().zip(d.deltas.iter()).all(|(ld, dd)| {
-                        ld.start == dd.start &&
-                        ld.end == dd.end &&
-                        ld.substitution == dd.substitution
+                loaded.len() == deltas.len()
+                    && loaded.iter().zip(deltas.iter()).all(|(l, d)| {
+                        l.child_id == d.child_id
+                            && l.reference_id == d.reference_id
+                            && l.taxon_id == d.taxon_id
+                            && l.deltas.len() == d.deltas.len()
+                            && l.deltas.iter().zip(d.deltas.iter()).all(|(ld, dd)| {
+                                ld.start == dd.start
+                                    && ld.end == dd.end
+                                    && ld.substitution == dd.substitution
+                            })
                     })
-                })
             }
             Err(_) => false,
         }

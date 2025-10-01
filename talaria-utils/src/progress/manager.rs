@@ -2,10 +2,9 @@
 ///
 /// This module provides a single, consistent interface for all progress reporting
 /// throughout Talaria, replacing the fragmented progress implementations.
-
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle, ProgressDrawTarget};
-use std::sync::{Arc, Mutex};
+use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// Operation types that can report progress
@@ -138,9 +137,11 @@ impl ProgressManager {
             let main_bar = ProgressBar::new(100);
             main_bar.set_style(
                 ProgressStyle::default_bar()
-                    .template("{msg}\n[{elapsed_precise}] [{bar:50.cyan/blue}] {pos}% {eta_precise}")
+                    .template(
+                        "{msg}\n[{elapsed_precise}] [{bar:50.cyan/blue}] {pos}% {eta_precise}",
+                    )
                     .unwrap()
-                    .progress_chars("━━─")
+                    .progress_chars("━━─"),
             );
             main_bar.set_message(operation.into());
 
@@ -164,36 +165,48 @@ impl ProgressManager {
             let bar = ProgressBar::new(total);
             bar.set_style(
                 ProgressStyle::default_bar()
-                    .template("  {msg} [{bar:40.cyan/blue}] {human_pos}/{human_len} ({eta_precise})")
+                    .template(
+                        "  {msg} [{bar:40.cyan/blue}] {human_pos}/{human_len} ({eta_precise})",
+                    )
                     .unwrap()
                     .progress_chars("━━─")
-                    .with_key("human_pos", |state: &indicatif::ProgressState, w: &mut dyn std::fmt::Write| {
-                        use crate::display::output::format_number;
-                        write!(w, "{:>9}", format_number(state.pos() as usize)).unwrap()
-                    })
-                    .with_key("human_len", |state: &indicatif::ProgressState, w: &mut dyn std::fmt::Write| {
-                        use crate::display::output::format_number;
-                        write!(w, "{}", format_number(state.len().unwrap_or(0) as usize)).unwrap()
-                    })
-                    .with_key("eta_precise", |state: &indicatif::ProgressState, w: &mut dyn std::fmt::Write| {
-                        if state.pos() == 0 {
-                            write!(w, "calculating").unwrap()
-                        } else {
-                            let eta = state.eta();
-                            let secs = eta.as_secs();
-                            if secs < 60 {
-                                write!(w, "{}s", secs).unwrap()
-                            } else if secs < 3600 {
-                                write!(w, "{}m", secs / 60).unwrap()
-                            } else if secs < 86400 {
-                                write!(w, "{}h {}m", secs / 3600, (secs % 3600) / 60).unwrap()
-                            } else if secs < 31536000 {
-                                write!(w, "{}d", secs / 86400).unwrap()
+                    .with_key(
+                        "human_pos",
+                        |state: &indicatif::ProgressState, w: &mut dyn std::fmt::Write| {
+                            use crate::display::output::format_number;
+                            write!(w, "{:>9}", format_number(state.pos() as usize)).unwrap()
+                        },
+                    )
+                    .with_key(
+                        "human_len",
+                        |state: &indicatif::ProgressState, w: &mut dyn std::fmt::Write| {
+                            use crate::display::output::format_number;
+                            write!(w, "{}", format_number(state.len().unwrap_or(0) as usize))
+                                .unwrap()
+                        },
+                    )
+                    .with_key(
+                        "eta_precise",
+                        |state: &indicatif::ProgressState, w: &mut dyn std::fmt::Write| {
+                            if state.pos() == 0 {
+                                write!(w, "calculating").unwrap()
                             } else {
-                                write!(w, "-").unwrap()
+                                let eta = state.eta();
+                                let secs = eta.as_secs();
+                                if secs < 60 {
+                                    write!(w, "{}s", secs).unwrap()
+                                } else if secs < 3600 {
+                                    write!(w, "{}m", secs / 60).unwrap()
+                                } else if secs < 86400 {
+                                    write!(w, "{}h {}m", secs / 3600, (secs % 3600) / 60).unwrap()
+                                } else if secs < 31536000 {
+                                    write!(w, "{}d", secs / 86400).unwrap()
+                                } else {
+                                    write!(w, "-").unwrap()
+                                }
                             }
-                        }
-                    })
+                        },
+                    ),
             );
             bar
         } else {
@@ -202,7 +215,7 @@ impl ProgressManager {
             bar.set_style(
                 ProgressStyle::default_spinner()
                     .template("  {spinner:.cyan} {msg}")
-                    .unwrap()
+                    .unwrap(),
             );
             bar
         };
@@ -211,7 +224,10 @@ impl ProgressManager {
         let bar = self.multi.add(bar);
 
         // Store bar and info
-        self.bars.lock().unwrap().insert(op_type.clone(), bar.clone());
+        self.bars
+            .lock()
+            .unwrap()
+            .insert(op_type.clone(), bar.clone());
         self.info.lock().unwrap().insert(op_type, info);
 
         // Manually tick to show immediately
@@ -264,7 +280,10 @@ impl ProgressManager {
         }
 
         // Get current value
-        let current = self.info.lock().unwrap()
+        let current = self
+            .info
+            .lock()
+            .unwrap()
             .get(op_type)
             .map(|info| info.current)
             .unwrap_or(0);

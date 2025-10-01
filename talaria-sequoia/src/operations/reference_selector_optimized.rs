@@ -1,24 +1,21 @@
 #![allow(dead_code)]
 
-/// Graph centrality-based reference selection as specified in SEQUOIA architecture
-/// This module implements the 5-dimensional approach for delta compression
-/// Formula: Centrality Score = α·Degree + β·Betweenness + γ·Coverage
-/// where α=0.5, β=0.3, γ=0.2
-use talaria_bio::sequence::Sequence;
-use talaria_utils::performance::memory_estimator::MemoryEstimator;
-use talaria_bio::clustering::{ClusteringConfig, PhylogeneticClusterer};
-use talaria_tools::Aligner;
-use talaria_utils::workspace::TempWorkspace;
 use anyhow::Result;
 use dashmap::DashMap;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use indicatif::{ProgressBar, ProgressStyle};
 use petgraph::algo::dijkstra;
 use petgraph::graph::{NodeIndex, UnGraph};
 use petgraph::visit::EdgeRef;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+/// Graph centrality-based reference selection as specified in SEQUOIA architecture
+/// This module implements the 5-dimensional approach for delta compression
+/// Formula: Centrality Score = α·Degree + β·Betweenness + γ·Coverage
+/// where α=0.5, β=0.3, γ=0.2
+use talaria_bio::sequence::Sequence;
+use talaria_tools::Aligner;
+use talaria_utils::workspace::TempWorkspace;
 
 /// Caching strategy for alignment scores
 #[derive(Debug, Clone)]
@@ -176,193 +173,6 @@ impl OptimizedReferenceSelector {
         let selected_refs = self.select_by_centrality(graph_result, &sequences, target_ratio)?;
 
         Ok(selected_refs)
-    }
-
-    /// Original implementation for fallback
-    pub fn select_references_with_shared_index_legacy(
-        &mut self,
-        sequences: Vec<Sequence>,
-        target_ratio: f64,
-        aligner: &mut dyn Aligner,
-    ) -> Result<SelectionResult> {
-        let start = Instant::now();
-        let target_count = (sequences.len() as f64 * target_ratio) as usize;
-
-        println!("🔧 Optimized reference selection with shared index");
-        println!("  Total sequences: {}", sequences.len());
-        println!(
-            "  Target references: {} ({:.1}%)",
-            target_count,
-            target_ratio * 100.0
-        );
-
-        // Step 1: Use phylogenetic clustering for intelligent grouping
-        let taxonomic_groups = if self.taxonomy_aware {
-            println!("  🧬 Using phylogenetic clustering for taxonomic grouping...");
-
-            // Create clustering config optimized for SwissProt/UniProt
-            let config = ClusteringConfig::for_swissprot();
-            let clusterer = PhylogeneticClusterer::new(config);
-
-            // Check memory constraints
-            let memory_estimator = MemoryEstimator::new();
-            if !memory_estimator.can_process_cluster(&sequences) {
-                println!("  ⚠️  Large dataset detected, using adaptive clustering");
-            }
-
-            // Perform clustering
-            match clusterer.create_clusters(sequences.clone()) {
-                Ok(clusters) => {
-                    println!("  ✓ Created {} phylogenetic clusters:", clusters.len());
-                    for (i, cluster) in clusters.iter().take(5).enumerate() {
-                        println!(
-                            "    Cluster {}: {} sequences, {} taxa",
-                            i + 1,
-                            cluster.sequences.len(),
-                            cluster.taxa.len()
-                        );
-                    }
-                    if clusters.len() > 5 {
-                        println!("    ... and {} more clusters", clusters.len() - 5);
-                    }
-
-                    // Convert clusters to the expected format
-                    clusters
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, cluster)| {
-                            let name = if cluster.taxa.len() == 1 {
-                                format!("taxid_{}", cluster.taxa.iter().next().unwrap())
-                            } else {
-                                format!("cluster_{}_taxa_{}", i, cluster.taxa.len())
-                            };
-                            (name, cluster.sequences)
-                        })
-                        .collect()
-                }
-                Err(e) => {
-                    println!("  ⚠️  Phylogenetic clustering failed: {}", e);
-                    println!("  Falling back to simple taxonomy grouping");
-                    self.group_by_taxonomy(&sequences)
-                }
-            }
-        } else {
-            vec![("all".to_string(), sequences.clone())]
-        };
-
-        println!("  Total groups: {}", taxonomic_groups.len());
-
-        // Step 2: Build SINGLE shared index for ALL sequences
-        println!("\n📊 Building shared LAMBDA index...");
-        let index_start = Instant::now();
-
-        let all_sequences_path = if let Some(ws) = &self.workspace {
-            let workspace = ws.lock().unwrap();
-            workspace.get_file_path("shared_index", "fasta")
-        } else {
-            std::env::temp_dir().join("talaria_shared_index.fasta")
-        };
-
-        // Write all sequences to single file
-        talaria_bio::write_fasta(&all_sequences_path, &sequences)?;
-
-        // Note: Index building would be done internally by the aligner
-        // when search() is called, if needed
-        // let index_path = all_sequences_path.with_extension("lambda");
-
-        println!(
-            "  ✓ Index built in {:.2}s",
-            index_start.elapsed().as_secs_f64()
-        );
-
-        // Step 3: Process each taxonomic group using the shared index
-        let multi_progress = MultiProgress::new();
-        let overall_pb = multi_progress.add(ProgressBar::new(target_count as u64));
-        overall_pb.set_style(
-            ProgressStyle::default_bar()
-                .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} Overall progress")
-                .unwrap(),
-        );
-
-        let mut all_references = Vec::new();
-        let mut all_children: HashMap<String, Vec<String>> = HashMap::new();
-        let mut all_discarded = HashSet::new();
-
-        // Process groups sequentially (aligner requires mutable access)
-        let mut group_results = Vec::new();
-        for (taxon, group_seqs) in &taxonomic_groups {
-            let group_pb = multi_progress.add(ProgressBar::new(group_seqs.len() as u64));
-            group_pb.set_style(
-                ProgressStyle::default_bar()
-                    .template(&format!(
-                        "[{{elapsed_precise}}] {{bar:40.green}} {{pos}}/{{len}} Taxon: {}",
-                        taxon
-                    ))
-                    .unwrap(),
-            );
-
-            let result = self.process_taxonomic_group(
-                taxon,
-                group_seqs,
-                target_ratio,
-                &sequences,
-                aligner,
-                &group_pb,
-            )?;
-            group_results.push(result);
-        }
-
-        // Merge results
-        for result in group_results {
-            all_references.extend(result.references);
-            for (ref_id, children) in result.children {
-                all_children
-                    .entry(ref_id)
-                    .or_default()
-                    .extend(children);
-            }
-            all_discarded.extend(result.discarded);
-
-            overall_pb.set_position(all_references.len().min(target_count) as u64);
-
-            // Stop if we have enough references
-            if all_references.len() >= target_count {
-                break;
-            }
-        }
-
-        // Trim to target count if needed
-        if all_references.len() > target_count {
-            all_references.truncate(target_count);
-        }
-
-        overall_pb.finish_with_message(format!("Selected {} references", all_references.len()));
-
-        // Print cache statistics
-        let (hits, misses) = self.cache.stats();
-        let hit_rate = if hits + misses > 0 {
-            (hits as f64 / (hits + misses) as f64) * 100.0
-        } else {
-            0.0
-        };
-
-        println!("\n📈 Performance Statistics:");
-        println!("  Total time: {:.2}s", start.elapsed().as_secs_f64());
-        println!(
-            "  Cache hit rate: {:.1}% ({} hits, {} misses)",
-            hit_rate, hits, misses
-        );
-        println!("  References selected: {}", all_references.len());
-        println!(
-            "  Sequences covered: {}",
-            all_children.values().map(|c| c.len()).sum::<usize>()
-        );
-
-        Ok(SelectionResult {
-            references: all_references,
-            children: all_children,
-            discarded: all_discarded,
-        })
     }
 
     /// Build similarity graph for centrality calculation
@@ -541,7 +351,7 @@ impl OptimizedReferenceSelector {
                 if let (Some(&source_to_node), Some(&source_to_target), Some(&node_to_target)) = (
                     distances.get(&node),
                     distances.get(&target),
-                    dijkstra(graph, node, Some(target), |e| *e.weight() as i32).get(&target)
+                    dijkstra(graph, node, Some(target), |e| *e.weight() as i32).get(&target),
                 ) {
                     // If source->node->target equals source->target, node is on shortest path
                     if source_to_node + node_to_target == source_to_target {
@@ -731,10 +541,7 @@ impl OptimizedReferenceSelector {
 
         for seq in sequences {
             let taxon = self.extract_taxonomy_group(&seq.id, seq.description.as_deref());
-            groups
-                .entry(taxon)
-                .or_default()
-                .push(seq.clone());
+            groups.entry(taxon).or_default().push(seq.clone());
         }
 
         let mut sorted_groups: Vec<_> = groups.into_iter().collect();

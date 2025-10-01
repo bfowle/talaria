@@ -1,7 +1,7 @@
 //! Version management for Talaria
 
-use semver::Version;
 use crate::TalariaError;
+use semver::Version;
 
 /// Parse and validate a version string
 pub fn parse_version(version_str: &str) -> Result<Version, TalariaError> {

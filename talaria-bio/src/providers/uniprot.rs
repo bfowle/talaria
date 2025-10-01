@@ -1,8 +1,6 @@
 /// UniProt API client for fetching sequences by TaxID and proteome
 use crate::sequence::Sequence;
-use crate::taxonomy::{
-    SequenceProvider, TaxonomyConfidence, TaxonomyEnrichable, TaxonomySource,
-};
+use crate::taxonomy::{SequenceProvider, TaxonomyConfidence, TaxonomyEnrichable, TaxonomySource};
 use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::io::Read;

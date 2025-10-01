@@ -60,8 +60,8 @@ pub fn run(args: SequoiaArgs) -> anyhow::Result<()> {
 }
 
 fn run_init(args: InitArgs) -> anyhow::Result<()> {
-    use talaria_sequoia::SEQUOIARepository;
     use colored::*;
+    use talaria_sequoia::SequoiaRepository;
 
     let path = if let Some(p) = args.path {
         p
@@ -70,30 +70,33 @@ fn run_init(args: InitArgs) -> anyhow::Result<()> {
         paths::talaria_databases_dir()
     };
 
-    println!("{} Initializing SEQUOIA repository at {}...",
-             "►".cyan().bold(),
-             path.display());
+    println!(
+        "{} Initializing SEQUOIA repository at {}...",
+        "►".cyan().bold(),
+        path.display()
+    );
 
     if path.exists() && path.join("manifest.json").exists() {
-        println!("{} SEQUOIA repository already exists",
-                 "⚠".yellow().bold());
+        println!("{} SEQUOIA repository already exists", "⚠".yellow().bold());
         return Ok(());
     }
 
     std::fs::create_dir_all(&path)?;
-    SEQUOIARepository::init(&path)?;
+    SequoiaRepository::init(&path)?;
 
-    println!("{} SEQUOIA repository initialized successfully!",
-             "✓".green().bold());
+    println!(
+        "{} SEQUOIA repository initialized successfully!",
+        "✓".green().bold()
+    );
     println!("  Path: {}", path.display());
 
     Ok(())
 }
 
 fn run_stats(args: StatsArgs) -> anyhow::Result<()> {
-    use talaria_sequoia::database::DatabaseManager as SEQUOIADatabaseManager;
     use crate::cli::progress::create_spinner;
     use colored::*;
+    use talaria_sequoia::database::DatabaseManager as SequoiaDatabaseManager;
 
     let path = if let Some(p) = args.path {
         p
@@ -103,12 +106,14 @@ fn run_stats(args: StatsArgs) -> anyhow::Result<()> {
     };
 
     if !path.exists() {
-        anyhow::bail!("SEQUOIA repository not found at {}. Initialize it first with 'talaria sequoia init'",
-                     path.display());
+        anyhow::bail!(
+            "SEQUOIA repository not found at {}. Initialize it first with 'talaria sequoia init'",
+            path.display()
+        );
     }
 
     let spinner = create_spinner("Loading SEQUOIA repository statistics...");
-    let mut manager = SEQUOIADatabaseManager::new(Some(path.to_string_lossy().to_string()))?;
+    let mut manager = SequoiaDatabaseManager::new(Some(path.to_string_lossy().to_string()))?;
 
     // Initialize temporal tracking for existing data if needed
     let _ = manager.init_temporal_for_existing();
@@ -121,20 +126,33 @@ fn run_stats(args: StatsArgs) -> anyhow::Result<()> {
     println!("{}", "═".repeat(60));
     println!();
     println!("{} {}", "Total chunks:".bold(), stats.total_chunks);
-    println!("{} {:.2} MB", "Total size:".bold(),
-             stats.total_size as f64 / 1_048_576.0);
-    println!("{} {}", "Compressed chunks:".bold(), stats.compressed_chunks);
-    println!("{} {:.2}x", "Deduplication ratio:".bold(), stats.deduplication_ratio);
+    println!(
+        "{} {:.2} MB",
+        "Total size:".bold(),
+        stats.total_size as f64 / 1_048_576.0
+    );
+    println!(
+        "{} {}",
+        "Compressed chunks:".bold(),
+        stats.compressed_chunks
+    );
+    println!(
+        "{} {:.2}x",
+        "Deduplication ratio:".bold(),
+        stats.deduplication_ratio
+    );
     println!("{} {}", "Databases:".bold(), stats.database_count);
 
     if !stats.databases.is_empty() {
         println!("\n{}", "Databases:".bold().underline());
         for db in &stats.databases {
-            println!("  • {} (v{}, {} chunks, {:.2} MB)",
-                     db.name,
-                     db.version,
-                     db.chunk_count,
-                     db.total_size as f64 / 1_048_576.0);
+            println!(
+                "  • {} (v{}, {} chunks, {:.2} MB)",
+                db.name,
+                db.version,
+                db.chunk_count,
+                db.total_size as f64 / 1_048_576.0
+            );
         }
     }
 

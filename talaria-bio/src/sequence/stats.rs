@@ -508,16 +508,16 @@ mod tests {
     fn create_test_sequences() -> Vec<Sequence> {
         vec![
             // DNA sequences with different characteristics
-            Sequence::new("seq1".to_string(), b"ATGCATGCATGC".to_vec()),  // 50% GC
-            Sequence::new("seq2".to_string(), b"GGGGCCCC".to_vec()),      // 100% GC
-            Sequence::new("seq3".to_string(), b"AAAATTTT".to_vec()),      // 0% GC
-            Sequence::new("seq4".to_string(), b"ATGCNATGC".to_vec()),     // With ambiguous
-            Sequence::new("seq5".to_string(), b"ATGC-ATGC".to_vec()),     // With gap
+            Sequence::new("seq1".to_string(), b"ATGCATGCATGC".to_vec()), // 50% GC
+            Sequence::new("seq2".to_string(), b"GGGGCCCC".to_vec()),     // 100% GC
+            Sequence::new("seq3".to_string(), b"AAAATTTT".to_vec()),     // 0% GC
+            Sequence::new("seq4".to_string(), b"ATGCNATGC".to_vec()),    // With ambiguous
+            Sequence::new("seq5".to_string(), b"ATGC-ATGC".to_vec()),    // With gap
             // Protein sequences
             Sequence::new("seq6".to_string(), b"ACDEFGHIKLMNPQRSTVWY".to_vec()),
-            Sequence::new("seq7".to_string(), b"AAAAAAAA".to_vec()),      // Low complexity
+            Sequence::new("seq7".to_string(), b"AAAAAAAA".to_vec()), // Low complexity
             // Various lengths
-            Sequence::new("seq8".to_string(), b"AT".to_vec()),            // Very short
+            Sequence::new("seq8".to_string(), b"AT".to_vec()), // Very short
             Sequence::new("seq9".to_string(), b"ATGC".repeat(250)), // Long
         ]
     }
@@ -599,7 +599,7 @@ mod tests {
         let total = 1000;
 
         assert_eq!(calculate_nx(&lengths, total, 50), 300);
-        assert_eq!(calculate_nx(&lengths, total, 90), 200);  // 90% of 1000 = 900, need 200+300+400
+        assert_eq!(calculate_nx(&lengths, total, 90), 200); // 90% of 1000 = 900, need 200+300+400
         assert_eq!(calculate_nx(&lengths, total, 10), 400);
     }
 
@@ -666,9 +666,9 @@ mod tests {
     #[test]
     fn test_ambiguous_bases_and_gaps() {
         let sequences = vec![
-            Sequence::new("s1".to_string(), b"ATGCNNNN".to_vec()),    // 4 ambiguous
-            Sequence::new("s2".to_string(), b"ATGC----".to_vec()),    // 4 gaps
-            Sequence::new("s3".to_string(), b"ACDEFX**".to_vec()),    // 3 ambiguous protein
+            Sequence::new("s1".to_string(), b"ATGCNNNN".to_vec()), // 4 ambiguous
+            Sequence::new("s2".to_string(), b"ATGC----".to_vec()), // 4 gaps
+            Sequence::new("s3".to_string(), b"ACDEFX**".to_vec()), // 3 ambiguous protein
         ];
 
         let stats = SequenceStats::calculate(&sequences);
@@ -719,8 +719,20 @@ mod tests {
 
         let stats = SequenceStats::calculate(&sequences);
 
-        assert_eq!(*stats.type_distribution.get(&SequenceType::Nucleotide).unwrap_or(&0), 2);
-        assert_eq!(*stats.type_distribution.get(&SequenceType::Protein).unwrap_or(&0), 1);
+        assert_eq!(
+            *stats
+                .type_distribution
+                .get(&SequenceType::Nucleotide)
+                .unwrap_or(&0),
+            2
+        );
+        assert_eq!(
+            *stats
+                .type_distribution
+                .get(&SequenceType::Protein)
+                .unwrap_or(&0),
+            1
+        );
         assert_eq!(stats.primary_type, SequenceType::Nucleotide);
     }
 
@@ -739,9 +751,7 @@ mod tests {
 
     #[test]
     fn test_case_insensitive_processing() {
-        let sequences = vec![
-            Sequence::new("mixed".to_string(), b"atgcATGC".to_vec()),
-        ];
+        let sequences = vec![Sequence::new("mixed".to_string(), b"atgcATGC".to_vec())];
 
         let stats = SequenceStats::calculate(&sequences);
 
@@ -751,9 +761,7 @@ mod tests {
 
     #[test]
     fn test_rna_sequences() {
-        let sequences = vec![
-            Sequence::new("rna".to_string(), b"AUGCAUGC".to_vec()),
-        ];
+        let sequences = vec![Sequence::new("rna".to_string(), b"AUGCAUGC".to_vec())];
 
         let stats = SequenceStats::calculate(&sequences);
 

@@ -1,10 +1,10 @@
 /// Database manager extensions for unified progress tracking
 use crate::database::{DatabaseManager, DownloadResult};
-use crate::download::{DatabaseSource, unified_progress::UnifiedProgressTracker};
-use crate::download::workspace::{find_existing_workspace_for_source, Stage, DatabaseSourceExt};
+use crate::download::workspace::{find_existing_workspace_for_source, DatabaseSourceExt, Stage};
+use crate::download::{unified_progress::UnifiedProgressTracker, DatabaseSource};
 use anyhow::Result;
-use std::sync::Arc;
 use std::path::Path;
+use std::sync::Arc;
 
 impl DatabaseManager {
     /// Download database with unified progress tracking
@@ -17,24 +17,39 @@ impl DatabaseManager {
         tracker.set_stage(crate::download::unified_progress::OperationStage::Discovery)?;
         tracker.print_status("Searching for existing downloads...");
 
-        // Check if we already have this database (simplified for now)
-        // TODO: Implement proper has_database check
-        let _db_name = source.canonical_name();
+        // Check if we already have this database
+        let db_name = source.canonical_name();
+        if self.has_database(&db_name)? {
+            tracker.print_status(&format!("Database '{}' already exists locally", db_name));
+            // Return existing database info
+            let stats = self.get_repository().storage.get_stats();
+            return Ok(DownloadResult::AlreadyExists {
+                total_chunks: stats.total_chunks,
+                total_size: stats.total_size as u64,
+            });
+        }
 
         // Check for resumable download
         if let Ok(Some((workspace_path, state))) = find_existing_workspace_for_source(source) {
-            tracker.print_status(&format!("Found existing download at {}", workspace_path.display()));
+            tracker.print_status(&format!(
+                "Found existing download at {}",
+                workspace_path.display()
+            ));
 
             match state.stage {
                 Stage::Complete => {
                     tracker.print_status("Download complete, resuming SEQUOIA processing");
                     // Process the completed download
-                    return self.process_downloaded_file_unified(&workspace_path, source, tracker).await;
+                    return self
+                        .process_downloaded_file_unified(&workspace_path, source, tracker)
+                        .await;
                 }
                 Stage::Downloading { .. } => {
                     tracker.print_status("Found incomplete download, resuming...");
                     // Resume download with unified tracker
-                    return self.resume_download_unified(source, tracker, workspace_path).await;
+                    return self
+                        .resume_download_unified(source, tracker, workspace_path)
+                        .await;
                 }
                 _ => {
                     tracker.print_status("Found incomplete operation, restarting...");
@@ -75,19 +90,20 @@ impl DatabaseManager {
         }));
 
         // Download the file
-        tracker.set_stage(crate::download::unified_progress::OperationStage::Download {
-            bytes_current: 0,
-            bytes_total: 0,
-        })?;
+        tracker.set_stage(
+            crate::download::unified_progress::OperationStage::Download {
+                bytes_current: 0,
+                bytes_total: 0,
+            },
+        )?;
 
-        let file_path = download_manager.download_with_state(
-            source.clone(),
-            options,
-            &mut download_progress,
-        ).await?;
+        let file_path = download_manager
+            .download_with_state(source.clone(), options, &mut download_progress)
+            .await?;
 
         // Process the downloaded file
-        self.process_downloaded_file_unified(&file_path, source, tracker).await
+        self.process_downloaded_file_unified(&file_path, source, tracker)
+            .await
     }
 
     /// Resume download with unified progress
@@ -113,23 +129,29 @@ impl DatabaseManager {
         let _file_size = std::fs::metadata(file_path)?.len();
 
         // Stream process the file
-        tracker.set_stage(crate::download::unified_progress::OperationStage::Processing {
-            sequences_processed: 0,
-            sequences_total: None,  // Will estimate from file size
-            batches_processed: 0,
-        })?;
+        tracker.set_stage(
+            crate::download::unified_progress::OperationStage::Processing {
+                sequences_processed: 0,
+                sequences_total: None, // Will estimate from file size
+                batches_processed: 0,
+            },
+        )?;
 
         self.chunk_database_streaming_unified(file_path, source, tracker.clone())?;
 
         // Build indices
         tracker.set_stage(crate::download::unified_progress::OperationStage::IndexBuilding)?;
-        self.get_repository_mut().storage.sequence_storage.save_indices()?;
+        self.get_repository_mut()
+            .storage
+            .sequence_storage
+            .save_indices()?;
 
         // Create manifest
         tracker.set_stage(crate::download::unified_progress::OperationStage::ManifestCreation)?;
-        // Get chunk information
-        let chunk_count = 100; // Placeholder - would get actual count from storage
-        let total_size = 1_000_000; // Placeholder - would calculate actual size
+        // Get actual chunk information from storage
+        let storage_stats = self.get_repository().storage.get_stats();
+        let chunk_count = storage_stats.total_chunks;
+        let total_size = storage_stats.total_size;
 
         // Finalize
         tracker.set_stage(crate::download::unified_progress::OperationStage::Finalization)?;
@@ -140,7 +162,7 @@ impl DatabaseManager {
 
         Ok(DownloadResult::Downloaded {
             total_chunks: chunk_count,
-            total_size,
+            total_size: total_size as u64,
         })
     }
 
@@ -162,9 +184,11 @@ impl DatabaseManager {
         let file_size = file.metadata()?.len();
         let reader = BufReader::new(file);
 
-        tracker.print_status(&format!("Processing {} file in batches of {}",
+        tracker.print_status(&format!(
+            "Processing {} file in batches of {}",
             talaria_utils::display::format_bytes(file_size),
-            format_number(BATCH_SIZE)));
+            format_number(BATCH_SIZE)
+        ));
 
         let mut total_sequences = 0usize;
         let mut batch_count = 0usize;
@@ -199,16 +223,16 @@ impl DatabaseManager {
                         // Update progress
                         tracker.update_processing(
                             total_sequences,
-                            None,  // Don't know total yet
-                            batch_count
+                            None, // Don't know total yet
+                            batch_count,
                         )?;
 
                         // Process batch using the quiet chunker
                         // Create chunker for this batch
                         let strategy = crate::chunker::ChunkingStrategy::default();
-                        // Create a new SequenceStorage instance for the chunker
-                        let sequences_path = talaria_core::system::paths::canonical_sequence_storage_dir();
-                        let sequence_storage = crate::storage::sequence::SequenceStorage::new(&sequences_path)?;
+                        // Use the existing SequenceStorage from the repository
+                        let sequence_storage =
+                            Arc::clone(&self.get_repository().storage.sequence_storage);
                         let mut chunker = crate::chunker::TaxonomicChunker::new(
                             strategy,
                             sequence_storage,
@@ -219,16 +243,12 @@ impl DatabaseManager {
                         let manifests = chunker.chunk_sequences_canonical(sequences_batch)?;
 
                         // Count new vs dedup (simplified)
-                        total_new += manifests.len() * 100;  // Estimate
-                        total_dedup += manifests.len() * 10;  // Estimate
+                        total_new += manifests.len() * 100; // Estimate
+                        total_dedup += manifests.len() * 10; // Estimate
 
                         // Update storing progress periodically
                         if batch_count % 5 == 0 {
-                            tracker.update_storing(
-                                total_sequences,
-                                total_new,
-                                total_dedup,
-                            )?;
+                            tracker.update_storing(total_sequences, total_new, total_dedup)?;
                         }
 
                         sequences_batch = Vec::with_capacity(BATCH_SIZE);
@@ -242,7 +262,8 @@ impl DatabaseManager {
                 current_seq.clear();
 
                 // Extract taxon_id using the proper function
-                current_taxon_id = current_desc.as_ref()
+                current_taxon_id = current_desc
+                    .as_ref()
                     .and_then(|desc| talaria_bio::formats::fasta::extract_taxon_id(desc));
             } else {
                 // Append to sequence
@@ -265,26 +286,28 @@ impl DatabaseManager {
         // Process any remaining sequences
         if !sequences_batch.is_empty() {
             batch_count += 1;
-            tracker.print_status(&format!("Processing final batch ({} sequences total)...",
-                format_number(total_sequences)));
+            tracker.print_status(&format!(
+                "Processing final batch ({} sequences total)...",
+                format_number(total_sequences)
+            ));
 
             // Create chunker for final batch
             let strategy = crate::chunker::ChunkingStrategy::default();
-            let sequences_path = talaria_core::system::paths::canonical_sequence_storage_dir();
-            let sequence_storage = crate::storage::sequence::SequenceStorage::new(&sequences_path)?;
-            let mut chunker = crate::chunker::TaxonomicChunker::new(
-                strategy,
-                sequence_storage,
-                source.clone(),
-            );
+            // Use the existing SequenceStorage from the repository
+            let sequence_storage = Arc::clone(&self.get_repository().storage.sequence_storage);
+            let mut chunker =
+                crate::chunker::TaxonomicChunker::new(strategy, sequence_storage, source.clone());
             chunker.set_quiet_mode(true);
             let _ = chunker.chunk_sequences_canonical(sequences_batch)?;
         }
 
         // Final update
         tracker.update_storing(total_sequences, total_new, total_dedup)?;
-        tracker.print_status(&format!("✓ Processed {} sequences in {} batches",
-            format_number(total_sequences), format_number(batch_count)));
+        tracker.print_status(&format!(
+            "✓ Processed {} sequences in {} batches",
+            format_number(total_sequences),
+            format_number(batch_count)
+        ));
 
         Ok(())
     }

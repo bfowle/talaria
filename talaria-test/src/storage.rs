@@ -2,15 +2,16 @@
 //!
 //! Utilities for testing SEQUOIA storage operations.
 
-use std::path::{Path, PathBuf};
-use anyhow::{Result, Context};
-use talaria_sequoia::storage::{SEQUOIAStorage, SequenceStorage};
-use talaria_core::types::SHA256Hash;
+use crate::fixtures::test_database_source;
 use crate::TestEnvironment;
+use anyhow::{Context, Result};
+use std::path::{Path, PathBuf};
+use talaria_core::types::SHA256Hash;
+use talaria_sequoia::storage::{SequoiaStorage, SequenceStorage};
 
 /// Test storage wrapper with helpers
 pub struct TestStorage {
-    sequoia_storage: SEQUOIAStorage,
+    sequoia_storage: SequoiaStorage,
     sequence_storage: SequenceStorage,
     path: PathBuf,
 }
@@ -19,12 +20,16 @@ impl TestStorage {
     /// Create a new test storage in the given environment
     pub fn new(env: &TestEnvironment) -> Result<Self> {
         let path = env.sequences_dir();
-        let sequoia_storage = SEQUOIAStorage::new(&path)
-            .context("Failed to create SEQUOIA storage")?;
-        let sequence_storage = SequenceStorage::new(&path)
-            .context("Failed to create sequence storage")?;
+        let sequoia_storage =
+            SequoiaStorage::new(&path).context("Failed to create SEQUOIA storage")?;
+        let sequence_storage =
+            SequenceStorage::new(&path).context("Failed to create sequence storage")?;
 
-        Ok(Self { sequoia_storage, sequence_storage, path })
+        Ok(Self {
+            sequoia_storage,
+            sequence_storage,
+            path,
+        })
     }
 
     /// Create with custom path
@@ -32,34 +37,34 @@ impl TestStorage {
         let path = path.as_ref().to_path_buf();
         std::fs::create_dir_all(&path)?;
 
-        let sequoia_storage = SEQUOIAStorage::new(&path)
-            .context("Failed to create SEQUOIA storage")?;
-        let sequence_storage = SequenceStorage::new(&path)
-            .context("Failed to create sequence storage")?;
+        let sequoia_storage =
+            SequoiaStorage::new(&path).context("Failed to create SEQUOIA storage")?;
+        let sequence_storage =
+            SequenceStorage::new(&path).context("Failed to create sequence storage")?;
 
-        Ok(Self { sequoia_storage, sequence_storage, path })
+        Ok(Self {
+            sequoia_storage,
+            sequence_storage,
+            path,
+        })
     }
 
     /// Get the SEQUOIA storage
-    pub fn sequoia(&self) -> &SEQUOIAStorage {
+    pub fn sequoia(&self) -> &SequoiaStorage {
         &self.sequoia_storage
     }
 
     /// Get mutable SEQUOIA storage
-    pub fn sequoia_mut(&mut self) -> &mut SEQUOIAStorage {
+    pub fn sequoia_mut(&mut self) -> &mut SequoiaStorage {
         &mut self.sequoia_storage
     }
 
     /// Store a test sequence
-    pub fn store_sequence(
-        &mut self,
-        sequence: &str,
-        header: &str,
-    ) -> Result<SHA256Hash> {
+    pub fn store_sequence(&mut self, sequence: &str, header: &str) -> Result<SHA256Hash> {
         let hash = self.sequence_storage.store_sequence(
             sequence,
             header,
-            talaria_core::DatabaseSource::Test,
+            test_database_source("storage"),
         )?;
         Ok(hash)
     }
@@ -75,7 +80,9 @@ impl TestStorage {
 
     /// Verify storage contains sequence
     pub fn contains(&self, hash: &SHA256Hash) -> bool {
-        self.sequence_storage.canonical_exists(hash).unwrap_or(false)
+        self.sequence_storage
+            .canonical_exists(hash)
+            .unwrap_or(false)
     }
 
     /// Get storage statistics

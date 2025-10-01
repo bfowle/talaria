@@ -2,10 +2,10 @@
 //!
 //! Common test data for use across the Talaria workspace.
 
-use std::fmt::Write;
-use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
-use talaria_core::types::TaxonId;
+use rand::{Rng, SeedableRng};
+use std::fmt::Write;
+use talaria_core::types::{DatabaseReference, DatabaseSource, TaxonId};
 
 /// Test sequence with metadata
 #[derive(Debug, Clone)]
@@ -67,9 +67,7 @@ pub fn generate_sequences(count: usize, length: usize) -> Vec<TestSequence> {
 
     (0..count)
         .map(|i| {
-            let sequence: String = (0..length)
-                .map(|_| bases[rng.gen_range(0..4)])
-                .collect();
+            let sequence: String = (0..length).map(|_| bases[rng.gen_range(0..4)]).collect();
 
             TestSequence::new(format!("seq_{}", i), sequence)
         })
@@ -86,9 +84,7 @@ pub fn generate_similar_sequences(
     let bases = ['A', 'T', 'G', 'C'];
 
     // Generate reference sequence
-    let reference: String = (0..length)
-        .map(|_| bases[rng.gen_range(0..4)])
-        .collect();
+    let reference: String = (0..length).map(|_| bases[rng.gen_range(0..4)]).collect();
 
     let mut sequences = vec![TestSequence::new("seq_0_ref", reference.clone())];
 
@@ -143,10 +139,13 @@ pub fn ecoli_sequences() -> Vec<TestSequence> {
             .with_description("Beta-galactosidase")
             .with_taxon(TaxonId(562))
             .with_database("ncbi"),
-        TestSequence::new("ECOLI_RECA", "TATATATATATATATATATATATATATATATATATATATATATAT")
-            .with_description("RecA protein")
-            .with_taxon(TaxonId(562))
-            .with_database("refseq"),
+        TestSequence::new(
+            "ECOLI_RECA",
+            "TATATATATATATATATATATATATATATATATATATATATATAT",
+        )
+        .with_description("RecA protein")
+        .with_taxon(TaxonId(562))
+        .with_database("refseq"),
     ]
 }
 
@@ -169,7 +168,10 @@ pub mod taxonomy {
 }
 
 /// Create redundant sequences for testing deduplication
-pub fn create_redundant_sequences(unique_count: usize, copies_per_sequence: usize) -> Vec<TestSequence> {
+pub fn create_redundant_sequences(
+    unique_count: usize,
+    copies_per_sequence: usize,
+) -> Vec<TestSequence> {
     let base_sequences = generate_sequences(unique_count, 50);
     let mut all_sequences = Vec::new();
 
@@ -197,19 +199,94 @@ pub fn create_taxonomic_distribution() -> Vec<TestSequence> {
         TestSequence::new("bact_2", "GCGCGCGCGCGC").with_taxon(BACTERIA),
         TestSequence::new("ecoli_1", "TATATATATATAT").with_taxon(E_COLI),
         TestSequence::new("ecoli_2", "CACACACACACA").with_taxon(E_COLI),
-
         // Eukaryota (30%)
         TestSequence::new("human_1", "AAAAAAAAAA").with_taxon(HUMAN),
         TestSequence::new("mouse_1", "TTTTTTTTTT").with_taxon(MOUSE),
         TestSequence::new("yeast_1", "GGGGGGGGGG").with_taxon(YEAST),
-
         // Viruses (20%)
         TestSequence::new("covid_1", "CCCCCCCCCC").with_taxon(SARS_COV_2),
         TestSequence::new("hiv_1", "AGTCAGTCAG").with_taxon(HIV_1),
-
         // Archaea (10%)
         TestSequence::new("arch_1", "TGCATGCATG").with_taxon(ARCHAEA),
     ]
+}
+
+/// Test database source builder for unit tests
+///
+/// This replaces the anti-pattern of having a `DatabaseSource::Test` variant.
+/// Instead, use `Custom` variant with test-specific names.
+pub struct TestDatabaseBuilder {
+    name: String,
+    version: Option<String>,
+}
+
+impl TestDatabaseBuilder {
+    pub fn new() -> Self {
+        Self {
+            name: "test_database".to_string(),
+            version: None,
+        }
+    }
+
+    pub fn with_name(mut self, name: &str) -> Self {
+        self.name = name.to_string();
+        self
+    }
+
+    pub fn with_version(mut self, version: &str) -> Self {
+        self.version = Some(version.to_string());
+        self
+    }
+
+    pub fn build(self) -> DatabaseSource {
+        DatabaseSource::Custom(self.name)
+    }
+
+    pub fn build_reference(self) -> DatabaseReference {
+        DatabaseReference {
+            source: "custom".to_string(),
+            dataset: self.name,
+            version: Some(self.version.unwrap_or_else(|| "test_v1".to_string())),
+            profile: None,
+        }
+    }
+}
+
+impl Default for TestDatabaseBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Convenience function for quick test database creation
+///
+/// # Examples
+///
+/// ```
+/// use talaria_test::fixtures::test_database_source;
+///
+/// let source = test_database_source("integration_test");
+/// ```
+pub fn test_database_source(name: &str) -> DatabaseSource {
+    DatabaseSource::Custom(format!("test_{}", name))
+}
+
+/// Convenience function for creating test database references
+///
+/// # Examples
+///
+/// ```
+/// use talaria_test::fixtures::test_database_reference;
+///
+/// let db_ref = test_database_reference("my_test", "v1.0");
+/// ```
+pub fn test_database_reference(name: &str, version: &str) -> DatabaseReference {
+    DatabaseReference {
+        source: "custom".to_string(),
+        dataset: format!("test_{}", name),
+        version: Some(version.to_string()),
+        profile: None,
+    }
 }
 
 #[cfg(test)]

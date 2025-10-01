@@ -1,9 +1,8 @@
 /// Integration tests for advanced export features
 /// Tests taxonomy filtering, redundancy reduction, and sampling
-
 use anyhow::Result;
-use tempfile::TempDir;
 use std::fs;
+use tempfile::TempDir;
 
 #[test]
 fn test_taxonomy_filter_complex_expression() -> Result<()> {
@@ -75,7 +74,11 @@ ATGATGATGATGATGATGATGATGATGATGATGATGATGATGATG
     let seq_count = output.lines().filter(|l| l.starts_with('>')).count();
 
     // Should have reduced from 5 to 4 sequences (seq1 and seq5 are identical)
-    assert_eq!(seq_count, 4, "Expected 4 sequences after deduplication (5 original, 2 identical), got {}", seq_count);
+    assert_eq!(
+        seq_count, 4,
+        "Expected 4 sequences after deduplication (5 original, 2 identical), got {}",
+        seq_count
+    );
 
     Ok(())
 }
@@ -106,8 +109,11 @@ fn test_sampling_and_max_sequences() -> Result<()> {
     // Test sampling (this is probabilistic, so we check range)
     let sampled = apply_sampling_test(&content, 0.1); // 10% sample
     let sample_count = sampled.lines().filter(|l| l.starts_with('>')).count();
-    assert!(sample_count >= 5 && sample_count <= 20,
-            "Expected 5-20 sequences from 10% sampling, got {}", sample_count);
+    assert!(
+        sample_count >= 5 && sample_count <= 20,
+        "Expected 5-20 sequences from 10% sampling, got {}",
+        sample_count
+    );
 
     Ok(())
 }
@@ -115,7 +121,8 @@ fn test_sampling_and_max_sequences() -> Result<()> {
 // Helper functions to simulate the export features
 fn apply_taxonomy_filter_test(fasta: &str, _filter: &str) -> String {
     // Simple simulation - remove lines with Escherichia
-    fasta.lines()
+    fasta
+        .lines()
         .fold((String::new(), false), |(mut acc, mut skip), line| {
             if line.starts_with('>') {
                 skip = line.contains("Escherichia");
@@ -128,7 +135,8 @@ fn apply_taxonomy_filter_test(fasta: &str, _filter: &str) -> String {
                 acc.push('\n');
             }
             (acc, skip)
-        }).0
+        })
+        .0
 }
 
 fn apply_redundancy_reduction_test(fasta: &str, _threshold: u8) -> String {

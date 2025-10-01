@@ -4,7 +4,7 @@ mod cloud_tests {
     use tempfile::TempDir;
     use talaria_sequoia::cloud::sync::CloudSync;
     use talaria_sequoia::cloud::s3::S3Backend;
-    use talaria_sequoia::storage::core::SEQUOIAStorage;
+    use talaria_sequoia::storage::core::SequoiaStorage;
     use talaria_sequoia::manifest::core::Manifest;
     use std::env;
     
@@ -25,7 +25,7 @@ mod cloud_tests {
         let remote_path = temp_dir.path().join("remote");
         
         // Create local storage
-        let mut local_storage = SEQUOIAStorage::new(local_path.clone())?;
+        let mut local_storage = SequoiaStorage::new(local_path.clone())?;
         let mut manifest = Manifest::new("cloud_db".to_string(), "1.0.0".to_string());
         
         // Store test data
@@ -55,7 +55,7 @@ mod cloud_tests {
         sync2.pull()?;
         
         // Verify data
-        let remote_storage = SEQUOIAStorage::new(remote_path)?;
+        let remote_storage = SequoiaStorage::new(remote_path)?;
         let retrieved = remote_storage.retrieve_chunk(&hash)?;
         assert_eq!(retrieved, test_data);
         
@@ -69,7 +69,7 @@ mod mock_cloud_tests {
     use std::path::{Path, PathBuf};
     use std::fs;
     use tempfile::TempDir;
-    use talaria_sequoia::storage::core::SEQUOIAStorage;
+    use talaria_sequoia::storage::core::SequoiaStorage;
     use talaria_sequoia::manifest::core::Manifest;
     
     /// Simulates cloud sync using local filesystem
@@ -148,7 +148,7 @@ mod mock_cloud_tests {
         let cloud = temp_dir.path().join("cloud");
         
         // Create first local storage
-        let mut storage1 = SEQUOIAStorage::new(local1.clone())?;
+        let mut storage1 = SequoiaStorage::new(local1.clone())?;
         let mut manifest = Manifest::new("mock_cloud_db".to_string(), "1.0.0".to_string());
         
         // Store test data
@@ -173,7 +173,7 @@ mod mock_cloud_tests {
         sync2.pull()?;
         
         // Verify data in second location
-        let storage2 = SEQUOIAStorage::new(local2.clone())?;
+        let storage2 = SequoiaStorage::new(local2.clone())?;
         let retrieved1 = storage2.retrieve_chunk(&hash1)?;
         let retrieved2 = storage2.retrieve_chunk(&hash2)?;
         
@@ -194,7 +194,7 @@ mod mock_cloud_tests {
         let local = temp_dir.path().join("local");
         let cloud = temp_dir.path().join("cloud");
         
-        let mut storage = SEQUOIAStorage::new(local.clone())?;
+        let mut storage = SequoiaStorage::new(local.clone())?;
         let mut manifest = Manifest::new("incremental_sync_db".to_string(), "1.0.0".to_string());
         
         // Initial data
@@ -226,7 +226,7 @@ mod mock_cloud_tests {
         let sync3 = MockCloudSync::new(local3.clone(), cloud.clone())?;
         sync3.pull()?;
         
-        let storage3 = SEQUOIAStorage::new(local3)?;
+        let storage3 = SequoiaStorage::new(local3)?;
         assert!(storage3.retrieve_chunk(&hash1).is_ok());
         assert!(storage3.retrieve_chunk(&hash2).is_ok());
         
@@ -241,10 +241,10 @@ mod mock_cloud_tests {
         let cloud = temp_dir.path().join("cloud");
         
         // Create divergent local copies
-        let mut storage1 = SEQUOIAStorage::new(local1.clone())?;
+        let mut storage1 = SequoiaStorage::new(local1.clone())?;
         let mut manifest1 = Manifest::new("conflict_db".to_string(), "1.0.0".to_string());
         
-        let mut storage2 = SEQUOIAStorage::new(local2.clone())?;
+        let mut storage2 = SequoiaStorage::new(local2.clone())?;
         let mut manifest2 = Manifest::new("conflict_db".to_string(), "1.0.0".to_string());
         
         // Different data in each
@@ -285,7 +285,7 @@ mod mock_cloud_tests {
         let partial = temp_dir.path().join("partial");
         
         // Create complete dataset
-        let mut storage = SEQUOIAStorage::new(local.clone())?;
+        let mut storage = SequoiaStorage::new(local.clone())?;
         let mut manifest = Manifest::new("partial_sync_db".to_string(), "1.0.0".to_string());
         
         let chunks: Vec<_> = (0..10)
@@ -323,7 +323,7 @@ mod mock_cloud_tests {
         }
         
         // Verify partial sync can be detected
-        let partial_storage = SEQUOIAStorage::new(partial)?;
+        let partial_storage = SequoiaStorage::new(partial)?;
         let partial_manifest = Manifest::load(&partial.join("manifest.json"))?;
         
         // Check we can retrieve partial data

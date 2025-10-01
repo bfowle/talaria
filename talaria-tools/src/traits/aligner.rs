@@ -1,7 +1,7 @@
-/// Traits for alignment tools
-use talaria_bio::sequence::Sequence;
 use anyhow::Result;
 use std::path::Path;
+/// Traits for alignment tools
+use talaria_bio::sequence::Sequence;
 
 /// Summary of an alignment search result
 #[derive(Debug, Clone)]
@@ -79,8 +79,8 @@ pub trait ConfigurableAligner: Aligner {
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use talaria_bio::sequence::Sequence;
     use std::sync::{Arc, Mutex};
+    use talaria_bio::sequence::Sequence;
 
     // ===== Mock Aligner Implementation =====
 
@@ -339,22 +339,20 @@ mod tests {
 
     #[test]
     fn test_mock_aligner_search() {
-        let results = vec![
-            AlignmentSummary {
-                query_id: "q1".to_string(),
-                reference_id: "r1".to_string(),
-                identity: 98.0,
-                alignment_length: 100,
-                mismatches: 2,
-                gap_opens: 0,
-                query_start: 1,
-                query_end: 100,
-                ref_start: 1,
-                ref_end: 100,
-                e_value: 1e-50,
-                bit_score: 200.0,
-            },
-        ];
+        let results = vec![AlignmentSummary {
+            query_id: "q1".to_string(),
+            reference_id: "r1".to_string(),
+            identity: 98.0,
+            alignment_length: 100,
+            mismatches: 2,
+            gap_opens: 0,
+            query_start: 1,
+            query_end: 100,
+            ref_start: 1,
+            ref_end: 100,
+            e_value: 1e-50,
+            bit_score: 200.0,
+        }];
 
         let mut aligner = MockAligner::new().with_results(results.clone());
 
@@ -636,17 +634,14 @@ mod tests {
             cloned.e_value == e_value
         };
 
-        identity_match &&
-        cloned.alignment_length == length &&
-        cloned.mismatches == mismatches &&
-        e_value_match
+        identity_match
+            && cloned.alignment_length == length
+            && cloned.mismatches == mismatches
+            && e_value_match
     }
 
     #[quickcheck_macros::quickcheck]
-    fn prop_config_fields_preserved(
-        max_results: Option<usize>,
-        threads: Option<usize>,
-    ) -> bool {
+    fn prop_config_fields_preserved(max_results: Option<usize>, threads: Option<usize>) -> bool {
         let config = AlignmentConfig {
             max_results,
             min_identity: None,

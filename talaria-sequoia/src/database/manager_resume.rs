@@ -20,7 +20,10 @@ impl DatabaseManager {
             // Check for resumable operations
             let resumable_ops = self.list_resumable_operations()?;
             if !resumable_ops.is_empty() {
-                progress_callback(&format!("Found {} resumable operation(s)", resumable_ops.len()));
+                progress_callback(&format!(
+                    "Found {} resumable operation(s)",
+                    resumable_ops.len()
+                ));
 
                 // Find matching operation for this source
                 for (op_id, state) in &resumable_ops {

@@ -32,7 +32,8 @@ rand = { workspace = true }
 petgraph = "0.6"
 itertools = "0.11"
 seahash = "4.1"
-parking_lot = "0.12"
+parking_lot = { version = "0.12", features = ["deadlock_detection"] }
+crossbeam = "0.8"
 blake3 = "1.5"
 bit-vec = "0.6"
 rustc-hash = "1.1"
@@ -41,6 +42,8 @@ xxhash-rust = { version = "0.8", features = ["xxh3"] }
 uuid = { version = "1.5", features = ["v4", "serde"] }
 reqwest = { version = "0.11", features = ["json", "stream"] }
 regex = "1.9"
+url = "2.4"
+ring = "0.17"
 comfy-table = "7.0"
 aws-sdk-s3 = "0.33"
 futures = "0.3"
@@ -56,6 +59,11 @@ colored = "2.0"
 atty = "0.2"
 hostname = "0.3"
 libc = "0.2"
+lazy_static = "1.4"
+rocksdb = { version = "0.24", default-features = false, features = ["zstd", "multi-threaded-cf"] }
+toml = "0.8"
+clap = { version = "4.4", features = ["derive"] }
+sysinfo = "0.29"
 
 [dev-dependencies]
 talaria-test = { path = "../talaria-test" }
@@ -69,6 +77,14 @@ mockall = "0.12"
 # talaria-cli = { path = "../talaria-cli" }  # For graph centrality benchmark - commented out as it lacks lib target
 petgraph = "0.6"  # For graph benchmarks
 
+[features]
+default = []
+deadlock_detection = ["parking_lot/deadlock_detection"]
+
 [[bench]]
 name = "sequoia_benchmarks"
+harness = false
+
+[[bench]]
+name = "rocksdb_performance"
 harness = false

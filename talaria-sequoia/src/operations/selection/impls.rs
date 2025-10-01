@@ -1,14 +1,14 @@
 #![allow(dead_code)]
 
+/// Trait implementations for reference selection strategies
+use super::super::reference_selector::{ReferenceSelectorImpl, SelectionAlgorithm};
 use super::traits::{
     AlignmentBasedSelector, AlignmentScore, RecommendedParams,
     ReferenceSelector as ReferenceSelectorTrait, SelectionStats, TraitSelectionResult,
 };
-use talaria_bio::sequence::Sequence;
-/// Trait implementations for reference selection strategies
-use super::super::reference_selector::{ReferenceSelectorImpl, SelectionAlgorithm};
 use anyhow::Result;
 use std::collections::HashSet;
+use talaria_bio::sequence::Sequence;
 
 /// Implement the trait for our concrete ReferenceSelectorImpl
 impl ReferenceSelectorTrait for ReferenceSelectorImpl {

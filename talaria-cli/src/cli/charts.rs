@@ -1,6 +1,5 @@
 /// ASCII chart visualization for terminal output
 /// Provides simple but effective visualizations for reduction statistics
-
 use colored::*;
 use std::collections::HashMap;
 
@@ -171,10 +170,12 @@ impl AsciiLineChart {
                     let inter_x = (prev_x as f64 + t * (x as f64 - prev_x as f64)) as usize;
                     let inter_y = (prev_y as f64 + t * (y as f64 - prev_y as f64)) as usize;
 
-                    if inter_x < self.width && inter_y < self.height
-                        && grid[inter_y][inter_x] == ' ' {
-                            grid[inter_y][inter_x] = '·';
-                        }
+                    if inter_x < self.width
+                        && inter_y < self.height
+                        && grid[inter_y][inter_x] == ' '
+                    {
+                        grid[inter_y][inter_x] = '·';
+                    }
                 }
             }
         }
@@ -279,14 +280,16 @@ impl AsciiPieChart {
     }
 
     fn get_color(index: usize) -> colored::Color {
-        let colors = [Color::Green,
+        let colors = [
+            Color::Green,
             Color::Yellow,
             Color::Blue,
             Color::Magenta,
             Color::Cyan,
             Color::Red,
             Color::BrightGreen,
-            Color::BrightYellow];
+            Color::BrightYellow,
+        ];
         colors[index % colors.len()]
     }
 }

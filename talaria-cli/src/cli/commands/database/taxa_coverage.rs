@@ -1,13 +1,13 @@
 #![allow(dead_code)]
 
-use talaria_bio::formats::fasta;
-use talaria_bio::taxonomy::{ncbi, TaxonomyDB};
-use talaria_bio::taxonomy::stats::{format_tree, TaxonomyCoverage};
 use anyhow::{Context, Result};
 use clap::Args;
 use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::path::PathBuf;
+use talaria_bio::formats::fasta;
+use talaria_bio::taxonomy::stats::{format_tree, TaxonomyCoverage};
+use talaria_bio::taxonomy::{ncbi, TaxonomyDB};
 
 #[derive(Args)]
 pub struct TaxaCoverageArgs {
@@ -23,9 +23,17 @@ pub struct TaxaCoverageArgs {
     #[arg(short = 't', long)]
     pub taxonomy: Option<PathBuf>,
 
-    /// Output format (text, json, html, csv)
+    /// Output format (deprecated: use --report-format)
     #[arg(short = 'f', long, default_value = "text")]
     pub format: String,
+
+    /// Report output file path
+    #[arg(long = "report-output", value_name = "FILE")]
+    pub report_output: Option<PathBuf>,
+
+    /// Report output format (text, html, json, csv)
+    #[arg(long = "report-format", value_name = "FORMAT", default_value = "text")]
+    pub report_format: String,
 
     /// Maximum depth for tree display
     #[arg(short = 'd', long, default_value = "5")]
@@ -85,56 +93,118 @@ pub fn run(args: TaxaCoverageArgs) -> Result<()> {
         None
     };
 
-    // Generate report based on format
-    let report = match args.format.as_str() {
-        "json" => generate_json_report(&primary_coverage, comparison.as_ref()),
-        "csv" => generate_csv_report(&primary_coverage, comparison.as_ref()),
-        "html" => generate_html_report(&primary_coverage, comparison.as_ref(), args.max_depth),
-        _ => generate_text_report(
-            &primary_coverage,
-            comparison.as_ref(),
-            &taxonomy_db,
-            args.max_depth,
-        ),
-    }?;
+    // Legacy format handling or new report generation
+    if args.report_output.is_some() {
+        // Use new generic framework
+        use talaria_sequoia::operations::{TaxonomyCoverageResult, TaxonomyComparison};
+        use std::time::Duration;
 
-    // Output report
-    if let Some(output_path) = args.output {
-        std::fs::write(&output_path, report).context("Failed to write output file")?;
+        // Build coverage by rank - use rank_coverage which has this info already
+        let coverage_by_rank: Vec<(String, usize)> = primary_coverage
+            .rank_coverage
+            .iter()
+            .map(|(rank, stats)| (rank.clone(), stats.count))
+            .collect();
+
+        // Get most common taxa (top 20) - just use taxon IDs since we don't have names readily available
+        let mut taxa_with_counts: Vec<(String, usize)> = primary_coverage
+            .taxon_counts
+            .iter()
+            .map(|(taxid, count)| (format!("taxid:{}", taxid), *count))
+            .collect();
+        taxa_with_counts.sort_by(|a, b| b.1.cmp(&a.1));
+        let most_common_taxa = taxa_with_counts.iter().take(20).cloned().collect();
+
+        // Get rare taxa (less than 5 sequences)
+        let rare_taxa: Vec<(String, usize)> = taxa_with_counts
+            .iter()
+            .filter(|(_, count)| *count < 5)
+            .cloned()
+            .collect();
+
+        // Build comparison if available
+        let comparison_data = comparison.as_ref().map(|comp| {
+            let shared = primary_coverage
+                .taxon_counts
+                .keys()
+                .filter(|k| comp.taxon_counts.contains_key(*k))
+                .count();
+            let unique_primary = primary_coverage
+                .taxon_counts
+                .keys()
+                .filter(|k| !comp.taxon_counts.contains_key(*k))
+                .count();
+            let unique_comp = comp
+                .taxon_counts
+                .keys()
+                .filter(|k| !primary_coverage.taxon_counts.contains_key(*k))
+                .count();
+
+            TaxonomyComparison {
+                primary_name: args.database.clone(),
+                comparison_name: args.compare.clone().unwrap_or_default(),
+                shared_taxa: shared,
+                unique_to_primary: unique_primary,
+                unique_to_comparison: unique_comp,
+            }
+        });
+
+        let result = TaxonomyCoverageResult {
+            total_sequences: primary_coverage.total_sequences,
+            unique_taxa: primary_coverage.unique_taxa,
+            coverage_by_rank,
+            most_common_taxa,
+            rare_taxa,
+            comparison: comparison_data,
+            duration: Duration::from_secs(0), // TODO: Track actual duration
+        };
+
+        let report_path = args.report_output.as_ref().or(args.output.as_ref()).unwrap();
+        crate::cli::commands::save_report(&result, &args.report_format, report_path)?;
         println!(
             "{} Report saved to {}",
             "✓".green().bold(),
-            output_path.display()
+            report_path.display()
         );
     } else {
-        println!("{}", report);
+        // Use legacy format handling for backward compatibility
+        let report = match args.format.as_str() {
+            "json" => generate_json_report(&primary_coverage, comparison.as_ref()),
+            "csv" => generate_csv_report(&primary_coverage, comparison.as_ref()),
+            "html" => generate_html_report(&primary_coverage, comparison.as_ref(), args.max_depth),
+            _ => generate_text_report(
+                &primary_coverage,
+                comparison.as_ref(),
+                &taxonomy_db,
+                args.max_depth,
+            ),
+        }?;
+
+        // Output report
+        if let Some(output_path) = args.output {
+            std::fs::write(&output_path, report).context("Failed to write output file")?;
+            println!(
+                "{} Report saved to {}",
+                "✓".green().bold(),
+                output_path.display()
+            );
+        } else {
+            println!("{}", report);
+        }
     }
 
     Ok(())
 }
 
 fn load_taxonomy(taxonomy_path: &Option<PathBuf>) -> Result<TaxonomyDB> {
+    use talaria_utils::taxonomy::{get_taxonomy_tree_path, require_taxonomy};
+
     let taxonomy_dir = if let Some(path) = taxonomy_path {
         path.clone()
     } else {
-        // Use the proper versioned taxonomy location from databases
-        use talaria_core::system::paths;
-        let taxonomy_current = paths::talaria_taxonomy_current_dir();
-        let default_path = taxonomy_current.join("tree");
-
-        if !default_path.exists() {
-            // Check for the raw NCBI files in the tree directory
-            let nodes_file = default_path.join("nodes.dmp");
-            let names_file = default_path.join("names.dmp");
-
-            if !nodes_file.exists() || !names_file.exists() {
-                return Err(anyhow::anyhow!(
-                    "Taxonomy database not found. Please run: talaria database download ncbi/taxonomy"
-                ));
-            }
-        }
-
-        default_path
+        // Use unified taxonomy access from TaxonomyProvider
+        require_taxonomy()?;
+        get_taxonomy_tree_path()
     };
 
     println!("{} Loading taxonomy database...", "►".cyan().bold());
@@ -157,7 +227,6 @@ fn load_taxonomy(taxonomy_path: &Option<PathBuf>) -> Result<TaxonomyDB> {
 
     Ok(taxonomy_db)
 }
-
 
 fn analyze_database(path: &PathBuf, taxonomy_db: &TaxonomyDB) -> Result<TaxonomyCoverage> {
     let db_name = path

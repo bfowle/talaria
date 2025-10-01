@@ -1,10 +1,12 @@
-#![allow(dead_code)]
-
-use talaria_bio::parse_fasta;
-use talaria_bio::sequence::Sequence;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use talaria_bio::parse_fasta;
+use talaria_bio::sequence::Sequence;
+use talaria_utils::report::{
+    ComparisonResult, ModifiedSequence, RenamedSequence, SequenceChange,
+    SequenceInfo,
+};
 
 #[derive(Debug, Clone)]
 pub struct DatabaseDiffer {
@@ -63,14 +65,14 @@ impl DatabaseDiffer {
         // Find added sequences
         for id in new_ids.difference(&old_ids) {
             if let Some(seq) = new_sequences.get(id) {
-                result.added.push(SequenceInfo::from_sequence(seq));
+                result.added.push(sequence_info_from_sequence(seq));
             }
         }
 
         // Find removed sequences
         for id in old_ids.difference(&new_ids) {
             if let Some(seq) = old_sequences.get(id) {
-                result.removed.push(SequenceInfo::from_sequence(seq));
+                result.removed.push(sequence_info_from_sequence(seq));
             }
         }
 
@@ -83,8 +85,8 @@ impl DatabaseDiffer {
                 // Compare only headers
                 if old_seq.description != new_seq.description {
                     result.modified.push(ModifiedSequence {
-                        old: SequenceInfo::from_sequence(old_seq),
-                        new: SequenceInfo::from_sequence(new_seq),
+                        old: sequence_info_from_sequence(old_seq),
+                        new: sequence_info_from_sequence(new_seq),
                         similarity: 0.0,
                         changes: vec![SequenceChange::HeaderChanged],
                     });
@@ -99,8 +101,8 @@ impl DatabaseDiffer {
                     let changes = self.detect_changes(old_seq, new_seq);
 
                     result.modified.push(ModifiedSequence {
-                        old: SequenceInfo::from_sequence(old_seq),
-                        new: SequenceInfo::from_sequence(new_seq),
+                        old: sequence_info_from_sequence(old_seq),
+                        new: sequence_info_from_sequence(new_seq),
                         similarity,
                         changes,
                     });
@@ -119,7 +121,12 @@ impl DatabaseDiffer {
         }
 
         // Calculate statistics
-        result.calculate_statistics(&old_sequences, &new_sequences);
+        result.calculate_statistics(
+            &old_sequences,
+            &new_sequences,
+            |s| s.len(),
+            |s| s.taxon_id,
+        );
 
         Ok(result)
     }
@@ -194,123 +201,12 @@ impl DatabaseDiffer {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ComparisonResult {
-    pub old_path: std::path::PathBuf,
-    pub new_path: std::path::PathBuf,
-    pub old_count: usize,
-    pub new_count: usize,
-    pub added: Vec<SequenceInfo>,
-    pub removed: Vec<SequenceInfo>,
-    pub modified: Vec<ModifiedSequence>,
-    pub renamed: Vec<RenamedSequence>,
-    pub unchanged_count: usize,
-    pub statistics: DatabaseStatistics,
-}
-
-impl ComparisonResult {
-    fn new(
-        old_path: std::path::PathBuf,
-        new_path: std::path::PathBuf,
-        old_count: usize,
-        new_count: usize,
-    ) -> Self {
-        Self {
-            old_path,
-            new_path,
-            old_count,
-            new_count,
-            added: Vec::new(),
-            removed: Vec::new(),
-            modified: Vec::new(),
-            renamed: Vec::new(),
-            unchanged_count: 0,
-            statistics: DatabaseStatistics::default(),
-        }
-    }
-
-    fn calculate_statistics(
-        &mut self,
-        old_sequences: &HashMap<String, Sequence>,
-        new_sequences: &HashMap<String, Sequence>,
-    ) {
-        // Calculate length statistics
-        let old_lengths: Vec<usize> = old_sequences.values().map(|s| s.sequence.len()).collect();
-        let new_lengths: Vec<usize> = new_sequences.values().map(|s| s.sequence.len()).collect();
-
-        self.statistics.old_total_length = old_lengths.iter().sum();
-        self.statistics.new_total_length = new_lengths.iter().sum();
-
-        if !old_lengths.is_empty() {
-            self.statistics.old_avg_length = self.statistics.old_total_length / old_lengths.len();
-        }
-
-        if !new_lengths.is_empty() {
-            self.statistics.new_avg_length = self.statistics.new_total_length / new_lengths.len();
-        }
-
-        // Taxonomic statistics
-        let old_taxa: HashSet<u32> = old_sequences.values().filter_map(|s| s.taxon_id).collect();
-        let new_taxa: HashSet<u32> = new_sequences.values().filter_map(|s| s.taxon_id).collect();
-
-        self.statistics.old_unique_taxa = old_taxa.len();
-        self.statistics.new_unique_taxa = new_taxa.len();
-        self.statistics.added_taxa = new_taxa.difference(&old_taxa).count();
-        self.statistics.removed_taxa = old_taxa.difference(&new_taxa).count();
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct DatabaseStatistics {
-    pub old_total_length: usize,
-    pub new_total_length: usize,
-    pub old_avg_length: usize,
-    pub new_avg_length: usize,
-    pub old_unique_taxa: usize,
-    pub new_unique_taxa: usize,
-    pub added_taxa: usize,
-    pub removed_taxa: usize,
-}
-
-#[derive(Debug, Clone)]
-pub struct SequenceInfo {
-    pub id: String,
-    pub description: Option<String>,
-    pub length: usize,
-    pub taxon_id: Option<u32>,
-}
-
-impl SequenceInfo {
-    fn from_sequence(seq: &Sequence) -> Self {
-        Self {
-            id: seq.id.clone(),
-            description: seq.description.clone(),
-            length: seq.sequence.len(),
-            taxon_id: seq.taxon_id,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ModifiedSequence {
-    pub old: SequenceInfo,
-    pub new: SequenceInfo,
-    pub similarity: f64,
-    pub changes: Vec<SequenceChange>,
-}
-
-#[derive(Debug, Clone)]
-pub struct RenamedSequence {
-    pub old_id: String,
-    pub new_id: String,
-    pub old_description: Option<String>,
-    pub new_description: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub enum SequenceChange {
-    HeaderChanged,
-    Extended(usize),
-    Truncated(usize),
-    Mutations(usize),
+// Helper function to create SequenceInfo from Sequence
+fn sequence_info_from_sequence(seq: &Sequence) -> SequenceInfo {
+    SequenceInfo::new(
+        seq.id.clone(),
+        seq.description.clone(),
+        seq.sequence.len(),
+        seq.taxon_id,
+    )
 }

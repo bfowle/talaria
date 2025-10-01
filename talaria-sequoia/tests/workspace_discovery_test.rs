@@ -2,13 +2,12 @@
 use anyhow::Result;
 use serial_test::serial;
 use std::fs;
-use std::path::PathBuf;
-use tempfile::TempDir;
 use talaria_core::system::paths;
-use talaria_core::{DatabaseSource, UniProtDatabase, NCBIDatabase};
+use talaria_core::{DatabaseSource, NCBIDatabase, UniProtDatabase};
 use talaria_sequoia::download::{
-    DownloadState, Stage, find_existing_workspace_for_source, get_download_workspace
+    find_existing_workspace_for_source, get_download_workspace, DownloadState, Stage,
 };
+use tempfile::TempDir;
 
 struct TestEnv {
     _temp_dir: TempDir,
@@ -97,7 +96,7 @@ fn test_workspace_discovery_with_incomplete_download() -> Result<()> {
     // Create state showing download in progress
     let mut state = DownloadState::new(source.clone(), workspace.clone());
     state.stage = Stage::Downloading {
-        bytes_done: 5_000_000_000, // 5GB
+        bytes_done: 5_000_000_000,   // 5GB
         total_bytes: 90_000_000_000, // 90GB
         url: "https://ftp.ncbi.nlm.nih.gov/blast/db/FASTA/nr.gz".to_string(),
     };
@@ -109,7 +108,11 @@ fn test_workspace_discovery_with_incomplete_download() -> Result<()> {
 
     let (_, found_state) = result.unwrap();
     match found_state.stage {
-        Stage::Downloading { bytes_done, total_bytes, .. } => {
+        Stage::Downloading {
+            bytes_done,
+            total_bytes,
+            ..
+        } => {
             assert_eq!(bytes_done, 5_000_000_000);
             assert_eq!(total_bytes, 90_000_000_000);
         }
@@ -129,15 +132,21 @@ fn test_workspace_discovery_prioritizes_newest() -> Result<()> {
 
     // Create three workspaces with different ages
     for (suffix, stage) in [
-        ("old", Stage::Failed {
-            error: "Network error".to_string(),
-            recoverable: true,
-            failed_at: chrono::Utc::now(),
-        }),
-        ("middle", Stage::Processing {
-            chunks_done: 100,
-            total_chunks: 500,
-        }),
+        (
+            "old",
+            Stage::Failed {
+                error: "Network error".to_string(),
+                recoverable: true,
+                failed_at: chrono::Utc::now(),
+            },
+        ),
+        (
+            "middle",
+            Stage::Processing {
+                chunks_done: 100,
+                total_chunks: 500,
+            },
+        ),
         ("newest", Stage::Complete),
     ] {
         let workspace = downloads_dir.join(format!("uniprot_swissprot_20250927_{}", suffix));
@@ -213,7 +222,10 @@ fn test_workspace_discovery_with_processing_stage() -> Result<()> {
 
     let (_, found_state) = result.unwrap();
     match found_state.stage {
-        Stage::Processing { chunks_done, total_chunks } => {
+        Stage::Processing {
+            chunks_done,
+            total_chunks,
+        } => {
             assert_eq!(chunks_done, 250);
             assert_eq!(total_chunks, 1000);
         }

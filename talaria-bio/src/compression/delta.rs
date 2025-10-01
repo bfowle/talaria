@@ -262,15 +262,17 @@ impl DeltaReconstructor {
 pub fn format_deltas_dat(delta_record: &DeltaRecord) -> String {
     // Escape special characters in IDs to avoid parsing issues
     let escape_id = |id: &str| -> String {
-        id.chars().map(|c| match c {
-            '\t' => "\\t".to_string(),
-            '\n' => "\\n".to_string(),
-            '\r' => "\\r".to_string(),
-            '\\' => "\\\\".to_string(),
-            ',' => "\\x2c".to_string(), // Escape comma to avoid format detection issues
-            '>' => "\\x3e".to_string(), // Escape > to avoid format detection issues
-            _ => c.to_string(),
-        }).collect()
+        id.chars()
+            .map(|c| match c {
+                '\t' => "\\t".to_string(),
+                '\n' => "\\n".to_string(),
+                '\r' => "\\r".to_string(),
+                '\\' => "\\\\".to_string(),
+                ',' => "\\x2c".to_string(), // Escape comma to avoid format detection issues
+                '>' => "\\x3e".to_string(), // Escape > to avoid format detection issues
+                _ => c.to_string(),
+            })
+            .collect()
     };
 
     let mut parts = vec![
@@ -285,16 +287,18 @@ pub fn format_deltas_dat(delta_record: &DeltaRecord) -> String {
 
     for range in &delta_record.deltas {
         // Escape special characters in substitution for safe serialization
-        let substitution_str: String = range.substitution.iter()
+        let substitution_str: String = range
+            .substitution
+            .iter()
             .map(|&b| {
                 match b {
                     b'\n' => "\\n".to_string(),
                     b'\t' => "\\t".to_string(),
                     b'\r' => "\\r".to_string(),
                     b'\\' => "\\\\".to_string(),
-                    b',' => "\\x2c".to_string(),  // Escape comma since it's our delimiter
+                    b',' => "\\x2c".to_string(), // Escape comma since it's our delimiter
                     b if b.is_ascii_graphic() || b == b' ' => (b as char).to_string(),
-                    _ => format!("\\x{:02x}", b)
+                    _ => format!("\\x{:02x}", b),
                 }
             })
             .collect();
@@ -350,7 +354,9 @@ fn unescape_substitution(s: &str) -> Vec<u8> {
 pub fn parse_deltas_dat(line: &str) -> Result<DeltaRecord, talaria_core::TalariaError> {
     let parts: Vec<&str> = line.split('\t').collect();
     if parts.is_empty() {
-        return Err(talaria_core::TalariaError::Parse("Empty delta line".to_string()));
+        return Err(talaria_core::TalariaError::Parse(
+            "Empty delta line".to_string(),
+        ));
     }
 
     // Unescape special characters in IDs
@@ -406,8 +412,8 @@ pub fn parse_deltas_dat(line: &str) -> Result<DeltaRecord, talaria_core::Talaria
             let prefix = &field[..comma_pos];
             // Check for range format: start>end
             if let Some(gt_pos) = prefix.find('>') {
-                prefix[..gt_pos].parse::<usize>().is_ok() &&
-                prefix[gt_pos+1..].parse::<usize>().is_ok()
+                prefix[..gt_pos].parse::<usize>().is_ok()
+                    && prefix[gt_pos + 1..].parse::<usize>().is_ok()
             } else {
                 // Single position format
                 prefix.parse::<usize>().is_ok()
@@ -479,7 +485,7 @@ pub fn parse_deltas_dat(line: &str) -> Result<DeltaRecord, talaria_core::Talaria
     Ok(DeltaRecord {
         child_id,
         reference_id,
-        taxon_id,  // Use the parsed taxon_id
+        taxon_id, // Use the parsed taxon_id
         deltas,
         header_change: None, // No header change tracking in the old format
     })

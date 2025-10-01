@@ -112,7 +112,11 @@ pub fn tree_section(title: &str, items: Vec<(&str, String)>, last: bool) {
 
     let indent = if last { "   " } else { "│  " };
     for (i, (key, value)) in items.iter().enumerate() {
-        let item_prefix = if i == items.len() - 1 { "└─" } else { "├─" };
+        let item_prefix = if i == items.len() - 1 {
+            "└─"
+        } else {
+            "├─"
+        };
         println!("{}  {} {}: {}", indent, item_prefix, key, value);
     }
 }
@@ -149,9 +153,7 @@ mod tests {
         let child1 = TreeNode::new("child1");
         let child2 = TreeNode::new("child2");
 
-        let root = TreeNode::new("root")
-            .add_child(child1)
-            .add_child(child2);
+        let root = TreeNode::new("root").add_child(child1).add_child(child2);
 
         assert_eq!(root.children.len(), 2);
         assert_eq!(root.children[0].name, "child1");
@@ -195,12 +197,9 @@ mod tests {
             .add_child(
                 TreeNode::new("branch1")
                     .add_child(TreeNode::new("leaf1"))
-                    .add_child(TreeNode::new("leaf2"))
+                    .add_child(TreeNode::new("leaf2")),
             )
-            .add_child(
-                TreeNode::new("branch2")
-                    .add_child(TreeNode::new("leaf3"))
-            );
+            .add_child(TreeNode::new("branch2").add_child(TreeNode::new("leaf3")));
 
         let rendered = root.render();
         assert!(rendered.contains("root\n"));
@@ -294,13 +293,7 @@ mod tests {
         let level4 = TreeNode::new("level4");
 
         // Create nested structure
-        root = root.add_child(
-            level1.add_child(
-                level2.add_child(
-                    level3.add_child(level4)
-                )
-            )
-        );
+        root = root.add_child(level1.add_child(level2.add_child(level3.add_child(level4))));
 
         let rendered = root.render();
 

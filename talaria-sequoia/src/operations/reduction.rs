@@ -211,8 +211,8 @@ impl ReductionManifest {
 
     /// Compute and update all Merkle roots
     pub fn compute_merkle_roots(&mut self) -> Result<()> {
-        use crate::verification::merkle::MerkleDAG;
         use crate::types::ManifestMetadata;
+        use crate::verification::merkle::MerkleDAG;
 
         // Build Merkle tree for reference chunks
         if !self.reference_chunks.is_empty() {
@@ -380,11 +380,11 @@ impl Default for ReductionStatistics {
 
 /// Manager for reduction operations in SEQUOIA
 pub struct ReductionManager {
-    storage: crate::SEQUOIAStorage,
+    storage: crate::SequoiaStorage,
 }
 
 impl ReductionManager {
-    pub fn new(storage: crate::SEQUOIAStorage) -> Self {
+    pub fn new(storage: crate::SequoiaStorage) -> Self {
         Self { storage }
     }
 
@@ -428,12 +428,6 @@ impl ReductionManager {
         }
 
         Ok(profiles)
-    }
-
-    /// Get the latest version of a specific profile
-    pub fn get_latest_profile(&self, profile_name: &str) -> Result<Option<ReductionManifest>> {
-        // Use the storage's get_reduction_by_profile method
-        self.storage.get_reduction_by_profile(profile_name)
     }
 }
 

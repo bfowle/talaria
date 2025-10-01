@@ -1,14 +1,14 @@
+use crate::cli::formatting::output::*;
 use crate::cli::formatting::{
     info_box, print_error, print_success, print_tip, TaskList, TaskStatus,
 };
-use talaria_utils::display::format::format_bytes;
-use crate::cli::formatting::output::*;
 use crate::cli::TargetAligner;
-use talaria_utils::workspace::SequoiaWorkspaceManager;
 use clap::Args;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use talaria_utils::display::format::format_bytes;
+use talaria_utils::workspace::SequoiaWorkspaceManager;
 
 #[derive(Args, Debug)]
 pub struct ReduceArgs {
@@ -18,7 +18,7 @@ pub struct ReduceArgs {
     pub database: String,
 
     /// Output reduced FASTA file (optional - stores in SEQUOIA by default)
-    #[arg(short, long, value_name = "FILE")]
+    #[arg(short = 'o', long = "output-fasta", value_name = "FILE")]
     pub output: Option<PathBuf>,
 
     /// Target aligner for optimization
@@ -130,9 +130,17 @@ pub struct ReduceArgs {
     #[arg(long)]
     pub no_visualize: bool,
 
-    /// Generate HTML report with visualization
+    /// Generate HTML report with visualization (deprecated: use --report-output with --report-format=html)
     #[arg(long)]
     pub html_report: Option<PathBuf>,
+
+    /// Report output file path
+    #[arg(long = "report-output", value_name = "FILE")]
+    pub report_output: Option<PathBuf>,
+
+    /// Report output format (text, html, json, csv)
+    #[arg(long = "report-format", value_name = "FORMAT", default_value = "text")]
+    pub report_format: String,
 }
 
 /// Parse the selection algorithm string into the enum
@@ -240,7 +248,11 @@ mod tests {
         // Test that compression levels are within valid range
         let valid_levels = vec![1, 3, 5, 9, 11, 15, 19, 22];
         for level in valid_levels {
-            assert!(level >= 1 && level <= 22, "Invalid compression level: {}", level);
+            assert!(
+                level >= 1 && level <= 22,
+                "Invalid compression level: {}",
+                level
+            );
         }
     }
 
@@ -248,16 +260,18 @@ mod tests {
     fn test_batch_size_calculation() {
         // Test batch size calculations for different input sizes
         let test_cases = vec![
-            (100, 1000, 100),      // Small file, use all
-            (10_000, 1000, 1000),  // Medium file, use batch size
+            (100, 1000, 100),        // Small file, use all
+            (10_000, 1000, 1000),    // Medium file, use batch size
             (1_000_000, 5000, 5000), // Large file, use batch size
         ];
 
         for (total, batch_size, expected) in test_cases {
             let actual = total.min(batch_size);
-            assert_eq!(actual, expected,
+            assert_eq!(
+                actual, expected,
                 "Batch size calculation failed for total={}, batch_size={}",
-                total, batch_size);
+                total, batch_size
+            );
         }
     }
 
@@ -271,7 +285,7 @@ mod tests {
             ("0.1", Ok(0.1)),
             ("1.0", Ok(1.0)),
             ("0.0", Ok(0.0)),
-            ("1.5", Err(())), // Out of range
+            ("1.5", Err(())),  // Out of range
             ("-0.1", Err(())), // Negative
         ];
 
@@ -359,10 +373,10 @@ mod tests {
     fn test_min_sequences_validation() {
         // Test minimum sequence requirements
         let test_cases = vec![
-            (0, false),    // No sequences - invalid
-            (1, true),     // Single sequence - valid but warning
-            (10, true),    // Few sequences - valid
-            (1000, true),  // Many sequences - valid
+            (0, false),   // No sequences - invalid
+            (1, true),    // Single sequence - valid but warning
+            (10, true),   // Few sequences - valid
+            (1000, true), // Many sequences - valid
         ];
 
         for (count, should_be_valid) in test_cases {
@@ -381,16 +395,19 @@ mod tests {
         let cpu_count = num_cpus::get();
 
         let test_cases = vec![
-            (0, cpu_count),     // 0 means use all CPUs
-            (1, 1),             // Single thread
-            (4, 4),             // Specific count
-            (1000, 1000),       // More than available (should be capped in practice)
+            (0, cpu_count), // 0 means use all CPUs
+            (1, 1),         // Single thread
+            (4, 4),         // Specific count
+            (1000, 1000),   // More than available (should be capped in practice)
         ];
 
         for (requested, expected) in test_cases {
             let actual = if requested == 0 { cpu_count } else { requested };
-            assert_eq!(actual, expected,
-                "Thread count calculation failed for requested={}", requested);
+            assert_eq!(
+                actual, expected,
+                "Thread count calculation failed for requested={}",
+                requested
+            );
         }
     }
 }
@@ -484,11 +501,11 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         println!("Database assembled successfully");
     } else {
         // For custom databases, assemble from chunks referenced in manifest
-        use talaria_sequoia::operations::FastaAssembler;
-        use talaria_sequoia::TemporalManifest;
-        use talaria_core::system::paths;
         use std::fs;
         use std::io::Write;
+        use talaria_core::system::paths;
+        use talaria_sequoia::operations::FastaAssembler;
+        use talaria_sequoia::TemporalManifest;
 
         // Magic bytes for Talaria manifest format
         const TALARIA_MAGIC: &[u8] = b"TAL\x01";
@@ -566,10 +583,14 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     // Debug: Print file path and verify it was written
     println!("FASTA file created at: {}", temp_file.display());
     if let Ok(metadata) = std::fs::metadata(&temp_file) {
-        println!("File size: {} bytes", format_number(metadata.len() as usize));
+        println!(
+            "File size: {} bytes",
+            format_number(metadata.len() as usize)
+        );
 
         // Read and display first few lines for verification
-        if std::env::var("TALARIA_DEBUG").is_ok() || std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok() {
+        if std::env::var("TALARIA_DEBUG").is_ok() || std::env::var("TALARIA_LAMBDA_VERBOSE").is_ok()
+        {
             use std::io::{BufRead, BufReader};
             if let Ok(file) = std::fs::File::open(&temp_file) {
                 let reader = BufReader::new(file);
@@ -579,11 +600,14 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
                     if let Ok(line) = line {
                         if lines_shown < 10 {
                             if line.starts_with('>') {
-                                println!("  Header: {}", if line.len() > 100 {
-                                    format!("{}...", &line[..100])
-                                } else {
-                                    line.clone()
-                                });
+                                println!(
+                                    "  Header: {}",
+                                    if line.len() > 100 {
+                                        format!("{}...", &line[..100])
+                                    } else {
+                                        line.clone()
+                                    }
+                                );
                             }
                             lines_shown += 1;
                         } else {
@@ -704,7 +728,8 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     // Only initialize if not already done
     if rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
-        .build_global().is_err()
+        .build_global()
+        .is_err()
     {
         // Thread pool already initialized, that's fine
     }
@@ -755,7 +780,9 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
 
     // Apply processing pipeline if batch processing or filtering is enabled
     if args.batch || args.low_complexity_filter {
-        use talaria_sequoia::processing::{create_reduction_pipeline, BatchProcessor, ProcessingPipeline};
+        use talaria_sequoia::processing::{
+            create_reduction_pipeline, BatchProcessor, ProcessingPipeline,
+        };
 
         task_list.set_task_message(load_task, "Applying sequence processing pipeline...");
 
@@ -810,7 +837,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     }
 
     // Keep a copy for the HTML report if needed
-    let original_sequences = if args.html_report.is_some() {
+    let _original_sequences = if args.html_report.is_some() {
         sequences.clone()
     } else {
         vec![]
@@ -952,13 +979,11 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         // Output to SEQUOIA repository
         task_list.set_task_message(write_task, "Storing reduction in SEQUOIA repository...");
 
-        let sequoia_path = args.sequoia_path.clone().unwrap_or_else(|| {
-            use talaria_core::system::paths;
-            paths::talaria_databases_dir()
-        });
+        // Use DatabaseManager to access unified repository
+        // Note: db_manager was already created earlier to validate database exists
 
         store_reduction_in_sequoia(
-            &sequoia_path,
+            &db_manager,
             &actual_input,
             &references,
             &deltas,
@@ -1042,47 +1067,9 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     let sequence_coverage =
         (references.len() + deltas.len()) as f64 / original_count as f64 * 100.0;
 
-    // Generate HTML report if requested
-    if let Some(html_path) = &args.html_report {
-        task_list.set_task_message(write_task, "Generating HTML report...");
-
-        // Create selection result for report
-        let selection_result = talaria_sequoia::SelectionResult {
-            references: references.clone(),
-            children: {
-                let mut children_map = std::collections::HashMap::new();
-                for delta in &deltas {
-                    children_map.insert(delta.reference_id.clone(), vec![delta.child_id.clone()]);
-                }
-                children_map
-            },
-            discarded: std::collections::HashSet::new(), // We don't track discarded sequences here
-        };
-
-        // Generate HTML report
-        // Convert from sequoia SelectionResult to utils SelectionResult
-        let utils_selection_result = talaria_utils::report::reduction_html::SelectionResult {
-            references: selection_result.references.clone(),
-            deltas: std::collections::HashMap::new(),
-            children: std::collections::HashMap::new(),
-            discarded: Vec::new(),
-        };
-
-        let html_content = talaria_utils::report::reduction_html::generate_reduction_html_report(
-            &actual_input,
-            &output_path,
-            &original_sequences,
-            &utils_selection_result,
-            sequence_coverage,
-            None, // No taxonomic stats for now - could be added later
-        )?;
-
-        // Write HTML report to file
-        std::fs::write(html_path, html_content)?;
-        task_list.set_task_message(
-            write_task,
-            &format!("✓ HTML report saved to: {}", html_path.display()),
-        );
+    // Generate HTML report if requested (deprecated - use --report-output instead)
+    if let Some(_html_path) = &args.html_report {
+        eprintln!("Warning: --html-report is deprecated. Legacy HTML generation temporarily disabled. Use --report-output with --report-format html instead");
     }
 
     print_success(&format!(
@@ -1112,7 +1099,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
 
 /// Store reduction results in SEQUOIA repository
 fn store_reduction_in_sequoia(
-    sequoia_path: &PathBuf,
+    db_manager: &talaria_sequoia::database::DatabaseManager,
     input_path: &PathBuf,
     references: &[talaria_bio::sequence::Sequence],
     deltas: &[talaria_bio::compression::DeltaRecord],
@@ -1126,47 +1113,26 @@ fn store_reduction_in_sequoia(
     version: &str,
 ) -> anyhow::Result<u64> {
     // use talaria_sequoia::chunker::TaxonomicChunker; // Disabled until reduce is updated
+    use std::collections::HashMap;
+    use std::time::Instant;
     use talaria_sequoia::SHA256Hash;
     use talaria_sequoia::{
         delta::DeltaGeneratorConfig,
+        operations::reduction::{
+            DeltaChunkRef, ReductionManifest, ReductionParameters, ReferenceChunk,
+        },
         DeltaGenerator,
-        operations::reduction::{DeltaChunkRef, ReductionManifest, ReductionParameters, ReferenceChunk},
-        SEQUOIARepository,
     };
-    use std::collections::HashMap;
-    use std::time::Instant;
 
     let start = Instant::now();
 
-    // Initialize or open SEQUOIA repository
-    let sequoia = if sequoia_path.exists() {
-        SEQUOIARepository::open(sequoia_path)?
-    } else {
-        SEQUOIARepository::init(sequoia_path)?
-    };
+    // Access the unified SEQUOIA repository from DatabaseManager
+    let sequoia = db_manager.get_repository();
 
-    // Apply storage optimization if requested
+    // Storage optimization is handled by DatabaseManager
+    // No need for separate optimization here since we're using the unified repository
     if args.optimize_for_memory {
-        use talaria_storage::optimization::{OptimizationOptions, StandardStorageOptimizer, StorageOptimizer};
-        use talaria_storage::StorageStrategy;
-
-        let mut optimizer = StandardStorageOptimizer::new(sequoia_path.clone());
-        let options = OptimizationOptions {
-            strategies: vec![StorageStrategy::Compression],
-            ..Default::default()
-        };
-
-        info("Optimizing storage for memory efficiency...");
-        let optimization_results = futures::executor::block_on(optimizer.optimize(options))?;
-
-        if let Some(result) = optimization_results.first() {
-            if result.space_saved > 0 {
-                success(&format!(
-                    "Storage optimized: {} bytes saved, {} chunks affected",
-                    result.space_saved, result.chunks_affected
-                ));
-            }
-        }
+        info("Storage optimization enabled (managed by unified repository)");
     }
 
     // Determine profile name
@@ -1244,19 +1210,23 @@ fn store_reduction_in_sequoia(
     // Chunk and store reference sequences using canonical storage
     action("Chunking reference sequences...");
 
-    use talaria_sequoia::storage::SequenceStorage;
+    use std::sync::Arc;
     use talaria_sequoia::chunker::TaxonomicChunker;
     use talaria_sequoia::ChunkingStrategy;
 
-    // Initialize canonical sequence storage
-    let sequences_path = sequoia.storage.base_path.join("sequences");
-    let sequence_storage = SequenceStorage::new(&sequences_path)?;
+    // Reuse the existing SequenceStorage from SEQUOIA repository
+    // This avoids double-initialization of RocksDB
+    let sequence_storage = Arc::clone(&sequoia.storage.sequence_storage);
 
     // Create database source for chunker
     let db_source = match source {
         "uniprot" => match dataset {
-            "swissprot" => talaria_core::DatabaseSource::UniProt(talaria_core::UniProtDatabase::SwissProt),
-            "trembl" => talaria_core::DatabaseSource::UniProt(talaria_core::UniProtDatabase::TrEMBL),
+            "swissprot" => {
+                talaria_core::DatabaseSource::UniProt(talaria_core::UniProtDatabase::SwissProt)
+            }
+            "trembl" => {
+                talaria_core::DatabaseSource::UniProt(talaria_core::UniProtDatabase::TrEMBL)
+            }
             _ => talaria_core::DatabaseSource::Custom(format!("{}/{}", source, dataset)),
         },
         "ncbi" => match dataset {
@@ -1270,11 +1240,8 @@ fn store_reduction_in_sequoia(
     };
 
     // Create chunker with canonical storage
-    let mut chunker = TaxonomicChunker::new(
-        ChunkingStrategy::default(),
-        sequence_storage,
-        db_source,
-    );
+    let mut chunker =
+        TaxonomicChunker::new(ChunkingStrategy::default(), sequence_storage, db_source);
 
     // Process references and get chunk manifests
     let chunk_manifests = chunker.chunk_sequences_canonical(references.to_vec())?;
@@ -1345,7 +1312,10 @@ fn store_reduction_in_sequoia(
                 .or_default()
                 .push(delta.clone());
         }
-        info(&format!("Grouped into {} reference groups", deltas_by_ref.len()));
+        info(&format!(
+            "Grouped into {} reference groups",
+            deltas_by_ref.len()
+        ));
 
         let mut delta_chunk_refs = Vec::new();
 
@@ -1375,8 +1345,7 @@ fn store_reduction_in_sequoia(
             })
             .collect();
 
-        let all_ref_sequences: Vec<talaria_bio::sequence::Sequence> =
-            references.to_vec();
+        let all_ref_sequences: Vec<talaria_bio::sequence::Sequence> = references.to_vec();
 
         // Generate delta chunks using the new system
         if !all_child_sequences.is_empty() && !all_ref_sequences.is_empty() {
@@ -1397,7 +1366,9 @@ fn store_reduction_in_sequoia(
             let delta_progress = ProgressBar::new(delta_chunks.len() as u64);
             delta_progress.set_style(
                 ProgressStyle::default_bar()
-                    .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} delta chunks stored")
+                    .template(
+                        "[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} delta chunks stored",
+                    )
                     .unwrap()
                     .progress_chars("##-"),
             );
@@ -1478,6 +1449,24 @@ fn store_reduction_in_sequoia(
     ));
 
     tree_section("Storage Summary", details, false);
+
+    // Generate report if requested
+    if let Some(report_path) = args.report_output.clone().or(args.html_report.clone()) {
+        use talaria_sequoia::operations::ReductionResult;
+        use std::time::Duration;
+
+        let result = ReductionResult {
+            statistics: manifest.statistics.clone(),
+            parameters: manifest.parameters.clone(),
+            selection_stats: None, // TODO: Capture selection stats during reduction
+            manifest: manifest.clone(),
+            duration: Duration::from_secs(elapsed),
+        };
+
+        let format = if args.html_report.is_some() { "html" } else { &args.report_format };
+        crate::cli::commands::save_report(&result, format, &report_path)?;
+        success(&format!("Report saved to {}", report_path.display()));
+    }
 
     subsection_header("Next Steps");
     info("View with: talaria database list");

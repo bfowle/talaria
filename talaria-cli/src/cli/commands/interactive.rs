@@ -306,11 +306,11 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>) -> anyhow::
 fn save_wizard_config(
     wizard_config: crate::cli::interactive::wizard::WizardConfig,
 ) -> anyhow::Result<()> {
+    use dialoguer::{theme::ColorfulTheme, Confirm, Input};
     use talaria_core::config::{
         save_config, AlignmentConfig, Config, DatabaseConfig, OutputConfig, PerformanceConfig,
         ReductionConfig,
     };
-    use dialoguer::{theme::ColorfulTheme, Confirm, Input};
 
     // Ask if user wants to save
     let should_save = Confirm::with_theme(&ColorfulTheme::default())

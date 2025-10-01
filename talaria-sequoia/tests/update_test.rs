@@ -1,7 +1,7 @@
-use talaria_sequoia::{ManifestMetadata, SHA256Hash, TaxonId, TemporalManifest};
 use anyhow::Result;
 use chrono::Utc;
 use std::collections::HashSet;
+use talaria_sequoia::{ManifestMetadata, SHA256Hash, TaxonId, TemporalManifest};
 
 // Helper to create test manifests with required fields
 fn create_test_manifest(version: &str, seq_version: &str, tax_version: &str) -> TemporalManifest {

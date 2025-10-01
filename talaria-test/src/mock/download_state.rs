@@ -3,9 +3,9 @@
 //! Provides utilities to create and manipulate download states for testing
 //! without requiring actual network downloads.
 
+use anyhow::Result;
 use std::fs;
 use std::path::{Path, PathBuf};
-use anyhow::Result;
 
 /// Create a mock download workspace with pre-populated state
 pub fn setup_test_download_workspace(workspace: &Path) -> Result<()> {
@@ -65,22 +65,24 @@ pub fn create_completed_download_state(workspace: &Path) -> Result<PathBuf> {
 }
 
 /// Create a download state at a specific stage for testing
-pub fn create_download_state_at_stage(
-    workspace: &Path,
-    stage: &str,
-) -> Result<PathBuf> {
+pub fn create_download_state_at_stage(workspace: &Path, stage: &str) -> Result<PathBuf> {
     fs::create_dir_all(workspace)?;
 
     let stage_json = match stage {
-        "downloading" => r#"{"Downloading": {"bytes_done": 500, "total_bytes": 1000, "url": "test://url"}}"#,
+        "downloading" => {
+            r#"{"Downloading": {"bytes_done": 500, "total_bytes": 1000, "url": "test://url"}}"#
+        }
         "verifying" => r#"{"Verifying": {"checksum": "abc123"}}"#,
-        "decompressing" => r#"{"Decompressing": {"source_file": "test.gz", "target_file": "test.fasta"}}"#,
+        "decompressing" => {
+            r#"{"Decompressing": {"source_file": "test.gz", "target_file": "test.fasta"}}"#
+        }
         "processing" => r#"{"Processing": {"chunks_done": 5, "total_chunks": 10}}"#,
         "complete" => r#"{"Complete": null}"#,
         _ => r#"{"Initializing": null}"#,
     };
 
-    let state_json = format!(r#"{{
+    let state_json = format!(
+        r#"{{
         "id": "test_download_{}",
         "source": {{"UniProt": "SwissProt"}},
         "workspace": "{}",
@@ -93,7 +95,11 @@ pub fn create_download_state_at_stage(
             "preserve_on_failure": []
         }},
         "created_at": "2024-01-01T00:00:00Z"
-    }}"#, stage, workspace.display(), stage_json);
+    }}"#,
+        stage,
+        workspace.display(),
+        stage_json
+    );
 
     let state_path = workspace.join("state.json");
     fs::write(&state_path, state_json)?;

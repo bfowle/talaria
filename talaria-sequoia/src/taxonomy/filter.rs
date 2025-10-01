@@ -1,3 +1,4 @@
+use crate::types::TaxonId;
 /// Taxonomy filter with boolean expression support
 ///
 /// Supports expressions like:
@@ -5,10 +6,8 @@
 /// - "Bacteria AND NOT Escherichia" - boolean AND/NOT
 /// - "9606 OR 10090" - numeric IDs with OR
 /// - "(Bacteria OR Archaea) AND NOT Escherichia" - nested expressions
-
 use anyhow::Result;
 use std::collections::HashSet;
-use crate::types::TaxonId;
 
 #[derive(Debug, Clone)]
 pub enum TaxonomyFilter {
@@ -43,7 +42,7 @@ impl TaxonomyFilter {
 
         // Handle parentheses
         if expr.starts_with('(') && expr.ends_with(')') {
-            return Self::parse_expression(&expr[1..expr.len()-1]);
+            return Self::parse_expression(&expr[1..expr.len() - 1]);
         }
 
         // Parse NOT
@@ -59,7 +58,10 @@ impl TaxonomyFilter {
             let left = &expr[..pos];
             let right = &expr[pos + 5..];
 
-            if let (Some(l), Some(r)) = (Self::parse_expression(left)?, Self::parse_expression(right)?) {
+            if let (Some(l), Some(r)) = (
+                Self::parse_expression(left)?,
+                Self::parse_expression(right)?,
+            ) {
                 return Ok(Some(TaxonomyFilter::And(Box::new(l), Box::new(r))));
             }
         }
@@ -69,7 +71,10 @@ impl TaxonomyFilter {
             let left = &expr[..pos];
             let right = &expr[pos + 4..];
 
-            if let (Some(l), Some(r)) = (Self::parse_expression(left)?, Self::parse_expression(right)?) {
+            if let (Some(l), Some(r)) = (
+                Self::parse_expression(left)?,
+                Self::parse_expression(right)?,
+            ) {
                 return Ok(Some(TaxonomyFilter::Or(Box::new(l), Box::new(r))));
             }
         }
@@ -84,10 +89,13 @@ impl TaxonomyFilter {
             let left = &expr[..pos];
             let right = &expr[pos + 9..];
 
-            if let (Some(l), Some(r)) = (Self::parse_expression(left)?, Self::parse_expression(right)?) {
+            if let (Some(l), Some(r)) = (
+                Self::parse_expression(left)?,
+                Self::parse_expression(right)?,
+            ) {
                 return Ok(Some(TaxonomyFilter::And(
                     Box::new(l),
-                    Box::new(TaxonomyFilter::Not(Box::new(r)))
+                    Box::new(TaxonomyFilter::Not(Box::new(r))),
                 )));
             }
         }
@@ -133,9 +141,7 @@ impl TaxonomyFilter {
             TaxonomyFilter::Or(left, right) => {
                 left.evaluate(taxon_set) || right.evaluate(taxon_set)
             }
-            TaxonomyFilter::Not(filter) => {
-                !filter.evaluate(taxon_set)
-            }
+            TaxonomyFilter::Not(filter) => !filter.evaluate(taxon_set),
         }
     }
 }

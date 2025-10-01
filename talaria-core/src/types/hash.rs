@@ -3,8 +3,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// SHA256 hash type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, Default,
+)]
 pub struct SHA256Hash(#[serde(with = "serde_bytes")] pub [u8; 32]);
 
 impl SHA256Hash {
@@ -66,7 +67,6 @@ impl fmt::Display for SHA256Hash {
         write!(f, "{}", self.truncated(8))
     }
 }
-
 
 impl AsRef<[u8]> for SHA256Hash {
     fn as_ref(&self) -> &[u8] {

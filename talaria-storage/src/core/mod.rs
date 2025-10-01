@@ -1,16 +1,13 @@
-pub mod types;
 pub mod traits;
+pub mod types;
 
 // Re-export commonly used types
 pub use types::{
-    SHA256Hash, TaxonId, ChunkInfo, ChunkMetadata, DeltaChunk,
-    StorageStats, GCResult, VerificationError, VerificationErrorType,
-    TaxonomyStats, SyncResult, RemoteStatus,
-    ChunkType, ReductionManifest, TaxonomyAwareChunk,
-    OperationType, ProcessingState, SourceInfo,
+    ChunkInfo, ChunkMetadata, ChunkType, DeltaChunk, GCResult, OperationType, ProcessingState,
+    ReductionManifest, RemoteStatus, SHA256Hash, SourceInfo, StorageStats, SyncResult, TaxonId,
+    TaxonomyAwareChunk, TaxonomyStats, VerificationError, VerificationErrorType,
 };
 
 pub use traits::{
-    ChunkStorage, DeltaStorage, ReductionStorage,
-    TaxonomyStorage, RemoteStorage, StatefulStorage,
+    ChunkStorage, DeltaStorage, ReductionStorage, RemoteStorage, StatefulStorage, TaxonomyStorage,
 };

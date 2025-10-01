@@ -1,9 +1,10 @@
 /// Adaptive performance tuning for optimal throughput
 use super::memory_monitor::MemoryMonitor;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 use anyhow::Result;
+use parking_lot::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 /// Configuration for adaptive performance management
 #[derive(Debug, Clone)]
@@ -31,9 +32,9 @@ impl Default for AdaptiveConfig {
             max_batch_size: 100_000,
             min_channel_buffer: 5,
             max_channel_buffer: 100,
-            memory_limit_mb: 0, // Auto-detect
+            memory_limit_mb: 0,        // Auto-detect
             target_memory_usage: 0.75, // Use 75% of available memory
-            avg_sequence_size: 500, // Typical protein sequence
+            avg_sequence_size: 500,    // Typical protein sequence
         }
     }
 }
@@ -124,13 +125,14 @@ impl AdaptiveManager {
 
     /// Check if system has memory pressure
     pub fn has_memory_pressure(&self) -> bool {
-        let monitor = self.memory_monitor.lock().unwrap();
+        let monitor = self.memory_monitor.lock();
         monitor.has_memory_pressure(self.config.target_memory_usage as f64)
     }
 
     /// Update performance metrics
     pub fn update_metrics(&self, sequences: usize, bytes: usize) {
-        self.sequences_processed.fetch_add(sequences, Ordering::Relaxed);
+        self.sequences_processed
+            .fetch_add(sequences, Ordering::Relaxed);
         self.bytes_processed.fetch_add(bytes, Ordering::Relaxed);
 
         let total_sequences = self.sequences_processed.load(Ordering::Relaxed);
@@ -138,7 +140,7 @@ impl AdaptiveManager {
         let elapsed = self.start_time.elapsed().as_secs_f64();
 
         if elapsed > 0.0 {
-            let mut metrics = self.metrics.lock().unwrap();
+            let mut metrics = self.metrics.lock();
             metrics.sequences_per_second = total_sequences as f64 / elapsed;
             metrics.bytes_per_second = total_bytes as f64 / elapsed;
             metrics.last_update = Instant::now();
@@ -147,9 +149,17 @@ impl AdaptiveManager {
 
     /// Adapt batch size based on current performance
     pub fn adapt_batch_size(&self) {
-        let metrics = self.metrics.lock().unwrap();
-        let monitor = self.memory_monitor.lock().unwrap();
-        let memory_stats = monitor.get_stats();
+        // Extract metrics data quickly and release lock
+        let sequences_per_second = {
+            let metrics = self.metrics.lock();
+            metrics.sequences_per_second
+        };
+
+        // Extract memory stats quickly and release lock
+        let memory_stats = {
+            let monitor = self.memory_monitor.lock();
+            monitor.get_stats()
+        };
 
         let current_size = self.current_batch_size.load(Ordering::Relaxed);
         let mut new_size = current_size;
@@ -160,7 +170,7 @@ impl AdaptiveManager {
             new_size = (current_size * 3 / 4).max(self.config.min_batch_size);
         } else if memory_stats.available_mb() > 1000 {
             // Increase batch size if plenty of memory and good performance
-            if metrics.sequences_per_second > 1000.0 {
+            if sequences_per_second > 1000.0 {
                 new_size = (current_size * 5 / 4).min(self.config.max_batch_size);
             }
         }
@@ -194,7 +204,7 @@ impl AdaptiveManager {
 
     /// Get memory-aware batch size recommendation
     pub fn get_memory_aware_batch_size(&self) -> usize {
-        let monitor = self.memory_monitor.lock().unwrap();
+        let monitor = self.memory_monitor.lock();
 
         // Use configured limit or auto-detect
         let memory_limit_mb = if self.config.memory_limit_mb > 0 {
@@ -224,9 +234,17 @@ impl AdaptiveManager {
 
     /// Get current performance report
     pub fn get_performance_report(&self) -> String {
-        let metrics = self.metrics.lock().unwrap();
-        let monitor = self.memory_monitor.lock().unwrap();
-        let memory = monitor.get_stats();
+        // Extract metrics data quickly and release lock
+        let (sequences_per_second, bytes_per_second) = {
+            let metrics = self.metrics.lock();
+            (metrics.sequences_per_second, metrics.bytes_per_second)
+        };
+
+        // Extract memory stats quickly and release lock
+        let memory = {
+            let monitor = self.memory_monitor.lock();
+            monitor.get_stats()
+        };
 
         format!(
             "Performance Report:\n\
@@ -238,8 +256,8 @@ impl AdaptiveManager {
              - Process RSS: {} MB",
             self.current_batch_size.load(Ordering::Relaxed),
             self.current_buffer_size.load(Ordering::Relaxed),
-            metrics.sequences_per_second,
-            metrics.bytes_per_second / (1024.0 * 1024.0),
+            sequences_per_second,
+            bytes_per_second / (1024.0 * 1024.0),
             memory.usage_ratio * 100.0,
             (memory.total - memory.available) / (1024 * 1024),
             memory.total / (1024 * 1024),
@@ -251,7 +269,30 @@ impl AdaptiveManager {
     pub fn reset_metrics(&self) {
         self.sequences_processed.store(0, Ordering::Relaxed);
         self.bytes_processed.store(0, Ordering::Relaxed);
-        *self.metrics.lock().unwrap() = PerformanceMetrics::default();
+        *self.metrics.lock() = PerformanceMetrics::default();
+    }
+
+    /// Get current memory statistics
+    pub fn get_memory_stats(&self) -> super::memory_monitor::MemoryStats {
+        let monitor = self.memory_monitor.lock();
+        monitor.get_stats()
+    }
+
+    /// Force a specific batch size (used when critical memory pressure detected)
+    pub fn force_batch_size(&self, size: usize) {
+        let clamped = size.clamp(self.config.min_batch_size, self.config.max_batch_size);
+        self.current_batch_size.store(clamped, Ordering::Relaxed);
+        tracing::info!("Batch size forced to: {}", clamped);
+    }
+
+    /// Increase batch size gradually (when memory is available)
+    pub fn increase_batch_size(&self) {
+        let current = self.current_batch_size.load(Ordering::Relaxed);
+        let new_size = ((current as f64 * 1.1) as usize).min(self.config.max_batch_size);
+        if new_size > current {
+            self.current_batch_size.store(new_size, Ordering::Relaxed);
+            tracing::debug!("Increased batch size: {} -> {}", current, new_size);
+        }
     }
 }
 

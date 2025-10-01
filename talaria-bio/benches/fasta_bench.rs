@@ -1,8 +1,10 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use talaria_bio::formats::fasta::{parse_fasta, parse_fasta_parallel, parse_fasta_from_bytes, write_fasta};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use std::io::Write;
+use talaria_bio::formats::fasta::{
+    parse_fasta, parse_fasta_from_bytes, parse_fasta_parallel, write_fasta,
+};
 use talaria_bio::sequence::Sequence;
 use tempfile::NamedTempFile;
-use std::io::Write;
 
 fn create_test_sequences(count: usize) -> Vec<Sequence> {
     (0..count)
@@ -10,7 +12,7 @@ fn create_test_sequences(count: usize) -> Vec<Sequence> {
             let seq_data = match i % 3 {
                 0 => b"ATGCATGCATGCATGCATGCATGCATGCATGC".to_vec(), // DNA
                 1 => b"ACDEFGHIKLMNPQRSTVWYACDEFGHIKLMN".to_vec(), // Protein
-                _ => b"ATGCNNNATGCATGCATGCATGCATGCATGC".to_vec(), // DNA with ambiguous
+                _ => b"ATGCNNNATGCATGCATGCATGCATGCATGC".to_vec(),  // DNA with ambiguous
             };
             Sequence::new(format!("seq_{}", i), seq_data)
                 .with_description(format!("Test sequence {}", i))
@@ -22,9 +24,13 @@ fn write_test_file(sequences: &[Sequence]) -> NamedTempFile {
     let mut temp_file = NamedTempFile::new().unwrap();
 
     for seq in sequences {
-        writeln!(temp_file, ">{} {}",
-                seq.id,
-                seq.description.as_ref().unwrap_or(&String::new())).unwrap();
+        writeln!(
+            temp_file,
+            ">{} {}",
+            seq.id,
+            seq.description.as_ref().unwrap_or(&String::new())
+        )
+        .unwrap();
 
         // Write sequence in 80-char lines
         for chunk in seq.sequence.chunks(80) {
@@ -46,25 +52,13 @@ fn bench_parse_fasta(c: &mut Criterion) {
 
         group.throughput(Throughput::Bytes(file_size));
 
-        group.bench_with_input(
-            BenchmarkId::new("serial", size),
-            &temp_file,
-            |b, file| {
-                b.iter(|| {
-                    parse_fasta(black_box(file.path()))
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("serial", size), &temp_file, |b, file| {
+            b.iter(|| parse_fasta(black_box(file.path())));
+        });
 
-        group.bench_with_input(
-            BenchmarkId::new("parallel", size),
-            &temp_file,
-            |b, file| {
-                b.iter(|| {
-                    parse_fasta_parallel(black_box(file.path()), 1024 * 1024)
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("parallel", size), &temp_file, |b, file| {
+            b.iter(|| parse_fasta_parallel(black_box(file.path()), 1024 * 1024));
+        });
     }
 
     group.finish();
@@ -80,15 +74,9 @@ fn bench_parse_from_bytes(c: &mut Criterion) {
 
         group.throughput(Throughput::Bytes(bytes.len() as u64));
 
-        group.bench_with_input(
-            BenchmarkId::new("from_bytes", size),
-            &bytes,
-            |b, data| {
-                b.iter(|| {
-                    parse_fasta_from_bytes(black_box(data))
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("from_bytes", size), &bytes, |b, data| {
+            b.iter(|| parse_fasta_from_bytes(black_box(data)));
+        });
     }
 
     group.finish();
@@ -102,16 +90,12 @@ fn bench_write_fasta(c: &mut Criterion) {
 
         group.throughput(Throughput::Elements(*size as u64));
 
-        group.bench_with_input(
-            BenchmarkId::new("write", size),
-            &sequences,
-            |b, seqs| {
-                b.iter(|| {
-                    let temp_file = NamedTempFile::new().unwrap();
-                    write_fasta(black_box(temp_file.path()), black_box(seqs))
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("write", size), &sequences, |b, seqs| {
+            b.iter(|| {
+                let temp_file = NamedTempFile::new().unwrap();
+                write_fasta(black_box(temp_file.path()), black_box(seqs))
+            });
+        });
     }
 
     group.finish();
@@ -134,9 +118,13 @@ fn bench_compressed_fasta(c: &mut Criterion) {
             let mut gz = GzEncoder::new(file, Compression::default());
 
             for seq in &sequences {
-                writeln!(gz, ">{} {}",
-                        seq.id,
-                        seq.description.as_ref().unwrap_or(&String::new())).unwrap();
+                writeln!(
+                    gz,
+                    ">{} {}",
+                    seq.id,
+                    seq.description.as_ref().unwrap_or(&String::new())
+                )
+                .unwrap();
                 gz.write_all(&seq.sequence).unwrap();
                 gz.write_all(b"\n").unwrap();
             }
@@ -150,9 +138,7 @@ fn bench_compressed_fasta(c: &mut Criterion) {
             BenchmarkId::new("parse_compressed", size),
             &gz_path,
             |b, path| {
-                b.iter(|| {
-                    parse_fasta(black_box(path))
-                });
+                b.iter(|| parse_fasta(black_box(path)));
             },
         );
 
@@ -168,12 +154,10 @@ fn bench_large_sequence(c: &mut Criterion) {
 
     // Test with different sequence lengths
     for seq_len in &[1000, 10000, 100000] {
-        let sequences = vec![
-            Sequence::new(
-                "large_seq".to_string(),
-                b"ATGC".repeat(seq_len / 4).to_vec()
-            )
-        ];
+        let sequences = vec![Sequence::new(
+            "large_seq".to_string(),
+            b"ATGC".repeat(seq_len / 4).to_vec(),
+        )];
 
         let temp_file = write_test_file(&sequences);
         let file_size = std::fs::metadata(temp_file.path()).unwrap().len();
@@ -184,9 +168,7 @@ fn bench_large_sequence(c: &mut Criterion) {
             BenchmarkId::new("parse_large", seq_len),
             &temp_file,
             |b, file| {
-                b.iter(|| {
-                    parse_fasta(black_box(file.path()))
-                });
+                b.iter(|| parse_fasta(black_box(file.path())));
             },
         );
     }
@@ -210,15 +192,9 @@ fn bench_memory_mapped(c: &mut Criterion) {
 
         group.throughput(Throughput::Bytes(mmap.len() as u64));
 
-        group.bench_with_input(
-            BenchmarkId::new("mmap_parse", size),
-            &mmap,
-            |b, data| {
-                b.iter(|| {
-                    parse_fasta_from_bytes(black_box(data))
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("mmap_parse", size), &mmap, |b, data| {
+            b.iter(|| parse_fasta_from_bytes(black_box(data)));
+        });
     }
 
     group.finish();

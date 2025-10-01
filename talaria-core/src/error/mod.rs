@@ -79,22 +79,34 @@ mod tests {
         assert!(format!("{}", io_error).contains("IO error"));
 
         let ser_error = TalariaError::Serialization("invalid JSON".to_string());
-        assert_eq!(format!("{}", ser_error), "Serialization error: invalid JSON");
+        assert_eq!(
+            format!("{}", ser_error),
+            "Serialization error: invalid JSON"
+        );
 
         let config_error = TalariaError::Configuration("missing field".to_string());
-        assert_eq!(format!("{}", config_error), "Configuration error: missing field");
+        assert_eq!(
+            format!("{}", config_error),
+            "Configuration error: missing field"
+        );
 
         let path_error = TalariaError::Path("invalid path".to_string());
         assert_eq!(format!("{}", path_error), "Path error: invalid path");
 
         let version_error = TalariaError::Version("version mismatch".to_string());
-        assert_eq!(format!("{}", version_error), "Version error: version mismatch");
+        assert_eq!(
+            format!("{}", version_error),
+            "Version error: version mismatch"
+        );
 
         let storage_error = TalariaError::Storage("disk full".to_string());
         assert_eq!(format!("{}", storage_error), "Storage error: disk full");
 
         let database_error = TalariaError::Database("connection failed".to_string());
-        assert_eq!(format!("{}", database_error), "Database error: connection failed");
+        assert_eq!(
+            format!("{}", database_error),
+            "Database error: connection failed"
+        );
 
         let network_error = TalariaError::Network("timeout".to_string());
         assert_eq!(format!("{}", network_error), "Network error: timeout");
@@ -134,7 +146,8 @@ mod tests {
     #[test]
     fn test_serde_json_error_conversion() {
         let json_str = "{invalid json}";
-        let parse_result: Result<serde_json::Value, serde_json::Error> = serde_json::from_str(json_str);
+        let parse_result: Result<serde_json::Value, serde_json::Error> =
+            serde_json::from_str(json_str);
 
         assert!(parse_result.is_err());
         let talaria_err: TalariaError = parse_result.unwrap_err().into();

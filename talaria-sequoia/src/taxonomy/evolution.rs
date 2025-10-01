@@ -1,6 +1,6 @@
 use crate::traits::temporal::*;
 use crate::types::{BiTemporalCoordinate, TaxonId};
-use crate::SEQUOIARepository;
+use crate::SequoiaRepository;
 /// Tracks evolution of taxonomic classifications over time
 ///
 /// Provides detailed tracking of how taxonomic assignments change,
@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// Tracks detailed evolution of taxonomic classifications
 pub struct TaxonomyEvolutionTracker {
-    repository: SEQUOIARepository,
+    repository: SequoiaRepository,
     /// Cache of evolution histories by entity
     evolution_cache: HashMap<String, EvolutionHistory>,
     /// Index of reclassification events by date
@@ -29,7 +29,7 @@ struct ReclassificationEvent {
 }
 
 impl TaxonomyEvolutionTracker {
-    pub fn new(repository: SEQUOIARepository) -> Self {
+    pub fn new(repository: SequoiaRepository) -> Self {
         Self {
             repository,
             evolution_cache: HashMap::new(),

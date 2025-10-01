@@ -54,7 +54,7 @@
 //!     };
 //!
 //!     let path = manager.download_with_state(
-//!         DatabaseSource::Test,
+//!         DatabaseSource::Custom("my_test_db".to_string()),
 //!         options,
 //!         &mut progress,
 //!     ).await?;
@@ -67,9 +67,9 @@
 pub mod manager;
 pub mod ncbi;
 pub mod progress;
-pub mod unified_progress;
-pub mod resume;
 pub mod resumable_downloader;
+pub mod resume;
+pub mod unified_progress;
 pub mod uniprot;
 pub mod workspace;
 
@@ -83,8 +83,10 @@ pub use manager::{DownloadManager, DownloadOptions};
 pub use ncbi::NCBIDownloader;
 pub use progress::DownloadProgress;
 pub use uniprot::UniProtDownloader;
-pub use workspace::{DownloadState, Stage, get_download_workspace, find_resumable_downloads,
-                    find_existing_workspace_for_source, DatabaseSourceExt};
+pub use workspace::{
+    find_existing_workspace_for_source, find_resumable_downloads, get_download_workspace,
+    DatabaseSourceExt, DownloadState, Stage,
+};
 
 /// Verify file checksum
 #[allow(dead_code)]
@@ -181,90 +183,90 @@ pub fn get_database_configs() -> Vec<DatabaseConfig> {
 }
 
 // Import DatabaseSource from talaria-core
-pub use talaria_core::{DatabaseSource, UniProtDatabase, NCBIDatabase};
+pub use talaria_core::{DatabaseSource, NCBIDatabase, UniProtDatabase};
 
 // Additional helper functions for DatabaseSource
 /// Parse a database name string into a DatabaseSource
 pub fn parse_database_source(name: &str) -> anyhow::Result<DatabaseSource> {
-        // Handle source/dataset format (e.g., "ncbi/taxonomy", "uniprot/swissprot")
-        if name.contains('/') {
-            let parts: Vec<&str> = name.split('/').collect();
-            if parts.len() == 2 {
-                let source = parts[0];
-                let dataset = parts[1];
+    // Handle source/dataset format (e.g., "ncbi/taxonomy", "uniprot/swissprot")
+    if name.contains('/') {
+        let parts: Vec<&str> = name.split('/').collect();
+        if parts.len() == 2 {
+            let source = parts[0];
+            let dataset = parts[1];
 
-                // Handle UniProt databases
-                if source.eq_ignore_ascii_case("uniprot") {
-                    return match dataset.to_lowercase().as_str() {
-                        "swissprot" | "sprot" => {
-                            Ok(DatabaseSource::UniProt(UniProtDatabase::SwissProt))
-                        }
-                        "trembl" => Ok(DatabaseSource::UniProt(UniProtDatabase::TrEMBL)),
-                        "uniref50" => Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef50)),
-                        "uniref90" => Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef90)),
-                        "uniref100" => Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef100)),
-                        "idmapping" => Ok(DatabaseSource::UniProt(UniProtDatabase::IdMapping)),
-                        _ => Ok(DatabaseSource::Custom(name.to_string())),
-                    };
-                }
+            // Handle UniProt databases
+            if source.eq_ignore_ascii_case("uniprot") {
+                return match dataset.to_lowercase().as_str() {
+                    "swissprot" | "sprot" => {
+                        Ok(DatabaseSource::UniProt(UniProtDatabase::SwissProt))
+                    }
+                    "trembl" => Ok(DatabaseSource::UniProt(UniProtDatabase::TrEMBL)),
+                    "uniref50" => Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef50)),
+                    "uniref90" => Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef90)),
+                    "uniref100" => Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef100)),
+                    "idmapping" => Ok(DatabaseSource::UniProt(UniProtDatabase::IdMapping)),
+                    _ => Ok(DatabaseSource::Custom(name.to_string())),
+                };
+            }
 
-                // Handle NCBI databases
-                if source.eq_ignore_ascii_case("ncbi") {
-                    return match dataset.to_lowercase().as_str() {
-                        "nr" => Ok(DatabaseSource::NCBI(NCBIDatabase::NR)),
-                        "nt" => Ok(DatabaseSource::NCBI(NCBIDatabase::NT)),
-                        "refseq-protein" | "refseq_protein" | "refseq" => {
-                            Ok(DatabaseSource::NCBI(NCBIDatabase::RefSeqProtein))
-                        }
-                        "refseq-genomic" | "refseq_genomic" => {
-                            Ok(DatabaseSource::NCBI(NCBIDatabase::RefSeqGenomic))
-                        }
-                        "taxonomy" => Ok(DatabaseSource::NCBI(NCBIDatabase::Taxonomy)),
-                        "prot-accession2taxid" | "prot_accession2taxid" => {
-                            Ok(DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId))
-                        }
-                        "nucl-accession2taxid" | "nucl_accession2taxid" => {
-                            Ok(DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId))
-                        }
-                        _ => Ok(DatabaseSource::Custom(name.to_string())),
-                    };
-                }
+            // Handle NCBI databases
+            if source.eq_ignore_ascii_case("ncbi") {
+                return match dataset.to_lowercase().as_str() {
+                    "nr" => Ok(DatabaseSource::NCBI(NCBIDatabase::NR)),
+                    "nt" => Ok(DatabaseSource::NCBI(NCBIDatabase::NT)),
+                    "refseq-protein" | "refseq_protein" | "refseq" => {
+                        Ok(DatabaseSource::NCBI(NCBIDatabase::RefSeqProtein))
+                    }
+                    "refseq-genomic" | "refseq_genomic" => {
+                        Ok(DatabaseSource::NCBI(NCBIDatabase::RefSeqGenomic))
+                    }
+                    "taxonomy" => Ok(DatabaseSource::NCBI(NCBIDatabase::Taxonomy)),
+                    "prot-accession2taxid" | "prot_accession2taxid" => {
+                        Ok(DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId))
+                    }
+                    "nucl-accession2taxid" | "nucl_accession2taxid" => {
+                        Ok(DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId))
+                    }
+                    _ => Ok(DatabaseSource::Custom(name.to_string())),
+                };
             }
         }
+    }
 
-        // Try legacy format (just the dataset name without source prefix)
-        if name.eq_ignore_ascii_case("swissprot") || name.eq_ignore_ascii_case("sprot") {
-            return Ok(DatabaseSource::UniProt(UniProtDatabase::SwissProt));
-        }
-        if name.eq_ignore_ascii_case("trembl") {
-            return Ok(DatabaseSource::UniProt(UniProtDatabase::TrEMBL));
-        }
-        if name.eq_ignore_ascii_case("uniref50") {
-            return Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef50));
-        }
-        if name.eq_ignore_ascii_case("uniref90") {
-            return Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef90));
-        }
-        if name.eq_ignore_ascii_case("uniref100") {
-            return Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef100));
-        }
+    // Try legacy format (just the dataset name without source prefix)
+    if name.eq_ignore_ascii_case("swissprot") || name.eq_ignore_ascii_case("sprot") {
+        return Ok(DatabaseSource::UniProt(UniProtDatabase::SwissProt));
+    }
+    if name.eq_ignore_ascii_case("trembl") {
+        return Ok(DatabaseSource::UniProt(UniProtDatabase::TrEMBL));
+    }
+    if name.eq_ignore_ascii_case("uniref50") {
+        return Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef50));
+    }
+    if name.eq_ignore_ascii_case("uniref90") {
+        return Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef90));
+    }
+    if name.eq_ignore_ascii_case("uniref100") {
+        return Ok(DatabaseSource::UniProt(UniProtDatabase::UniRef100));
+    }
 
-        // Try common NCBI databases
-        if name.eq_ignore_ascii_case("refseq_protein") || name.eq_ignore_ascii_case("refseq") {
-            return Ok(DatabaseSource::NCBI(NCBIDatabase::RefSeqProtein));
-        }
-        if name.eq_ignore_ascii_case("refseq_genomic") {
-            return Ok(DatabaseSource::NCBI(NCBIDatabase::RefSeqGenomic));
-        }
-        if name.eq_ignore_ascii_case("nr") || name.eq_ignore_ascii_case("ncbi_nr") {
-            return Ok(DatabaseSource::NCBI(NCBIDatabase::NR));
-        }
-        if name.eq_ignore_ascii_case("nt") {
-            return Ok(DatabaseSource::NCBI(NCBIDatabase::NT));
-        }
-        if name.eq_ignore_ascii_case("taxonomy") {
-            return Ok(DatabaseSource::NCBI(NCBIDatabase::Taxonomy));
-        }
+    // Try common NCBI databases
+    if name.eq_ignore_ascii_case("refseq_protein") || name.eq_ignore_ascii_case("refseq") {
+        return Ok(DatabaseSource::NCBI(NCBIDatabase::RefSeqProtein));
+    }
+    if name.eq_ignore_ascii_case("refseq_genomic") {
+        return Ok(DatabaseSource::NCBI(NCBIDatabase::RefSeqGenomic));
+    }
+    if name.eq_ignore_ascii_case("nr") || name.eq_ignore_ascii_case("ncbi_nr") {
+        return Ok(DatabaseSource::NCBI(NCBIDatabase::NR));
+    }
+    if name.eq_ignore_ascii_case("nt") {
+        return Ok(DatabaseSource::NCBI(NCBIDatabase::NT));
+    }
+    if name.eq_ignore_ascii_case("taxonomy") {
+        return Ok(DatabaseSource::NCBI(NCBIDatabase::Taxonomy));
+    }
 
     // Default to Custom
     Ok(DatabaseSource::Custom(name.to_string()))
@@ -328,42 +330,54 @@ pub async fn download_database_with_full_options(
                 }
                 UniProtDatabase::UniRef50 => {
                     if resume {
-                        downloader.download_and_extract_with_options(
-                            &format!("{}/current_release/uniref/uniref50/uniref50.fasta.gz",
-                                    "https://ftp.ebi.ac.uk/pub/databases/uniprot"),
-                            output_path,
-                            progress,
-                            skip_verify,
-                            resume
-                        ).await
+                        downloader
+                            .download_and_extract_with_options(
+                                &format!(
+                                    "{}/current_release/uniref/uniref50/uniref50.fasta.gz",
+                                    "https://ftp.ebi.ac.uk/pub/databases/uniprot"
+                                ),
+                                output_path,
+                                progress,
+                                skip_verify,
+                                resume,
+                            )
+                            .await
                     } else {
                         downloader.download_uniref50(output_path, progress).await
                     }
                 }
                 UniProtDatabase::UniRef90 => {
                     if resume {
-                        downloader.download_and_extract_with_options(
-                            &format!("{}/current_release/uniref/uniref90/uniref90.fasta.gz",
-                                    "https://ftp.ebi.ac.uk/pub/databases/uniprot"),
-                            output_path,
-                            progress,
-                            skip_verify,
-                            resume
-                        ).await
+                        downloader
+                            .download_and_extract_with_options(
+                                &format!(
+                                    "{}/current_release/uniref/uniref90/uniref90.fasta.gz",
+                                    "https://ftp.ebi.ac.uk/pub/databases/uniprot"
+                                ),
+                                output_path,
+                                progress,
+                                skip_verify,
+                                resume,
+                            )
+                            .await
                     } else {
                         downloader.download_uniref90(output_path, progress).await
                     }
                 }
                 UniProtDatabase::UniRef100 => {
                     if resume {
-                        downloader.download_and_extract_with_options(
-                            &format!("{}/current_release/uniref/uniref100/uniref100.fasta.gz",
-                                    "https://ftp.ebi.ac.uk/pub/databases/uniprot"),
-                            output_path,
-                            progress,
-                            skip_verify,
-                            resume
-                        ).await
+                        downloader
+                            .download_and_extract_with_options(
+                                &format!(
+                                    "{}/current_release/uniref/uniref100/uniref100.fasta.gz",
+                                    "https://ftp.ebi.ac.uk/pub/databases/uniprot"
+                                ),
+                                output_path,
+                                progress,
+                                skip_verify,
+                                resume,
+                            )
+                            .await
                     } else {
                         downloader.download_uniref100(output_path, progress).await
                     }
@@ -464,34 +478,34 @@ pub async fn download_database_with_full_options(
                             .download_and_extract_with_resume(&url, output_path, progress, resume)
                             .await
                     } else {
-                        downloader.download_refseq_protein(output_path, progress).await
+                        downloader
+                            .download_refseq_protein(output_path, progress)
+                            .await
                     }
                 }
                 NCBIDatabase::GenBank => {
                     // Download GenBank sequences
                     if resume {
-                        let url = "https://ftp.ncbi.nlm.nih.gov/genbank/genbank.fasta.gz".to_string();
+                        let url =
+                            "https://ftp.ncbi.nlm.nih.gov/genbank/genbank.fasta.gz".to_string();
                         downloader
                             .download_and_extract_with_resume(&url, output_path, progress, resume)
                             .await
                     } else {
                         // Use a generic download method for GenBank
-                        downloader.download_compressed(
-                            "https://ftp.ncbi.nlm.nih.gov/genbank/genbank.fasta.gz",
-                            output_path,
-                            progress
-                        ).await
+                        downloader
+                            .download_compressed(
+                                "https://ftp.ncbi.nlm.nih.gov/genbank/genbank.fasta.gz",
+                                output_path,
+                                progress,
+                            )
+                            .await
                     }
                 }
             }
         }
         DatabaseSource::Custom(path) => {
             progress.set_message(&format!("Using custom database: {}", path));
-            progress.finish();
-            Ok(())
-        }
-        DatabaseSource::Test => {
-            progress.set_message("Test database - no download needed");
             progress.finish();
             Ok(())
         }

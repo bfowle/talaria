@@ -1,7 +1,7 @@
 use chrono::Utc;
 use std::fs;
 use talaria_sequoia::{
-    SEQUOIARepository, SEQUOIAStorage, FastaAssembler, MerkleDAG, SHA256Hash, TaxonId,
+    SequoiaRepository, SequoiaStorage, FastaAssembler, MerkleDAG, SHA256Hash, TaxonId,
     TaxonomyAwareChunk, TemporalManifest,
 };
 use tempfile::TempDir;
@@ -27,9 +27,9 @@ fn create_test_manifest(version: &str, seq_version: &str, tax_version: &str) -> 
     }
 }
 
-fn setup_test_env() -> (TempDir, SEQUOIARepository) {
+fn setup_test_env() -> (TempDir, SequoiaRepository) {
     let temp_dir = TempDir::new().unwrap();
-    let repo = SEQUOIARepository::init(temp_dir.path()).unwrap();
+    let repo = SequoiaRepository::init(temp_dir.path()).unwrap();
     (temp_dir, repo)
 }
 
@@ -90,7 +90,7 @@ fn test_missing_manifest_handling() {
     let _manifest_path = temp_dir.path().join("manifest.json");
 
     // Try to open repository without manifest
-    let repo_result = SEQUOIARepository::open(temp_dir.path());
+    let repo_result = SequoiaRepository::open(temp_dir.path());
 
     // Should either fail or create new empty repository
     match repo_result {
@@ -190,7 +190,7 @@ fn test_storage_failure_handling() {
     }
 
     // Try to create storage - should fail with permission error
-    let storage_result = SEQUOIAStorage::new(&storage_path);
+    let storage_result = SequoiaStorage::new(&storage_path);
 
     #[cfg(unix)]
     {
@@ -299,7 +299,7 @@ fn test_concurrent_access_safety() {
     use std::thread;
 
     let temp_dir = TempDir::new().unwrap();
-    let storage = Arc::new(SEQUOIAStorage::new(temp_dir.path()).unwrap());
+    let storage = Arc::new(SequoiaStorage::new(temp_dir.path()).unwrap());
 
     let mut handles = vec![];
 

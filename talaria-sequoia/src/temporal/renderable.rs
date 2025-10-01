@@ -2,65 +2,68 @@ use crate::traits::renderable::{
     create_timeline, timeline_marker, DiffRenderable, EvolutionRenderable, TemporalRenderable,
 };
 use crate::traits::temporal::*;
-use talaria_utils::display::{create_standard_table, format_number, header_cell, TreeNode};
 use chrono::Datelike;
 /// Implementations of TemporalRenderable trait for temporal query types
 ///
 /// This module provides rich visualization for temporal query results
 /// using the existing output utilities.
 use comfy_table::{Cell, Table};
+use talaria_utils::display::{create_standard_table, format_number, header_cell, TreeNode};
 
 impl TemporalRenderable for TemporalSnapshot {
     fn render_tree(&self) -> Vec<TreeNode> {
         vec![TreeNode::new("Temporal Snapshot")
             .add_child(
                 TreeNode::new("Coordinate")
-                    .add_child(
-                        TreeNode::new(format!(
-                            "Sequence Time: {}",
-                            self.coordinate
-                                .sequence_time
-                                .format("%Y-%m-%d %H:%M:%S UTC")
-                        )),
-                    )
-                    .add_child(
-                        TreeNode::new(format!(
-                            "Taxonomy Time: {}",
-                            self.coordinate
-                                .taxonomy_time
-                                .format("%Y-%m-%d %H:%M:%S UTC")
-                        )),
-                    ),
+                    .add_child(TreeNode::new(format!(
+                        "Sequence Time: {}",
+                        self.coordinate
+                            .sequence_time
+                            .format("%Y-%m-%d %H:%M:%S UTC")
+                    )))
+                    .add_child(TreeNode::new(format!(
+                        "Taxonomy Time: {}",
+                        self.coordinate
+                            .taxonomy_time
+                            .format("%Y-%m-%d %H:%M:%S UTC")
+                    ))),
             )
             .add_child(
                 TreeNode::new("Sequences")
-                    .add_child(
-                        TreeNode::new(format!("Total: {}", format_number(self.sequences.len()))),
-                    )
-                    .add_child(
-                        TreeNode::new(format!("Unique Taxa: {}", format_number(self.metadata.unique_taxa))),
-                    ),
+                    .add_child(TreeNode::new(format!(
+                        "Total: {}",
+                        format_number(self.sequences.len())
+                    )))
+                    .add_child(TreeNode::new(format!(
+                        "Unique Taxa: {}",
+                        format_number(self.metadata.unique_taxa)
+                    ))),
             )
             .add_child(
                 TreeNode::new("Versions")
-                    .add_child(
-                        TreeNode::new(format!("Sequence Version: {}", self.sequence_version.version)),
-                    )
-                    .add_child(
-                        TreeNode::new(format!("Taxonomy Version: {}", self.taxonomy_version.version)),
-                    )
-                    .add_child(
-                        TreeNode::new(format!("Taxonomy Source: {}", self.taxonomy_version.source.to_string())),
-                    ),
+                    .add_child(TreeNode::new(format!(
+                        "Sequence Version: {}",
+                        self.sequence_version.version
+                    )))
+                    .add_child(TreeNode::new(format!(
+                        "Taxonomy Version: {}",
+                        self.taxonomy_version.version
+                    )))
+                    .add_child(TreeNode::new(format!(
+                        "Taxonomy Source: {}",
+                        self.taxonomy_version.source.to_string()
+                    ))),
             )
             .add_child(
                 TreeNode::new("Storage")
-                    .add_child(
-                        TreeNode::new(format!("Chunks: {}", format_number(self.metadata.total_chunks))),
-                    )
-                    .add_child(
-                        TreeNode::new(format!("Snapshot Hash: {}...", &self.metadata.snapshot_hash.to_hex()[..8])),
-                    ),
+                    .add_child(TreeNode::new(format!(
+                        "Chunks: {}",
+                        format_number(self.metadata.total_chunks)
+                    )))
+                    .add_child(TreeNode::new(format!(
+                        "Snapshot Hash: {}...",
+                        &self.metadata.snapshot_hash.to_hex()[..8]
+                    ))),
             )]
     }
 
@@ -72,8 +75,7 @@ impl TemporalRenderable for TemporalSnapshot {
         table.add_row(vec![
             Cell::new("Sequence Time"),
             Cell::new(
-                self
-                    .coordinate
+                self.coordinate
                     .sequence_time
                     .format("%Y-%m-%d %H:%M:%S")
                     .to_string(),
@@ -83,8 +85,7 @@ impl TemporalRenderable for TemporalSnapshot {
         table.add_row(vec![
             Cell::new("Taxonomy Time"),
             Cell::new(
-                self
-                    .coordinate
+                self.coordinate
                     .taxonomy_time
                     .format("%Y-%m-%d %H:%M:%S")
                     .to_string(),
@@ -142,33 +143,36 @@ impl TemporalRenderable for TemporalJoinResult {
         let mut root = TreeNode::new("Temporal Join Results")
             .add_child(
                 TreeNode::new("Query")
-                    .add_child(
-                        TreeNode::new(format!("Reference Date: {}", self.query.reference_date.format("%Y-%m-%d"))),
-                    )
-                    .add_child(
-                        TreeNode::new(format!(
-                            "Comparison Date: {}",
-                            self.query
-                                .comparison_date
-                                .map(|d| d.format("%Y-%m-%d").to_string())
-                                .unwrap_or_else(|| "Current".to_string())
-                        )),
-                    ),
+                    .add_child(TreeNode::new(format!(
+                        "Reference Date: {}",
+                        self.query.reference_date.format("%Y-%m-%d")
+                    )))
+                    .add_child(TreeNode::new(format!(
+                        "Comparison Date: {}",
+                        self.query
+                            .comparison_date
+                            .map(|d| d.format("%Y-%m-%d").to_string())
+                            .unwrap_or_else(|| "Current".to_string())
+                    ))),
             )
             .add_child(
                 TreeNode::new("Statistics")
-                    .add_child(
-                        TreeNode::new(format!("Total Affected: {}", format_number(self.total_affected))),
-                    )
-                    .add_child(
-                        TreeNode::new(format!("Taxonomies Changed: {}", format_number(self.taxonomies_changed))),
-                    )
-                    .add_child(
-                        TreeNode::new(format!("Stable Sequences: {}", format_number(self.stable.len()))),
-                    )
-                    .add_child(
-                        TreeNode::new(format!("Execution Time: {} ms", self.execution_time_ms)),
-                    ),
+                    .add_child(TreeNode::new(format!(
+                        "Total Affected: {}",
+                        format_number(self.total_affected)
+                    )))
+                    .add_child(TreeNode::new(format!(
+                        "Taxonomies Changed: {}",
+                        format_number(self.taxonomies_changed)
+                    )))
+                    .add_child(TreeNode::new(format!(
+                        "Stable Sequences: {}",
+                        format_number(self.stable.len())
+                    )))
+                    .add_child(TreeNode::new(format!(
+                        "Execution Time: {} ms",
+                        self.execution_time_ms
+                    ))),
             );
 
         // Add reclassification groups
@@ -184,9 +188,12 @@ impl TemporalRenderable for TemporalJoinResult {
                     .map(|t| format!("TaxID:{}", t.0))
                     .unwrap_or_else(|| "Unknown".to_string());
 
-                reclass_node = reclass_node.add_child(
-                    TreeNode::new(format!("{} → {}: {}", old_taxon, new_taxon, format_number(group.count)))
-                );
+                reclass_node = reclass_node.add_child(TreeNode::new(format!(
+                    "{} → {}: {}",
+                    old_taxon,
+                    new_taxon,
+                    format_number(group.count)
+                )));
             }
             root = root.add_child(reclass_node);
         }

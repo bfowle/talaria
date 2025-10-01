@@ -5,9 +5,9 @@ use super::traits::{
     BatchProcessor, FilterCriteria, FilterProcessor, ProcessingPipeline, ProcessingResult,
     ProcessorConfig, SequenceProcessor, SequenceType, TransformOperation, TransformProcessor,
 };
-use talaria_bio::sequence::Sequence;
 use anyhow::Result;
 use std::time::{Duration, Instant};
+use talaria_bio::sequence::Sequence;
 
 /// Standard processing pipeline implementation
 pub struct StandardProcessingPipeline {

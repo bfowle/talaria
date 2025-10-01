@@ -1,8 +1,8 @@
-use talaria_bio::sequence::stats::SequenceStats;
 use crate::cli::visualize::{ascii_histogram, progress_bar};
 use clap::Args;
 use colored::*;
 use std::path::PathBuf;
+use talaria_bio::sequence::stats::SequenceStats;
 
 #[derive(Args)]
 pub struct StatsArgs {
@@ -29,6 +29,14 @@ pub struct StatsArgs {
     /// Launch interactive TUI viewer
     #[arg(long)]
     pub interactive: bool,
+
+    /// Report output file path
+    #[arg(long = "report-output", value_name = "FILE")]
+    pub report_output: Option<PathBuf>,
+
+    /// Report output format (text, html, json, csv)
+    #[arg(long = "report-format", value_name = "FORMAT", default_value = "text")]
+    pub report_format: String,
 }
 
 pub fn run(args: StatsArgs) -> anyhow::Result<()> {
@@ -70,6 +78,47 @@ pub fn run(args: StatsArgs) -> anyhow::Result<()> {
                 print_reduction_stats(&sequences, &delta_path)?;
             }
         }
+    }
+
+    // Generate report if requested
+    if let Some(report_path) = &args.report_output {
+        use talaria_sequoia::operations::{StatsResult, CompositionStats};
+        use std::time::Duration;
+
+        // Calculate composition counts from frequencies and total length
+        let total_bases = stats.total_length;
+        let a_count = (stats.nucleotide_frequencies.get(&b'A').unwrap_or(&0.0) / 100.0 * total_bases as f64) as usize;
+        let c_count = (stats.nucleotide_frequencies.get(&b'C').unwrap_or(&0.0) / 100.0 * total_bases as f64) as usize;
+        let g_count = (stats.nucleotide_frequencies.get(&b'G').unwrap_or(&0.0) / 100.0 * total_bases as f64) as usize;
+        let t_count = (stats.nucleotide_frequencies.get(&b'T').unwrap_or(&0.0) / 100.0 * total_bases as f64) as usize;
+        let n_count = (stats.nucleotide_frequencies.get(&b'N').unwrap_or(&0.0) / 100.0 * total_bases as f64) as usize;
+        let other_count = total_bases.saturating_sub(a_count + c_count + g_count + t_count + n_count);
+
+        let result = StatsResult {
+            total_sequences: stats.total_sequences,
+            total_size: stats.total_length as u64,
+            avg_length: stats.average_length,
+            min_length: stats.min_length,
+            max_length: stats.max_length,
+            gc_content: stats.gc_content,
+            composition: CompositionStats {
+                a_count,
+                c_count,
+                g_count,
+                t_count,
+                n_count,
+                other_count,
+            },
+            length_distribution: stats
+                .length_distribution
+                .iter()
+                .map(|(bin, count)| (bin.clone(), *count))
+                .collect(),
+            duration: Duration::from_secs(0), // TODO: Track actual duration
+        };
+
+        crate::cli::commands::save_report(&result, &args.report_format, report_path)?;
+        println!("\n✓ Report saved to {}", report_path.display());
     }
 
     Ok(())
@@ -171,7 +220,8 @@ fn print_text_stats(stats: &SequenceStats, detailed: bool) -> anyhow::Result<()>
 
     // Complexity
     stats_header("Complexity Metrics");
-    let complexity_items = [("Shannon Entropy", format!("{:.2}", stats.shannon_entropy)),
+    let complexity_items = [
+        ("Shannon Entropy", format!("{:.2}", stats.shannon_entropy)),
         (
             "Simpson Diversity",
             format!("{:.4}", stats.simpson_diversity),
@@ -181,7 +231,8 @@ fn print_text_stats(stats: &SequenceStats, detailed: bool) -> anyhow::Result<()>
             format!("{:.1}%", stats.low_complexity_percentage),
         ),
         ("Ambiguous Bases", format_number(stats.ambiguous_bases)),
-        ("Gaps", format_number(stats.gap_count))];
+        ("Gaps", format_number(stats.gap_count)),
+    ];
 
     for (i, (label, value)) in complexity_items.iter().enumerate() {
         tree_item(i == complexity_items.len() - 1, label, Some(value));

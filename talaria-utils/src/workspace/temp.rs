@@ -89,8 +89,9 @@ impl TempWorkspace {
     /// Create a new workspace with custom configuration
     pub fn with_config(command: &str, config: WorkspaceConfig) -> Result<Self> {
         // Ensure workspace root exists
-        fs::create_dir_all(&config.sequoia_root)
-            .with_context(|| format!("Failed to create workspace root: {:?}", config.sequoia_root))?;
+        fs::create_dir_all(&config.sequoia_root).with_context(|| {
+            format!("Failed to create workspace root: {:?}", config.sequoia_root)
+        })?;
 
         // Generate unique ID
         let timestamp = SystemTime::now()

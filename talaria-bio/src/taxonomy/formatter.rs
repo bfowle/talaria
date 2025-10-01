@@ -88,11 +88,8 @@ mod tests {
     #[test]
     fn test_format_without_existing_taxid() {
         let formatter = StandardTaxonomyFormatter;
-        let header = formatter.format_header_with_taxid(
-            "SEQ001",
-            Some("Test sequence"),
-            Some(12345),
-        );
+        let header =
+            formatter.format_header_with_taxid("SEQ001", Some("Test sequence"), Some(12345));
         assert_eq!(header, ">SEQ001 Test sequence TaxID=12345");
     }
 

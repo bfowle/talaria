@@ -314,16 +314,77 @@ impl MerkleVerifiable for ManifestMetadata {
 }
 
 impl MerkleDAG {
-    /// Sign a temporal proof using SHA256 (placeholder for real signature)
+    /// Sign a temporal proof using Ed25519
     fn sign_temporal_proof(temporal_link: &CrossTimeHash) -> Vec<u8> {
-        // In production, this would use actual cryptographic signing (e.g., Ed25519)
-        // For now, we create a deterministic signature using SHA256
-        let mut hasher = Sha256::new();
-        hasher.update(b"TALARIA_SEQUOIA_SIGNATURE");
-        hasher.update(temporal_link.combined_hash.as_bytes());
-        hasher.update(temporal_link.sequence_time.timestamp().to_le_bytes());
-        hasher.update(temporal_link.taxonomy_time.timestamp().to_le_bytes());
-        hasher.finalize().to_vec()
+        use ring::{rand, signature};
+
+        // Create the message to be signed
+        let mut message = Vec::new();
+        message.extend_from_slice(temporal_link.combined_hash.as_bytes());
+        message.extend_from_slice(&temporal_link.sequence_time.timestamp().to_le_bytes());
+        message.extend_from_slice(&temporal_link.taxonomy_time.timestamp().to_le_bytes());
+
+        // Get or generate signing key
+        // In production, this would load a persistent key from secure storage
+        let key_pair = match Self::load_signing_key() {
+            Ok(key) => key,
+            Err(_) => {
+                // Generate a new key pair for this session
+                // In production, this should be stored securely
+                let rng = rand::SystemRandom::new();
+                signature::Ed25519KeyPair::generate_pkcs8(&rng)
+                    .ok()
+                    .and_then(|pkcs8_bytes| {
+                        signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).ok()
+                    })
+                    .unwrap_or_else(|| {
+                        // Fallback: use a deterministic key for testing
+                        // This is NOT secure and should only be used in development
+                        let seed = {
+                            let mut hasher = Sha256::new();
+                            hasher.update(b"TALARIA_SEQUOIA_DEV_KEY");
+                            hasher.update(temporal_link.combined_hash.as_bytes());
+                            let hash = hasher.finalize();
+                            let mut seed = [0u8; 32];
+                            seed.copy_from_slice(&hash[..32]);
+                            seed
+                        };
+                        signature::Ed25519KeyPair::from_seed_unchecked(&seed).unwrap()
+                    })
+            }
+        };
+
+        // Sign the message
+        key_pair.sign(&message).as_ref().to_vec()
+    }
+
+    /// Load the signing key from secure storage
+    fn load_signing_key() -> Result<ring::signature::Ed25519KeyPair> {
+        use std::fs;
+        use std::path::PathBuf;
+
+        // Try to load from environment variable first
+        let key_path = std::env::var("TALARIA_SIGNING_KEY")
+            .ok()
+            .map(PathBuf::from)
+            .or_else(|| {
+                // Default to keystore location
+                Some(
+                    talaria_core::system::paths::talaria_home()
+                        .join("keystore")
+                        .join("sequoia_signing.key"),
+                )
+            });
+
+        if let Some(path) = key_path {
+            if path.exists() {
+                let key_data = fs::read(&path)?;
+                return ring::signature::Ed25519KeyPair::from_pkcs8(&key_data)
+                    .map_err(|e| anyhow::anyhow!("Failed to parse signing key: {:?}", e));
+            }
+        }
+
+        Err(anyhow::anyhow!("No signing key available"))
     }
 
     /// Generate a cross-time proof linking sequences to taxonomy

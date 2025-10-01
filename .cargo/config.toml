@@ -1,0 +1,12 @@
+[build]
+jobs = 2                    # Limit parallel compilation jobs
+incremental = false         # Disable incremental compilation for tests
+
+[profile.test]
+opt-level = 0              # No optimization for tests (faster compilation)
+debug = 1                  # Reduced debug info
+lto = false                # Disable link-time optimization
+codegen-units = 16         # More parallel codegen for faster compilation
+
+[profile.dev.package."*"]
+opt-level = 0              # No optimization for dependencies in dev/test

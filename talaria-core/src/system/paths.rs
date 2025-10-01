@@ -1,6 +1,6 @@
 use std::path::PathBuf;
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
 
 // Cache the paths to avoid repeated environment lookups
 static TALARIA_HOME: OnceLock<PathBuf> = OnceLock::new();
@@ -9,6 +9,7 @@ static TALARIA_DATABASES_DIR: OnceLock<PathBuf> = OnceLock::new();
 static TALARIA_TOOLS_DIR: OnceLock<PathBuf> = OnceLock::new();
 static TALARIA_CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
 static TALARIA_WORKSPACE_DIR: OnceLock<PathBuf> = OnceLock::new();
+static TALARIA_BACKUPS_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 // Global flag to bypass caching in tests
 static BYPASS_CACHE: AtomicBool = AtomicBool::new(false);
@@ -121,6 +122,20 @@ pub fn talaria_cache_dir() -> PathBuf {
         .clone()
 }
 
+/// Get the backups directory
+/// Checks TALARIA_BACKUPS_DIR environment variable, falls back to TALARIA_DATA_DIR/backups
+pub fn talaria_backups_dir() -> PathBuf {
+    TALARIA_BACKUPS_DIR
+        .get_or_init(|| {
+            if let Ok(path) = std::env::var("TALARIA_BACKUPS_DIR") {
+                PathBuf::from(path)
+            } else {
+                talaria_data_dir().join("backups")
+            }
+        })
+        .clone()
+}
+
 /// Get the unified taxonomy directory
 /// Returns: TALARIA_DATABASES_DIR/taxonomy
 pub fn talaria_taxonomy_versions_dir() -> PathBuf {
@@ -218,12 +233,14 @@ pub fn describe_paths() -> String {
         Databases: {}\n  \
         Tools: {}\n  \
         Cache: {}\n  \
+        Backups: {}\n  \
         Custom: {}",
         talaria_home().display(),
         talaria_data_dir().display(),
         talaria_databases_dir().display(),
         talaria_tools_dir().display(),
         talaria_cache_dir().display(),
+        talaria_backups_dir().display(),
         if is_custom_data_dir() {
             "Yes"
         } else {
@@ -316,6 +333,12 @@ mod tests {
     }
 
     #[test]
+    fn test_backups_path() {
+        let path = talaria_backups_dir();
+        assert!(path.ends_with("backups"));
+    }
+
+    #[test]
     fn test_describe_paths() {
         let description = describe_paths();
 
@@ -325,6 +348,7 @@ mod tests {
         assert!(description.contains("Databases:"));
         assert!(description.contains("Tools:"));
         assert!(description.contains("Cache:"));
+        assert!(description.contains("Backups:"));
         assert!(description.contains("Custom:"));
 
         // Should indicate custom status

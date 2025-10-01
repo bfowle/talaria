@@ -1,4 +1,4 @@
-//! Database source types shared across all Talaria crates
+//! Database type definitions
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -10,8 +10,6 @@ pub enum DatabaseSource {
     UniProt(UniProtDatabase),
     NCBI(NCBIDatabase),
     Custom(String),
-    /// Test database source for unit testing
-    Test,
 }
 
 /// UniProt database variants
@@ -22,21 +20,48 @@ pub enum UniProtDatabase {
     UniRef50,
     UniRef90,
     UniRef100,
+    /// Taxonomy related files
     IdMapping,
 }
 
 /// NCBI database variants
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum NCBIDatabase {
+    RefSeq,        // Generic RefSeq (for backwards compatibility)
+    RefSeqProtein, // RefSeq protein database
+    RefSeqGenomic, // RefSeq genomic database
+    NR,
+    NT,
+    GenBank,       // GenBank database
+    /// Taxonomy related files
     Taxonomy,
     ProtAccession2TaxId,
     NuclAccession2TaxId,
-    RefSeq,           // Generic RefSeq (for backwards compatibility)
-    RefSeqProtein,    // RefSeq protein database
-    RefSeqGenomic,    // RefSeq genomic database
-    NR,
-    NT,
-    GenBank,          // GenBank database
+}
+
+impl DatabaseSource {
+    /// Create DatabaseSource from a database string (like from manifest.source_database)
+    pub fn from_database_string(source_db: &str) -> Self {
+        // Parse the source database string
+        match source_db {
+            "uniprot/swissprot" => DatabaseSource::UniProt(UniProtDatabase::SwissProt),
+            "uniprot/trembl" => DatabaseSource::UniProt(UniProtDatabase::TrEMBL),
+            "uniprot/uniref50" => DatabaseSource::UniProt(UniProtDatabase::UniRef50),
+            "uniprot/uniref90" => DatabaseSource::UniProt(UniProtDatabase::UniRef90),
+            "uniprot/uniref100" => DatabaseSource::UniProt(UniProtDatabase::UniRef100),
+            "ncbi/nr" => DatabaseSource::NCBI(NCBIDatabase::NR),
+            "ncbi/nt" => DatabaseSource::NCBI(NCBIDatabase::NT),
+            "ncbi/taxonomy" => DatabaseSource::NCBI(NCBIDatabase::Taxonomy),
+            "ncbi/refseq" => DatabaseSource::NCBI(NCBIDatabase::RefSeq),
+            "ncbi/refseq-protein" => DatabaseSource::NCBI(NCBIDatabase::RefSeqProtein),
+            "ncbi/refseq-genomic" => DatabaseSource::NCBI(NCBIDatabase::RefSeqGenomic),
+            "ncbi/genbank" => DatabaseSource::NCBI(NCBIDatabase::GenBank),
+            custom if custom.starts_with("custom/") => {
+                DatabaseSource::Custom(custom.strip_prefix("custom/").unwrap().to_string())
+            }
+            _ => DatabaseSource::Custom(source_db.to_string()),
+        }
+    }
 }
 
 impl fmt::Display for DatabaseSource {
@@ -45,7 +70,6 @@ impl fmt::Display for DatabaseSource {
             DatabaseSource::UniProt(db) => write!(f, "UniProt: {}", db),
             DatabaseSource::NCBI(db) => write!(f, "NCBI: {}", db),
             DatabaseSource::Custom(name) => write!(f, "Custom: {}", name),
-            DatabaseSource::Test => write!(f, "Test"),
         }
     }
 }
@@ -66,15 +90,15 @@ impl fmt::Display for UniProtDatabase {
 impl fmt::Display for NCBIDatabase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            NCBIDatabase::Taxonomy => write!(f, "Taxonomy"),
-            NCBIDatabase::ProtAccession2TaxId => write!(f, "ProtAccession2TaxId"),
-            NCBIDatabase::NuclAccession2TaxId => write!(f, "NuclAccession2TaxId"),
             NCBIDatabase::RefSeq => write!(f, "RefSeq"),
             NCBIDatabase::RefSeqProtein => write!(f, "RefSeq Protein"),
             NCBIDatabase::RefSeqGenomic => write!(f, "RefSeq Genomic"),
             NCBIDatabase::NR => write!(f, "NR"),
             NCBIDatabase::NT => write!(f, "NT"),
             NCBIDatabase::GenBank => write!(f, "GenBank"),
+            NCBIDatabase::Taxonomy => write!(f, "Taxonomy"),
+            NCBIDatabase::ProtAccession2TaxId => write!(f, "ProtAccession2TaxId"),
+            NCBIDatabase::NuclAccession2TaxId => write!(f, "NuclAccession2TaxId"),
         }
     }
 }
@@ -113,7 +137,6 @@ impl From<DatabaseSource> for DatabaseSourceInfo {
                     DatabaseSourceInfo::new("custom", name)
                 }
             }
-            DatabaseSource::Test => DatabaseSourceInfo::new("test", "test"),
         }
     }
 }
@@ -130,7 +153,6 @@ impl From<&DatabaseSource> for DatabaseSourceInfo {
                     DatabaseSourceInfo::new("custom", name)
                 }
             }
-            DatabaseSource::Test => DatabaseSourceInfo::new("test", "test"),
         }
     }
 }
@@ -142,48 +164,26 @@ impl DatabaseSource {
             "uniprot/swissprot" | "swissprot" => {
                 DatabaseSource::UniProt(UniProtDatabase::SwissProt)
             }
-            "uniprot/trembl" | "trembl" => {
-                DatabaseSource::UniProt(UniProtDatabase::TrEMBL)
-            }
-            "uniprot/uniref50" | "uniref50" => {
-                DatabaseSource::UniProt(UniProtDatabase::UniRef50)
-            }
-            "uniprot/uniref90" | "uniref90" => {
-                DatabaseSource::UniProt(UniProtDatabase::UniRef90)
-            }
+            "uniprot/trembl" | "trembl" => DatabaseSource::UniProt(UniProtDatabase::TrEMBL),
+            "uniprot/uniref50" | "uniref50" => DatabaseSource::UniProt(UniProtDatabase::UniRef50),
+            "uniprot/uniref90" | "uniref90" => DatabaseSource::UniProt(UniProtDatabase::UniRef90),
             "uniprot/uniref100" | "uniref100" => {
                 DatabaseSource::UniProt(UniProtDatabase::UniRef100)
             }
-            "uniprot/idmapping" => {
-                DatabaseSource::UniProt(UniProtDatabase::IdMapping)
-            }
-            "ncbi/taxonomy" | "taxonomy" => {
-                DatabaseSource::NCBI(NCBIDatabase::Taxonomy)
-            }
-            "ncbi/prot-accession2taxid" => {
-                DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId)
-            }
-            "ncbi/nucl-accession2taxid" => {
-                DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId)
-            }
-            "ncbi/refseq" | "refseq" => {
-                DatabaseSource::NCBI(NCBIDatabase::RefSeq)
-            }
+            "uniprot/idmapping" => DatabaseSource::UniProt(UniProtDatabase::IdMapping),
+            "ncbi/taxonomy" | "taxonomy" => DatabaseSource::NCBI(NCBIDatabase::Taxonomy),
+            "ncbi/prot-accession2taxid" => DatabaseSource::NCBI(NCBIDatabase::ProtAccession2TaxId),
+            "ncbi/nucl-accession2taxid" => DatabaseSource::NCBI(NCBIDatabase::NuclAccession2TaxId),
+            "ncbi/refseq" | "refseq" => DatabaseSource::NCBI(NCBIDatabase::RefSeq),
             "ncbi/refseq-protein" | "refseq-protein" => {
                 DatabaseSource::NCBI(NCBIDatabase::RefSeqProtein)
             }
             "ncbi/refseq-genomic" | "refseq-genomic" => {
                 DatabaseSource::NCBI(NCBIDatabase::RefSeqGenomic)
             }
-            "ncbi/nr" | "nr" => {
-                DatabaseSource::NCBI(NCBIDatabase::NR)
-            }
-            "ncbi/nt" | "nt" => {
-                DatabaseSource::NCBI(NCBIDatabase::NT)
-            }
-            "ncbi/genbank" | "genbank" => {
-                DatabaseSource::NCBI(NCBIDatabase::GenBank)
-            }
+            "ncbi/nr" | "nr" => DatabaseSource::NCBI(NCBIDatabase::NR),
+            "ncbi/nt" | "nt" => DatabaseSource::NCBI(NCBIDatabase::NT),
+            "ncbi/genbank" | "genbank" => DatabaseSource::NCBI(NCBIDatabase::GenBank),
             custom => DatabaseSource::Custom(custom.to_string()),
         }
     }
@@ -194,7 +194,6 @@ impl DatabaseSource {
             DatabaseSource::UniProt(_) => "uniprot",
             DatabaseSource::NCBI(_) => "ncbi",
             DatabaseSource::Custom(_) => "custom",
-            DatabaseSource::Test => "test",
         }
     }
 
@@ -204,7 +203,6 @@ impl DatabaseSource {
             DatabaseSource::UniProt(db) => db.to_string().to_lowercase(),
             DatabaseSource::NCBI(db) => db.to_string().to_lowercase(),
             DatabaseSource::Custom(name) => name.clone(),
-            DatabaseSource::Test => "test".to_string(),
         }
     }
 }
@@ -389,7 +387,6 @@ mod tests {
             format!("{}", DatabaseSource::Custom("mydb".to_string())),
             "Custom: mydb"
         );
-        assert_eq!(format!("{}", DatabaseSource::Test), "Test");
     }
 
     #[test]
@@ -405,7 +402,10 @@ mod tests {
     #[test]
     fn test_ncbi_database_display() {
         assert_eq!(format!("{}", NCBIDatabase::Taxonomy), "Taxonomy");
-        assert_eq!(format!("{}", NCBIDatabase::ProtAccession2TaxId), "ProtAccession2TaxId");
+        assert_eq!(
+            format!("{}", NCBIDatabase::ProtAccession2TaxId),
+            "ProtAccession2TaxId"
+        );
         assert_eq!(format!("{}", NCBIDatabase::RefSeqProtein), "RefSeq Protein");
         assert_eq!(format!("{}", NCBIDatabase::NR), "NR");
         assert_eq!(format!("{}", NCBIDatabase::NT), "NT");
@@ -462,10 +462,6 @@ mod tests {
         let custom = DatabaseSource::Custom("mydb".to_string());
         assert_eq!(custom.source_name(), "custom");
         assert_eq!(custom.dataset_name(), "mydb");
-
-        let test = DatabaseSource::Test;
-        assert_eq!(test.source_name(), "test");
-        assert_eq!(test.dataset_name(), "test");
     }
 
     #[test]
@@ -481,8 +477,14 @@ mod tests {
     #[test]
     fn test_ncbi_database_name() {
         assert_eq!(NCBIDatabase::Taxonomy.name(), "taxonomy");
-        assert_eq!(NCBIDatabase::ProtAccession2TaxId.name(), "prot-accession2taxid");
-        assert_eq!(NCBIDatabase::NuclAccession2TaxId.name(), "nucl-accession2taxid");
+        assert_eq!(
+            NCBIDatabase::ProtAccession2TaxId.name(),
+            "prot-accession2taxid"
+        );
+        assert_eq!(
+            NCBIDatabase::NuclAccession2TaxId.name(),
+            "nucl-accession2taxid"
+        );
         assert_eq!(NCBIDatabase::RefSeq.name(), "refseq");
         assert_eq!(NCBIDatabase::RefSeqProtein.name(), "refseq-protein");
         assert_eq!(NCBIDatabase::RefSeqGenomic.name(), "refseq-genomic");
@@ -524,12 +526,6 @@ mod tests {
         let info: DatabaseSourceInfo = custom.into();
         assert_eq!(info.source, "custom");
         assert_eq!(info.dataset, "mydb");
-
-        // Test conversion
-        let test = DatabaseSource::Test;
-        let info: DatabaseSourceInfo = test.into();
-        assert_eq!(info.source, "test");
-        assert_eq!(info.dataset, "test");
     }
 
     #[test]

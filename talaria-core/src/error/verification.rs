@@ -32,10 +32,7 @@ pub enum VerificationErrorType {
     /// Invalid format
     InvalidFormat(String),
     /// Size mismatch
-    SizeMismatch {
-        expected: usize,
-        actual: usize,
-    },
+    SizeMismatch { expected: usize, actual: usize },
 }
 
 impl fmt::Display for VerificationError {
@@ -43,14 +40,22 @@ impl fmt::Display for VerificationError {
         write!(f, "Verification error for chunk {}: ", self.chunk_hash)?;
         match &self.error_type {
             VerificationErrorType::HashMismatch { expected, actual } => {
-                write!(f, "Hash mismatch (expected: {}, actual: {})", expected, actual)
+                write!(
+                    f,
+                    "Hash mismatch (expected: {}, actual: {})",
+                    expected, actual
+                )
             }
             VerificationErrorType::ReadError(e) => write!(f, "Read error: {}", e),
             VerificationErrorType::CorruptedData(e) => write!(f, "Corrupted data: {}", e),
             VerificationErrorType::MissingData(e) => write!(f, "Missing data: {}", e),
             VerificationErrorType::InvalidFormat(e) => write!(f, "Invalid format: {}", e),
             VerificationErrorType::SizeMismatch { expected, actual } => {
-                write!(f, "Size mismatch (expected: {}, actual: {})", expected, actual)
+                write!(
+                    f,
+                    "Size mismatch (expected: {}, actual: {})",
+                    expected, actual
+                )
             }
         }?;
         if let Some(ctx) = &self.context {

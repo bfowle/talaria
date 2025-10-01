@@ -2,9 +2,9 @@
 //!
 //! Provides a test implementation of database downloads that doesn't require network access.
 
+use anyhow::Result;
 use std::fs;
 use std::path::{Path, PathBuf};
-use anyhow::Result;
 
 /// Mock download source that creates test data
 pub struct MockDownloadSource;
@@ -51,7 +51,7 @@ impl MockDownloadSource {
     /// Get metadata for test database
     pub fn get_metadata() -> TestDatabaseMetadata {
         TestDatabaseMetadata {
-            size_bytes: 1024,  // Small test file
+            size_bytes: 1024, // Small test file
             checksum: Some("test_checksum_12345".to_string()),
             version: "test_v1.0".to_string(),
         }

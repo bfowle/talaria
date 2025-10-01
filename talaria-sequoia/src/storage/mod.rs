@@ -1,21 +1,25 @@
 //! Storage and persistence layer for SEQUOIA
 
-pub mod core;
-pub mod sequence;
-pub mod packed;
-pub mod indices;
 pub mod chunk_index;
-pub mod compression;
-pub mod format;
+pub mod core;
+pub mod indices;
+pub mod sequence;
+
+// Import backend types from talaria-storage
+pub use talaria_storage::backend::{RocksDBBackend, RocksDBConfig};
+pub use talaria_storage::compression::{ChunkCompressor, CompressionConfig};
+pub use talaria_storage::format::{
+    FormatDetector, JsonFormat, ManifestFormat, MessagePackFormat, TalariaFormat,
+};
 
 // Re-export main types
-pub use core::{SEQUOIAStorage, StorageChunkInfo, StorageStats, GarbageCollectionStats,
-               GCResult, VerificationError, VerificationErrorType,
-               DetailedStorageStats, ChunkMetadata};
+pub use chunk_index::{
+    ChunkAccessTracker, ChunkIndexBuilder, ChunkQuery, ChunkRelationships, DefaultChunkIndex,
+    IndexStatistics, OptimizationSuggestion,
+};
+pub use core::{
+    ChunkMetadata, DetailedStorageStats, GCResult, GarbageCollectionStats, SequoiaStorage,
+    StorageChunkInfo, StorageStats, VerificationError, VerificationErrorType,
+};
+pub use indices::{BloomFilter, IndexStats, SequenceIndices};
 pub use sequence::SequenceStorage;
-pub use packed::PackedSequenceStorage;
-pub use indices::{SequenceIndices, BloomFilter, IndexStats};
-pub use chunk_index::{ChunkIndexBuilder, ChunkQuery, ChunkAccessTracker, DefaultChunkIndex,
-                       ChunkRelationships, IndexStatistics, OptimizationSuggestion};
-pub use compression::{ChunkCompressor, CompressionConfig};
-pub use format::{ManifestFormat, FormatDetector, JsonFormat, MessagePackFormat, TalariaFormat};

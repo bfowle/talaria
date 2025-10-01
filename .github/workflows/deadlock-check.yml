@@ -1,0 +1,141 @@
+name: Deadlock Detection
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'talaria-sequoia/src/**'
+      - 'talaria-sequoia/tests/**'
+      - '.github/workflows/deadlock-check.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'talaria-sequoia/src/**'
+      - 'talaria-sequoia/tests/**'
+  schedule:
+    # Run nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUSTFLAGS: -D warnings
+  # Enable deadlock detection
+  TALARIA_DEADLOCK_DETECTION: 1
+  TALARIA_DEADLOCK_INTERVAL_MS: 100
+
+jobs:
+  deadlock-tests:
+    name: Deadlock Detection Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build with deadlock detection
+        run: |
+          cd talaria-sequoia
+          cargo build --features deadlock_detection --release
+
+      - name: Run deadlock regression tests
+        run: |
+          cd talaria-sequoia
+          cargo test --features deadlock_detection deadlock_regression_test -- --nocapture
+
+      - name: Run stress tests with monitoring
+        run: |
+          cd talaria-sequoia
+          # Run stress tests with aggressive monitoring
+          TALARIA_MONITOR=1 TALARIA_MONITOR_INTERVAL=1 \
+            cargo test --features deadlock_detection --release -- --ignored lock_contention
+        timeout-minutes: 10
+
+      - name: Run concurrent download tests
+        run: |
+          cd talaria-sequoia
+          cargo test --features deadlock_detection download_concurrency_test
+
+      - name: Run performance tests under load
+        run: |
+          cd talaria-sequoia
+          cargo test --features deadlock_detection performance_test
+
+      - name: Check for thread sanitizer (if available)
+        continue-on-error: true
+        run: |
+          if rustup component list | grep -q "rust-src"; then
+            rustup component add rust-src
+            export RUSTFLAGS="-Z sanitizer=thread"
+            export TSAN_OPTIONS="halt_on_error=1"
+            cd talaria-sequoia
+            cargo test -Z build-std --target x86_64-unknown-linux-gnu \
+              --features deadlock_detection deadlock_regression_test
+          else
+            echo "Thread sanitizer not available, skipping"
+          fi
+
+  lock-free-performance:
+    name: Lock-Free Performance Comparison
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run lock-free vs mutex comparison
+        run: |
+          cd talaria-sequoia
+          cargo test --release --features deadlock_detection -- --ignored lock_free_comparison
+
+      - name: Run contention scaling benchmark
+        run: |
+          cd talaria-sequoia
+          cargo test --release --features deadlock_detection -- --ignored contention_scaling
+
+  monitoring-integration:
+    name: Monitoring Integration Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        monitor_interval: [1, 5, 10]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Test with monitoring interval ${{ matrix.monitor_interval }}
+        run: |
+          cd talaria-sequoia
+          TALARIA_MONITOR=1 TALARIA_MONITOR_INTERVAL=${{ matrix.monitor_interval }} \
+            cargo test --features deadlock_detection monitoring_under_load
+        timeout-minutes: 5
+
+  summary:
+    name: Deadlock Check Summary
+    needs: [deadlock-tests, lock-free-performance, monitoring-integration]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          if [ "${{ needs.deadlock-tests.result }}" != "success" ] || \
+             [ "${{ needs.lock-free-performance.result }}" != "success" ] || \
+             [ "${{ needs.monitoring-integration.result }}" != "success" ]; then
+            echo "❌ Deadlock detection tests failed!"
+            echo "Please review the logs for potential deadlock issues."
+            exit 1
+          else
+            echo "✅ All deadlock detection tests passed!"
+          fi

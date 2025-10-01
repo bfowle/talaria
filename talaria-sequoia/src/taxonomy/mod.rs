@@ -1,5 +1,4 @@
 /// Taxonomy management for SEQUOIA
-
 pub mod discrepancy;
 pub mod evolution;
 pub mod extractor;
@@ -10,20 +9,22 @@ pub mod types;
 pub mod version_store;
 
 // Re-export commonly used types
-pub use types::{
-    VersionDecision, TaxonomyManifestFormat, InstalledComponent,
-    AuditEntry, TaxonomyManifest, TaxonomyVersionPolicy
-};
 pub use prerequisites::TaxonomyPrerequisites;
+pub use types::{
+    AuditEntry, InstalledComponent, TaxonomyManifest, TaxonomyManifestFormat,
+    TaxonomyVersionPolicy, VersionDecision,
+};
 
-use crate::storage::SEQUOIAStorage;
+use chrono::{DateTime, Utc};
+
+use crate::storage::SequoiaStorage;
 use crate::types::*;
-use talaria_core::system::paths;
-use talaria_utils::display::progress::{create_progress_bar, create_spinner};
 use anyhow::Result;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use talaria_core::system::paths;
+use talaria_utils::display::progress::{create_hidden_progress_bar, create_progress_bar, create_spinner};
 
 pub struct TaxonomyManager {
     base_path: PathBuf,
@@ -33,7 +34,7 @@ pub struct TaxonomyManager {
     version_history: Vec<TaxonomyVersion>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TaxonomyVersion {
     pub version: String,
     pub date: chrono::DateTime<chrono::Utc>,
@@ -112,12 +113,24 @@ impl TaxonomyManager {
 
     /// Load NCBI taxonomy from tree directory files
     pub fn load_ncbi_taxonomy(&mut self, tree_dir: &Path) -> Result<()> {
+        self.load_ncbi_taxonomy_with_progress(tree_dir, true)
+    }
+
+    /// Load NCBI taxonomy with optional progress display
+    pub fn load_ncbi_taxonomy_quiet(&mut self, tree_dir: &Path) -> Result<()> {
+        self.load_ncbi_taxonomy_with_progress(tree_dir, false)
+    }
+
+    fn load_ncbi_taxonomy_with_progress(&mut self, tree_dir: &Path, show_progress: bool) -> Result<()> {
         // Files should be directly in the tree directory
         let nodes_file = tree_dir.join("nodes.dmp");
         let names_file = tree_dir.join("names.dmp");
 
         if !nodes_file.exists() || !names_file.exists() {
-            return Err(anyhow::anyhow!("Taxonomy files not found in {:?}", tree_dir));
+            return Err(anyhow::anyhow!(
+                "Taxonomy files not found in {:?}",
+                tree_dir
+            ));
         }
 
         // Parse nodes.dmp
@@ -127,7 +140,11 @@ impl TaxonomyManager {
 
         // Count lines for progress bar
         let total_nodes = nodes_content.lines().count() as u64;
-        let nodes_progress = create_progress_bar(total_nodes, "Parsing nodes.dmp");
+        let nodes_progress = if show_progress {
+            create_progress_bar(total_nodes, "Parsing nodes.dmp")
+        } else {
+            create_hidden_progress_bar()
+        };
 
         for line in nodes_content.lines() {
             nodes_progress.inc(1);
@@ -166,7 +183,11 @@ impl TaxonomyManager {
 
         // Count lines for progress bar
         let total_names = names_content.lines().count() as u64;
-        let names_progress = create_progress_bar(total_names, "Parsing names.dmp");
+        let names_progress = if show_progress {
+            create_progress_bar(total_names, "Parsing names.dmp")
+        } else {
+            create_hidden_progress_bar()
+        };
 
         for line in names_content.lines() {
             names_progress.inc(1);
@@ -189,7 +210,11 @@ impl TaxonomyManager {
         names_progress.finish_with_message("Names parsed");
 
         // Build children lists
-        let build_progress = create_spinner("Building taxonomy tree");
+        let build_progress = if show_progress {
+            create_spinner("Building taxonomy tree")
+        } else {
+            create_hidden_progress_bar()
+        };
         for (child_id, parent_id) in &parent_map {
             if let Some(parent) = nodes.get_mut(parent_id) {
                 parent.children.push(*child_id);
@@ -208,8 +233,12 @@ impl TaxonomyManager {
             id_to_node: nodes,
         });
 
-        // Save the loaded tree
-        self.save_taxonomy_tree()?;
+        // Save the loaded tree only if it doesn't already exist
+        // This prevents expensive re-serialization on every load
+        let tree_path = paths::talaria_taxonomy_current_dir().join("taxonomy_tree.json");
+        if !tree_path.exists() {
+            self.save_taxonomy_tree()?;
+        }
 
         Ok(())
     }
@@ -370,7 +399,10 @@ impl TaxonomyManager {
     }
 
     /// Detect discrepancies between sequence annotations and taxonomy
-    pub fn detect_discrepancies(&self, storage: &SEQUOIAStorage) -> Result<Vec<TaxonomicDiscrepancy>> {
+    pub fn detect_discrepancies(
+        &self,
+        storage: &SequoiaStorage,
+    ) -> Result<Vec<TaxonomicDiscrepancy>> {
         use discrepancy::DiscrepancyDetector;
 
         let mut detector = DiscrepancyDetector::new();
@@ -395,8 +427,6 @@ impl TaxonomyManager {
         old_version: &str,
         new_version: &str,
     ) -> Result<TaxonomyChanges> {
-        
-
         // First check if we have the versions in our history
         let old_found = self
             .version_history
@@ -408,12 +438,29 @@ impl TaxonomyManager {
             .any(|v| v.version == new_version);
 
         if !old_found || !new_found {
-            // TODO: Implement evolution-based changes when SEQUOIARepository is available
+            // If versions not in history, try to load from RocksDB
+            return self.load_taxonomy_changes_from_storage(old_version, new_version);
+        }
+
+        // Get the two versions
+        let old_idx = self
+            .version_history
+            .iter()
+            .position(|v| v.version == old_version)
+            .unwrap();
+        let new_idx = self
+            .version_history
+            .iter()
+            .position(|v| v.version == new_version)
+            .unwrap();
+
+        // If these are the same version, no changes
+        if old_idx == new_idx {
             return Ok(TaxonomyChanges::default());
         }
 
-        // TODO: Implement evolution-based changes when SEQUOIARepository is available
-        Ok(TaxonomyChanges::default())
+        // Compute changes between the versions
+        self.compute_version_changes(old_idx, new_idx)
     }
 
     /// Get taxonomy node by ID
@@ -495,10 +542,11 @@ impl TaxonomyManager {
     pub fn get_taxonomy_root(&self) -> Result<crate::MerkleHash> {
         use crate::verification::merkle::MerkleDAG;
 
-        // If no taxonomy is loaded, return a placeholder hash
+        // If no taxonomy is loaded, return an error
         if !self.has_taxonomy() {
-            // Return a deterministic placeholder hash for "no taxonomy"
-            return Ok(SHA256Hash::compute(b"NO_TAXONOMY_LOADED"));
+            return Err(anyhow::anyhow!(
+                "Taxonomy data not loaded. Please download with: talaria database download ncbi/taxonomy"
+            ));
         }
 
         // Convert our taxonomy tree to the Merkle tree format
@@ -547,36 +595,78 @@ impl TaxonomyManager {
 
     /// Load version history from TaxonomyEvolution storage
     fn load_version_history(&mut self) -> Result<()> {
-        
+        // Try to load from RocksDB first
+        use rocksdb::{Options, DB};
 
-        // Check if evolution directory exists before trying to load
-        let evolution_dir = self.base_path.join("evolution");
-        if !evolution_dir.exists() {
-            // No evolution directory, nothing to load
-            return Ok(());
+        let evolution_db_path = self.base_path.join("evolution.db");
+        if evolution_db_path.exists() {
+            let mut opts = Options::default();
+            opts.create_if_missing(false);
+
+            if let Ok(db) = DB::open_for_read_only(&opts, &evolution_db_path, false) {
+                // Load version history from RocksDB
+                let mut versions = Vec::new();
+
+                // Iterate through all keys with "version:" prefix
+                let prefix = b"version:";
+                let iter = db.iterator(rocksdb::IteratorMode::From(
+                    prefix,
+                    rocksdb::Direction::Forward,
+                ));
+
+                for item in iter {
+                    if let Ok((key, value)) = item {
+                        if !key.starts_with(prefix) {
+                            break; // We've moved past version keys
+                        }
+
+                        // Deserialize the version data
+                        if let Ok(version) = bincode::deserialize::<TaxonomyVersion>(&value) {
+                            versions.push(version);
+                        } else if let Ok(version) =
+                            serde_json::from_slice::<TaxonomyVersion>(&value)
+                        {
+                            versions.push(version);
+                        }
+                    }
+                }
+
+                // Sort by date
+                versions.sort_by(|a, b| a.date.cmp(&b.date));
+                self.version_history = versions;
+
+                return Ok(());
+            }
         }
 
-        // TODO: Load taxonomy evolution history when TaxonomySnapshot is implemented
-        // let mut evolution = TaxonomyEvolution::new(&self.base_path)?;
-        // if let Ok(()) = evolution.load() {
-        //     // Convert TaxonomyEvolution snapshots to our TaxonomyVersion format
-        //     let history_file = self.base_path.join("evolution/history.json");
-        //     if history_file.exists() {
-        //         let content = fs::read_to_string(&history_file)?;
-        //         if let Ok(snapshots) =
-        //             serde_json::from_str::<Vec<evolution::TaxonomySnapshot>>(&content)
-        //         {
-        //             for snapshot in snapshots {
-        //                 self.version_history.push(TaxonomyVersion {
-        //                     version: snapshot.version,
-        //                     date: snapshot.date,
-        //                     source: "NCBI".to_string(),
-        //                     changes: snapshot.changes_from_previous.unwrap_or_default(),
-        //                 });
-        //             }
-        //         }
-        //     }
-        // }
+        // Fallback: Check if evolution directory exists with JSON files
+        let evolution_dir = self.base_path.join("evolution");
+        if evolution_dir.exists() {
+            let history_file = evolution_dir.join("history.json");
+            if history_file.exists() {
+                let content = fs::read_to_string(&history_file)?;
+
+                // Define a simple snapshot structure for deserialization
+                #[derive(serde::Deserialize)]
+                struct TaxonomySnapshot {
+                    version: String,
+                    date: DateTime<Utc>,
+                    changes_from_previous: Option<TaxonomyChanges>,
+                }
+
+                if let Ok(snapshots) = serde_json::from_str::<Vec<TaxonomySnapshot>>(&content) {
+                    for snapshot in snapshots {
+                        self.version_history.push(TaxonomyVersion {
+                            version: snapshot.version,
+                            date: snapshot.date,
+                            source: "NCBI".to_string(),
+                            changes: snapshot.changes_from_previous.unwrap_or_default(),
+                        });
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -637,7 +727,8 @@ impl TaxonomyManager {
 
     /// Detect file format from a taxonomy file
     pub fn detect_file_format(path: &Path) -> Result<String> {
-        let filename = path.file_name()
+        let filename = path
+            .file_name()
             .and_then(|s| s.to_str())
             .ok_or_else(|| anyhow::anyhow!("Invalid filename"))?;
 
@@ -657,6 +748,206 @@ impl TaxonomyManager {
         // For now, always return false to append to current version
         // In the future, this could check the nature of changes
         false
+    }
+
+    /// Load taxonomy changes from storage backend
+    fn load_taxonomy_changes_from_storage(
+        &self,
+        old_version: &str,
+        new_version: &str,
+    ) -> Result<TaxonomyChanges> {
+        // Try to load from RocksDB using version store
+        let version_store_path = self.base_path.join("version_store.db");
+        if !version_store_path.exists() {
+            return Ok(TaxonomyChanges::default());
+        }
+
+        // Access RocksDB directly to retrieve stored changes
+        use rocksdb::{Options, DB};
+        let mut opts = Options::default();
+        opts.create_if_missing(false);
+
+        match DB::open_for_read_only(&opts, &version_store_path, false) {
+            Ok(db) => {
+                // Try to find cached changes between these versions
+                let change_key = format!("changes:{}:{}", old_version, new_version);
+                match db.get(change_key.as_bytes()) {
+                    Ok(Some(data)) => {
+                        // Deserialize the changes
+                        Ok(bincode::deserialize(&data)
+                            .or_else(|_| serde_json::from_slice(&data))
+                            .unwrap_or_else(|_| TaxonomyChanges::default()))
+                    }
+                    _ => {
+                        // No cached changes, compute them if possible
+                        self.compute_changes_from_trees(old_version, new_version)
+                    }
+                }
+            }
+            Err(_) => Ok(TaxonomyChanges::default()),
+        }
+    }
+
+    /// Compute changes between version indices
+    fn compute_version_changes(&self, old_idx: usize, new_idx: usize) -> Result<TaxonomyChanges> {
+        let mut combined_changes = TaxonomyChanges::default();
+
+        // Determine direction (forward or backward in time)
+        let (start, end, reverse) = if old_idx < new_idx {
+            (old_idx + 1, new_idx + 1, false)
+        } else {
+            (new_idx + 1, old_idx + 1, true)
+        };
+
+        // Accumulate changes between versions
+        for i in start..end {
+            let version = &self.version_history[i];
+            let changes = &version.changes;
+
+            if !reverse {
+                // Forward: apply changes as-is
+                combined_changes
+                    .reclassifications
+                    .extend(changes.reclassifications.clone());
+                combined_changes.new_taxa.extend(changes.new_taxa.clone());
+                combined_changes
+                    .deprecated_taxa
+                    .extend(changes.deprecated_taxa.clone());
+                combined_changes
+                    .merged_taxa
+                    .extend(changes.merged_taxa.clone());
+            } else {
+                // Backward: reverse the changes
+                // New taxa become deprecated, deprecated become new
+                combined_changes
+                    .deprecated_taxa
+                    .extend(changes.new_taxa.clone());
+                combined_changes
+                    .new_taxa
+                    .extend(changes.deprecated_taxa.clone());
+
+                // Reverse merges (merged becomes splits conceptually)
+                for (old, new) in &changes.merged_taxa {
+                    // In reverse, the new taxon splits back to the old
+                    combined_changes.merged_taxa.push((*new, *old));
+                }
+
+                // Reverse reclassifications
+                for reclass in &changes.reclassifications {
+                    combined_changes.reclassifications.push(Reclassification {
+                        taxon_id: reclass.taxon_id,
+                        old_parent: reclass.new_parent,
+                        new_parent: reclass.old_parent,
+                        reason: format!("Reversed: {}", reclass.reason),
+                    });
+                }
+            }
+        }
+
+        Ok(combined_changes)
+    }
+
+    /// Compute changes by comparing taxonomy trees directly
+    fn compute_changes_from_trees(
+        &self,
+        old_version: &str,
+        new_version: &str,
+    ) -> Result<TaxonomyChanges> {
+        use rocksdb::{Options, DB};
+        use std::collections::{HashMap, HashSet};
+
+        let mut changes = TaxonomyChanges::default();
+
+        // Load both taxonomy trees from storage
+        let tree_store_path = self.base_path.join("tree_store.db");
+        if !tree_store_path.exists() {
+            // Try alternative RocksDB path
+            let alt_path = self.base_path.join("taxonomy.db");
+            if !alt_path.exists() {
+                return Err(anyhow::anyhow!("No taxonomy tree storage found"));
+            }
+        }
+
+        let mut opts = Options::default();
+        opts.create_if_missing(false);
+
+        let db = DB::open_for_read_only(&opts, &tree_store_path, false)?;
+
+        // Load old tree
+        let old_key = format!("tree:{}", old_version);
+        let old_tree_data = db
+            .get(old_key.as_bytes())?
+            .ok_or_else(|| anyhow::anyhow!("Old taxonomy version {} not found", old_version))?;
+        let old_tree: TaxonomyTree = bincode::deserialize(&old_tree_data)?;
+
+        // Load new tree
+        let new_key = format!("tree:{}", new_version);
+        let new_tree_data = db
+            .get(new_key.as_bytes())?
+            .ok_or_else(|| anyhow::anyhow!("New taxonomy version {} not found", new_version))?;
+        let new_tree: TaxonomyTree = bincode::deserialize(&new_tree_data)?;
+
+        // Build sets of taxon IDs
+        let old_taxa: HashSet<TaxonId> = old_tree.id_to_node.keys().cloned().collect();
+        let new_taxa: HashSet<TaxonId> = new_tree.id_to_node.keys().cloned().collect();
+
+        // Find new taxa (in new but not in old)
+        for taxon_id in new_taxa.difference(&old_taxa) {
+            changes.new_taxa.push(*taxon_id);
+        }
+
+        // Find deprecated taxa (in old but not in new)
+        for taxon_id in old_taxa.difference(&new_taxa) {
+            changes.deprecated_taxa.push(*taxon_id);
+        }
+
+        // Find reclassifications and merges
+        let mut merge_candidates: HashMap<TaxonId, Vec<TaxonId>> = HashMap::new();
+
+        for taxon_id in old_taxa.intersection(&new_taxa) {
+            let old_node = &old_tree.id_to_node[taxon_id];
+            let new_node = &new_tree.id_to_node[taxon_id];
+
+            // Check if parent changed (reclassification)
+            if old_node.parent_id != new_node.parent_id {
+                changes.reclassifications.push(Reclassification {
+                    taxon_id: *taxon_id,
+                    old_parent: old_node.parent_id.unwrap_or(TaxonId(0)),
+                    new_parent: new_node.parent_id.unwrap_or(TaxonId(0)),
+                    reason: "Taxonomic reclassification".to_string(),
+                });
+            }
+
+            // Track nodes with same parent for potential merges
+            if let Some(parent) = new_node.parent_id {
+                merge_candidates.entry(parent).or_default().push(*taxon_id);
+            }
+        }
+
+        // Detect merges: multiple old taxa mapping to single new taxon
+        // This happens when deprecated taxa had children that got reclassified to same parent
+        for deprecated_id in &changes.deprecated_taxa {
+            if let Some(old_node) = old_tree.id_to_node.get(deprecated_id) {
+                // Check if its children got reclassified to a single new parent
+                let mut new_parents: HashSet<TaxonId> = HashSet::new();
+                for child_id in &old_node.children {
+                    if let Some(new_node) = new_tree.id_to_node.get(child_id) {
+                        if let Some(parent) = new_node.parent_id {
+                            new_parents.insert(parent);
+                        }
+                    }
+                }
+
+                // If all children went to single parent, it's likely a merge
+                if new_parents.len() == 1 {
+                    if let Some(new_parent) = new_parents.iter().next() {
+                        changes.merged_taxa.push((*deprecated_id, *new_parent));
+                    }
+                }
+            }
+        }
+
+        Ok(changes)
     }
 }
 

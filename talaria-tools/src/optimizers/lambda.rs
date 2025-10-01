@@ -34,7 +34,7 @@ mod tests {
             Sequence::new("seq1".to_string(), b"ATCG".to_vec()).with_taxon(100),
             Sequence::new("seq2".to_string(), b"GCTA".to_vec()).with_taxon(50),
             Sequence::new("seq3".to_string(), b"TTAA".to_vec()).with_taxon(75),
-            Sequence::new("seq4".to_string(), b"CCGG".to_vec()),  // No taxon
+            Sequence::new("seq4".to_string(), b"CCGG".to_vec()), // No taxon
             Sequence::new("seq5".to_string(), b"AATT".to_vec()).with_taxon(50),
         ]
     }
@@ -74,9 +74,8 @@ mod tests {
     #[test]
     fn test_optimize_for_lambda_single() {
         let optimizer = LambdaOptimizer::new();
-        let mut sequences = vec![
-            Sequence::new("only".to_string(), b"ATCG".to_vec()).with_taxon(42)
-        ];
+        let mut sequences =
+            vec![Sequence::new("only".to_string(), b"ATCG".to_vec()).with_taxon(42)];
 
         optimizer.optimize_for_lambda(&mut sequences);
 

@@ -1,12 +1,12 @@
 #![allow(dead_code)]
 
-use talaria_bio::sequence::Sequence;
 /// Trait definitions for sequence processing pipelines
 ///
 /// Provides abstractions for various sequence processing operations
 /// including filtering, transformation, and enrichment.
 use anyhow::Result;
 use std::collections::HashMap;
+use talaria_bio::sequence::Sequence;
 
 /// Common interface for sequence processors
 pub trait SequenceProcessor: Send + Sync {
@@ -223,11 +223,16 @@ impl std::fmt::Debug for TransformOperation {
 
 impl PartialEq for TransformOperation {
     fn eq(&self, other: &Self) -> bool {
-        matches!((self, other),
+        matches!(
+            (self, other),
             (TransformOperation::Uppercase, TransformOperation::Uppercase)
-            | (TransformOperation::Lowercase, TransformOperation::Lowercase)
-            | (TransformOperation::Reverse, TransformOperation::Reverse)
-            | (TransformOperation::Complement, TransformOperation::Complement))
+                | (TransformOperation::Lowercase, TransformOperation::Lowercase)
+                | (TransformOperation::Reverse, TransformOperation::Reverse)
+                | (
+                    TransformOperation::Complement,
+                    TransformOperation::Complement
+                )
+        )
     }
 }
 

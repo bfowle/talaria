@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use tempfile::TempDir;
 use talaria_sequoia::*;
 use talaria_bio::fasta::{FastaReader, FastaWriter, Sequence};
-use talaria_sequoia::storage::core::SEQUOIAStorage;
+use talaria_sequoia::storage::core::SequoiaStorage;
 use talaria_sequoia::manifest::core::Manifest;
 use talaria_sequoia::chunker::{ChunkingStrategy, TaxonomicChunker};
 use talaria_sequoia::verification::verifier::Verifier;
@@ -49,7 +49,7 @@ fn test_complete_reduction_workflow() -> Result<()> {
     let storage_path = temp_dir.path().join("sequoia");
     
     // Create storage and manifest
-    let mut storage = SEQUOIAStorage::new(storage_path.clone())?;
+    let mut storage = SequoiaStorage::new(storage_path.clone())?;
     let mut manifest = Manifest::new("test_db".to_string(), "1.0.0".to_string());
     
     // Create test sequences
@@ -97,7 +97,7 @@ fn test_incremental_update_workflow() -> Result<()> {
     let storage_path = temp_dir.path().join("sequoia");
     
     // Initial storage
-    let mut storage = SEQUOIAStorage::new(storage_path.clone())?;
+    let mut storage = SequoiaStorage::new(storage_path.clone())?;
     let mut manifest = Manifest::new("incremental_db".to_string(), "1.0.0".to_string());
     
     // Store initial sequences
@@ -135,7 +135,7 @@ fn test_taxonomic_chunking_workflow() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let storage_path = temp_dir.path().join("sequoia");
     
-    let mut storage = SEQUOIAStorage::new(storage_path)?;
+    let mut storage = SequoiaStorage::new(storage_path)?;
     let sequences = create_taxonomic_sequences();
     
     // Group by taxonomy
@@ -183,7 +183,7 @@ fn test_merkle_verification_workflow() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let storage_path = temp_dir.path().join("sequoia");
     
-    let mut storage = SEQUOIAStorage::new(storage_path.clone())?;
+    let mut storage = SequoiaStorage::new(storage_path.clone())?;
     let manifest = Manifest::new("verified_db".to_string(), "1.0.0".to_string());
     let verifier = Verifier::new(storage_path);
     
@@ -214,7 +214,7 @@ fn test_temporal_versioning_workflow() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let storage_path = temp_dir.path().join("sequoia");
     
-    let mut storage = SEQUOIAStorage::new(storage_path.clone())?;
+    let mut storage = SequoiaStorage::new(storage_path.clone())?;
     let mut temporal_index = TemporalIndex::new(storage_path.join("temporal"))?;
     
     // Create versions over time
@@ -259,7 +259,7 @@ fn test_compression_effectiveness() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let storage_path = temp_dir.path().join("sequoia");
     
-    let mut storage = SEQUOIAStorage::new(storage_path)?;
+    let mut storage = SequoiaStorage::new(storage_path)?;
     
     // Create highly compressible data
     let repetitive_data = "AAAA".repeat(10000).into_bytes();
@@ -286,7 +286,7 @@ fn test_chunk_deduplication_across_databases() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let storage_path = temp_dir.path().join("sequoia");
     
-    let mut storage = SEQUOIAStorage::new(storage_path)?;
+    let mut storage = SequoiaStorage::new(storage_path)?;
     
     // Create two "databases" with overlapping content
     let mut manifest1 = Manifest::new("db1".to_string(), "1.0.0".to_string());
@@ -324,7 +324,7 @@ fn test_recovery_from_partial_manifest() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let storage_path = temp_dir.path().join("sequoia");
     
-    let mut storage = SEQUOIAStorage::new(storage_path.clone())?;
+    let mut storage = SequoiaStorage::new(storage_path.clone())?;
     let verifier = Verifier::new(storage_path.clone());
     
     // Create and store data
@@ -362,7 +362,7 @@ fn test_large_scale_storage_performance() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let storage_path = temp_dir.path().join("sequoia");
     
-    let mut storage = SEQUOIAStorage::new(storage_path)?;
+    let mut storage = SequoiaStorage::new(storage_path)?;
     let mut manifest = Manifest::new("performance_db".to_string(), "1.0.0".to_string());
     
     // Simulate large dataset
@@ -413,7 +413,7 @@ fn test_concurrent_access_safety() -> Result<()> {
     let storage_path = temp_dir.path().join("sequoia");
     
     // Create storage
-    let storage = Arc::new(SEQUOIAStorage::new(storage_path)?); 
+    let storage = Arc::new(SequoiaStorage::new(storage_path)?); 
     
     // Store some initial data
     let initial_data = "INITIAL_DATA".repeat(100).into_bytes();

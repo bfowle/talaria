@@ -1,6 +1,6 @@
-pub mod types;
 pub mod stats;
+pub mod types;
 
 // Re-export commonly used types
-pub use types::{Sequence, SequenceType, sanitize_sequences};
 pub use stats::SequenceStats;
+pub use types::{sanitize_sequences, Sequence, SequenceType};

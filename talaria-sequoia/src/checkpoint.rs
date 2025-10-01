@@ -1,9 +1,9 @@
 /// Checkpoint system for resumable chunking operations
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkingCheckpoint {
@@ -30,6 +30,24 @@ pub struct ChunkingCheckpoint {
 
     /// Performance metrics
     pub metrics: PerformanceMetrics,
+
+    /// Batch-level tracking for streaming processing
+    pub batch_info: Option<BatchCheckpoint>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchCheckpoint {
+    /// Current batch number being processed
+    pub current_batch: usize,
+
+    /// Total batches expected (if known)
+    pub total_batches: Option<usize>,
+
+    /// Completed batch numbers
+    pub completed_batches: Vec<usize>,
+
+    /// Path to partial manifest directory
+    pub manifest_dir: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,6 +82,7 @@ impl ChunkingCheckpoint {
                 elapsed_seconds: 0.0,
                 estimated_remaining_seconds: 0.0,
             },
+            batch_info: None,
         }
     }
 
@@ -89,7 +108,8 @@ impl ChunkingCheckpoint {
             // Estimate remaining time
             if self.metrics.bytes_per_second > 0.0 {
                 let bytes_remaining = (self.total_file_size - file_offset) as f64;
-                self.metrics.estimated_remaining_seconds = bytes_remaining / self.metrics.bytes_per_second;
+                self.metrics.estimated_remaining_seconds =
+                    bytes_remaining / self.metrics.bytes_per_second;
             }
         }
 
@@ -97,6 +117,44 @@ impl ChunkingCheckpoint {
         self.file_offset = file_offset;
         self.last_sequence_id = last_sequence_id;
         self.last_updated = now;
+    }
+
+    /// Update batch completion status
+    pub fn update_batch_completion(&mut self, batch_num: usize) {
+        if self.batch_info.is_none() {
+            let manifest_dir = Path::new(
+                &std::env::var("TALARIA_HOME")
+                    .unwrap_or_else(|_| std::env::var("HOME").unwrap_or_else(|_| ".".to_string())),
+            )
+            .join(".talaria")
+            .join("databases")
+            .join("partials")
+            .join(&self.database_source);
+
+            self.batch_info = Some(BatchCheckpoint {
+                current_batch: batch_num,
+                total_batches: None,
+                completed_batches: vec![],
+                manifest_dir,
+            });
+        }
+
+        if let Some(ref mut batch_info) = self.batch_info {
+            batch_info.current_batch = batch_num;
+            if !batch_info.completed_batches.contains(&batch_num) {
+                batch_info.completed_batches.push(batch_num);
+            }
+        }
+    }
+
+    /// Save checkpoint immediately (for batch completion)
+    pub fn save_after_batch(&self) -> Result<()> {
+        self.save()?;
+        tracing::debug!(
+            "Checkpoint saved after batch completion: {} sequences processed",
+            self.sequences_processed
+        );
+        Ok(())
     }
 
     /// Get checkpoint file path
@@ -107,7 +165,10 @@ impl ChunkingCheckpoint {
         Path::new(&home_dir)
             .join(".talaria")
             .join("checkpoints")
-            .join(format!("{}_chunking.json", database_source.replace('/', "_")))
+            .join(format!(
+                "{}_chunking.json",
+                database_source.replace('/', "_")
+            ))
     }
 
     /// Save checkpoint to disk
@@ -156,8 +217,8 @@ impl ChunkingCheckpoint {
 
     /// Format progress message
     pub fn format_progress(&self) -> String {
-        use talaria_utils::display::output::format_number;
         use talaria_utils::display::format_bytes;
+        use talaria_utils::display::output::format_number;
 
         let seq_per_sec = format_number(self.metrics.sequences_per_second as usize);
         let bytes_per_sec = format_bytes(self.metrics.bytes_per_second as u64);
@@ -166,14 +227,55 @@ impl ChunkingCheckpoint {
         } else if self.metrics.estimated_remaining_seconds < 86400.0 * 30.0 {
             format!("{:.1}d", self.metrics.estimated_remaining_seconds / 86400.0)
         } else {
-            format!("{:.1}mo", self.metrics.estimated_remaining_seconds / (86400.0 * 30.0))
+            format!(
+                "{:.1}mo",
+                self.metrics.estimated_remaining_seconds / (86400.0 * 30.0)
+            )
         };
 
         format!(
             "{} seq/s | {}/s | ETA: {}",
-            seq_per_sec,
-            bytes_per_sec,
-            remaining
+            seq_per_sec, bytes_per_sec, remaining
         )
+    }
+
+    /// Initialize batch checkpoint info
+    pub fn init_batch_checkpoint(&mut self, manifest_dir: PathBuf) {
+        self.batch_info = Some(BatchCheckpoint {
+            current_batch: 0,
+            total_batches: None,
+            completed_batches: Vec::new(),
+            manifest_dir,
+        });
+    }
+
+    /// Mark a batch as complete
+    pub fn complete_batch(&mut self, batch_num: usize) {
+        if let Some(ref mut batch_info) = self.batch_info {
+            batch_info.completed_batches.push(batch_num);
+            batch_info.current_batch = batch_num + 1;
+        }
+    }
+
+    /// Check if a batch was already processed
+    pub fn is_batch_complete(&self, batch_num: usize) -> bool {
+        if let Some(ref batch_info) = self.batch_info {
+            batch_info.completed_batches.contains(&batch_num)
+        } else {
+            false
+        }
+    }
+
+    /// Get path for batch manifest
+    pub fn get_batch_manifest_path(&self, batch_num: usize) -> Option<PathBuf> {
+        if let Some(ref batch_info) = self.batch_info {
+            Some(
+                batch_info
+                    .manifest_dir
+                    .join(format!("batch_{:06}.json", batch_num)),
+            )
+        } else {
+            None
+        }
     }
 }

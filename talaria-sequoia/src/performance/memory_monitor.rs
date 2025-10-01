@@ -1,9 +1,9 @@
+use anyhow::Result;
 /// Memory monitoring and management for adaptive performance tuning
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use anyhow::Result;
 
 /// Memory statistics
 #[derive(Debug, Clone, Copy)]
@@ -194,13 +194,33 @@ impl MemoryMonitor {
     /// Get system memory statistics (fallback for non-Linux)
     #[cfg(not(target_os = "linux"))]
     fn get_system_memory() -> Result<MemoryStats> {
-        // Fallback: return dummy values
-        // In production, use platform-specific APIs
+        use sysinfo::{PidExt, ProcessExt, System, SystemExt};
+
+        let mut sys = System::new_all();
+        sys.refresh_memory();
+        sys.refresh_processes();
+
+        let total = sys.total_memory() * 1024; // KB to bytes
+        let available = sys.available_memory() * 1024; // KB to bytes
+
+        // Get current process RSS
+        let pid = sysinfo::get_current_pid().unwrap_or(sysinfo::Pid::from(0));
+        let process_rss = sys
+            .process(pid)
+            .map(|p| p.memory() * 1024) // KB to bytes
+            .unwrap_or(0);
+
+        let usage_ratio = if total > 0 {
+            (total - available) as f64 / total as f64
+        } else {
+            0.0
+        };
+
         Ok(MemoryStats {
-            total: 8_589_934_592, // 8GB dummy value
-            available: 4_294_967_296, // 4GB dummy value
-            process_rss: 1_073_741_824, // 1GB dummy value
-            usage_ratio: 0.5,
+            total,
+            available,
+            process_rss,
+            usage_ratio,
         })
     }
 
@@ -229,7 +249,18 @@ impl MemoryMonitor {
     /// Get process RSS (fallback)
     #[cfg(not(target_os = "linux"))]
     fn get_process_rss() -> Result<u64> {
-        Ok(1_073_741_824) // 1GB dummy value
+        use sysinfo::{PidExt, ProcessExt, System, SystemExt};
+
+        let mut sys = System::new_all();
+        sys.refresh_processes();
+
+        let pid = sysinfo::get_current_pid().unwrap_or(sysinfo::Pid::from(0));
+        let process_rss = sys
+            .process(pid)
+            .map(|p| p.memory() * 1024) // KB to bytes
+            .unwrap_or(0);
+
+        Ok(process_rss)
     }
 
     /// Estimate memory needed for batch processing
@@ -283,8 +314,8 @@ mod tests {
     #[test]
     fn test_memory_stats() {
         let stats = MemoryStats {
-            total: 8_589_934_592, // 8GB
-            available: 4_294_967_296, // 4GB
+            total: 8_589_934_592,       // 8GB
+            available: 4_294_967_296,   // 4GB
             process_rss: 1_073_741_824, // 1GB
             usage_ratio: 0.5,
         };
@@ -317,9 +348,9 @@ mod tests {
 
         // Manually set some stats for testing
         let optimal = monitor.calculate_optimal_batch_size(
-            100, // 100MB target
-            500, // 500 bytes avg sequence
-            100, // min batch
+            100,   // 100MB target
+            500,   // 500 bytes avg sequence
+            100,   // min batch
             10000, // max batch
         );
 

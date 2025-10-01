@@ -1,19 +1,15 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use talaria_bio::alignment::{Alignment, NeedlemanWunsch, NucleotideMatrix, BLOSUM62};
 use talaria_bio::sequence::Sequence;
 
 fn create_dna_sequence(length: usize) -> Vec<u8> {
     let bases = b"ATGC";
-    (0..length)
-        .map(|i| bases[i % 4])
-        .collect()
+    (0..length).map(|i| bases[i % 4]).collect()
 }
 
 fn create_protein_sequence(length: usize) -> Vec<u8> {
     let amino_acids = b"ACDEFGHIKLMNPQRSTVWY";
-    (0..length)
-        .map(|i| amino_acids[i % 20])
-        .collect()
+    (0..length).map(|i| amino_acids[i % 20]).collect()
 }
 
 fn create_sequences_with_mutations(base: &[u8], mutation_rate: f64) -> Vec<u8> {
@@ -26,7 +22,7 @@ fn create_sequences_with_mutations(base: &[u8], mutation_rate: f64) -> Vec<u8> {
                     b'T' => b'G',
                     b'G' => b'C',
                     b'C' => b'A',
-                    _ => b
+                    _ => b,
                 }
             } else {
                 b
@@ -49,9 +45,7 @@ fn bench_dna_alignment(c: &mut Criterion) {
             &(ref_seq.clone(), query_seq.clone()),
             |b, (ref_seq, query_seq)| {
                 let aligner = NeedlemanWunsch::new(NucleotideMatrix::new());
-                b.iter(|| {
-                    aligner.align(black_box(ref_seq), black_box(query_seq))
-                });
+                b.iter(|| aligner.align(black_box(ref_seq), black_box(query_seq)));
             },
         );
 
@@ -63,9 +57,7 @@ fn bench_dna_alignment(c: &mut Criterion) {
             BenchmarkId::new("global_alignment", length),
             &(ref_sequence.clone(), query_sequence.clone()),
             |b, (ref_seq, query_seq)| {
-                b.iter(|| {
-                    Alignment::global(black_box(ref_seq), black_box(query_seq))
-                });
+                b.iter(|| Alignment::global(black_box(ref_seq), black_box(query_seq)));
             },
         );
     }
@@ -87,9 +79,7 @@ fn bench_protein_alignment(c: &mut Criterion) {
             &(ref_seq.clone(), query_seq.clone()),
             |b, (ref_seq, query_seq)| {
                 let aligner = NeedlemanWunsch::new(BLOSUM62::new());
-                b.iter(|| {
-                    aligner.align(black_box(ref_seq), black_box(query_seq))
-                });
+                b.iter(|| aligner.align(black_box(ref_seq), black_box(query_seq)));
             },
         );
     }
@@ -110,9 +100,7 @@ fn bench_identical_sequences(c: &mut Criterion) {
             &sequence,
             |b, seq| {
                 let aligner = NeedlemanWunsch::new(NucleotideMatrix::new());
-                b.iter(|| {
-                    aligner.align(black_box(seq), black_box(seq))
-                });
+                b.iter(|| aligner.align(black_box(seq), black_box(seq)));
             },
         );
     }
@@ -142,9 +130,7 @@ fn bench_gap_heavy_alignment(c: &mut Criterion) {
             &(ref_seq.clone(), query_seq.clone()),
             |b, (ref_seq, query_seq)| {
                 let aligner = NeedlemanWunsch::new(NucleotideMatrix::new());
-                b.iter(|| {
-                    aligner.align(black_box(ref_seq), black_box(query_seq))
-                });
+                b.iter(|| aligner.align(black_box(ref_seq), black_box(query_seq)));
             },
         );
     }
@@ -167,9 +153,7 @@ fn bench_varying_similarity(c: &mut Criterion) {
             &(ref_seq.clone(), query_seq.clone()),
             |b, (ref_seq, query_seq)| {
                 let aligner = NeedlemanWunsch::new(NucleotideMatrix::new());
-                b.iter(|| {
-                    aligner.align(black_box(ref_seq), black_box(query_seq))
-                });
+                b.iter(|| aligner.align(black_box(ref_seq), black_box(query_seq)));
             },
         );
     }
@@ -182,10 +166,10 @@ fn bench_real_world_sizes(c: &mut Criterion) {
 
     // Common sequence sizes in bioinformatics
     let sizes = vec![
-        ("illumina_read", 150),       // Typical Illumina read
-        ("sanger_read", 800),         // Typical Sanger sequencing
-        ("gene", 3000),               // Average gene size
-        ("small_protein", 300),       // Small protein
+        ("illumina_read", 150), // Typical Illumina read
+        ("sanger_read", 800),   // Typical Sanger sequencing
+        ("gene", 3000),         // Average gene size
+        ("small_protein", 300), // Small protein
     ];
 
     for (name, size) in sizes {
@@ -199,9 +183,7 @@ fn bench_real_world_sizes(c: &mut Criterion) {
             &(ref_seq.clone(), query_seq.clone()),
             |b, (ref_seq, query_seq)| {
                 let aligner = NeedlemanWunsch::new(NucleotideMatrix::new());
-                b.iter(|| {
-                    aligner.align(black_box(ref_seq), black_box(query_seq))
-                });
+                b.iter(|| aligner.align(black_box(ref_seq), black_box(query_seq)));
             },
         );
     }
@@ -224,9 +206,7 @@ fn bench_worst_case(c: &mut Criterion) {
             &(ref_seq.clone(), query_seq.clone()),
             |b, (ref_seq, query_seq)| {
                 let aligner = NeedlemanWunsch::new(NucleotideMatrix::new());
-                b.iter(|| {
-                    aligner.align(black_box(ref_seq), black_box(query_seq))
-                });
+                b.iter(|| aligner.align(black_box(ref_seq), black_box(query_seq)));
             },
         );
     }

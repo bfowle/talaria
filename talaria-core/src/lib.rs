@@ -6,33 +6,30 @@ pub mod system;
 pub mod types;
 
 // Re-export commonly used types
+pub use config::{load_config, save_config, Config};
 pub use error::{TalariaError, TalariaResult, VerificationError, VerificationErrorType};
-pub use config::{Config, load_config, save_config};
 
 // Re-export core types
 pub use types::{
-    SHA256Hash, TaxonId, TaxonomyDataSource, TargetAligner,
-    ChunkInfo, ChunkMetadata, DeltaChunk, ChunkType,
-    DatabaseSource, DatabaseSourceInfo, UniProtDatabase, NCBIDatabase,
-    StorageStats, GCResult, GarbageCollectionStats, DetailedStorageStats,
-    TaxonomyStats, SyncResult, RemoteStatus,
-    OutputFormat,
-    SequenceType,
+    ChunkInfo, ChunkMetadata, ChunkType, DatabaseSource, DatabaseSourceInfo, DeltaChunk,
+    DetailedStorageStats, GCResult, GarbageCollectionStats, NCBIDatabase, OutputFormat,
+    RemoteStatus, SHA256Hash, SequenceType, StorageStats, SyncResult, TargetAligner, TaxonId,
+    TaxonomyDataSource, TaxonomyStats, UniProtDatabase,
 };
 
 // Re-export system utilities
 pub use system::{
-    // Path functions
-    talaria_home,
-    talaria_databases_dir,
-    talaria_tools_dir,
-    talaria_cache_dir,
-    talaria_workspace_dir,
+    current_version,
     generate_utc_timestamp,
+    is_compatible,
     // Version functions
     parse_version,
-    is_compatible,
-    current_version,
+    talaria_cache_dir,
+    talaria_databases_dir,
+    // Path functions
+    talaria_home,
+    talaria_tools_dir,
+    talaria_workspace_dir,
 };
 
 /// Version information for the Talaria project

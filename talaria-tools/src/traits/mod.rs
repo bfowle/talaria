@@ -2,6 +2,4 @@
 
 mod aligner;
 
-pub use aligner::{
-    Aligner, AlignmentConfig, AlignmentSummary, ConfigurableAligner,
-};
+pub use aligner::{Aligner, AlignmentConfig, AlignmentSummary, ConfigurableAligner};

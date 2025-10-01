@@ -535,8 +535,8 @@ impl ToolManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs::File;
+    use tempfile::TempDir;
 
     fn create_test_manager() -> (ToolManager, TempDir) {
         let temp_dir = TempDir::new().unwrap();
@@ -742,7 +742,11 @@ mod tests {
             binary_path: binary_path.clone(),
             is_current: false,
         };
-        fs::write(version_dir.join("info.json"), serde_json::to_string(&info).unwrap()).unwrap();
+        fs::write(
+            version_dir.join("info.json"),
+            serde_json::to_string(&info).unwrap(),
+        )
+        .unwrap();
 
         assert!(manager.verify_tool_installation(Tool::Lambda, &version_dir));
     }
@@ -761,7 +765,11 @@ mod tests {
             binary_path: version_dir.join("lambda3"),
             is_current: false,
         };
-        fs::write(version_dir.join("info.json"), serde_json::to_string(&info).unwrap()).unwrap();
+        fs::write(
+            version_dir.join("info.json"),
+            serde_json::to_string(&info).unwrap(),
+        )
+        .unwrap();
 
         assert!(!manager.verify_tool_installation(Tool::Lambda, &version_dir));
     }
@@ -806,19 +814,31 @@ mod tests {
 
         // Basic semantic versioning
         assert_eq!(manager.compare_versions("3.0.0", "3.0.0"), Ordering::Equal);
-        assert_eq!(manager.compare_versions("3.1.0", "3.0.0"), Ordering::Greater);
+        assert_eq!(
+            manager.compare_versions("3.1.0", "3.0.0"),
+            Ordering::Greater
+        );
         assert_eq!(manager.compare_versions("3.0.0", "3.1.0"), Ordering::Less);
 
         // With prefixes
-        assert_eq!(manager.compare_versions("lambda-v3.1.0", "lambda-v3.0.0"), Ordering::Greater);
-        assert_eq!(manager.compare_versions("v3.1.0", "v3.0.0"), Ordering::Greater);
+        assert_eq!(
+            manager.compare_versions("lambda-v3.1.0", "lambda-v3.0.0"),
+            Ordering::Greater
+        );
+        assert_eq!(
+            manager.compare_versions("v3.1.0", "v3.0.0"),
+            Ordering::Greater
+        );
 
         // Different lengths
         assert_eq!(manager.compare_versions("3.1", "3.0.0"), Ordering::Greater);
         assert_eq!(manager.compare_versions("3.0.0", "3.0"), Ordering::Equal);
 
         // Major version differences
-        assert_eq!(manager.compare_versions("4.0.0", "3.9.9"), Ordering::Greater);
+        assert_eq!(
+            manager.compare_versions("4.0.0", "3.9.9"),
+            Ordering::Greater
+        );
         assert_eq!(manager.compare_versions("2.0.0", "10.0.0"), Ordering::Less);
     }
 

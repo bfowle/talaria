@@ -71,6 +71,10 @@ pub struct DownloadArgs {
     #[arg(short = 'f', long)]
     pub force: bool,
 
+    /// Keep download workspace after successful completion (for debugging)
+    #[arg(long)]
+    pub keep_workspace: bool,
+
     // Fetch-specific options for creating custom databases
     /// Comma-separated list of TaxIDs to fetch (for custom databases)
     #[arg(long, value_name = "TAXIDS", conflicts_with = "taxid_list")]
@@ -156,6 +160,7 @@ impl DownloadArgs {
             preserve_lambda_on_failure: false,
             dry_run: false,
             force: false,
+            keep_workspace: false,
             taxids: None,
             taxid_list: None,
             reference_proteomes: false,
@@ -194,6 +199,15 @@ pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
     // Handle --complete flag for taxonomy
     if args.complete {
         return run_complete_taxonomy_download(args);
+    }
+
+    // Handle --dry-run flag (check for updates without downloading)
+    if args.dry_run {
+        if let Some(ref database) = args.database {
+            return check_database_updates(database, args.force);
+        } else {
+            anyhow::bail!("--dry-run requires a database to be specified");
+        }
     }
 
     if args.interactive || args.database.is_none() {
@@ -258,9 +272,11 @@ pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
         } else {
             // Use SEQUOIA for regular database downloads
             use super::download_impl::run_database_download;
-            
 
-            let database_source = talaria_sequoia::download::parse_database_source(&format!("{}/{}", source, dataset))?;
+            let database_source = talaria_sequoia::download::parse_database_source(&format!(
+                "{}/{}",
+                source, dataset
+            ))?;
             run_database_download(args, database_source)
         }
     }
@@ -268,7 +284,7 @@ pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
 
 fn run_complete_taxonomy_download(args: DownloadArgs) -> anyhow::Result<()> {
     use super::download_impl::run_database_download;
-    
+
     use colored::Colorize;
 
     println!();
@@ -316,6 +332,7 @@ fn run_complete_taxonomy_download(args: DownloadArgs) -> anyhow::Result<()> {
                     preserve_lambda_on_failure: args.preserve_lambda_on_failure,
                     dry_run: args.dry_run,
                     force: args.force,
+                    keep_workspace: args.keep_workspace,
                     taxids: None,
                     taxid_list: None,
                     reference_proteomes: false,
@@ -343,44 +360,59 @@ fn run_complete_taxonomy_download(args: DownloadArgs) -> anyhow::Result<()> {
                         // This handles cases where the download succeeds but error reporting fails
                         let component_exists = match source_str {
                             "ncbi/prot-accession2taxid" => {
-                                let path = talaria_core::system::paths::talaria_taxonomy_current_dir()
-                                    .join("mappings")
-                                    .join("prot.accession2taxid.gz");
+                                let path =
+                                    talaria_core::system::paths::talaria_taxonomy_current_dir()
+                                        .join("mappings")
+                                        .join("prot.accession2taxid.gz");
                                 path.exists()
                             }
                             "ncbi/nucl-accession2taxid" => {
-                                let path = talaria_core::system::paths::talaria_taxonomy_current_dir()
-                                    .join("mappings")
-                                    .join("nucl.accession2taxid.gz");
+                                let path =
+                                    talaria_core::system::paths::talaria_taxonomy_current_dir()
+                                        .join("mappings")
+                                        .join("nucl.accession2taxid.gz");
                                 path.exists()
                             }
                             "uniprot/idmapping" => {
-                                let path = talaria_core::system::paths::talaria_taxonomy_current_dir()
-                                    .join("mappings")
-                                    .join("idmapping.dat.gz");
+                                let path =
+                                    talaria_core::system::paths::talaria_taxonomy_current_dir()
+                                        .join("mappings")
+                                        .join("idmapping.dat.gz");
                                 path.exists()
                             }
                             "ncbi/taxonomy" => {
-                                let path = talaria_core::system::paths::talaria_taxonomy_current_dir()
-                                    .join("tree")
-                                    .join("nodes.dmp");
+                                let path =
+                                    talaria_core::system::paths::talaria_taxonomy_current_dir()
+                                        .join("tree")
+                                        .join("nodes.dmp");
                                 path.exists()
                             }
                             _ => false,
                         };
 
                         if component_exists {
-                            println!("{}  {} downloaded successfully (recovered from error)", "✓".green().bold(), name);
+                            println!(
+                                "{}  {} downloaded successfully (recovered from error)",
+                                "✓".green().bold(),
+                                name
+                            );
                             success_count += 1;
                         } else {
                             // Sanitize error message to avoid UTF-8 issues with binary files
                             let error_msg = format!("{}", e);
-                            let sanitized_error = if error_msg.contains("stream did not contain valid UTF-8") {
+                            let sanitized_error = if error_msg
+                                .contains("stream did not contain valid UTF-8")
+                            {
                                 "File processing error (file may be corrupted or in unexpected format)".to_string()
                             } else {
                                 error_msg
                             };
-                            println!("{}  Failed to download {}: {}", "✗".red().bold(), name, sanitized_error);
+                            println!(
+                                "{}  Failed to download {}: {}",
+                                "✗".red().bold(),
+                                name,
+                                sanitized_error
+                            );
                             failed.push((name, anyhow::anyhow!("{}", sanitized_error)));
                         }
                     }
@@ -425,8 +457,8 @@ fn run_complete_taxonomy_download(args: DownloadArgs) -> anyhow::Result<()> {
 }
 
 fn list_resumable_downloads() -> anyhow::Result<()> {
-    use talaria_sequoia::download::{find_resumable_downloads, DatabaseSourceExt};
     use colored::Colorize;
+    use talaria_sequoia::download::{find_resumable_downloads, DatabaseSourceExt};
 
     let resumable = find_resumable_downloads()?;
 
@@ -440,12 +472,16 @@ fn list_resumable_downloads() -> anyhow::Result<()> {
     println!();
 
     for download in resumable {
-        println!("  {} - {} ({})",
+        println!(
+            "  {} - {} ({})",
             download.id.green(),
             download.source.canonical_name(),
             download.stage.name()
         );
-        println!("    Started: {}", download.started_at.format("%Y-%m-%d %H:%M:%S"));
+        println!(
+            "    Started: {}",
+            download.started_at.format("%Y-%m-%d %H:%M:%S")
+        );
     }
 
     println!();
@@ -456,13 +492,13 @@ fn list_resumable_downloads() -> anyhow::Result<()> {
 }
 
 fn resume_download_by_id(resume_id: &str, skip_verify: bool) -> anyhow::Result<()> {
+    use colored::Colorize;
     use talaria_sequoia::download::{
-        workspace::{get_workspace_by_id, DownloadState},
         manager::{DownloadManager, DownloadOptions},
         progress::DownloadProgress,
+        workspace::{get_workspace_by_id, DownloadState},
         DatabaseSourceExt,
     };
-    use colored::Colorize;
 
     let workspace = get_workspace_by_id(resume_id);
     let state_path = workspace.join("state.json");
@@ -473,7 +509,11 @@ fn resume_download_by_id(resume_id: &str, skip_verify: bool) -> anyhow::Result<(
 
     let state = DownloadState::load(&state_path)?;
 
-    println!("{} {}", "Resuming download:".bold(), state.source.canonical_name());
+    println!(
+        "{} {}",
+        "Resuming download:".bold(),
+        state.source.canonical_name()
+    );
     println!("  Stage: {}", state.stage.name());
 
     if state.stage.is_complete() {
@@ -494,13 +534,15 @@ fn resume_download_by_id(resume_id: &str, skip_verify: bool) -> anyhow::Result<(
             force: false,
         };
 
-        match download_manager.download_with_state(
-            state.source.clone(),
-            options,
-            &mut progress
-        ).await {
+        match download_manager
+            .download_with_state(state.source.clone(), options, &mut progress)
+            .await
+        {
             Ok(_) => {
-                println!("✓ {}", "Download resumed and completed successfully".green().bold());
+                println!(
+                    "✓ {}",
+                    "Download resumed and completed successfully".green().bold()
+                );
                 Ok(())
             }
             Err(e) => {
@@ -660,9 +702,9 @@ fn list_available_datasets() {
 }
 
 fn run_custom_download(args: DownloadArgs, db_name: String) -> anyhow::Result<()> {
-    use talaria_bio::taxonomy::SequenceProvider;
-    use talaria_bio::providers::uniprot::CustomDatabaseProvider;
     use crate::cli::formatting::output::{info, section_header, success};
+    use talaria_bio::providers::uniprot::CustomDatabaseProvider;
+    use talaria_bio::taxonomy::SequenceProvider;
     use talaria_sequoia::database::DatabaseManager;
     use talaria_sequoia::download::DatabaseSource;
 
@@ -821,9 +863,9 @@ fn download_uniprot_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
 
     // Use the unified SEQUOIA download
     use super::download_impl::run_database_download;
-    
 
-    let database_source = talaria_sequoia::download::parse_database_source(&format!("uniprot/{}", dataset_id))?;
+    let database_source =
+        talaria_sequoia::download::parse_database_source(&format!("uniprot/{}", dataset_id))?;
     run_database_download(args, database_source)?;
 
     show_success(&format!("{} download complete!", name));
@@ -906,12 +948,129 @@ fn download_ncbi_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
 
     // Use the unified SEQUOIA download
     use super::download_impl::run_database_download;
-    
 
-    let database_source = talaria_sequoia::download::parse_database_source(&format!("ncbi/{}", dataset_id))?;
+    let database_source =
+        talaria_sequoia::download::parse_database_source(&format!("ncbi/{}", dataset_id))?;
     run_database_download(args, database_source)?;
 
     show_success(&format!("{} download complete!", name));
 
     Ok(())
+}
+
+/// Check for database updates (dry-run mode)
+fn check_database_updates(database: &str, _force: bool) -> anyhow::Result<()> {
+    use crate::cli::formatting::output::format_number;
+    use colored::*;
+    use humansize::{format_size, BINARY};
+    use talaria_sequoia::database::DatabaseManager;
+    use talaria_utils::database::database_ref::parse_database_reference;
+
+    println!("\n{} Checking for updates: {}", "►".cyan().bold(), database.bold());
+
+    let manager = DatabaseManager::new(None)?;
+    let db_ref = parse_database_reference(database)?;
+
+    // Get local manifest
+    let local_data = match manager.get_manifest(database) {
+        Ok(m) => m,
+        Err(_) => {
+            println!("{} Database not found locally", "✗".red().bold());
+            println!("  Run: talaria database download {}", database);
+            return Ok(());
+        }
+    };
+
+    println!("{} Current version: {}", "●".cyan(), local_data.version);
+    println!("  {} chunks", format_number(local_data.chunk_index.len()));
+    let local_size: u64 = local_data.chunk_index.iter().map(|c| c.size as u64).sum();
+    println!("  {}", format_size(local_size, BINARY));
+
+    // Try to fetch remote manifest if TALARIA_MANIFEST_SERVER is set
+    if let Ok(server) = std::env::var("TALARIA_MANIFEST_SERVER") {
+        println!("\n{} Checking remote manifest server...", "►".cyan().bold());
+
+        match fetch_remote_manifest(&db_ref, &server) {
+            Ok(remote_manifest) => {
+                // Compare manifests
+                if manifests_identical(&local_data, &remote_manifest) {
+                    println!("{} Database is up-to-date", "✓".green().bold());
+                } else {
+                    println!("{} Update available", "▶".yellow().bold());
+                    println!("  Remote version: {}", remote_manifest.version);
+                    let remote_size: u64 = remote_manifest.chunk_index.iter().map(|c| c.size as u64).sum();
+                    let size_diff = (remote_size as i64) - (local_size as i64);
+
+                    if size_diff > 0 {
+                        println!("  Size change: +{}", format_size(size_diff as u64, BINARY).green());
+                    } else if size_diff < 0 {
+                        println!("  Size change: -{}", format_size(size_diff.unsigned_abs(), BINARY).red());
+                    }
+
+                    println!("\n  Run: talaria database download {} --force", database);
+                }
+            }
+            Err(e) => {
+                println!("{} Could not fetch remote manifest: {}", "⚠".yellow().bold(), e);
+                println!("  (This is normal if no remote manifest server is configured)");
+            }
+        }
+    } else {
+        println!("\n{} No TALARIA_MANIFEST_SERVER configured", "ℹ".blue());
+        println!("  Set TALARIA_MANIFEST_SERVER to check for remote updates");
+    }
+
+    Ok(())
+}
+
+/// Fetch remote manifest from server
+fn fetch_remote_manifest(
+    db_ref: &talaria_utils::database::database_ref::DatabaseReference,
+    server: &str,
+) -> anyhow::Result<talaria_sequoia::TemporalManifest> {
+    let manifest_url = format!(
+        "{}/{}/{}/current/manifest.json",
+        server.trim_end_matches('/'),
+        db_ref.source,
+        db_ref.dataset
+    );
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
+
+    let response = client.get(&manifest_url).send()?;
+
+    if !response.status().is_success() {
+        anyhow::bail!("Remote manifest not found: {}", response.status());
+    }
+
+    let manifest: talaria_sequoia::TemporalManifest = response.json()?;
+    Ok(manifest)
+}
+
+/// Check if two manifests are identical by comparing chunk hashes
+fn manifests_identical(
+    a: &talaria_sequoia::TemporalManifest,
+    b: &talaria_sequoia::TemporalManifest,
+) -> bool {
+    use std::collections::HashSet;
+
+    if a.chunk_index.len() != b.chunk_index.len() {
+        return false;
+    }
+
+    let a_chunks: HashSet<_> = a
+        .chunk_index
+        .iter()
+        .map(|c| (&c.hash, c.sequence_count))
+        .collect();
+
+    let b_chunks: HashSet<_> = b
+        .chunk_index
+        .iter()
+        .map(|c| (&c.hash, c.sequence_count))
+        .collect();
+
+    a_chunks == b_chunks
 }

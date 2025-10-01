@@ -225,13 +225,15 @@ fn draw_overview(f: &mut Frame, area: Rect, stats: &DatabaseStats) {
         .split(area);
 
     // Key metrics
-    let metrics = [format!("Total Sequences: {:>10}", stats.total_sequences),
+    let metrics = [
+        format!("Total Sequences: {:>10}", stats.total_sequences),
         format!("Total Bases:     {:>10}", stats.total_bases),
         format!("Avg Length:      {:>10.1} bp", stats.avg_sequence_length),
         format!("GC Content:      {:>10.1}%", stats.gc_content),
         format!("Redundancy:      {:>10.1}%", stats.redundancy_level),
         format!("Taxonomy Div:    {:>10.1}%", stats.taxonomy_diversity),
-        format!("Compression:     {:>10.1}x", stats.compression_ratio)];
+        format!("Compression:     {:>10.1}x", stats.compression_ratio),
+    ];
 
     let items: Vec<ListItem> = metrics.iter().map(|m| ListItem::new(m.as_str())).collect();
     let list = List::new(items)

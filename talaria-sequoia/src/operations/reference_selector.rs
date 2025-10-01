@@ -29,13 +29,13 @@ fn tree_section(title: &str, items: Vec<(&str, String)>, _indent: bool) {
         log_info!("  {}: {}", key, value);
     }
 }
-use talaria_utils::workspace::TempWorkspace;
 use dashmap::DashMap;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex as StdMutex};
+use talaria_utils::workspace::TempWorkspace;
 
 /// Algorithm selection for reference sequence selection
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,7 +66,7 @@ pub struct ReferenceSelectorImpl {
     pub use_similarity: bool,       // Use similarity-based selection
     #[allow(dead_code)]
     fast_mode: bool, // Use faster but less optimal algorithm for huge datasets
-    workspace: Option<Arc<Mutex<TempWorkspace>>>, // Workspace for temp files
+    workspace: Option<Arc<StdMutex<TempWorkspace>>>, // Workspace for temp files
 }
 
 #[derive(Debug, Clone)]
@@ -81,9 +81,9 @@ impl ReferenceSelectorImpl {
         Self {
             min_length: 50,
             similarity_threshold: 0.9,
-            taxonomy_aware: false,  // Default to db-reduce style (no taxonomic splitting)
+            taxonomy_aware: false, // Default to db-reduce style (no taxonomic splitting)
             use_taxonomy_weights: false, // Default to no taxonomy weighting
-            all_vs_all: true,            // Default to db-reduce style (all-vs-all search)
+            all_vs_all: true,      // Default to db-reduce style (all-vs-all search)
             manifest_acc2taxid: None,
             batch_enabled: false, // Default: no batching
             batch_size: 5000,     // Default batch size
@@ -136,7 +136,7 @@ impl ReferenceSelectorImpl {
         self
     }
 
-    pub fn with_workspace(mut self, workspace: Arc<Mutex<TempWorkspace>>) -> Self {
+    pub fn with_workspace(mut self, workspace: Arc<StdMutex<TempWorkspace>>) -> Self {
         self.workspace = Some(workspace);
         self
     }
@@ -247,10 +247,7 @@ impl ReferenceSelectorImpl {
 
         // Build children map from assignments
         for (ref_id, child_id) in assignments {
-            children
-                .entry(ref_id)
-                .or_default()
-                .push(child_id.clone());
+            children.entry(ref_id).or_default().push(child_id.clone());
             discarded.insert(child_id);
         }
 
@@ -823,24 +820,28 @@ impl ReferenceSelectorImpl {
                 // This is simplified - real implementation would use taxonomy database
                 let organism = os_match.to_lowercase();
                 if organism.contains("homo") && organism.contains("sapiens") {
-                    taxonomy = ["Eukaryota",
+                    taxonomy = [
+                        "Eukaryota",
                         "Chordata",
                         "Mammalia",
                         "Primates",
                         "Hominidae",
                         "Homo",
-                        "sapiens"]
+                        "sapiens",
+                    ]
                     .iter()
                     .map(|s| s.to_string())
                     .collect();
                 } else if organism.contains("mus") && organism.contains("musculus") {
-                    taxonomy = ["Eukaryota",
+                    taxonomy = [
+                        "Eukaryota",
                         "Chordata",
                         "Mammalia",
                         "Rodentia",
                         "Muridae",
                         "Mus",
-                        "musculus"]
+                        "musculus",
+                    ]
                     .iter()
                     .map(|s| s.to_string())
                     .collect();
@@ -881,7 +882,6 @@ impl ReferenceSelectorImpl {
         fn warning(msg: &str) {
             log_warn!("{}", msg);
         }
-        
 
         section_header("LAMBDA-based Reference Selection (aegis algorithm)");
         info(&format!(
@@ -897,10 +897,7 @@ impl ReferenceSelectorImpl {
 
             for seq in sequences.clone() {
                 if let Some(taxon_id) = seq.taxon_id {
-                    taxon_groups
-                        .entry(taxon_id)
-                        .or_default()
-                        .push(seq);
+                    taxon_groups.entry(taxon_id).or_default().push(seq);
                 } else {
                     no_taxon_sequences.push(seq);
                 }
@@ -1022,22 +1019,24 @@ impl ReferenceSelectorImpl {
 
             // Process groups with progress indicator
             use indicatif::{ProgressBar, ProgressStyle};
-            use std::sync::Arc;
             use std::sync::atomic::{AtomicUsize, Ordering};
+            use std::sync::Arc;
 
             // Count total groups to process
-            let groups_to_process: Vec<_> = taxon_groups
-                .iter()
-                .filter(|(_, g)| g.len() >= 10)
-                .collect();
+            let groups_to_process: Vec<_> =
+                taxon_groups.iter().filter(|(_, g)| g.len() >= 10).collect();
 
             let total_groups = groups_to_process.len();
 
             if total_groups > 0 {
-                info(&format!("Processing {} taxonomic groups...", format_number(total_groups)));
+                info(&format!(
+                    "Processing {} taxonomic groups...",
+                    format_number(total_groups)
+                ));
 
                 // Use parallel processing for any multi-group dataset for better performance
-                let use_parallel = total_groups > 2 && std::env::var("TALARIA_NO_PARALLEL").is_err();
+                let use_parallel =
+                    total_groups > 2 && std::env::var("TALARIA_NO_PARALLEL").is_err();
 
                 if use_parallel {
                     info("Using parallel processing for taxonomic groups");
@@ -1057,8 +1056,12 @@ impl ReferenceSelectorImpl {
 
                     // Determine number of parallel workers - optimize for fewer processes with more threads each
                     // Use 1/8 of CPU cores for process count, giving each process more threads
-                    let parallel_processes = std::cmp::max(1, std::cmp::min(4, num_cpus::get() / 8));
-                    info(&format!("Running {} LAMBDA processes in parallel", parallel_processes));
+                    let parallel_processes =
+                        std::cmp::max(1, std::cmp::min(4, num_cpus::get() / 8));
+                    info(&format!(
+                        "Running {} LAMBDA processes in parallel",
+                        parallel_processes
+                    ));
 
                     // Process in parallel
                     // Update progress bar to show batches instead of just groups
@@ -1071,19 +1074,27 @@ impl ReferenceSelectorImpl {
                             .progress_chars("━━╺"),
                     );
 
-                    info(&format!("Processing {} batches from {} groups",
+                    info(&format!(
+                        "Processing {} batches from {} groups",
                         format_number(total_batches),
-                        format_number(total_groups)));
+                        format_number(total_groups)
+                    ));
 
                     // Suppress LAMBDA's individual progress bars
-                    println!("Note: Individual LAMBDA progress bars are suppressed in parallel mode.");
+                    println!(
+                        "Note: Individual LAMBDA progress bars are suppressed in parallel mode."
+                    );
                     println!("Overall progress will be shown as batches complete.");
 
                     let processed = Arc::new(AtomicUsize::new(0));
                     let alignments_found = Arc::new(AtomicUsize::new(0));
 
                     // Run parallel searches
-                    let group_results = aligner.search_groups_parallel(query_groups, &shared_index, parallel_processes)?;
+                    let group_results = aligner.search_groups_parallel(
+                        query_groups,
+                        &shared_index,
+                        parallel_processes,
+                    )?;
 
                     // Collect all results
                     for group_alignments in group_results {
@@ -1091,20 +1102,28 @@ impl ReferenceSelectorImpl {
                         all_alignments.extend(group_alignments);
 
                         let proc = processed.fetch_add(1, Ordering::SeqCst) + 1;
-                        let total_align = alignments_found.fetch_add(count, Ordering::SeqCst) + count;
+                        let total_align =
+                            alignments_found.fetch_add(count, Ordering::SeqCst) + count;
 
                         progress.set_position(proc as u64);
-                        progress.set_message(format!("{} alignments found", format_number(total_align)));
+                        progress.set_message(format!(
+                            "{} alignments found",
+                            format_number(total_align)
+                        ));
                     }
 
-                    progress.finish_with_message(format!("✓ {} alignments found", format_number(all_alignments.len())));
-
+                    progress.finish_with_message(format!(
+                        "✓ {} alignments found",
+                        format_number(all_alignments.len())
+                    ));
                 } else {
                     // Sequential processing (original implementation)
                     let progress = ProgressBar::new(total_groups as u64);
                     progress.set_style(
                         ProgressStyle::default_bar()
-                            .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} groups ({msg})")
+                            .template(
+                                "[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} groups ({msg})",
+                            )
                             .unwrap()
                             .progress_chars("━━╺"),
                     );
@@ -1120,7 +1139,8 @@ impl ReferenceSelectorImpl {
 
                         // Process entire taxonomic group at once (matching db-reduce approach)
                         // LAMBDA handles large groups efficiently internally
-                        let group_alignments = aligner.search_with_index_silent(&sorted_group, &shared_index)?;
+                        let group_alignments =
+                            aligner.search_with_index_silent(&sorted_group, &shared_index)?;
                         let group_alignment_count = group_alignments.len();
                         total_alignments_found += group_alignment_count;
                         all_alignments.extend(group_alignments);
@@ -1135,10 +1155,16 @@ impl ReferenceSelectorImpl {
 
                         processed += 1;
                         progress.set_position(processed);
-                        progress.set_message(format!("{} alignments found", format_number(total_alignments_found)));
+                        progress.set_message(format!(
+                            "{} alignments found",
+                            format_number(total_alignments_found)
+                        ));
                     }
 
-                    progress.finish_with_message(format!("✓ {} alignments found", format_number(total_alignments_found)));
+                    progress.finish_with_message(format!(
+                        "✓ {} alignments found",
+                        format_number(total_alignments_found)
+                    ));
                 }
             }
 
@@ -1167,7 +1193,8 @@ impl ReferenceSelectorImpl {
 
                 // Use the SHARED index for no-taxon group too - no new index creation!
                 // Use silent mode here too
-                let group_alignments = aligner.search_with_index_silent(&query_sequences, &shared_index)?;
+                let group_alignments =
+                    aligner.search_with_index_silent(&query_sequences, &shared_index)?;
                 let alignment_count = group_alignments.len();
                 all_alignments.extend(group_alignments);
 
@@ -1206,9 +1233,14 @@ impl ReferenceSelectorImpl {
             };
 
             let alignment_items = vec![
-                ("Query sequences", format!("{} (sampled from {})",
-                    format_number(query_sequences.len()),
-                    format_number(sequences_to_process.len()))),
+                (
+                    "Query sequences",
+                    format!(
+                        "{} (sampled from {})",
+                        format_number(query_sequences.len()),
+                        format_number(sequences_to_process.len())
+                    ),
+                ),
                 (
                     "Reference sequences",
                     format!(
@@ -1373,8 +1405,8 @@ impl ReferenceSelectorImpl {
                     // No good subject found with >70% identity
                     // Only make it a reference if it truly has no alignments
                     // or all alignments are very poor quality
-                    let has_any_decent_alignment = subjects.iter()
-                        .any(|(_, identity, _)| *identity >= 0.5);
+                    let has_any_decent_alignment =
+                        subjects.iter().any(|(_, identity, _)| *identity >= 0.5);
 
                     if !has_any_decent_alignment {
                         // Truly isolated sequence, becomes its own reference
@@ -1634,9 +1666,7 @@ impl ReferenceSelectorImpl {
         fn section_header(msg: &str) {
             log_info!("\n=== {} ===", msg);
         }
-        use super::reference_selector_optimized::{
-            AlignmentCache, OptimizedReferenceSelector,
-        };
+        use super::reference_selector_optimized::{AlignmentCache, OptimizedReferenceSelector};
 
         section_header("Graph Centrality Algorithm (SEQUOIA)");
         info("Formula: Score = 0.5·Degree + 0.3·Betweenness + 0.2·Coverage");
@@ -1656,7 +1686,7 @@ impl ReferenceSelectorImpl {
                 .set_score(&alignment.query_id, &alignment.reference_id, score);
         }
 
-        // Use a mock aligner since we have pre-computed alignments
+        // Test-only: Use a mock aligner since we have pre-computed alignments
         let mut mock_aligner = talaria_tools::MockAligner::new();
 
         // Calculate target ratio based on desired references
@@ -1782,7 +1812,7 @@ mod tests {
             Sequence::new("seq3".to_string(), vec![65; 100]),
         ];
 
-        // Create a mock similarity matrix
+        // Test-only: Create a mock similarity matrix for parallel evaluation testing
         let mut similarity_matrix = HashMap::new();
         similarity_matrix.insert(("seq1".to_string(), "seq2".to_string()), 0.8);
         similarity_matrix.insert(("seq2".to_string(), "seq1".to_string()), 0.8);

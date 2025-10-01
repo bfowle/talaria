@@ -296,7 +296,7 @@ impl TemporalManifestDiffer for StandardTemporalManifestDiffer {
         let new_data = std::fs::read(new_path)?;
 
         // Auto-detect format and deserialize
-        use crate::storage::format::FormatDetector;
+        use talaria_storage::format::FormatDetector;
         let _old_format = FormatDetector::detect(old_path);
         let _new_format = FormatDetector::detect(new_path);
 

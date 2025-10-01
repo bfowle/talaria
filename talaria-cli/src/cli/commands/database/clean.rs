@@ -1,264 +1,744 @@
-#![allow(dead_code)]
-
-use talaria_sequoia::SEQUOIARepository;
-use talaria_core::system::paths;
-use crate::cli::progress::create_spinner;
+/// Clean SEQUOIA databases by removing unreferenced data
+///
+/// Removes unreferenced data:
+/// - Orphaned chunks
+/// - Unreferenced canonical sequences
+/// - Expired temporal data
+/// - Invalid cache entries
+/// - Incomplete downloads
+/// - Old download workspaces
+use anyhow::{anyhow, Result};
 use clap::Args;
-use colored::*;
 use std::collections::HashSet;
+use talaria_sequoia::database::DatabaseManager;
+use talaria_sequoia::SequoiaRepository;
 
-#[derive(Args)]
-pub struct CleanArgs {
-    /// Database name to clean (cleans all if not specified)
+/// Results from cleaning operations by category
+#[derive(Debug, Default)]
+struct CleanResults {
+    orphaned_chunks: (usize, usize),      // (count, bytes)
+    unreferenced_seqs: (usize, usize),    // (count, bytes)
+    expired_cache: (usize, usize),        // (count, bytes)
+    incomplete_downloads: (usize, usize), // (count, bytes)
+}
+
+#[derive(Debug, Args)]
+pub struct CleanCmd {
+    /// Database reference (e.g., "uniprot/swissprot") or "all"
     #[arg(value_name = "DATABASE")]
-    pub database: Option<String>,
+    database: String,
 
-    /// Remove orphaned chunks not referenced in any manifest
+    /// Remove orphaned chunks
+    #[arg(long, default_value = "true")]
+    orphaned_chunks: bool,
+
+    /// Remove unreferenced sequences
+    #[arg(long, default_value = "true")]
+    unreferenced_sequences: bool,
+
+    /// Remove expired cache entries
+    #[arg(long, default_value = "true")]
+    expired_cache: bool,
+
+    /// Remove incomplete downloads
+    #[arg(long, default_value = "true")]
+    incomplete_downloads: bool,
+
+    /// Aggressive mode - also removes data that might be recoverable
     #[arg(long)]
-    pub orphaned: bool,
+    aggressive: bool,
 
-    /// Remove duplicate chunks (keeps one copy)
+    /// Dry run - show what would be removed without actually removing
     #[arg(long)]
-    pub duplicates: bool,
+    dry_run: bool,
 
-    /// Compact database by reorganizing chunks
+    /// Show detailed statistics before and after
     #[arg(long)]
-    pub compact: bool,
+    stats: bool,
 
-    /// Clean old download workspaces
+    /// Check for unreferenced sequences (slow with large databases)
     #[arg(long)]
-    pub downloads: bool,
+    check_sequences: bool,
 
-    /// Maximum age in hours for keeping incomplete downloads (default: 168 = 1 week)
-    #[arg(long, default_value = "168", requires = "downloads")]
-    pub max_age_hours: i64,
+    /// Report output file path
+    #[arg(long = "report-output", value_name = "FILE")]
+    report_output: Option<std::path::PathBuf>,
 
-    /// Clean all issues (orphaned, duplicates, compact, and downloads)
-    #[arg(long, short = 'a')]
-    pub all: bool,
-
-    /// Dry run - show what would be cleaned without actually doing it
-    #[arg(long, short = 'n')]
-    pub dry_run: bool,
-
-    /// Force cleaning without confirmation
-    #[arg(long, short = 'f')]
-    pub force: bool,
+    /// Report output format (text, html, json, csv)
+    #[arg(long = "report-format", value_name = "FORMAT", default_value = "text")]
+    report_format: String,
 }
 
-pub fn run(args: CleanArgs) -> anyhow::Result<()> {
-    let base_path = if let Some(db_name) = &args.database {
-        paths::talaria_databases_dir().join("data").join(db_name)
-    } else {
-        paths::talaria_databases_dir()
-    };
-
-    if !base_path.exists() {
-        return Err(anyhow::anyhow!(
-            "Database path does not exist: {}",
-            base_path.display()
-        ));
-    }
-
-    let clean_orphaned = args.all || args.orphaned;
-    let clean_duplicates = args.all || args.duplicates;
-    let do_compact = args.all || args.compact;
-    let clean_downloads = args.all || args.downloads;
-
-    if !clean_orphaned && !clean_duplicates && !do_compact && !clean_downloads {
-        println!("{} No cleaning operations specified. Use --orphaned, --duplicates, --compact, --downloads, or --all",
-                "⚠".yellow().bold());
-        return Ok(());
-    }
-
-    println!(
-        "{} {} database at {}...",
-        "►".cyan().bold(),
-        if args.dry_run { "Analyzing" } else { "Cleaning" },
-        base_path.display()
-    );
-
-    let mut repo = SEQUOIARepository::open(&base_path)?;
-    let mut total_freed = 0usize;
-    let mut chunks_removed = 0usize;
-
-    if clean_orphaned {
-        let (removed, freed) = clean_orphaned_chunks(&mut repo, args.dry_run)?;
-        chunks_removed += removed;
-        total_freed += freed;
-    }
-
-    if clean_duplicates {
-        let (removed, freed) = clean_duplicate_chunks(&mut repo, args.dry_run)?;
-        chunks_removed += removed;
-        total_freed += freed;
-    }
-
-    if do_compact {
-        let freed = compact_database(&mut repo, args.dry_run)?;
-        total_freed += freed;
-    }
-
-    // Clean download workspaces if requested
-    if clean_downloads {
-        let downloads_cleaned = clean_download_workspaces(args.max_age_hours, args.dry_run)?;
-        if downloads_cleaned > 0 {
-            println!("  {} Cleaned {} download workspace(s)",
-                    "✓".green().bold(), downloads_cleaned);
+impl CleanCmd {
+    pub async fn run(&self) -> Result<()> {
+        if self.database == "all" {
+            self.clean_all_databases().await
+        } else {
+            self.clean_single_database().await
         }
     }
 
-    // Display results
-    println!("\n{}", "─".repeat(60));
-    println!("{:^60}", if args.dry_run { "CLEANING ANALYSIS" } else { "CLEANING COMPLETE" });
-    println!("{}", "─".repeat(60));
+    async fn clean_single_database(&self) -> Result<()> {
+        use crate::cli::formatting::output::*;
 
-    if args.dry_run {
-        println!("{} Would remove {} chunks", "►".cyan().bold(), chunks_removed);
-        println!("{} Would free {:.2} MB", "►".cyan().bold(), total_freed as f64 / 1_048_576.0);
-        println!("\nRun without --dry-run to perform actual cleaning");
-    } else {
-        println!("{} Removed {} chunks", "✓".green().bold(), chunks_removed);
-        println!("{} Freed {:.2} MB", "✓".green().bold(), total_freed as f64 / 1_048_576.0);
-    }
-
-    Ok(())
-}
-
-fn clean_orphaned_chunks(repo: &mut SEQUOIARepository, dry_run: bool) -> anyhow::Result<(usize, usize)> {
-    let spinner = create_spinner("Scanning for orphaned chunks...");
-
-    let manifest_data = repo.manifest.get_data()
-        .ok_or_else(|| anyhow::anyhow!("No manifest loaded"))?;
-
-    // Get all stored chunks
-    let stored_chunks = repo.storage.list_all_chunks()?;
-
-    // Get all referenced chunks
-    let referenced_chunks: HashSet<_> = manifest_data.chunk_index
-        .iter()
-        .map(|c| c.hash.clone())
-        .collect();
-
-    // Find orphaned chunks
-    let orphaned: Vec<_> = stored_chunks
-        .into_iter()
-        .filter(|h| !referenced_chunks.contains(h))
-        .collect();
-
-    spinner.finish_and_clear();
-
-    if orphaned.is_empty() {
-        println!("{} No orphaned chunks found", "✓".green().bold());
-        return Ok((0, 0));
-    }
-
-    println!("{} Found {} orphaned chunks", "►".cyan().bold(), orphaned.len());
-
-    if dry_run {
-        return Ok((orphaned.len(), estimate_chunk_size(&orphaned)));
-    }
-
-    // Remove orphaned chunks
-    let spinner = create_spinner("Removing orphaned chunks...");
-    let mut total_freed = 0;
-
-    for chunk_hash in &orphaned {
-        if let Ok(size) = repo.storage.get_chunk_size(chunk_hash) {
-            total_freed += size;
+        // SAFETY CHECK: Per-database clean is not safe with unified storage
+        if self.database != "all" {
+            return Err(anyhow!(
+                "Per-database cleaning is not supported.\n\
+                 \n\
+                 SEQUOIA uses unified storage where chunks and sequences are shared across\n\
+                 all databases. To safely remove unreferenced data, use:\n\
+                 \n\
+                 \x1b[1m    talaria database clean all\x1b[0m\n\
+                 \n\
+                 This will scan ALL databases to ensure nothing in use is deleted.\n\
+                 \n\
+                 \x1b[33mNote:\x1b[0m Running clean on a single database would delete shared data still\n\
+                 referenced by other databases, causing data loss."
+            ));
         }
-        repo.storage.remove_chunk(chunk_hash)?;
+
+        // Use DatabaseManager to access the unified repository
+        let mut manager = DatabaseManager::new(None)?;
+
+        // Get mutable access to repository for clean operations
+        let repository = manager.get_repository_mut();
+
+        section_header_with_line(&format!("Database Cleaning: {}", self.database));
+
+        // Show initial spinner
+        use crate::cli::progress::create_spinner;
+        use std::time::Instant;
+        let init_spinner = create_spinner("Initializing database cleaning...");
+
+        let mut results = CleanResults::default();
+        let start_time = Instant::now();
+
+        init_spinner.finish_and_clear();
+
+        // Phase 1: Find orphaned chunks
+        if self.orphaned_chunks {
+            results.orphaned_chunks = self.remove_orphaned_chunks(repository)?;
+        }
+
+        // Phase 2: Find unreferenced sequences (optional - very slow)
+        if self.unreferenced_sequences && self.check_sequences {
+            use crate::cli::formatting::output::*;
+            warning("Checking unreferenced sequences - this may take a long time with large databases");
+            results.unreferenced_seqs = self.remove_unreferenced_sequences(repository)?;
+        } else if self.unreferenced_sequences && !self.check_sequences {
+            use crate::cli::formatting::output::*;
+            info("Skipped unreferenced sequence check (use --check-sequences to enable)");
+        }
+
+        // Phase 3: Clean expired cache
+        if self.expired_cache {
+            results.expired_cache = self.clean_expired_cache(repository)?;
+        }
+
+        // Phase 4: Clean incomplete downloads
+        if self.incomplete_downloads {
+            results.incomplete_downloads = self.clean_incomplete_downloads(repository)?;
+        }
+
+        let elapsed = start_time.elapsed();
+
+        // Display summary table
+        self.display_results(&results, elapsed)?;
+
+        if self.dry_run {
+            println!();
+            warning("This was a dry run. No data was actually removed.");
+        }
+
+        // Generate report if requested
+        if let Some(report_path) = &self.report_output {
+            use talaria_sequoia::operations::GarbageCollectionResult;
+
+            let total_removed = results.orphaned_chunks.0
+                + results.unreferenced_seqs.0
+                + results.expired_cache.0
+                + results.incomplete_downloads.0;
+
+            let total_bytes = results.orphaned_chunks.1
+                + results.unreferenced_seqs.1
+                + results.expired_cache.1
+                + results.incomplete_downloads.1;
+
+            let result = GarbageCollectionResult {
+                chunks_removed: total_removed,
+                space_reclaimed: total_bytes as u64,
+                orphaned_chunks: Vec::new(), // Would need to collect actual hashes
+                compaction_performed: false,
+                duration: start_time.elapsed(),
+            };
+
+            crate::cli::commands::save_report(&result, &self.report_format, report_path)?;
+            println!("✓ Report saved to {}", report_path.display());
+        }
+
+        Ok(())
     }
 
-    spinner.finish_and_clear();
+    async fn clean_all_databases(&self) -> Result<()> {
+        use crate::cli::formatting::output::*;
+        use std::time::Instant;
+        use talaria_sequoia::database::DatabaseManager;
 
-    Ok((orphaned.len(), total_freed))
-}
+        section_header_with_line("Database Cleaning: All Databases");
 
-fn clean_duplicate_chunks(_repo: &mut SEQUOIARepository, _dry_run: bool) -> anyhow::Result<(usize, usize)> {
-    let spinner = create_spinner("Scanning for duplicate chunks...");
+        // Show initial spinner
+        use crate::cli::progress::create_spinner;
+        let init_spinner = create_spinner("Scanning all databases for references...");
 
-    // In content-addressed storage, duplicates shouldn't exist by design
-    // This is a placeholder for potential future deduplication logic
-    // For now, we'll check for chunks with identical content but different hashes
-    // (which shouldn't happen but could due to bugs)
+        // Use DatabaseManager to access unified repository
+        let mut manager = DatabaseManager::new(None)?;
+        let databases = manager.list_databases()?;
 
-    spinner.finish_and_clear();
-    println!("{} No duplicate chunks found (content-addressed storage)", "✓".green().bold());
+        info(&format!("Found {} databases in unified storage", databases.len()));
 
-    Ok((0, 0))
-}
+        // Get mutable access to repository for clean operations
+        let repository = manager.get_repository_mut();
 
-fn compact_database(repo: &mut SEQUOIARepository, dry_run: bool) -> anyhow::Result<usize> {
-    let spinner = create_spinner("Analyzing database for compaction...");
+        let mut results = CleanResults::default();
+        let start_time = Instant::now();
 
-    let manifest_data = repo.manifest.get_data()
-        .ok_or_else(|| anyhow::anyhow!("No manifest loaded"))?;
+        init_spinner.finish_and_clear();
 
-    // Calculate fragmentation
-    let total_chunks = manifest_data.chunk_index.len();
-    let avg_chunk_size = manifest_data.chunk_index
-        .iter()
-        .map(|c| c.size)
-        .sum::<usize>() / total_chunks.max(1);
+        // Phase 1: Find orphaned chunks (scans ALL databases)
+        if self.orphaned_chunks {
+            results.orphaned_chunks = self.remove_orphaned_chunks_all_databases(repository, &databases)?;
+        }
 
-    // Find small chunks that could be merged
-    let small_chunks: Vec<_> = manifest_data.chunk_index
-        .iter()
-        .filter(|c| c.size < avg_chunk_size / 2)
-        .collect();
+        // Phase 2: Find unreferenced sequences (optional - very slow)
+        if self.unreferenced_sequences && self.check_sequences {
+            warning("Checking unreferenced sequences - this may take a long time with large databases");
+            results.unreferenced_seqs = self.remove_unreferenced_sequences_all_databases(repository, &databases)?;
+        } else if self.unreferenced_sequences && !self.check_sequences {
+            info("Skipped unreferenced sequence check (use --check-sequences to enable)");
+        }
 
-    spinner.finish_and_clear();
+        // Phase 3: Clean expired cache
+        if self.expired_cache {
+            results.expired_cache = self.clean_expired_cache(repository)?;
+        }
 
-    if small_chunks.is_empty() {
-        println!("{} Database is already well-compacted", "✓".green().bold());
-        return Ok(0);
+        // Phase 4: Clean incomplete downloads
+        if self.incomplete_downloads {
+            results.incomplete_downloads = self.clean_incomplete_downloads(repository)?;
+        }
+
+        let elapsed = start_time.elapsed();
+
+        // Display summary table
+        self.display_results(&results, elapsed)?;
+
+        if self.dry_run {
+            println!();
+            warning("This was a dry run. No data was actually removed.");
+        }
+
+        // Generate report if requested
+        if let Some(report_path) = &self.report_output {
+            use talaria_sequoia::operations::GarbageCollectionResult;
+
+            let total_removed = results.orphaned_chunks.0
+                + results.unreferenced_seqs.0
+                + results.expired_cache.0
+                + results.incomplete_downloads.0;
+
+            let total_bytes = results.orphaned_chunks.1
+                + results.unreferenced_seqs.1
+                + results.expired_cache.1
+                + results.incomplete_downloads.1;
+
+            let result = GarbageCollectionResult {
+                chunks_removed: total_removed,
+                space_reclaimed: total_bytes as u64,
+                orphaned_chunks: Vec::new(),
+                compaction_performed: false,
+                duration: start_time.elapsed(),
+            };
+
+            crate::cli::commands::save_report(&result, &self.report_format, report_path)?;
+            success(&format!("Report saved to {}", report_path.display()));
+        }
+
+        Ok(())
     }
 
-    println!("{} Found {} small chunks that could be merged",
-            "►".cyan().bold(), small_chunks.len());
 
-    if dry_run {
-        let potential_savings = small_chunks.len() * 1024; // Estimate metadata overhead
-        return Ok(potential_savings);
-    }
+    fn remove_orphaned_chunks(&self, repository: &mut SequoiaRepository) -> Result<(usize, usize)> {
+        use crate::cli::formatting::output::*;
+        use std::time::Instant;
+        use indicatif::{ProgressBar, ProgressStyle};
 
-    // In a real implementation, we would:
-    // 1. Merge small adjacent chunks
-    // 2. Update the manifest
-    // 3. Remove old chunks
-    // For now, this is a placeholder
+        let start = Instant::now();
+        subsection_header("Finding Orphaned Chunks");
 
-    println!("{} Compaction not yet implemented", "⚠".yellow().bold());
+        // Get all referenced chunks from manifests
+        let mut referenced_chunks = HashSet::new();
 
-    Ok(0)
-}
+        // Add chunks from current manifest
+        let manifest_chunks = repository.manifest.get_chunks();
+        for chunk in &manifest_chunks {
+            referenced_chunks.insert(chunk.hash.clone());
+        }
 
-fn estimate_chunk_size(chunks: &[talaria_sequoia::SHA256Hash]) -> usize {
-    // Estimate 100KB per chunk as a rough average
-    chunks.len() * 102_400
-}
-
-fn clean_download_workspaces(max_age_hours: i64, dry_run: bool) -> anyhow::Result<usize> {
-    use talaria_sequoia::download::workspace::cleanup_old_workspaces;
-
-    if dry_run {
-        // In dry run, just count what would be cleaned
-        use talaria_sequoia::download::{find_resumable_downloads, DatabaseSourceExt};
-        let resumable = find_resumable_downloads()?;
-
-        let mut would_clean = 0;
-        for download in resumable {
-            if download.is_stale(max_age_hours) {
-                would_clean += 1;
-                println!("  Would clean: {} ({})",
-                    download.id,
-                    download.source.canonical_name()
-                );
+        // Add chunks from temporal versions
+        let temporal_manifests = repository.temporal.list_all_manifests()?;
+        for manifest in temporal_manifests {
+            for chunk in manifest.chunks {
+                referenced_chunks.insert(chunk);
             }
         }
-        Ok(would_clean)
-    } else {
-        Ok(cleanup_old_workspaces(max_age_hours)?)
+
+        // Get all stored chunks
+        let stored_chunks = repository.storage.list_chunks()?;
+        let total_chunks = stored_chunks.len();
+
+        // Create progress bar
+        let pb = ProgressBar::new(total_chunks as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("  Scanning chunks [{bar:40}] {pos}/{len} ({per_sec})")
+                .unwrap()
+                .progress_chars("=>-")
+        );
+
+        // Find orphans
+        let mut orphans = Vec::new();
+        for (idx, chunk_hash) in stored_chunks.iter().enumerate() {
+            if !referenced_chunks.contains(chunk_hash) {
+                orphans.push(chunk_hash.clone());
+            }
+            if idx % 10000 == 0 {
+                pb.set_position(idx as u64);
+            }
+        }
+        pb.finish_and_clear();
+
+        let mut total_removed = 0usize;
+        let count = orphans.len();
+
+        if !orphans.is_empty() {
+            // Calculate total size before deletion
+            for orphan in &orphans {
+                if let Ok(size) = repository.storage.get_chunk_size(orphan) {
+                    total_removed += size;
+                }
+            }
+
+            if !self.dry_run {
+                // Batch delete for performance (much faster than individual deletes)
+                repository.storage.remove_chunks_batch(&orphans)?;
+            }
+
+            println!("  Found {} orphaned chunks ({})", format_number(count), format_size(total_removed));
+            success(&format!("Removed in {:.1}s", start.elapsed().as_secs_f64()));
+        } else {
+            empty("No orphaned chunks found");
+        }
+
+        Ok((count, total_removed))
+    }
+
+    fn remove_unreferenced_sequences(&self, repository: &mut SequoiaRepository) -> Result<(usize, usize)> {
+        use crate::cli::formatting::output::*;
+        use std::time::Instant;
+
+        let start = Instant::now();
+        subsection_header("Finding Unreferenced Sequences");
+
+        // Get all referenced sequences from chunks
+        let mut referenced_sequences = HashSet::new();
+        let chunks = repository.storage.list_chunks()?;
+
+        for chunk_hash in &chunks {
+            let chunk = repository.storage.load_chunk(chunk_hash)?;
+            for seq_ref in &chunk.sequence_refs {
+                referenced_sequences.insert(seq_ref.clone());
+            }
+        }
+
+        // Get all stored sequences
+        let stored_sequences = repository.storage.sequence_storage.list_all_hashes()?;
+
+        // Find unreferenced
+        let mut unreferenced = Vec::new();
+        for seq_hash in &stored_sequences {
+            if !referenced_sequences.contains(seq_hash) {
+                unreferenced.push(seq_hash.clone());
+            }
+        }
+
+        let mut total_removed = 0usize;
+        let count = unreferenced.len();
+
+        if !unreferenced.is_empty() {
+            // Calculate total size before deletion
+            for seq_hash in &unreferenced {
+                if let Ok(size) = repository.storage.sequence_storage.get_size(seq_hash) {
+                    total_removed += size;
+                }
+            }
+
+            if !self.dry_run {
+                // Delete sequences (sequence storage may batch internally)
+                for seq_hash in &unreferenced {
+                    repository.storage.sequence_storage.remove(seq_hash)?;
+                }
+            }
+
+            println!("  Found {} unreferenced sequences ({})", format_number(count), format_size(total_removed));
+            success(&format!("Removed in {:.1}s", start.elapsed().as_secs_f64()));
+        } else {
+            empty("No unreferenced sequences found");
+        }
+
+        Ok((count, total_removed))
+    }
+
+    fn clean_expired_cache(&self, repository: &SequoiaRepository) -> Result<(usize, usize)> {
+        use crate::cli::formatting::output::*;
+        use std::time::Instant;
+
+        let start = Instant::now();
+        subsection_header("Cleaning Expired Cache Entries");
+
+        let cache_dir = repository.storage.base_path.join("cache");
+        if !cache_dir.exists() {
+            empty("No cache directory found");
+            return Ok((0, 0));
+        }
+
+        let mut total_removed = 0usize;
+        let mut count = 0usize;
+        let now = std::time::SystemTime::now();
+        let max_age = std::time::Duration::from_secs(30 * 24 * 60 * 60); // 30 days
+
+        for entry in std::fs::read_dir(&cache_dir)? {
+            let entry = entry?;
+            let metadata = entry.metadata()?;
+
+            if let Ok(modified) = metadata.modified() {
+                if let Ok(age) = now.duration_since(modified) {
+                    if age > max_age {
+                        let size = metadata.len() as usize;
+
+                        if !self.dry_run {
+                            std::fs::remove_file(entry.path())?;
+                        }
+
+                        total_removed += size;
+                        count += 1;
+                    }
+                }
+            }
+        }
+
+        if total_removed > 0 {
+            println!("  Found {} expired cache entries ({})", format_number(count), format_size(total_removed));
+            success(&format!("Removed in {:.1}s", start.elapsed().as_secs_f64()));
+        } else {
+            empty("No expired cache entries found");
+        }
+
+        Ok((count, total_removed))
+    }
+
+    fn clean_incomplete_downloads(&self, repository: &SequoiaRepository) -> Result<(usize, usize)> {
+        use crate::cli::formatting::output::*;
+        use std::time::Instant;
+
+        let start = Instant::now();
+        subsection_header("Cleaning Incomplete Downloads");
+
+        let downloads_dir = repository.storage.base_path.join("downloads");
+        if !downloads_dir.exists() {
+            empty("No downloads directory found");
+            return Ok((0, 0));
+        }
+
+        let mut total_removed = 0usize;
+        let mut count = 0usize;
+
+        for entry in std::fs::read_dir(&downloads_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            // Check for .partial or .tmp files
+            if let Some(ext) = path.extension() {
+                if ext == "partial" || ext == "tmp" {
+                    let metadata = entry.metadata()?;
+                    let size = metadata.len() as usize;
+
+                    if !self.dry_run {
+                        if path.is_dir() {
+                            std::fs::remove_dir_all(&path)?;
+                        } else {
+                            std::fs::remove_file(&path)?;
+                        }
+                    }
+
+                    total_removed += size;
+                    count += 1;
+                }
+            }
+        }
+
+        if total_removed > 0 {
+            println!("  Found {} incomplete downloads ({})", format_number(count), format_size(total_removed));
+            success(&format!("Removed in {:.1}s", start.elapsed().as_secs_f64()));
+        } else {
+            empty("No incomplete downloads found");
+        }
+
+        Ok((count, total_removed))
+    }
+
+    fn remove_orphaned_chunks_all_databases(
+        &self,
+        repository: &mut SequoiaRepository,
+        databases: &[talaria_sequoia::database::manager::DatabaseInfo],
+    ) -> Result<(usize, usize)> {
+        use crate::cli::formatting::output::*;
+        use std::time::Instant;
+        use indicatif::{ProgressBar, ProgressStyle};
+
+        let start = Instant::now();
+        subsection_header("Finding Orphaned Chunks");
+        info(&format!("Scanning {} databases for chunk references...", databases.len()));
+
+        // Get all referenced chunks from ALL databases
+        let mut referenced_chunks = HashSet::new();
+
+        // Add chunks from current manifest (unified across all databases)
+        let manifest_chunks = repository.manifest.get_chunks();
+        for chunk in &manifest_chunks {
+            referenced_chunks.insert(chunk.hash.clone());
+        }
+
+        // Add chunks from ALL temporal versions (all databases)
+        let temporal_manifests = repository.temporal.list_all_manifests()?;
+        info(&format!("Scanning {} temporal versions...", temporal_manifests.len()));
+        for manifest in temporal_manifests {
+            for chunk in manifest.chunks {
+                referenced_chunks.insert(chunk);
+            }
+        }
+
+        // Get all stored chunks
+        let stored_chunks = repository.storage.list_chunks()?;
+        let total_chunks = stored_chunks.len();
+
+        // Create progress bar
+        let pb = ProgressBar::new(total_chunks as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("  Scanning chunks [{bar:40}] {pos}/{len} ({per_sec})")
+                .unwrap()
+                .progress_chars("=>-")
+        );
+
+        // Find orphans
+        let mut orphans = Vec::new();
+        for (idx, chunk_hash) in stored_chunks.iter().enumerate() {
+            if !referenced_chunks.contains(chunk_hash) {
+                orphans.push(chunk_hash.clone());
+            }
+            if idx % 10000 == 0 {
+                pb.set_position(idx as u64);
+            }
+        }
+        pb.finish_and_clear();
+
+        let mut total_removed = 0usize;
+        let count = orphans.len();
+
+        if !orphans.is_empty() {
+            // Calculate total size before deletion
+            for orphan in &orphans {
+                if let Ok(size) = repository.storage.get_chunk_size(orphan) {
+                    total_removed += size;
+                }
+            }
+
+            if !self.dry_run {
+                // Batch delete for performance
+                repository.storage.remove_chunks_batch(&orphans)?;
+            }
+
+            println!("  Found {} orphaned chunks ({})", format_number(count), format_size(total_removed));
+            success(&format!("Removed in {:.1}s", start.elapsed().as_secs_f64()));
+        } else {
+            empty("No orphaned chunks found");
+        }
+
+        Ok((count, total_removed))
+    }
+
+    fn remove_unreferenced_sequences_all_databases(
+        &self,
+        repository: &mut SequoiaRepository,
+        databases: &[talaria_sequoia::database::manager::DatabaseInfo],
+    ) -> Result<(usize, usize)> {
+        use crate::cli::formatting::output::*;
+        use std::time::Instant;
+
+        let start = Instant::now();
+        subsection_header("Finding Unreferenced Sequences");
+        info(&format!("Scanning {} databases for sequence references...", databases.len()));
+
+        // Get all referenced sequences from chunks across ALL databases
+        let mut referenced_sequences = HashSet::new();
+        let chunks = repository.storage.list_chunks()?;
+
+        info(&format!("Loading {} chunks...", chunks.len()));
+        for chunk_hash in &chunks {
+            let chunk = repository.storage.load_chunk(chunk_hash)?;
+            for seq_ref in &chunk.sequence_refs {
+                referenced_sequences.insert(seq_ref.clone());
+            }
+        }
+
+        // Get all stored sequences
+        let stored_sequences = repository.storage.sequence_storage.list_all_hashes()?;
+
+        // Find unreferenced
+        let mut unreferenced = Vec::new();
+        for seq_hash in &stored_sequences {
+            if !referenced_sequences.contains(seq_hash) {
+                unreferenced.push(seq_hash.clone());
+            }
+        }
+
+        let mut total_removed = 0usize;
+        let count = unreferenced.len();
+
+        if !unreferenced.is_empty() {
+            // Calculate total size before deletion
+            for seq_hash in &unreferenced {
+                if let Ok(size) = repository.storage.sequence_storage.get_size(seq_hash) {
+                    total_removed += size;
+                }
+            }
+
+            if !self.dry_run {
+                // Delete sequences
+                for seq_hash in &unreferenced {
+                    repository.storage.sequence_storage.remove(seq_hash)?;
+                }
+            }
+
+            println!("  Found {} unreferenced sequences ({})", format_number(count), format_size(total_removed));
+            success(&format!("Removed in {:.1}s", start.elapsed().as_secs_f64()));
+        } else {
+            empty("No unreferenced sequences found");
+        }
+
+        Ok((count, total_removed))
+    }
+
+    fn get_total_size(&self, repository: &SequoiaRepository) -> Result<usize> {
+        let stats = repository.storage.get_statistics()?;
+        Ok(stats.total_size)
+    }
+
+    fn display_results(
+        &self,
+        results: &CleanResults,
+        elapsed: std::time::Duration,
+    ) -> Result<()> {
+        use crate::cli::formatting::output::*;
+
+        println!();
+        subsection_header("Database Cleaning Summary");
+
+        let mut table = create_standard_table();
+        table.set_header(vec![
+            header_cell("Category"),
+            header_cell("Count"),
+            header_cell("Space Freed"),
+        ]);
+
+        // Calculate totals
+        let total_count = results.orphaned_chunks.0
+            + results.unreferenced_seqs.0
+            + results.expired_cache.0
+            + results.incomplete_downloads.0;
+        let total_bytes = results.orphaned_chunks.1
+            + results.unreferenced_seqs.1
+            + results.expired_cache.1
+            + results.incomplete_downloads.1;
+
+        // Add rows for each category
+        table.add_row(vec![
+            "Orphaned chunks",
+            &format_number(results.orphaned_chunks.0),
+            &format_size(results.orphaned_chunks.1),
+        ]);
+
+        table.add_row(vec![
+            "Unreferenced sequences",
+            &format_number(results.unreferenced_seqs.0),
+            &format_size(results.unreferenced_seqs.1),
+        ]);
+
+        table.add_row(vec![
+            "Expired cache entries",
+            &format_number(results.expired_cache.0),
+            &format_size(results.expired_cache.1),
+        ]);
+
+        table.add_row(vec![
+            "Incomplete downloads",
+            &format_number(results.incomplete_downloads.0),
+            &format_size(results.incomplete_downloads.1),
+        ]);
+
+        // Add total row
+        table.add_row(vec![
+            "Total",
+            &format_number(total_count),
+            &format_size(total_bytes),
+        ]);
+
+        println!("{}", table);
+
+        println!();
+        println!("  Completed in {:.1}s", elapsed.as_secs_f64());
+
+        if total_count > 0 {
+            println!();
+            success(&format!(
+                "Database cleaning freed {} across {} items",
+                format_size(total_bytes),
+                format_number(total_count)
+            ));
+        } else {
+            println!();
+            info("No items found for cleaning");
+        }
+
+        Ok(())
+    }
+}
+
+impl Clone for CleanCmd {
+    fn clone(&self) -> Self {
+        Self {
+            database: self.database.clone(),
+            orphaned_chunks: self.orphaned_chunks,
+            unreferenced_sequences: self.unreferenced_sequences,
+            expired_cache: self.expired_cache,
+            incomplete_downloads: self.incomplete_downloads,
+            aggressive: self.aggressive,
+            dry_run: self.dry_run,
+            stats: self.stats,
+            check_sequences: self.check_sequences,
+            report_output: self.report_output.clone(),
+            report_format: self.report_format.clone(),
+        }
     }
 }

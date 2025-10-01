@@ -10,8 +10,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::taxonomy::manifest::{TaxonomyManifest, TaxonomySource as ManifestTaxonomySource};
-use crate::types::{SHA256Hash, SHA256HashExt};
 use crate::temporal::version_store::{ListOptions, Version, VersionStore};
+use crate::types::{SHA256Hash, SHA256HashExt};
 use crate::DatabaseSource;
 
 /// Taxonomy-specific version store that wraps the base VersionStore
@@ -428,7 +428,7 @@ impl From<TaxonomySource> for ManifestTaxonomySource {
 
 /// Create a DatabaseSource from a TaxonomySource
 pub fn database_source_from_taxonomy(source: &TaxonomySource) -> talaria_core::DatabaseSource {
-    use talaria_core::{NCBIDatabase, UniProtDatabase, DatabaseSource};
+    use talaria_core::{DatabaseSource, NCBIDatabase, UniProtDatabase};
 
     match source {
         TaxonomySource::NCBI { .. } => DatabaseSource::NCBI(NCBIDatabase::Taxonomy),

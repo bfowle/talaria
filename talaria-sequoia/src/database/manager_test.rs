@@ -2,11 +2,13 @@
 #[cfg(test)]
 mod tests {
     use super::super::*;
-    use tempfile::TempDir;
     use talaria_bio::sequence::Sequence;
     use talaria_core::DatabaseSource;
+    use talaria_test::fixtures::test_database_source;
+    use tempfile::TempDir;
 
     #[test]
+    #[serial_test::serial]
     fn test_single_version_across_batches() {
         // Create a temporary directory
         let temp_dir = TempDir::new().unwrap();
@@ -14,7 +16,7 @@ mod tests {
 
         // Create manager
         let mut manager = DatabaseManager::new(None).unwrap();
-        let source = DatabaseSource::Test;
+        let source = test_database_source("manager_test");
 
         // Simulate processing multiple batches (what streaming does)
         // First batch - not final
@@ -36,15 +38,15 @@ mod tests {
         ];
 
         // Process first batch (not final)
-        manager.chunk_sequences_direct_with_progress_final(
-            batch1,
-            &source,
-            None,
-            false, // NOT final
-        ).unwrap();
+        manager
+            .chunk_sequences_direct_with_progress_final(
+                batch1, &source, None, false, // NOT final
+            )
+            .unwrap();
 
         // Check that NO version directory was created yet
-        let versions_path = temp_dir.path()
+        let versions_path = temp_dir
+            .path()
             .join("databases")
             .join("versions")
             .join("test")
@@ -56,22 +58,19 @@ mod tests {
         );
 
         // Second batch - also not final
-        let batch2 = vec![
-            Sequence {
-                id: "SEQ_003".to_string(),
-                description: Some("Second batch seq".to_string()),
-                sequence: b"TTTTAAAACCCC".to_vec(),
-                taxon_id: Some(9606),
-                taxonomy_sources: Default::default(),
-            },
-        ];
+        let batch2 = vec![Sequence {
+            id: "SEQ_003".to_string(),
+            description: Some("Second batch seq".to_string()),
+            sequence: b"TTTTAAAACCCC".to_vec(),
+            taxon_id: Some(9606),
+            taxonomy_sources: Default::default(),
+        }];
 
-        manager.chunk_sequences_direct_with_progress_final(
-            batch2,
-            &source,
-            None,
-            false, // Still NOT final
-        ).unwrap();
+        manager
+            .chunk_sequences_direct_with_progress_final(
+                batch2, &source, None, false, // Still NOT final
+            )
+            .unwrap();
 
         // Still no version directory
         assert!(
@@ -80,22 +79,19 @@ mod tests {
         );
 
         // Third batch - FINAL
-        let batch3 = vec![
-            Sequence {
-                id: "SEQ_004".to_string(),
-                description: Some("Final batch seq".to_string()),
-                sequence: b"GGGGCCCCAAAA".to_vec(),
-                taxon_id: Some(9606),
-                taxonomy_sources: Default::default(),
-            },
-        ];
+        let batch3 = vec![Sequence {
+            id: "SEQ_004".to_string(),
+            description: Some("Final batch seq".to_string()),
+            sequence: b"GGGGCCCCAAAA".to_vec(),
+            taxon_id: Some(9606),
+            taxonomy_sources: Default::default(),
+        }];
 
-        manager.chunk_sequences_direct_with_progress_final(
-            batch3,
-            &source,
-            None,
-            true, // IS final
-        ).unwrap();
+        manager
+            .chunk_sequences_direct_with_progress_final(
+                batch3, &source, None, true, // IS final
+            )
+            .unwrap();
 
         // Now exactly ONE version should exist
         if versions_path.exists() {
@@ -112,11 +108,8 @@ mod tests {
 
             // Verify the manifest contains all 4 sequences
             let manifest = manager.get_manifest("test").unwrap();
-            let total_sequences: usize = manifest
-                .chunk_index
-                .iter()
-                .map(|c| c.sequence_count)
-                .sum();
+            let total_sequences: usize =
+                manifest.chunk_index.iter().map(|c| c.sequence_count).sum();
 
             assert_eq!(
                 total_sequences, 4,
@@ -131,6 +124,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_version_accumulation() {
         // This test verifies that manifests are accumulated across batches
         let temp_dir = TempDir::new().unwrap();
@@ -141,22 +135,22 @@ mod tests {
         // Process 3 batches
         for i in 0..3 {
             let is_final = i == 2;
-            let batch = vec![
-                Sequence {
-                    id: format!("BATCH_{}_SEQ", i),
-                    description: Some(format!("Batch {} sequence", i)),
-                    sequence: b"ACGTACGTACGT".to_vec(),
-                    taxon_id: Some(9606),
-                    taxonomy_sources: Default::default(),
-                },
-            ];
+            let batch = vec![Sequence {
+                id: format!("BATCH_{}_SEQ", i),
+                description: Some(format!("Batch {} sequence", i)),
+                sequence: b"ACGTACGTACGT".to_vec(),
+                taxon_id: Some(9606),
+                taxonomy_sources: Default::default(),
+            }];
 
-            manager.chunk_sequences_direct_with_progress_final(
-                batch,
-                &DatabaseSource::Test,
-                None,
-                is_final,
-            ).unwrap();
+            manager
+                .chunk_sequences_direct_with_progress_final(
+                    batch,
+                    &test_database_source("manager_test"),
+                    None,
+                    is_final,
+                )
+                .unwrap();
         }
 
         // The fact that we got here without error and have a valid manifest

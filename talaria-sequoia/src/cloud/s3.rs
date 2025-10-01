@@ -319,16 +319,10 @@ impl CloudStorage for S3Storage {
         for chunk in keys.chunks(1000) {
             let objects: Vec<ObjectIdentifier> = chunk
                 .iter()
-                .map(|key| {
-                    ObjectIdentifier::builder()
-                        .key(self.full_key(key))
-                        .build()
-                })
+                .map(|key| ObjectIdentifier::builder().key(self.full_key(key)).build())
                 .collect();
 
-            let delete = Delete::builder()
-                .set_objects(Some(objects))
-                .build();
+            let delete = Delete::builder().set_objects(Some(objects)).build();
 
             let response = self
                 .client

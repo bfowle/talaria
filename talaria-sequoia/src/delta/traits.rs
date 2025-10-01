@@ -1,7 +1,7 @@
+use crate::types::{SHA256Hash, TemporalDeltaChunk};
+use anyhow::Result;
 /// Traits for delta encoding and reconstruction
 use talaria_bio::sequence::Sequence;
-use crate::types::{TemporalDeltaChunk, SHA256Hash};
-use anyhow::Result;
 
 /// Configuration for delta generation
 #[derive(Debug, Clone)]

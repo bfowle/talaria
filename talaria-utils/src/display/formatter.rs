@@ -17,7 +17,7 @@ impl fmt::Display for Status {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Status::Pending => write!(f, "[ ]"),
-            Status::InProgress => write!(f, "[⏳]"),
+            Status::InProgress => write!(f, "[*]"),
             Status::Complete => write!(f, "[✓]"),
             Status::Failed => write!(f, "[✗]"),
             Status::Skipped => write!(f, "[⊘]"),

@@ -1,22 +1,20 @@
+use crate::delta::DeltaGenerator as DeltaGeneratorTrait;
+pub use crate::delta::DeltaGeneratorConfig;
+use crate::types::{SHA256HashExt, *};
+use anyhow::Result;
+use chrono::Utc;
+use std::collections::HashMap;
+use talaria_bio::compression::{DeltaEncoder, DeltaRecord};
 /// Delta generation engine for SEQUOIA integration
 ///
 /// This module bridges the gap between the reducer's delta encoder and SEQUOIA's
 /// content-addressed storage, converting delta records into SEQUOIA delta chunks.
 use talaria_bio::sequence::Sequence;
-use crate::delta::DeltaGenerator as DeltaGeneratorTrait;
-pub use crate::delta::DeltaGeneratorConfig;
-use crate::types::{SHA256HashExt, *};
-use talaria_bio::compression::{DeltaEncoder, DeltaRecord};
-use anyhow::Result;
-use chrono::Utc;
-use std::collections::HashMap;
 
 /// Delta generator for creating SEQUOIA delta chunks
 pub struct DeltaGenerator {
     config: DeltaGeneratorConfig,
     encoder: DeltaEncoder,
-    #[allow(dead_code)]
-    reference_cache: HashMap<String, SHA256Hash>,
 }
 
 impl DeltaGenerator {
@@ -24,7 +22,6 @@ impl DeltaGenerator {
         Self {
             config,
             encoder: DeltaEncoder::new(),
-            reference_cache: HashMap::new(),
         }
     }
 
@@ -35,18 +32,13 @@ impl DeltaGenerator {
         references: &[Sequence],
         reference_chunk_hash: SHA256Hash,
     ) -> Result<Vec<TemporalDeltaChunk>> {
-        // Build reference map
-        let _ref_map: HashMap<String, &Sequence> =
-            references.iter().map(|s| (s.id.clone(), s)).collect();
-
         // Generate delta records for each sequence
         let mut delta_records = Vec::new();
         let mut full_sequences = Vec::new();
 
         for seq in sequences {
-            // For now, use first reference to avoid expensive alignment
-            // TODO: Use better reference selection strategy
-            let best_ref = &references[0];
+            // Select best reference based on similarity
+            let best_ref = self.select_best_reference(seq, references)?;
 
             // Generate delta encoding
             let delta_record = self.encoder.encode(seq, best_ref);
@@ -75,7 +67,6 @@ impl DeltaGenerator {
 
         Ok(chunks)
     }
-
 
     /// Batch delta records into appropriately sized chunks
     fn batch_into_chunks(
@@ -362,6 +353,91 @@ impl DeltaGenerator {
 
         Ok(delta_chunk)
     }
+
+    /// Select the best reference for a sequence based on similarity
+    fn select_best_reference<'a>(
+        &self,
+        sequence: &Sequence,
+        references: &'a [Sequence],
+    ) -> Result<&'a Sequence> {
+        if references.is_empty() {
+            return Err(anyhow::anyhow!("No references available"));
+        }
+
+        // For small sets, check all references
+        if references.len() <= 10 {
+            let mut best_ref = &references[0];
+            let mut best_score = 0.0;
+
+            for reference in references {
+                let score = self.compute_similarity_score(sequence, reference);
+                if score > best_score {
+                    best_score = score;
+                    best_ref = reference;
+                }
+            }
+
+            return Ok(best_ref);
+        }
+
+        // For larger sets, use sampling to avoid O(n) comparison
+        use rand::seq::SliceRandom;
+        let mut rng = rand::thread_rng();
+
+        // Sample 10 random references
+        let sample_size = std::cmp::min(10, references.len());
+        let mut indices: Vec<usize> = (0..references.len()).collect();
+        indices.shuffle(&mut rng);
+        indices.truncate(sample_size);
+
+        let mut best_ref = &references[indices[0]];
+        let mut best_score = 0.0;
+
+        for &idx in &indices {
+            let reference = &references[idx];
+            let score = self.compute_similarity_score(sequence, reference);
+            if score > best_score {
+                best_score = score;
+                best_ref = reference;
+            }
+        }
+
+        Ok(best_ref)
+    }
+
+    /// Compute similarity score between two sequences
+    fn compute_similarity_score(&self, seq1: &Sequence, seq2: &Sequence) -> f64 {
+        // Use k-mer based similarity for efficiency
+        let k = 3; // Use 3-mers
+        let kmers1 = self.extract_kmers(&seq1.sequence, k);
+        let kmers2 = self.extract_kmers(&seq2.sequence, k);
+
+        // Jaccard similarity
+        let intersection = kmers1.intersection(&kmers2).count();
+        let union = kmers1.union(&kmers2).count();
+
+        if union == 0 {
+            return 0.0;
+        }
+
+        intersection as f64 / union as f64
+    }
+
+    /// Extract k-mers from a sequence
+    fn extract_kmers(&self, sequence: &[u8], k: usize) -> std::collections::HashSet<Vec<u8>> {
+        use std::collections::HashSet;
+
+        let mut kmers = HashSet::new();
+        if sequence.len() < k {
+            return kmers;
+        }
+
+        for i in 0..=sequence.len() - k {
+            kmers.insert(sequence[i..i + k].to_vec());
+        }
+
+        kmers
+    }
 }
 
 // Implement the DeltaGenerator trait
@@ -384,63 +460,11 @@ impl DeltaGeneratorTrait for DeltaGenerator {
     }
 }
 
-// Implement BatchDeltaGenerator for parallel processing
-// impl crate::delta::traits::BatchDeltaGenerator for DeltaGenerator {
-//     fn generate_parallel(
-//         &mut self,
-//         sequences: &[Sequence],
-//         references: &[Sequence],
-//         reference_hash: SHA256Hash,
-//         _num_threads: usize,
-//     ) -> Result<Vec<TemporalDeltaChunk>> {
-//         use rayon::prelude::*;
-//
-//         // Split sequences into batches
-//         let batch_size = self.optimal_batch_size();
-//         let chunks: Vec<Vec<TemporalDeltaChunk>> = sequences
-//             .par_chunks(batch_size)
-//             .map(|batch| {
-//                 let mut local_gen = DeltaGenerator::new(self.config.clone());
-//                 local_gen.generate_delta_chunks(batch, references, reference_hash.clone())
-//                     .unwrap_or_default()
-//             })
-//             .collect();
-//
-//         // Merge all chunks
-//         self.merge_chunks(chunks.into_iter().flatten().collect())
-//     }
-//
-//     fn optimal_batch_size(&self) -> usize {
-//         // Balance between parallelism and chunk efficiency
-//         self.config.target_sequences_per_chunk
-//     }
-//
-//     fn merge_chunks(
-//         &self,
-//         chunks: Vec<TemporalDeltaChunk>,
-//     ) -> Result<Vec<TemporalDeltaChunk>> {
-//         // Simple merging strategy - could be optimized
-//         Ok(chunks)
-//     }
-// }
-//
-//
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//
-//     #[test]
-//     fn test_delta_generator_creation() {
-//         let config = DeltaGeneratorConfig::default();
-//         let generator = DeltaGenerator::new(config);
-//         assert!(generator.reference_cache.is_empty());
-//     }
-
 #[test]
 fn test_delta_generator_creation() {
     let config = DeltaGeneratorConfig::default();
-    let generator = DeltaGenerator::new(config);
-    assert!(generator.reference_cache.is_empty());
+    let _generator = DeltaGenerator::new(config);
+    // DeltaGenerator created successfully
 }
 
 #[test]

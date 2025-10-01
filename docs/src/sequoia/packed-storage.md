@@ -1,178 +1,41 @@
-# Packed Storage: Solving the Small File Problem
+# Packed Storage Backend (Historical)
 
-## The Problem: Filesystem Overhead at Scale
+> **⚠️ DEPRECATED**: This document describes the original packed file storage architecture, which has been replaced by a high-performance LSM-tree storage engine with probabilistic filter optimization.
+>
+> **For current architecture**, see:
+> - [RocksDB Storage Documentation](./rocksdb-storage.md) - Current implementation details
+> - [Unified Architecture](./unified-architecture.md) - Overview of the LSM-tree + bloom filter system
+> - [Architecture Whitepaper](../whitepapers/sequoia-architecture.md) - Comprehensive technical analysis
 
-Traditional content-addressed storage systems create one file per unique sequence. While conceptually clean, this approach fails catastrophically at scale:
+## Historical Context
 
-- **UniProt SwissProt**: 570K sequences = 570K files
-- **NCBI nr**: 1B+ sequences = 1B+ files
-- **Filesystem overhead**: 4KB minimum per file on most filesystems
-- **Result**: 1B sequences × 4KB = 4TB overhead just from filesystem metadata!
+The packed storage backend was SEQUOIA's initial implementation, designed to prove the canonical sequence concept. While functional, it had significant performance limitations that became apparent at scale:
 
-Beyond storage overhead, millions of small files cause:
-- Slow directory listings (minutes to list a directory)
-- Poor backup performance
-- Cache thrashing
-- Inode exhaustion
-- Degraded filesystem performance
+**Challenges with Packed Files:**
+- **Unbounded memory growth**: In-memory indices grew to 18GB+ for large databases
+- **Slow imports**: 50K sequences took 1-2 hours; UniRef50 would take 50-100 days
+- **Individual file operations**: Each sequence required separate file I/O
+- **No efficient deduplication checking**: Linear scan through indices
 
-## The Solution: Pack Files
+**Performance Comparison:**
 
-SEQUOIA's packed storage backend groups sequences into 64MB pack files, similar to Git's packfile design:
+| Operation | Packed Files | LSM-Tree | Improvement |
+|-----------|-------------|----------|-------------|
+| 50K sequences | 1-2 hours | 30-60 sec | 100x |
+| UniRef50 (48M) | 50-100 days | 10-20 hours | 100x |
+| Memory | Unbounded (18GB+) | Bounded (6-8GB) | Controlled |
 
-```
-Instead of:
-  sequences/
-    ├── abc123...  (one file per sequence)
-    ├── def456...
-    └── ... (1 million files)
+## Legacy
 
-We have:
-  packs/
-    ├── pack_0001.tal  (64MB, ~10K sequences)
-    ├── pack_0002.tal  (64MB, ~10K sequences)
-    └── pack_0100.tal  (partial, still filling)
-  indices/
-    └── sequence_index.tal  (hash -> pack location map)
-```
+The packed storage architecture successfully validated the core concepts of canonical sequence storage and content addressing, which remain fundamental to SEQUOIA. The lessons learned from this implementation directly informed the design of the current LSM-tree architecture:
 
-## Pack File Format
+1. **Content addressing works** - Identifying sequences by hash enables true deduplication
+2. **Separation of identity and representation** - Storing sequence content separately from metadata is key
+3. **Scalability requires different architecture** - File-based storage doesn't scale to billions of sequences
+4. **Memory must be bounded** - Production systems need predictable memory consumption
 
-Each pack file uses a simple, efficient structure:
+The current LSM-tree architecture with three-tier probabilistic filters preserves these validated concepts while providing the performance needed for production use at scale.
 
-```
-[HEADER]
-  Magic: "PKSQ" (4 bytes)
-  Version: 1 (1 byte)
-  Pack ID: u32 (4 bytes)
+---
 
-[ENTRIES]
-  For each sequence:
-    [Entry Header Length: u32]
-    [Entry Header: MessagePack]
-      - hash: SHA256
-      - sequence_length: u32
-      - representations_length: u32
-    [Sequence Data: MessagePack]
-    [Representations Data: MessagePack]
-
-[FOOTER]
-  Entry Count: u32 (4 bytes)
-
-[COMPRESSION]
-  Entire file compressed with Zstandard
-```
-
-## Pack Index
-
-The pack index provides O(1) lookup from sequence hash to pack location:
-
-```rust
-struct PackLocation {
-    pack_id: u32,      // Which pack file
-    offset: u64,       // Byte offset in pack
-    length: u32,       // Total entry size
-    compressed: bool,  // Always true with Zstandard
-}
-
-// Index maps hash -> location
-index: HashMap<SHA256Hash, PackLocation>
-```
-
-The index itself is stored as a `.tal` file (MessagePack + Zstandard) and loaded into memory on startup.
-
-## Performance Characteristics
-
-### Write Performance
-- **Buffered writes**: Sequences accumulate in current pack
-- **Automatic rotation**: New pack starts at 64MB
-- **Batch compression**: Entire pack compressed once when finalized
-- **Index updates**: In-memory, persisted on pack rotation
-
-### Read Performance
-- **O(1) lookup**: Hash to pack location via index
-- **Single seek**: One disk read per sequence retrieval
-- **Pack caching**: Recently used packs kept in memory
-- **Decompression**: Zstandard decompression on pack open
-
-### Storage Efficiency
-- **Before**: 1M sequences = 1M files = 4GB+ filesystem overhead
-- **After**: 1M sequences = ~100 pack files = 400KB overhead
-- **Compression**: 60-70% size reduction with Zstandard
-- **Result**: 10,000× reduction in file count
-
-## Migration and Compatibility
-
-The system transparently handles the transition:
-
-1. **New installations**: Use packed storage exclusively
-2. **No migration needed**: Old data ignored, rebuilt on demand
-3. **Format detection**: Automatic based on directory structure
-
-## Configuration
-
-Currently, pack parameters are hardcoded for simplicity:
-
-```rust
-const MAX_PACK_SIZE: usize = 64 * 1024 * 1024;  // 64MB
-const COMPRESSION_LEVEL: i32 = 3;               // Zstandard level 3
-```
-
-Future versions may make these configurable.
-
-## Operational Considerations
-
-### Backup
-- **Before**: Backing up millions of files is extremely slow
-- **After**: Backing up hundreds of pack files is fast
-- **Incremental**: Only new/modified packs need backup
-
-### Recovery
-- Pack corruption affects only sequences in that pack
-- Index can be rebuilt from pack files if needed
-- Each pack is self-contained with its own header
-
-### Monitoring
-```bash
-# Check pack count and size
-ls -lh ~/.talaria/databases/sequences/packs/
-
-# Verify index size
-ls -lh ~/.talaria/databases/sequences/indices/sequence_index.tal
-
-# Monitor pack creation
-watch "ls -lh ~/.talaria/databases/sequences/packs/ | tail"
-```
-
-## Implementation Details
-
-The packed storage is implemented in `talaria-sequoia/src/packed_storage.rs`:
-
-- **PackedSequenceStorage**: Main storage backend
-- **PackWriter**: Handles writing to current pack
-- **PackReader**: Handles reading from existing packs
-- **Thread-safe**: All operations use Arc<Mutex<>> or DashMap
-- **Automatic cleanup**: Pack finalization on drop
-
-## Future Enhancements
-
-Potential improvements for future versions:
-
-1. **Variable pack sizes**: Adapt to workload patterns
-2. **Pack optimization**: Repack to improve locality
-3. **Parallel compression**: Speed up pack finalization
-4. **Memory-mapped packs**: Reduce memory usage
-5. **Pack statistics**: Track access patterns
-6. **Cloud-native packs**: Direct S3/GCS integration
-
-## Summary
-
-Packed storage solves the small file problem elegantly:
-
-- **10,000× fewer files**: Hundreds of packs instead of millions of files
-- **50,000+ sequences/second**: Fast import performance
-- **60-70% compression**: Zstandard compression built-in
-- **O(1) lookups**: Hash-based index for instant access
-- **Future-proof**: Designed for billion-sequence databases
-
-This architecture enables SEQUOIA to handle databases with billions of sequences without overwhelming the filesystem, while maintaining the benefits of content-addressed storage.
+*For all current development and usage, refer to the RocksDB storage documentation linked above. This file is retained only for historical reference.*

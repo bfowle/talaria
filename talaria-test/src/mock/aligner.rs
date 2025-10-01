@@ -1,7 +1,7 @@
 //! Mock aligner for testing
 
-use std::collections::HashMap;
 use anyhow::Result;
+use std::collections::HashMap;
 
 /// Configuration for mock aligner behavior
 #[derive(Debug, Clone)]
@@ -77,18 +77,22 @@ impl MockAligner {
             anyhow::bail!("{}", self.config.failure_message);
         }
 
-        Ok(self.config.alignments
+        Ok(self
+            .config
+            .alignments
             .get(query_id)
             .cloned()
-            .unwrap_or_else(|| vec![
-                // Default alignment if not configured
-                MockAlignment {
-                    query_id: query_id.to_string(),
-                    reference_id: "ref_1".to_string(),
-                    score: 100.0,
-                    identity: 0.95,
-                }
-            ]))
+            .unwrap_or_else(|| {
+                vec![
+                    // Default alignment if not configured
+                    MockAlignment {
+                        query_id: query_id.to_string(),
+                        reference_id: "ref_1".to_string(),
+                        score: 100.0,
+                        identity: 0.95,
+                    },
+                ]
+            }))
     }
 
     /// Get number of times align was called
@@ -114,15 +118,15 @@ mod tests {
 
     #[test]
     fn test_mock_aligner() {
-        let mut aligner = MockAligner::new()
-            .with_alignments("seq1", vec![
-                MockAlignment {
-                    query_id: "seq1".to_string(),
-                    reference_id: "ref_a".to_string(),
-                    score: 150.0,
-                    identity: 0.98,
-                }
-            ]);
+        let mut aligner = MockAligner::new().with_alignments(
+            "seq1",
+            vec![MockAlignment {
+                query_id: "seq1".to_string(),
+                reference_id: "ref_a".to_string(),
+                score: 150.0,
+                identity: 0.98,
+            }],
+        );
 
         let results = aligner.align("seq1").unwrap();
         assert_eq!(results.len(), 1);
@@ -132,8 +136,7 @@ mod tests {
 
     #[test]
     fn test_mock_aligner_failure() {
-        let mut aligner = MockAligner::new()
-            .with_failure("Test failure");
+        let mut aligner = MockAligner::new().with_failure("Test failure");
 
         let result = aligner.align("seq1");
         assert!(result.is_err());

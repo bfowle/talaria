@@ -3,8 +3,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Taxonomy ID type - newtype pattern for type safety
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, Default,
+)]
 pub struct TaxonId(pub u32);
 
 impl TaxonId {
@@ -47,7 +48,6 @@ impl From<TaxonId> for u32 {
     }
 }
 
-
 // Common taxonomy constants
 impl TaxonId {
     pub const UNCLASSIFIED: Self = Self(0);
@@ -82,11 +82,11 @@ impl TaxonomyDataSource {
     /// Get priority for conflict resolution (higher is better)
     pub fn priority(&self) -> u8 {
         match self {
-            Self::User => 100,          // User-specified has highest priority
-            Self::Api => 90,            // API data is very reliable
-            Self::Header => 80,         // Header data is reliable
+            Self::User => 100,           // User-specified has highest priority
+            Self::Api => 90,             // API data is very reliable
+            Self::Header => 80,          // Header data is reliable
             Self::Accession2Taxid => 70, // Mapping is good but may be outdated
-            Self::Inherited => 50,      // Inherited is less certain
+            Self::Inherited => 50,       // Inherited is less certain
             Self::Unknown => 0,          // Unknown has lowest priority
         }
     }

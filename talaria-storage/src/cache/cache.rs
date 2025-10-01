@@ -62,11 +62,7 @@ mod tests {
             score: 42,
             alignment: vec![1, 2, 3],
         };
-        cache.insert(
-            "ref1".to_string(),
-            "query1".to_string(),
-            alignment.clone(),
-        );
+        cache.insert("ref1".to_string(), "query1".to_string(), alignment.clone());
 
         // Retrieve alignment
         let retrieved = cache.get("ref1", "query1");

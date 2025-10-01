@@ -1,9 +1,9 @@
+use anyhow::{Context, Result};
+use rand::Rng;
+use std::future::Future;
 /// Retry logic with exponential backoff for resilient operations
 use std::time::Duration;
-use std::future::Future;
-use anyhow::{Result, Context};
-use rand::Rng;
-use tracing::{debug, warn, error};
+use tracing::{debug, error, warn};
 
 /// Configuration for retry behavior
 #[derive(Debug, Clone)]
@@ -107,7 +107,8 @@ impl RetryPolicy {
         }
 
         // Cap at maximum
-        let mut duration = Duration::from_millis(backoff.min(self.max_backoff.as_millis() as f32) as u64);
+        let mut duration =
+            Duration::from_millis(backoff.min(self.max_backoff.as_millis() as f32) as u64);
 
         // Add jitter if enabled
         if self.jitter {
@@ -139,11 +140,7 @@ pub trait RetryableOperation {
 }
 
 /// Execute an operation with retry logic
-pub fn with_retry<F, T>(
-    mut operation: F,
-    policy: &RetryPolicy,
-    context: &str,
-) -> Result<T>
+pub fn with_retry<F, T>(mut operation: F, policy: &RetryPolicy, context: &str) -> Result<T>
 where
     F: FnMut() -> Result<T>,
 {
@@ -177,9 +174,7 @@ where
                 } else {
                     error!(
                         "All {} attempts failed for {}: {}",
-                        policy.max_attempts,
-                        context,
-                        err
+                        policy.max_attempts, context, err
                     );
                 }
 
@@ -188,8 +183,10 @@ where
         }
     }
 
-    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("Retry failed")))
-        .context(format!("Failed after {} attempts: {}", policy.max_attempts, context))
+    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("Retry failed"))).context(format!(
+        "Failed after {} attempts: {}",
+        policy.max_attempts, context
+    ))
 }
 
 /// Execute an async operation with retry logic
@@ -232,9 +229,7 @@ where
                 } else {
                     error!(
                         "All {} async attempts failed for {}: {}",
-                        policy.max_attempts,
-                        context,
-                        err
+                        policy.max_attempts, context, err
                     );
                 }
 
@@ -243,8 +238,10 @@ where
         }
     }
 
-    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("Async retry failed")))
-        .context(format!("Failed after {} attempts: {}", policy.max_attempts, context))
+    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("Async retry failed"))).context(format!(
+        "Failed after {} attempts: {}",
+        policy.max_attempts, context
+    ))
 }
 
 /// Builder for retry policies
@@ -302,11 +299,7 @@ macro_rules! retry {
     };
 
     ($operation:expr, $policy:expr) => {
-        with_retry(
-            || $operation,
-            &$policy,
-            &format!("{}:{}", file!(), line!()),
-        )
+        with_retry(|| $operation, &$policy, &format!("{}:{}", file!(), line!()))
     };
 
     ($operation:expr, $policy:expr, $context:expr) => {
@@ -322,11 +315,7 @@ macro_rules! retry_async {
     };
 
     ($operation:expr, $policy:expr) => {
-        with_retry_async(
-            || $operation,
-            &$policy,
-            &format!("{}:{}", file!(), line!()),
-        ).await
+        with_retry_async(|| $operation, &$policy, &format!("{}:{}", file!(), line!())).await
     };
 
     ($operation:expr, $policy:expr, $context:expr) => {
@@ -341,11 +330,7 @@ mod tests {
 
     #[test]
     fn test_retry_succeeds_first_attempt() {
-        let result = with_retry(
-            || Ok(42),
-            &RetryPolicy::default(),
-            "test operation"
-        );
+        let result = with_retry(|| Ok(42), &RetryPolicy::default(), "test operation");
 
         assert_eq!(result.unwrap(), 42);
     }
@@ -364,7 +349,7 @@ mod tests {
                 }
             },
             &RetryPolicy::default(),
-            "test with failures"
+            "test with failures",
         );
 
         assert_eq!(result.unwrap(), 42);
@@ -381,7 +366,7 @@ mod tests {
                 Err::<i32, _>(anyhow::anyhow!("Always fails"))
             },
             &RetryPolicy::default(),
-            "always failing operation"
+            "always failing operation",
         );
 
         assert!(result.is_err());
@@ -404,7 +389,7 @@ mod tests {
                 Err::<i32, _>(anyhow::anyhow!("File not found"))
             },
             &policy,
-            "non-retryable error test"
+            "non-retryable error test",
         );
 
         assert!(result.is_err());
@@ -445,8 +430,9 @@ mod tests {
                 initial_backoff: Duration::from_millis(10),
                 ..Default::default()
             },
-            "async retry test"
-        ).await;
+            "async retry test",
+        )
+        .await;
 
         assert_eq!(result.unwrap(), 42);
         assert_eq!(counter.load(Ordering::SeqCst), 2);

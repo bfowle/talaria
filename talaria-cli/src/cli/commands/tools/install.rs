@@ -1,5 +1,5 @@
-use talaria_tools::{Tool, ToolManager};
 use clap::Args;
+use talaria_tools::{Tool, ToolManager};
 
 #[derive(Args)]
 pub struct InstallArgs {

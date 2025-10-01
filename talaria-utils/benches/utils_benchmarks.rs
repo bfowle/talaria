@@ -1,6 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use talaria_utils::*;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::time::Duration;
+use talaria_utils::*;
 
 // ===== Parallel Processing Benchmarks =====
 
@@ -34,7 +34,10 @@ fn bench_parallelization_decision(c: &mut Criterion) {
     for count in item_counts {
         for threshold in &thresholds {
             group.bench_with_input(
-                BenchmarkId::new("should_parallelize", format!("{}items_{}threshold", count, threshold)),
+                BenchmarkId::new(
+                    "should_parallelize",
+                    format!("{}items_{}threshold", count, threshold),
+                ),
                 &(count, *threshold),
                 |b, &(count, threshold)| {
                     b.iter(|| should_parallelize(black_box(count), black_box(threshold)))
@@ -49,14 +52,19 @@ fn bench_parallelization_decision(c: &mut Criterion) {
 // ===== Tree Rendering Benchmarks =====
 
 fn create_deep_tree(depth: usize, breadth: usize) -> TreeNode {
-    fn add_children(node: TreeNode, current_depth: usize, max_depth: usize, breadth: usize) -> TreeNode {
+    fn add_children(
+        node: TreeNode,
+        current_depth: usize,
+        max_depth: usize,
+        breadth: usize,
+    ) -> TreeNode {
         if current_depth >= max_depth {
             return node;
         }
 
         let mut node = node;
         for i in 0..breadth {
-            let child = TreeNode::new(format!("Node_{}_{}",  current_depth, i));
+            let child = TreeNode::new(format!("Node_{}_{}", current_depth, i));
             let child = add_children(child, current_depth + 1, max_depth, breadth);
             node = node.add_child(child);
         }
@@ -72,18 +80,16 @@ fn bench_tree_rendering(c: &mut Criterion) {
 
     // Different tree structures
     let trees = vec![
-        ("small", create_deep_tree(3, 3)),     // 3 levels, 3 children per node
-        ("medium", create_deep_tree(4, 4)),    // 4 levels, 4 children per node
-        ("deep", create_deep_tree(10, 2)),     // 10 levels, 2 children per node
-        ("wide", create_deep_tree(3, 10)),     // 3 levels, 10 children per node
+        ("small", create_deep_tree(3, 3)),  // 3 levels, 3 children per node
+        ("medium", create_deep_tree(4, 4)), // 4 levels, 4 children per node
+        ("deep", create_deep_tree(10, 2)),  // 10 levels, 2 children per node
+        ("wide", create_deep_tree(3, 10)),  // 3 levels, 10 children per node
     ];
 
     for (name, tree) in trees {
-        group.bench_with_input(
-            BenchmarkId::new("render", name),
-            &tree,
-            |b, tree| b.iter(|| tree.render()),
-        );
+        group.bench_with_input(BenchmarkId::new("render", name), &tree, |b, tree| {
+            b.iter(|| tree.render())
+        });
     }
 
     group.finish();
@@ -106,11 +112,9 @@ fn bench_number_formatting(c: &mut Criterion) {
     ];
 
     for num in numbers {
-        group.bench_with_input(
-            BenchmarkId::new("format_number", num),
-            &num,
-            |b, &num| b.iter(|| format_number(black_box(num))),
-        );
+        group.bench_with_input(BenchmarkId::new("format_number", num), &num, |b, &num| {
+            b.iter(|| format_number(black_box(num)))
+        });
     }
 
     group.finish();
@@ -166,18 +170,16 @@ fn bench_format_utilities(c: &mut Criterion) {
     // Benchmark byte formatting
     let byte_sizes: Vec<u64> = vec![
         0,
-        1024,           // 1 KB
-        1048576,        // 1 MB
-        1073741824,     // 1 GB
-        1099511627776,  // 1 TB
+        1024,          // 1 KB
+        1048576,       // 1 MB
+        1073741824,    // 1 GB
+        1099511627776, // 1 TB
     ];
 
     for size in byte_sizes {
-        group.bench_with_input(
-            BenchmarkId::new("format_bytes", size),
-            &size,
-            |b, &size| b.iter(|| format_bytes(black_box(size))),
-        );
+        group.bench_with_input(BenchmarkId::new("format_bytes", size), &size, |b, &size| {
+            b.iter(|| format_bytes(black_box(size)))
+        });
     }
 
     // Benchmark duration formatting
@@ -207,10 +209,10 @@ fn bench_memory_estimation(c: &mut Criterion) {
     let estimator = MemoryEstimator::new();
 
     let configs = vec![
-        (100, 100),      // Small sequences
-        (1000, 300),     // Medium sequences
-        (10000, 500),    // Large sequences
-        (100000, 1000),  // Very large sequences
+        (100, 100),     // Small sequences
+        (1000, 300),    // Medium sequences
+        (10000, 500),   // Large sequences
+        (100000, 1000), // Very large sequences
     ];
 
     for (count, avg_len) in configs {
@@ -244,11 +246,9 @@ fn bench_database_references(c: &mut Criterion) {
     ];
 
     for ref_str in refs {
-        group.bench_with_input(
-            BenchmarkId::new("parse", ref_str),
-            ref_str,
-            |b, ref_str| b.iter(|| DatabaseReference::parse(black_box(ref_str))),
-        );
+        group.bench_with_input(BenchmarkId::new("parse", ref_str), ref_str, |b, ref_str| {
+            b.iter(|| DatabaseReference::parse(black_box(ref_str)))
+        });
     }
 
     group.bench_function("version_comparison", |b| {
@@ -291,7 +291,8 @@ fn bench_critical_workflows(c: &mut Criterion) {
         let chunk_size = chunk_size_for_parallelism(data.len(), 0);
 
         b.iter(|| {
-            let sum: i32 = data.par_chunks(chunk_size)
+            let sum: i32 = data
+                .par_chunks(chunk_size)
                 .map(|chunk| chunk.iter().sum::<i32>())
                 .sum();
             black_box(sum);

@@ -1,8 +1,3 @@
-/// Delta reconstruction for SEQUOIA delta chunks
-///
-/// This module provides efficient reconstruction of sequences from delta chunks,
-/// including reference caching, parallel reconstruction, and chain management.
-use talaria_bio::sequence::Sequence;
 use crate::delta::DeltaReconstructor as DeltaReconstructorTrait;
 use crate::types::*;
 use anyhow::Result;
@@ -10,6 +5,11 @@ use dashmap::DashMap;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
+/// Delta reconstruction for SEQUOIA delta chunks
+///
+/// This module provides efficient reconstruction of sequences from delta chunks,
+/// including reference caching, parallel reconstruction, and chain management.
+use talaria_bio::sequence::Sequence;
 
 /// Configuration for delta reconstruction
 #[derive(Debug, Clone)]

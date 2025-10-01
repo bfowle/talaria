@@ -13,7 +13,8 @@ fn test_missing_input_database() -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("reduce")
         .arg("nonexistent/database")
-        .arg("-o").arg("output.fasta")
+        .arg("-o")
+        .arg("output.fasta")
         .env("TALARIA_HOME", env.temp_dir.path());
 
     cmd.assert()
@@ -35,9 +36,12 @@ fn test_corrupted_fasta_file() -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("database")
         .arg("add")
-        .arg("--input").arg(&corrupted)
-        .arg("--name").arg("local/test_corrupted")
-        .arg("--source").arg("test")
+        .arg("--input")
+        .arg(&corrupted)
+        .arg("--name")
+        .arg("local/test_corrupted")
+        .arg("--source")
+        .arg("test")
         .env("TALARIA_HOME", env.temp_dir.path());
 
     // May succeed with warnings or fail depending on corruption type
@@ -58,9 +62,12 @@ fn test_empty_input_file() -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("database")
         .arg("add")
-        .arg("--input").arg(&empty)
-        .arg("--name").arg("local/test_empty")
-        .arg("--source").arg("test")
+        .arg("--input")
+        .arg(&empty)
+        .arg("--name")
+        .arg("local/test_empty")
+        .arg("--source")
+        .arg("test")
         .env("TALARIA_HOME", env.temp_dir.path());
 
     cmd.assert()
@@ -83,7 +90,8 @@ fn test_invalid_output_directory() -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("reduce")
         .arg("local/test_invalid_out")
-        .arg("-o").arg(invalid_output)
+        .arg("-o")
+        .arg(invalid_output)
         .env("TALARIA_HOME", env.temp_dir.path());
 
     cmd.assert()
@@ -106,9 +114,12 @@ fn test_conflicting_arguments() -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("reduce")
         .arg("local/test_conflict")
-        .arg("-o").arg(&output)
-        .arg("--ratio").arg("0.5")
-        .arg("--target-sequences").arg("100") // Conflicting with ratio
+        .arg("-o")
+        .arg(&output)
+        .arg("--ratio")
+        .arg("0.5")
+        .arg("--target-sequences")
+        .arg("100") // Conflicting with ratio
         .env("TALARIA_HOME", env.temp_dir.path());
 
     // Should either fail or use one of the options
@@ -131,8 +142,10 @@ fn test_out_of_range_parameters() -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("reduce")
         .arg("local/test_range")
-        .arg("-o").arg(&output)
-        .arg("--compression").arg("100") // Out of range
+        .arg("-o")
+        .arg(&output)
+        .arg("--compression")
+        .arg("100") // Out of range
         .env("TALARIA_HOME", env.temp_dir.path());
 
     cmd.assert().failure();
@@ -141,8 +154,10 @@ fn test_out_of_range_parameters() -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("reduce")
         .arg("local/test_range")
-        .arg("-o").arg(&output)
-        .arg("--ratio").arg("-0.5") // Negative ratio
+        .arg("-o")
+        .arg(&output)
+        .arg("--ratio")
+        .arg("-0.5") // Negative ratio
         .env("TALARIA_HOME", env.temp_dir.path());
 
     cmd.assert().failure();
@@ -151,8 +166,10 @@ fn test_out_of_range_parameters() -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("reduce")
         .arg("local/test_range")
-        .arg("-o").arg(&output)
-        .arg("--min-similarity").arg("1.5") // > 1.0
+        .arg("-o")
+        .arg(&output)
+        .arg("--min-similarity")
+        .arg("1.5") // > 1.0
         .env("TALARIA_HOME", env.temp_dir.path());
 
     cmd.assert().failure();
@@ -188,12 +205,11 @@ fn test_insufficient_disk_space() -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("reduce")
         .arg("local/test_readonly")
-        .arg("-o").arg(&output)
+        .arg("-o")
+        .arg(&output)
         .env("TALARIA_HOME", env.temp_dir.path());
 
-    cmd.assert()
-        .failure()
-        .code(predicate::ne(0));
+    cmd.assert().failure().code(predicate::ne(0));
 
     Ok(())
 }
@@ -214,9 +230,11 @@ fn test_interrupt_handling() -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("reduce")
         .arg("local/test_interrupt")
-        .arg("-o").arg(&output)
+        .arg("-o")
+        .arg(&output)
         .arg("--batch")
-        .arg("--batch-size").arg("1")
+        .arg("--batch-size")
+        .arg("1")
         .env("TALARIA_HOME", env.temp_dir.path())
         .timeout(std::time::Duration::from_millis(100)); // Force timeout
 
@@ -232,8 +250,10 @@ fn test_malformed_database_reference() -> Result<()> {
 
     let mut cmd = talaria_cmd();
     cmd.arg("reconstruct")
-        .arg("-r").arg("invalid::database//reference")
-        .arg("-o").arg("output.fasta")
+        .arg("-r")
+        .arg("invalid::database//reference")
+        .arg("-o")
+        .arg("output.fasta")
         .env("TALARIA_HOME", env.temp_dir.path());
 
     cmd.assert()
@@ -250,7 +270,8 @@ fn test_missing_required_arguments() -> Result<()> {
     // Test reduce without input
     let mut cmd = talaria_cmd();
     cmd.arg("reduce")
-        .arg("-o").arg("output.fasta")
+        .arg("-o")
+        .arg("output.fasta")
         .env("TALARIA_HOME", env.temp_dir.path());
 
     cmd.assert()
@@ -263,7 +284,8 @@ fn test_missing_required_arguments() -> Result<()> {
     // Test reconstruct without reference
     let mut cmd = talaria_cmd();
     cmd.arg("reconstruct")
-        .arg("-o").arg("output.fasta")
+        .arg("-o")
+        .arg("output.fasta")
         .env("TALARIA_HOME", env.temp_dir.path());
 
     cmd.assert()
@@ -284,9 +306,12 @@ fn test_invalid_file_format() -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("database")
         .arg("add")
-        .arg("--input").arg(&binary_file)
-        .arg("--name").arg("local/test_binary")
-        .arg("--source").arg("test")
+        .arg("--input")
+        .arg(&binary_file)
+        .arg("--name")
+        .arg("local/test_binary")
+        .arg("--source")
+        .arg("test")
         .env("TALARIA_HOME", env.temp_dir.path());
 
     cmd.assert()
@@ -309,7 +334,8 @@ fn test_circular_dependency() -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("reduce")
         .arg("local/test_circular")
-        .arg("-o").arg(&file) // Same file as source!
+        .arg("-o")
+        .arg(&file) // Same file as source!
         .env("TALARIA_HOME", env.temp_dir.path());
 
     // Should either fail or handle gracefully
@@ -330,10 +356,12 @@ fn test_invalid_thread_count() -> Result<()> {
 
     // Test negative thread count
     let mut cmd = talaria_cmd();
-    cmd.arg("--threads").arg("-1")
+    cmd.arg("--threads")
+        .arg("-1")
         .arg("reduce")
         .arg("local/test_threads")
-        .arg("-o").arg(&output)
+        .arg("-o")
+        .arg(&output)
         .env("TALARIA_HOME", env.temp_dir.path());
 
     cmd.assert().failure();
@@ -356,8 +384,10 @@ fn test_unicode_in_paths() -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("reduce")
         .arg("local/test_unicode")
-        .arg("-o").arg(&output)
-        .arg("--target-aligner").arg("generic")
+        .arg("-o")
+        .arg(&output)
+        .arg("--target-aligner")
+        .arg("generic")
         .env("TALARIA_HOME", env.temp_dir.path());
 
     // Should handle unicode paths
@@ -385,8 +415,10 @@ fn test_extremely_long_sequences() -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("reduce")
         .arg("local/test_long")
-        .arg("-o").arg(&output)
-        .arg("--target-aligner").arg("generic")
+        .arg("-o")
+        .arg(&output)
+        .arg("--target-aligner")
+        .arg("generic")
         .env("TALARIA_HOME", env.temp_dir.path())
         .timeout(std::time::Duration::from_secs(10));
 
@@ -416,9 +448,12 @@ fn test_symlink_handling() -> Result<()> {
         let mut cmd = talaria_cmd();
         cmd.arg("reduce")
             .arg("local/test_symlink")
-            .arg("-o").arg(&output)
-            .arg("--target-aligner").arg("generic")
-            .arg("--reduction-ratio").arg("0.5")
+            .arg("-o")
+            .arg(&output)
+            .arg("--target-aligner")
+            .arg("generic")
+            .arg("--reduction-ratio")
+            .arg("0.5")
             .env("TALARIA_HOME", env.temp_dir.path());
 
         cmd.assert().success();
@@ -448,9 +483,12 @@ fn test_permission_denied() -> Result<()> {
         let mut cmd = talaria_cmd();
         cmd.arg("database")
             .arg("add")
-            .arg("--input").arg(&input)
-            .arg("--name").arg("test_perm")
-            .arg("--source").arg("local")
+            .arg("--input")
+            .arg(&input)
+            .arg("--name")
+            .arg("test_perm")
+            .arg("--source")
+            .arg("local")
             .env("TALARIA_HOME", env.temp_dir.path());
 
         cmd.assert()
@@ -474,7 +512,8 @@ fn test_network_timeout() -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("database")
         .arg("download")
-        .arg("--server").arg("http://192.0.2.0:9999") // TEST-NET-1, unreachable
+        .arg("--server")
+        .arg("http://192.0.2.0:9999") // TEST-NET-1, unreachable
         .arg("ncbi/taxonomy")
         .env("TALARIA_HOME", env.temp_dir.path())
         .timeout(std::time::Duration::from_secs(5));
@@ -498,25 +537,25 @@ fn test_exit_codes() -> Result<()> {
     let mut cmd = talaria_cmd();
     cmd.arg("reduce")
         .arg("local/test_exit")
-        .arg("-o").arg(&output)
-        .arg("--target-aligner").arg("generic")
-        .arg("--reduction-ratio").arg("0.5")
+        .arg("-o")
+        .arg(&output)
+        .arg("--target-aligner")
+        .arg("generic")
+        .arg("--reduction-ratio")
+        .arg("0.5")
         .env("TALARIA_HOME", env.temp_dir.path());
 
-    cmd.assert()
-        .success()
-        .code(0);
+    cmd.assert().success().code(0);
 
     // Failure case - non-zero exit code
     let mut cmd = talaria_cmd();
     cmd.arg("reduce")
         .arg("nonexistent/database")
-        .arg("-o").arg("output.fasta")
+        .arg("-o")
+        .arg("output.fasta")
         .env("TALARIA_HOME", env.temp_dir.path());
 
-    cmd.assert()
-        .failure()
-        .code(predicate::ne(0));
+    cmd.assert().failure().code(predicate::ne(0));
 
     Ok(())
 }

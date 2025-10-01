@@ -1,5 +1,7 @@
-/// Chunk-related types used throughout Talaria
+//! Chunk type definitions
+
 use serde::{Deserialize, Serialize};
+
 use super::hash::SHA256Hash;
 use super::taxonomy::TaxonId;
 
@@ -114,11 +116,8 @@ mod tests {
     #[test]
     fn test_chunk_metadata() {
         let hash = SHA256Hash::default();
-        let metadata = ChunkMetadata::with_taxonomy(
-            hash,
-            1024,
-            vec![TaxonId::HUMAN, TaxonId::MOUSE],
-        );
+        let metadata =
+            ChunkMetadata::with_taxonomy(hash, 1024, vec![TaxonId::HUMAN, TaxonId::MOUSE]);
 
         assert!(metadata.contains_taxon(TaxonId::HUMAN));
         assert!(!metadata.contains_taxon(TaxonId::ECOLI));

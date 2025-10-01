@@ -4,8 +4,8 @@ use std::collections::HashMap;
 // Import the types and traits we need from talaria-storage
 // These would normally be imported from the public API
 mod helpers {
-    use std::path::PathBuf;
     use sha2::{Digest, Sha256};
+    use std::path::PathBuf;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct SHA256Hash([u8; 32]);
@@ -145,10 +145,10 @@ async fn test_deduplication_workflow() {
 /// Test compression workflow
 #[tokio::test]
 async fn test_compression_workflow() {
-    use flate2::write::GzEncoder;
     use flate2::read::GzDecoder;
+    use flate2::write::GzEncoder;
     use flate2::Compression;
-    use std::io::{Write, Read};
+    use std::io::{Read, Write};
 
     let (base_path, _temp_dir) = setup_test_storage().await;
     let chunks_dir = base_path.join("chunks");
@@ -234,9 +234,7 @@ async fn test_cache_workflow() {
         assert!(cache_dir.join(hash.to_hex()).exists());
     }
 
-    let remaining_files = std::fs::read_dir(&cache_dir)
-        .unwrap()
-        .count();
+    let remaining_files = std::fs::read_dir(&cache_dir).unwrap().count();
     assert_eq!(remaining_files, hot_chunks.len());
 }
 
@@ -277,7 +275,11 @@ async fn test_manifest_workflow() {
         "metadata": manifest.metadata,
     });
 
-    std::fs::write(&manifest_path, serde_json::to_string_pretty(&manifest_json).unwrap()).unwrap();
+    std::fs::write(
+        &manifest_path,
+        serde_json::to_string_pretty(&manifest_json).unwrap(),
+    )
+    .unwrap();
 
     // Read back manifest
     let content = std::fs::read_to_string(&manifest_path).unwrap();
@@ -291,8 +293,8 @@ async fn test_manifest_workflow() {
 /// Test concurrent storage operations
 #[tokio::test]
 async fn test_concurrent_operations() {
-    use tokio::task;
     use std::sync::Arc;
+    use tokio::task;
 
     let (base_path, _temp_dir) = setup_test_storage().await;
     let base_path = Arc::new(base_path);

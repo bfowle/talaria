@@ -1,4 +1,3 @@
-use talaria_core::config::{default_config, load_config, save_config, Config};
 use crossterm::event::{self, Event, KeyCode};
 use dirs;
 use ratatui::{
@@ -10,6 +9,7 @@ use ratatui::{
     Frame, Terminal,
 };
 use std::{io, path::PathBuf};
+use talaria_core::config::{default_config, load_config, save_config, Config};
 
 pub struct ConfigEditor {
     config: Config,

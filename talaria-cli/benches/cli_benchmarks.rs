@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
@@ -32,9 +32,7 @@ fn bench_fasta_parsing(c: &mut Criterion) {
                 b.iter(|| {
                     // Benchmark FASTA parsing
                     let lines: Vec<&str> = content.lines().collect();
-                    let seq_count = lines.iter()
-                        .filter(|l| l.starts_with('>'))
-                        .count();
+                    let seq_count = lines.iter().filter(|l| l.starts_with('>')).count();
                     black_box(seq_count);
                 });
             },
@@ -52,7 +50,8 @@ fn bench_sequence_comparison(c: &mut Criterion) {
 
     group.bench_function("hamming_distance", |b| {
         b.iter(|| {
-            let distance: usize = seq1.chars()
+            let distance: usize = seq1
+                .chars()
                 .zip(seq2.chars())
                 .filter(|(a, b)| a != b)
                 .count();
@@ -62,7 +61,8 @@ fn bench_sequence_comparison(c: &mut Criterion) {
 
     group.bench_function("similarity_ratio", |b| {
         b.iter(|| {
-            let matches: usize = seq1.chars()
+            let matches: usize = seq1
+                .chars()
                 .zip(seq2.chars())
                 .filter(|(a, b)| a == b)
                 .count();
@@ -75,8 +75,8 @@ fn bench_sequence_comparison(c: &mut Criterion) {
 }
 
 fn bench_compression(c: &mut Criterion) {
-    use flate2::Compression;
     use flate2::write::GzEncoder;
+    use flate2::Compression;
     use std::io::Write;
 
     let mut group = c.benchmark_group("compression");
@@ -85,18 +85,14 @@ fn bench_compression(c: &mut Criterion) {
     let data_bytes = test_data.as_bytes();
 
     for level in [1, 6, 9].iter() {
-        group.bench_with_input(
-            BenchmarkId::new("gzip", level),
-            &data_bytes,
-            |b, data| {
-                b.iter(|| {
-                    let mut encoder = GzEncoder::new(Vec::new(), Compression::new(*level));
-                    encoder.write_all(data).unwrap();
-                    let compressed = encoder.finish().unwrap();
-                    black_box(compressed.len());
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("gzip", level), &data_bytes, |b, data| {
+            b.iter(|| {
+                let mut encoder = GzEncoder::new(Vec::new(), Compression::new(*level));
+                encoder.write_all(data).unwrap();
+                let compressed = encoder.finish().unwrap();
+                black_box(compressed.len());
+            });
+        });
     }
 
     group.finish();
@@ -141,9 +137,7 @@ fn bench_delta_encoding(c: &mut Criterion) {
 fn bench_batch_processing(c: &mut Criterion) {
     let mut group = c.benchmark_group("batch_processing");
 
-    let sequences: Vec<String> = (0..1000)
-        .map(|i| format!("SEQUENCE_{}", i))
-        .collect();
+    let sequences: Vec<String> = (0..1000).map(|i| format!("SEQUENCE_{}", i)).collect();
 
     for batch_size in [10, 50, 100, 500].iter() {
         group.bench_with_input(
@@ -193,25 +187,21 @@ fn bench_taxonomy_parsing(c: &mut Criterion) {
 }
 
 fn bench_hash_computation(c: &mut Criterion) {
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
 
     let mut group = c.benchmark_group("hash_computation");
 
     for size in [100, 1000, 10000, 100000].iter() {
         let data = vec![0u8; *size];
 
-        group.bench_with_input(
-            BenchmarkId::new("sha256", size),
-            &data,
-            |b, data| {
-                b.iter(|| {
-                    let mut hasher = Sha256::new();
-                    hasher.update(data);
-                    let hash = hasher.finalize();
-                    black_box(hash);
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("sha256", size), &data, |b, data| {
+            b.iter(|| {
+                let mut hasher = Sha256::new();
+                hasher.update(data);
+                let hash = hasher.finalize();
+                black_box(hash);
+            });
+        });
     }
 
     group.finish();
@@ -222,26 +212,18 @@ fn bench_parallel_processing(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("parallel_processing");
 
-    let data: Vec<String> = (0..10000)
-        .map(|i| format!("SEQUENCE_DATA_{}", i))
-        .collect();
+    let data: Vec<String> = (0..10000).map(|i| format!("SEQUENCE_DATA_{}", i)).collect();
 
     group.bench_function("sequential", |b| {
         b.iter(|| {
-            let results: Vec<usize> = data
-                .iter()
-                .map(|s| s.len())
-                .collect();
+            let results: Vec<usize> = data.iter().map(|s| s.len()).collect();
             black_box(results.len());
         });
     });
 
     group.bench_function("parallel", |b| {
         b.iter(|| {
-            let results: Vec<usize> = data
-                .par_iter()
-                .map(|s| s.len())
-                .collect();
+            let results: Vec<usize> = data.par_iter().map(|s| s.len()).collect();
             black_box(results.len());
         });
     });
@@ -258,30 +240,22 @@ fn bench_file_io(c: &mut Criterion) {
         let content = create_test_fasta(*size, 100);
         let file_path = temp_dir.path().join(format!("test_{}.fasta", size));
 
-        group.bench_with_input(
-            BenchmarkId::new("write", size),
-            &content,
-            |b, content| {
-                b.iter(|| {
-                    fs::write(&file_path, content).unwrap();
-                    black_box(());
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("write", size), &content, |b, content| {
+            b.iter(|| {
+                fs::write(&file_path, content).unwrap();
+                black_box(());
+            });
+        });
 
         // Write file once for read benchmark
         fs::write(&file_path, &content).unwrap();
 
-        group.bench_with_input(
-            BenchmarkId::new("read", size),
-            &file_path,
-            |b, path| {
-                b.iter(|| {
-                    let content = fs::read_to_string(path).unwrap();
-                    black_box(content.len());
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("read", size), &file_path, |b, path| {
+            b.iter(|| {
+                let content = fs::read_to_string(path).unwrap();
+                black_box(content.len());
+            });
+        });
     }
 
     group.finish();

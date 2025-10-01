@@ -25,6 +25,7 @@ chrono = { workspace = true }
 regex = "1.10"
 crypto-hash = "0.3"
 hex = "0.4"
+flate2 = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

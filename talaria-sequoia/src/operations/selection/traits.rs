@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
-/// Traits for reference selection
-use talaria_bio::sequence::Sequence;
 use anyhow::Result;
+/// Traits for reference selection
+use serde::{Deserialize, Serialize};
+use talaria_bio::sequence::Sequence;
 
 /// Result from trait-based selection
 pub struct TraitSelectionResult {
@@ -11,7 +12,7 @@ pub struct TraitSelectionResult {
 }
 
 /// Statistics from selection
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelectionStats {
     pub total_sequences: usize,
     pub references_selected: usize,

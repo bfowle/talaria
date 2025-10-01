@@ -2,12 +2,12 @@
 //!
 //! Provides isolated test environments with automatic cleanup using RAII.
 
+use anyhow::{Context, Result};
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 use tempfile::TempDir;
-use anyhow::{Result, Context};
-use once_cell::sync::Lazy;
 
 /// Global registry to prevent environment variable conflicts
 static ENV_REGISTRY: Lazy<Arc<Mutex<HashMap<String, String>>>> =
@@ -61,8 +61,8 @@ impl TestEnvironment {
     pub fn with_config(config: TestConfig) -> Result<Self> {
         // Create temporary directory
         let prefix = config.prefix.as_deref().unwrap_or("talaria-test");
-        let temp_dir = TempDir::with_prefix(prefix)
-            .context("Failed to create temporary directory")?;
+        let temp_dir =
+            TempDir::with_prefix(prefix).context("Failed to create temporary directory")?;
 
         let root_path = temp_dir.path().to_path_buf();
 
@@ -91,10 +91,18 @@ impl TestEnvironment {
     fn setup_environment(&mut self) -> Result<()> {
         // Create owned strings for paths
         let home_path = self.root_path.to_string_lossy().to_string();
-        let databases_path = self.root_path.join("databases").to_string_lossy().to_string();
+        let databases_path = self
+            .root_path
+            .join("databases")
+            .to_string_lossy()
+            .to_string();
         let cache_path = self.root_path.join("cache").to_string_lossy().to_string();
         let tools_path = self.root_path.join("tools").to_string_lossy().to_string();
-        let workspace_path = self.root_path.join("workspace").to_string_lossy().to_string();
+        let workspace_path = self
+            .root_path
+            .join("workspace")
+            .to_string_lossy()
+            .to_string();
 
         let vars = vec![
             ("TALARIA_HOME", home_path.clone()),
@@ -107,10 +115,8 @@ impl TestEnvironment {
 
         // Save and set environment variables
         for (key, value) in &vars {
-            self.saved_env.insert(
-                key.to_string(),
-                std::env::var(key).ok()
-            );
+            self.saved_env
+                .insert(key.to_string(), std::env::var(key).ok());
             std::env::set_var(key, value);
         }
 
@@ -125,7 +131,10 @@ impl TestEnvironment {
 
         // Register this environment to prevent conflicts
         let mut registry = ENV_REGISTRY.lock().unwrap();
-        registry.insert(self.root_path.to_string_lossy().to_string(), "active".to_string());
+        registry.insert(
+            self.root_path.to_string_lossy().to_string(),
+            "active".to_string(),
+        );
 
         Ok(())
     }

@@ -3,10 +3,13 @@ use anyhow::Result;
 use serial_test::serial;
 use std::fs;
 use std::path::PathBuf;
-use tempfile::TempDir;
-use talaria_sequoia::download::workspace::{DownloadState, Stage, get_download_workspace, find_resumable_downloads};
-use talaria_core::{DatabaseSource, UniProtDatabase};
 use talaria_core::system::paths::bypass_cache_for_tests;
+use talaria_core::{DatabaseSource, UniProtDatabase};
+use talaria_test::fixtures::test_database_source;
+use talaria_sequoia::download::workspace::{
+    find_resumable_downloads, get_download_workspace, DownloadState, Stage,
+};
+use tempfile::TempDir;
 
 // Static initializer to enable bypass for all tests
 use std::sync::Once;
@@ -49,7 +52,7 @@ impl TestEnv {
 async fn test_download_state_machine_transitions() -> Result<()> {
     let env = TestEnv::new();
 
-    let source = DatabaseSource::Test;
+    let source = test_database_source("integration");
     let workspace = get_download_workspace(&source);
 
     // Create initial state
@@ -110,7 +113,7 @@ async fn test_download_state_machine_transitions() -> Result<()> {
 async fn test_resume_from_downloading_stage() -> Result<()> {
     let env = TestEnv::new();
 
-    let source = DatabaseSource::Test;
+    let source = test_database_source("integration");
     let workspace = get_download_workspace(&source);
     let state_path = workspace.join("state.json");
 
@@ -131,7 +134,11 @@ async fn test_resume_from_downloading_stage() -> Result<()> {
 
     // Verify we can resume from where we left off
     match resumed_state.stage {
-        Stage::Downloading { bytes_done, total_bytes, .. } => {
+        Stage::Downloading {
+            bytes_done,
+            total_bytes,
+            ..
+        } => {
             assert_eq!(bytes_done, 500);
             assert_eq!(total_bytes, 1000);
         }
@@ -139,7 +146,10 @@ async fn test_resume_from_downloading_stage() -> Result<()> {
     }
 
     // Verify tracked files are preserved
-    assert_eq!(resumed_state.files.compressed, Some(workspace.join("test.gz.part")));
+    assert_eq!(
+        resumed_state.files.compressed,
+        Some(workspace.join("test.gz.part"))
+    );
 
     env.cleanup_env();
     Ok(())
@@ -150,7 +160,7 @@ async fn test_resume_from_downloading_stage() -> Result<()> {
 async fn test_resume_from_decompressing_stage() -> Result<()> {
     let env = TestEnv::new();
 
-    let source = DatabaseSource::Test;
+    let source = test_database_source("integration");
     let workspace = get_download_workspace(&source);
     let state_path = workspace.join("state.json");
 
@@ -182,7 +192,10 @@ async fn test_resume_from_decompressing_stage() -> Result<()> {
     }
 
     // Verify file is marked for preservation
-    assert!(resumed_state.files.preserve_on_failure.contains(&compressed_file));
+    assert!(resumed_state
+        .files
+        .preserve_on_failure
+        .contains(&compressed_file));
 
     env.cleanup_env();
     Ok(())
@@ -214,7 +227,10 @@ async fn test_cleanup_on_success() -> Result<()> {
     }
 
     // Verify workspace is cleaned up
-    assert!(!workspace.exists(), "Workspace should be cleaned up on success");
+    assert!(
+        !workspace.exists(),
+        "Workspace should be cleaned up on success"
+    );
 
     env.cleanup_env();
     Ok(())
@@ -225,7 +241,7 @@ async fn test_cleanup_on_success() -> Result<()> {
 async fn test_workspace_preservation_on_failure() -> Result<()> {
     let env = TestEnv::new();
 
-    let source = DatabaseSource::Test;
+    let source = test_database_source("integration");
     let workspace = get_download_workspace(&source);
     let state_path = workspace.join("state.json");
 
@@ -265,16 +281,22 @@ async fn test_find_resumable_downloads() -> Result<()> {
 
     // Create multiple download states in different stages
     let sources = vec![
-        (DatabaseSource::UniProt(UniProtDatabase::SwissProt), Stage::Downloading {
-            bytes_done: 100,
-            total_bytes: 1000,
-            url: "http://example.com/swissprot.gz".to_string(),
-        }),
-        (DatabaseSource::UniProt(UniProtDatabase::TrEMBL), Stage::Processing {
-            chunks_done: 5,
-            total_chunks: 10,
-        }),
-        (DatabaseSource::Test, Stage::Complete),
+        (
+            DatabaseSource::UniProt(UniProtDatabase::SwissProt),
+            Stage::Downloading {
+                bytes_done: 100,
+                total_bytes: 1000,
+                url: "http://example.com/swissprot.gz".to_string(),
+            },
+        ),
+        (
+            DatabaseSource::UniProt(UniProtDatabase::TrEMBL),
+            Stage::Processing {
+                chunks_done: 5,
+                total_chunks: 10,
+            },
+        ),
+        (test_database_source("integration"), Stage::Complete),
     ];
 
     for (source, stage) in sources {
@@ -293,8 +315,12 @@ async fn test_find_resumable_downloads() -> Result<()> {
     assert_eq!(resumable.len(), 2, "Should find 2 resumable downloads");
 
     // Verify the stages
-    let has_downloading = resumable.iter().any(|s| matches!(s.stage, Stage::Downloading { .. }));
-    let has_processing = resumable.iter().any(|s| matches!(s.stage, Stage::Processing { .. }));
+    let has_downloading = resumable
+        .iter()
+        .any(|s| matches!(s.stage, Stage::Downloading { .. }));
+    let has_processing = resumable
+        .iter()
+        .any(|s| matches!(s.stage, Stage::Processing { .. }));
 
     assert!(has_downloading, "Should find download in Downloading stage");
     assert!(has_processing, "Should find download in Processing stage");
@@ -322,9 +348,7 @@ async fn test_checkpoint_recovery() -> Result<()> {
         url: "test".to_string(),
     })?;
 
-    state.transition_to(Stage::Verifying {
-        checksum: None,
-    })?;
+    state.transition_to(Stage::Verifying { checksum: None })?;
 
     state.transition_to(Stage::Processing {
         chunks_done: 0,
@@ -343,7 +367,7 @@ async fn test_checkpoint_recovery() -> Result<()> {
 
     // Should be back to Verifying stage (the last checkpoint before Processing)
     assert!(matches!(loaded_state.stage, Stage::Verifying { .. }));
-    assert_eq!(loaded_state.checkpoints.len(), 2);  // Should have Initializing and Downloading left
+    assert_eq!(loaded_state.checkpoints.len(), 2); // Should have Initializing and Downloading left
 
     env.cleanup_env();
     Ok(())
@@ -354,7 +378,7 @@ async fn test_checkpoint_recovery() -> Result<()> {
 async fn test_concurrent_download_prevention() -> Result<()> {
     let env = TestEnv::new();
 
-    let source = DatabaseSource::Test;
+    let source = test_database_source("integration");
     let workspace = get_download_workspace(&source);
 
     // Acquire lock for first download
@@ -370,7 +394,10 @@ async fn test_concurrent_download_prevention() -> Result<()> {
     // Now second download should succeed
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     let lock3 = talaria_sequoia::download::workspace::DownloadLock::try_acquire(&workspace);
-    assert!(lock3.is_ok(), "Download should be allowed after lock release");
+    assert!(
+        lock3.is_ok(),
+        "Download should be allowed after lock release"
+    );
 
     env.cleanup_env();
     Ok(())
@@ -380,7 +407,7 @@ async fn test_concurrent_download_prevention() -> Result<()> {
 async fn test_download_age_tracking() -> Result<()> {
     let env = TestEnv::new();
 
-    let source = DatabaseSource::Test;
+    let source = test_database_source("integration");
     let workspace = get_download_workspace(&source);
     let state_path = workspace.join("state.json");
 
@@ -396,7 +423,10 @@ async fn test_download_age_tracking() -> Result<()> {
     assert!(age.num_seconds() < 1);
 
     // Check staleness
-    assert!(!loaded_state.is_stale(24), "Fresh download should not be stale");
+    assert!(
+        !loaded_state.is_stale(24),
+        "Fresh download should not be stale"
+    );
 
     env.cleanup_env();
     Ok(())

@@ -9,14 +9,14 @@ use clap::Args;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
-use talaria_bio::taxonomy::{TaxonomyFormatter, StandardTaxonomyFormatter};
-use talaria_sequoia::operations::FastaAssembler;
-use talaria_sequoia::manifest::Manifest;
 use crate::cli::formatting::output::{info as print_info, success as print_success};
-use talaria_sequoia::database::DatabaseManager;
-use talaria_core::system::paths;
-use talaria_utils::database::database_ref::{parse_database_reference, DatabaseReference};
 use crate::cli::progress::create_spinner;
+use talaria_bio::taxonomy::{StandardTaxonomyFormatter, TaxonomyFormatter};
+use talaria_core::system::paths;
+use talaria_sequoia::database::DatabaseManager;
+use talaria_sequoia::manifest::Manifest;
+use talaria_sequoia::operations::FastaAssembler;
+use talaria_utils::database::database_ref::{parse_database_reference, DatabaseReference};
 
 #[derive(Args)]
 pub struct ExportArgs {
@@ -128,10 +128,7 @@ pub fn run(args: ExportArgs) -> Result<()> {
 
     // Export the database
     let spinner = if !args.quiet {
-        Some(create_spinner(&format!(
-            "Exporting {} to FASTA...",
-            db_ref
-        )))
+        Some(create_spinner(&format!("Exporting {} to FASTA...", db_ref)))
     } else {
         None
     };
@@ -292,7 +289,7 @@ fn perform_export(
     };
 
     // Create assembler using the SEQUOIA storage (use open to rebuild index)
-    let sequoia_storage = talaria_sequoia::SEQUOIAStorage::open(&base_path)?;
+    let sequoia_storage = talaria_sequoia::SequoiaStorage::open(&base_path)?;
     let assembler = FastaAssembler::new(&sequoia_storage);
 
     // Export based on format and streaming preference
@@ -580,9 +577,9 @@ fn perform_bitemporal_export(
     db_ref: &DatabaseReference,
     output_path: &Path,
 ) -> Result<ExportStats> {
-    use talaria_sequoia::{SEQUOIAStorage, BiTemporalDatabase};
-    use std::sync::Arc;
     use chrono::Utc;
+    use std::sync::Arc;
+    use talaria_sequoia::{BiTemporalDatabase, SequoiaStorage};
 
     // Parse times
     let sequence_time = if let Some(date_str) = &args.sequence_date {
@@ -619,16 +616,19 @@ fn perform_bitemporal_export(
     }
 
     // Open SEQUOIA storage and bi-temporal database
-    let storage = Arc::new(SEQUOIAStorage::open(&db_path)?);
+    let storage = Arc::new(SequoiaStorage::open(&db_path)?);
     let mut bi_temporal_db = BiTemporalDatabase::new(storage.clone())?;
 
     // Query at the specified times
-    let snapshot = bi_temporal_db.query_at(sequence_time, taxonomy_time)
-        .map_err(|e| anyhow::anyhow!(
-            "Failed to query database at specified times: {}. \
+    let snapshot = bi_temporal_db
+        .query_at(sequence_time, taxonomy_time)
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to query database at specified times: {}. \
              The database may not have data for these dates.",
-            e
-        ))?;
+                e
+            )
+        })?;
 
     if !args.quiet {
         print_info(&format!(
@@ -656,10 +656,26 @@ fn perform_bitemporal_export(
     match args.format {
         ExportFormat::Fasta => {
             writeln!(writer, "; SEQUOIA Bi-temporal Export")?;
-            writeln!(writer, "; Sequence Date: {}", sequence_time.format("%Y-%m-%d %H:%M:%S UTC"))?;
-            writeln!(writer, "; Taxonomy Date: {}", taxonomy_time.format("%Y-%m-%d %H:%M:%S UTC"))?;
-            writeln!(writer, "; Sequence Root: {}", &snapshot.sequence_root().to_string()[..12])?;
-            writeln!(writer, "; Taxonomy Root: {}", &snapshot.taxonomy_root().to_string()[..12])?;
+            writeln!(
+                writer,
+                "; Sequence Date: {}",
+                sequence_time.format("%Y-%m-%d %H:%M:%S UTC")
+            )?;
+            writeln!(
+                writer,
+                "; Taxonomy Date: {}",
+                taxonomy_time.format("%Y-%m-%d %H:%M:%S UTC")
+            )?;
+            writeln!(
+                writer,
+                "; Sequence Root: {}",
+                &snapshot.sequence_root().to_string()[..12]
+            )?;
+            writeln!(
+                writer,
+                "; Taxonomy Root: {}",
+                &snapshot.taxonomy_root().to_string()[..12]
+            )?;
             writeln!(writer, "; Total Sequences: {}", snapshot.sequence_count())?;
         }
         _ => {}
@@ -680,7 +696,9 @@ fn perform_bitemporal_export(
         match storage.get_chunk(&chunk_meta.hash) {
             Ok(chunk_data) => {
                 // Try to parse as ChunkManifest first
-                if let Ok(manifest) = rmp_serde::from_slice::<talaria_sequoia::ChunkManifest>(&chunk_data) {
+                if let Ok(manifest) =
+                    rmp_serde::from_slice::<talaria_sequoia::ChunkManifest>(&chunk_data)
+                {
                     // Load actual sequences from canonical storage
                     for seq_hash in &manifest.sequence_refs {
                         if let Ok(canonical) = storage.sequence_storage.load_canonical(seq_hash) {
@@ -704,7 +722,9 @@ fn perform_bitemporal_export(
                                     writeln!(writer, "{}", "I".repeat(seq.sequence.len()))?;
                                 }
                                 ExportFormat::Tsv => {
-                                    writeln!(writer, "{}\t{}",
+                                    writeln!(
+                                        writer,
+                                        "{}\t{}",
                                         seq.id,
                                         String::from_utf8_lossy(&seq.sequence)
                                     )?;
@@ -731,7 +751,9 @@ fn perform_bitemporal_export(
                                 writeln!(writer, "{}", String::from_utf8_lossy(&seq.sequence))?;
                             }
                             ExportFormat::Tsv => {
-                                writeln!(writer, "{}\t{}",
+                                writeln!(
+                                    writer,
+                                    "{}\t{}",
                                     seq.id,
                                     String::from_utf8_lossy(&seq.sequence)
                                 )?;
@@ -757,8 +779,11 @@ fn perform_bitemporal_export(
             }
             Err(e) => {
                 if !args.quiet {
-                    eprintln!("Warning: Failed to load chunk {}: {}",
-                             &chunk_meta.hash.to_string()[..8], e);
+                    eprintln!(
+                        "Warning: Failed to load chunk {}: {}",
+                        &chunk_meta.hash.to_string()[..8],
+                        e
+                    );
                 }
             }
         }
@@ -785,7 +810,8 @@ fn parse_time_input(input: &str) -> Result<chrono::DateTime<chrono::Utc>> {
 
     // Try parsing as date only (assume 00:00:00 UTC)
     if let Ok(dt) = NaiveDate::parse_from_str(input, "%Y-%m-%d") {
-        let time = dt.and_hms_opt(0, 0, 0)
+        let time = dt
+            .and_hms_opt(0, 0, 0)
             .ok_or_else(|| anyhow::anyhow!("Invalid time"))?;
         return Ok(DateTime::from_naive_utc_and_offset(time, Utc));
     }

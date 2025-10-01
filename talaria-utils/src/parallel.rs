@@ -154,9 +154,13 @@ mod tests {
             let threads = (seed % 128) + 1;
 
             let chunk = chunk_size_for_parallelism(total_items, threads);
-            assert!(chunk >= 10 && chunk <= 1000,
+            assert!(
+                chunk >= 10 && chunk <= 1000,
                 "Chunk size {} out of bounds for {} items with {} threads",
-                chunk, total_items, threads);
+                chunk,
+                total_items,
+                threads
+            );
         }
     }
 
@@ -164,18 +168,35 @@ mod tests {
     fn test_chunk_size_property_exhaustive() {
         // More exhaustive property test
         let test_cases = vec![
-            (1, 1), (10, 1), (100, 1), (1000, 1),
-            (1, 10), (10, 10), (100, 10), (1000, 10),
-            (10000, 1), (10000, 4), (10000, 8), (10000, 16),
-            (100000, 1), (100000, 8), (100000, 32),
-            (1000000, 1), (1000000, 16), (1000000, 64),
+            (1, 1),
+            (10, 1),
+            (100, 1),
+            (1000, 1),
+            (1, 10),
+            (10, 10),
+            (100, 10),
+            (1000, 10),
+            (10000, 1),
+            (10000, 4),
+            (10000, 8),
+            (10000, 16),
+            (100000, 1),
+            (100000, 8),
+            (100000, 32),
+            (1000000, 1),
+            (1000000, 16),
+            (1000000, 64),
         ];
 
         for (items, threads) in test_cases {
             let chunk = chunk_size_for_parallelism(items, threads);
-            assert!(chunk >= 10 && chunk <= 1000,
+            assert!(
+                chunk >= 10 && chunk <= 1000,
                 "Failed for {} items with {} threads: chunk = {}",
-                items, threads, chunk);
+                items,
+                threads,
+                chunk
+            );
         }
     }
 }

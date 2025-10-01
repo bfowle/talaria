@@ -1,15 +1,12 @@
 //! Workspace management utilities
 
-pub mod temp;
 pub mod sequoia;
+pub mod temp;
 
 // Re-export main workspace types
 pub use temp::{
-    TempWorkspace, WorkspaceConfig, WorkspaceMetadata,
-    WorkspaceStatus, WorkspaceStats,
-    list_workspaces, find_workspace,
+    find_workspace, list_workspaces, TempWorkspace, WorkspaceConfig, WorkspaceMetadata,
+    WorkspaceStats, WorkspaceStatus,
 };
 
-pub use sequoia::{
-    SequoiaWorkspaceManager, SequoiaStatistics, SequoiaTransaction
-};
+pub use sequoia::{SequoiaStatistics, SequoiaTransaction, SequoiaWorkspaceManager};

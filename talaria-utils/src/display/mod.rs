@@ -7,17 +7,14 @@ pub mod progress;
 
 // Re-export commonly used types
 pub use format::{format_bytes, format_duration, get_file_size};
-pub use formatter::{
-    OutputFormatter, Section, Item, Status, StatusReporter, OutputFormattable
-};
+pub use formatter::{Item, OutputFormattable, OutputFormatter, Section, Status, StatusReporter};
 pub use output::{
-    TreeNode, format_number, warning, info, success, error,
-    tree_section, create_standard_table, header_cell,
+    create_standard_table, error, format_number, header_cell, info, success, tree_section, warning,
+    TreeNode,
 };
-// Re-export progress functions from the new unified module for backwards compatibility
+// Re-export progress utilities
 pub use crate::progress::{
-    create_progress_bar, create_spinner, create_hidden_progress_bar,
-    ProgressManager, ProgressManagerBuilder, OperationType,
+    create_hidden_progress_bar, create_progress_bar, create_spinner, OperationType,
+    ProgressManager, ProgressManagerBuilder,
 };
-// Keep old ProgressBarManager for compatibility
 pub use progress::ProgressBarManager;

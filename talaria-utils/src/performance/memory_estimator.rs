@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
-/// Memory estimation and management for clustering and alignment operations
-use talaria_bio::sequence::Sequence;
 use std::collections::HashMap;
 use sysinfo::System;
+/// Memory estimation and management for clustering and alignment operations
+use talaria_bio::sequence::Sequence;
 
 /// Memory usage estimator for bioinformatics operations
 #[derive(Debug, Clone)]

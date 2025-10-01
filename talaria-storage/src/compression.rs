@@ -2,7 +2,8 @@
 ///
 /// Provides specialized compression for biological sequence data,
 /// using Zstandard with trained dictionaries for taxonomy-aware compression.
-use crate::types::{ChunkFormat, SHA256Hash, SequenceRef, TaxonId, ChunkManifest};
+use crate::types::{ChunkFormat, ChunkManifest, SequenceRef};
+use talaria_core::types::{SHA256Hash, TaxonId};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -57,7 +58,6 @@ impl ChunkCompressor {
         _taxon_id: Option<u32>,
     ) -> Result<Vec<u8>> {
         match format {
-            ChunkFormat::JsonGzip => self.compress_json_gzip(data),
             ChunkFormat::Binary => self.compress_binary(data),
             ChunkFormat::BinaryDict { dict_id } => self.compress_with_dictionary(data, dict_id),
         }
@@ -68,36 +68,9 @@ impl ChunkCompressor {
         let format = format.unwrap_or_else(|| ChunkFormat::detect(data));
 
         match format {
-            ChunkFormat::JsonGzip => self.decompress_json_gzip(data),
             ChunkFormat::Binary => self.decompress_binary(data),
             ChunkFormat::BinaryDict { dict_id } => self.decompress_with_dictionary(data, dict_id),
         }
-    }
-
-    /// Legacy JSON + gzip compression (for compatibility)
-    fn compress_json_gzip(&self, data: &[u8]) -> Result<Vec<u8>> {
-        use flate2::write::GzEncoder;
-        use flate2::Compression;
-
-        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-        encoder
-            .write_all(data)
-            .context("Failed to write to gzip encoder")?;
-        encoder
-            .finish()
-            .context("Failed to finish gzip compression")
-    }
-
-    /// Legacy JSON + gzip decompression
-    fn decompress_json_gzip(&self, data: &[u8]) -> Result<Vec<u8>> {
-        use flate2::read::GzDecoder;
-
-        let mut decoder = GzDecoder::new(data);
-        let mut result = Vec::new();
-        decoder
-            .read_to_end(&mut result)
-            .context("Failed to decompress gzip data")?;
-        Ok(result)
     }
 
     /// Binary format with Zstandard compression
@@ -113,7 +86,13 @@ impl ChunkCompressor {
 
     /// Binary format decompression
     fn decompress_binary(&self, data: &[u8]) -> Result<Vec<u8>> {
-        zstd::decode_all(data).context("Failed to decompress Zstandard data")
+        // Check if data is actually compressed (zstd magic bytes: 0x28 0xB5 0x2F 0xFD)
+        if ChunkFormat::is_compressed(data) {
+            zstd::decode_all(data).context("Failed to decompress Zstandard data")
+        } else {
+            // Data is not compressed, return as-is
+            Ok(data.to_vec())
+        }
     }
 
     /// Compress with trained dictionary
@@ -208,17 +187,17 @@ mod tests {
 
     #[test]
     fn test_format_detection() {
-        // Gzip magic bytes
-        let gzip_data = vec![0x1f, 0x8b, 0x08, 0x00];
-        assert_eq!(ChunkFormat::detect(&gzip_data), ChunkFormat::JsonGzip);
-
-        // Zstandard magic bytes
+        // Zstandard magic bytes (primary format)
         let zstd_data = vec![0x28, 0xb5, 0x2f, 0xfd];
         assert_eq!(ChunkFormat::detect(&zstd_data), ChunkFormat::Binary);
 
-        // Unknown data defaults to JsonGzip
+        // Non-Zstandard data defaults to Binary (no gzip support anymore)
+        let other_data = vec![0x1f, 0x8b, 0x08, 0x00];
+        assert_eq!(ChunkFormat::detect(&other_data), ChunkFormat::Binary);
+
+        // Unknown data also defaults to Binary
         let unknown = vec![0x00, 0x01, 0x02, 0x03];
-        assert_eq!(ChunkFormat::detect(&unknown), ChunkFormat::JsonGzip);
+        assert_eq!(ChunkFormat::detect(&unknown), ChunkFormat::Binary);
     }
 
     #[test]
@@ -228,14 +207,13 @@ mod tests {
 
         let test_data = b"ACGTACGTACGTACGT".repeat(1000);
 
-        // Test each format
-        for format in [ChunkFormat::JsonGzip, ChunkFormat::Binary] {
-            let compressed = compressor.compress(&test_data, format, None).unwrap();
-            let decompressed = compressor.decompress(&compressed, Some(format)).unwrap();
+        // Test Binary format (the only supported format now)
+        let format = ChunkFormat::Binary;
+        let compressed = compressor.compress(&test_data, format, None).unwrap();
+        let decompressed = compressor.decompress(&compressed, Some(format)).unwrap();
 
-            assert_eq!(test_data, decompressed);
-            // Compression should reduce size
-            assert!(compressed.len() < test_data.len());
-        }
+        assert_eq!(test_data, decompressed);
+        // Compression should reduce size
+        assert!(compressed.len() < test_data.len());
     }
 }
