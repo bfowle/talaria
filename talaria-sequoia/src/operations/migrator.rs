@@ -311,42 +311,42 @@ impl StandardVersionMigrator {
         match step.step_type {
             StepType::CreateBackup => {
                 // Create backup
-                println!("Creating backup...");
+                tracing::debug!("Creating backup...");
                 // Implementation would backup current version
                 Ok(())
             }
             StepType::DownloadChunks => {
-                println!("Downloading chunks...");
+                tracing::info!("Downloading chunks...");
                 // Implementation would download new chunks
                 Ok(())
             }
             StepType::RemoveChunks => {
-                println!("Removing old chunks...");
+                tracing::info!("Removing old chunks...");
                 // Implementation would remove old chunks
                 Ok(())
             }
             StepType::UpdateTemporalManifest => {
-                println!("Updating manifest...");
+                tracing::info!("Updating manifest...");
                 // Implementation would update manifest
                 Ok(())
             }
             StepType::RebuildIndex => {
-                println!("Rebuilding index...");
+                tracing::info!("Rebuilding index...");
                 // Implementation would rebuild index
                 Ok(())
             }
             StepType::UpdateSymlinks => {
-                println!("Updating symlinks...");
+                tracing::info!("Updating symlinks...");
                 // Implementation would update symlinks
                 Ok(())
             }
             StepType::VerifyIntegrity => {
-                println!("Verifying integrity...");
+                tracing::info!("Verifying integrity...");
                 // Implementation would verify integrity
                 Ok(())
             }
             StepType::Custom(ref name) => {
-                println!("Executing custom step: {}", name);
+                tracing::info!("Executing custom step: {}", name);
                 // Implementation would handle custom steps
                 Ok(())
             }
@@ -413,7 +413,7 @@ impl VersionMigrator for StandardVersionMigrator {
 
         for step in &plan.steps {
             if options.dry_run {
-                println!("[DRY RUN] Would execute: {}", step.name);
+                tracing::info!("[DRY RUN] Would execute: {}", step.name);
                 completed_steps.push(step.name.clone());
                 continue;
             }
@@ -466,12 +466,12 @@ impl VersionMigrator for StandardVersionMigrator {
 
     async fn rollback(&mut self, plan: &RollbackPlan) -> Result<()> {
         for step in &plan.steps {
-            println!("Rollback: {} - {}", step.name, step.action);
+            tracing::info!("Rollback: {} - {}", step.name, step.action);
             // Implementation would perform rollback
         }
 
         if let Some(ref backup_path) = plan.backup_path {
-            println!("Restoring from backup: {:?}", backup_path);
+            tracing::info!("Restoring from backup: {:?}", backup_path);
             // Implementation would restore backup
         }
 

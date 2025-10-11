@@ -44,6 +44,10 @@ pub struct DiffArgs {
     #[arg(long, short = 'a')]
     pub all: bool,
 
+    /// Show reduction-specific analysis (for comparing database with its reduction profile)
+    #[arg(long, short = 'r')]
+    pub reduction: bool,
+
     /// Output file path for the report
     #[arg(long, short = 'o', value_name = "FILE")]
     pub output: Option<PathBuf>,
@@ -476,7 +480,6 @@ fn parse_time_input(input: &str) -> anyhow::Result<chrono::DateTime<chrono::Utc>
     )
 }
 
-
 /// Run comprehensive database comparison
 fn run_comprehensive_diff(
     args: DiffArgs,
@@ -485,22 +488,48 @@ fn run_comprehensive_diff(
 ) -> anyhow::Result<()> {
     section_header_with_line(&format!(
         "Database Comparison: {} vs {}",
-        args.from,
-        args.to
+        args.from, args.to
     ));
 
     // Check if inputs are database names (format: source/dataset) or paths
     let is_from_dbname = args.from.contains('/') && !args.from.contains('.');
     let is_to_dbname = args.to.contains('/') && !args.to.contains('.');
 
-    let comparison = if is_from_dbname && is_to_dbname {
+    let (comparison, is_reduction_comparison) = if is_from_dbname && is_to_dbname {
         // Both are database names - use DatabaseManager to load manifests
         use talaria_sequoia::database::DatabaseManager;
         use talaria_sequoia::taxonomy::TaxonomyManager;
+        use talaria_utils::database::database_ref::parse_database_reference;
 
         let manager = DatabaseManager::new(None)?;
-        let manifest_a = manager.get_manifest(&args.from)?;
-        let manifest_b = manager.get_manifest(&args.to)?;
+
+        // Parse database references to detect reduction profiles
+        let db_ref_a = parse_database_reference(&args.from)?;
+        let db_ref_b = parse_database_reference(&args.to)?;
+
+        // Check if either side has a reduction profile
+        let has_reduction = db_ref_a.profile.is_some() || db_ref_b.profile.is_some();
+
+        // Load base database names (without profile)
+        let db_name_a = format!("{}/{}", db_ref_a.source, db_ref_a.dataset);
+        let db_name_b = format!("{}/{}", db_ref_b.source, db_ref_b.dataset);
+
+        // Use lightweight version to avoid loading 70M+ chunk indexes
+        let manifest_a = manager.get_manifest_lightweight(&db_name_a)?;
+        let manifest_b = manager.get_manifest_lightweight(&db_name_b)?;
+
+        // Get storage for sequence hash extraction
+        let storage = manager.get_repository().storage.clone();
+
+        // Apply reduction filters if profiles are specified
+        let (manifest_a_filtered, manifest_b_filtered) = apply_reduction_filters(
+            &manager,
+            &db_ref_a,
+            &db_ref_b,
+            manifest_a,
+            manifest_b,
+            &storage,
+        )?;
 
         // Load taxonomy manager for scientific name lookup using unified TaxonomyProvider
         use talaria_utils::taxonomy::{get_taxonomy_tree_path, has_taxonomy};
@@ -511,17 +540,34 @@ fn run_comprehensive_diff(
             None
         };
 
-        DatabaseDiffer::compare_manifests(&manifest_a, &manifest_b, tax_mgr.as_ref())?
+        let comp = DatabaseDiffer::compare_manifests(&manifest_a_filtered, &manifest_b_filtered, Some(&storage), tax_mgr.as_ref())?;
+        (comp, has_reduction)
     } else {
         // At least one is a path - use repository-based comparison
         let differ = DatabaseDiffer::new(&from_path, &to_path)?;
-        differ.compare()?
+        (differ.compare()?, false)
     };
 
     // Display results based on flags
     let show_chunks = args.chunks || args.all || (!args.sequences && !args.taxonomy);
     let show_sequences = args.sequences || args.all;
     let show_taxonomy = args.taxonomy || args.all;
+
+    // For reduction comparisons, show reduction analysis FIRST since it's the meaningful comparison
+    if is_reduction_comparison || args.reduction {
+        println!();
+        info("🔍 Reduction Profile Comparison");
+        info("   This compares a full database with its reduced version.");
+        info("   The reduction keeps only representative sequences (references).");
+        println!();
+        display_reduction_analysis(&args.from, &args.to, &comparison)?;
+
+        println!();
+        info("ℹ️  Storage Analysis (Advanced)");
+        info("   Both databases share the same underlying SEQUOIA storage.");
+        info("   The reduction profile is a metadata layer that selects which sequences to include.");
+        println!();
+    }
 
     if show_chunks {
         display_chunk_analysis(&comparison.chunk_analysis)?;
@@ -565,12 +611,30 @@ fn generate_report(
 
     // Summary metrics
     let summary_metrics = vec![
-        Metric::new("Total Chunks (DB1)", comparison.chunk_analysis.total_chunks_a),
-        Metric::new("Total Chunks (DB2)", comparison.chunk_analysis.total_chunks_b),
-        Metric::new("Shared Chunks", comparison.chunk_analysis.shared_chunks.len()),
-        Metric::new("Total Sequences (DB1)", comparison.sequence_analysis.total_sequences_a),
-        Metric::new("Total Sequences (DB2)", comparison.sequence_analysis.total_sequences_b),
-        Metric::new("Shared Sequences", comparison.sequence_analysis.shared_sequences),
+        Metric::new(
+            "Total Chunks (DB1)",
+            comparison.chunk_analysis.total_chunks_a,
+        ),
+        Metric::new(
+            "Total Chunks (DB2)",
+            comparison.chunk_analysis.total_chunks_b,
+        ),
+        Metric::new(
+            "Shared Chunks",
+            comparison.chunk_analysis.shared_chunks.len(),
+        ),
+        Metric::new(
+            "Total Sequences (DB1)",
+            comparison.sequence_analysis.total_sequences_a,
+        ),
+        Metric::new(
+            "Total Sequences (DB2)",
+            comparison.sequence_analysis.total_sequences_b,
+        ),
+        Metric::new(
+            "Shared Sequences",
+            comparison.sequence_analysis.shared_sequences,
+        ),
     ];
     report = report.section(Section::summary("Summary", summary_metrics));
 
@@ -650,7 +714,9 @@ fn generate_report(
         Cell::new(format_bytes(comparison.storage_metrics.size_a_bytes)),
         Cell::new(format_bytes(comparison.storage_metrics.size_b_bytes)),
     ]);
-    if comparison.storage_metrics.dedup_ratio_a > 0.0 || comparison.storage_metrics.dedup_ratio_b > 0.0 {
+    if comparison.storage_metrics.dedup_ratio_a > 0.0
+        || comparison.storage_metrics.dedup_ratio_b > 0.0
+    {
         storage_table.add_row(vec![
             Cell::new("Deduplication ratio"),
             Cell::new(format!("{:.2}x", comparison.storage_metrics.dedup_ratio_a)),
@@ -783,6 +849,23 @@ fn display_sequence_analysis(analysis: &talaria_sequoia::SequenceAnalysis) -> an
         }
     }
 
+    // Interpretation note
+    println!("\n{} Interpretation:", "ℹ".bright_blue().bold());
+    if analysis.shared_percentage_a < 1.0 && analysis.shared_percentage_b < 1.0 {
+        println!("  {}", "Low sequence sharing is expected when comparing:".dimmed());
+        println!("    {}", "• Clustered databases (UniRef50/90) vs unclustered (SwissProt)".dimmed());
+        println!("    {}", "• Different database sources (UniProt vs NCBI)".dimmed());
+        println!("    {}", "• Databases with different sequence representations".dimmed());
+        println!("\n  {} {}", "→".bright_black(), "UniRef clustering picks longest sequences as representatives,".dimmed());
+        println!("    {}", "so even identical proteins may have different sequences stored.".dimmed());
+    } else if analysis.shared_percentage_a > 80.0 || analysis.shared_percentage_b > 80.0 {
+        println!("  {}", "High sequence sharing detected!".bright_green());
+        println!("    {}", "Content-addressed storage is providing significant deduplication.".dimmed());
+    } else if analysis.shared_percentage_a > 10.0 || analysis.shared_percentage_b > 10.0 {
+        println!("  {}", "Moderate sequence sharing detected.".bright_yellow());
+        println!("    {}", "Some deduplication is occurring across databases.".dimmed());
+    }
+
     Ok(())
 }
 
@@ -884,4 +967,217 @@ fn display_storage_metrics(metrics: &talaria_sequoia::StorageMetrics) -> anyhow:
 
     println!("{}", table);
     Ok(())
+}
+
+/// Display reduction-specific analysis when comparing a database with its reduction profile
+fn display_reduction_analysis(
+    from_name: &str,
+    to_name: &str,
+    _comparison: &talaria_sequoia::DatabaseComparison,
+) -> anyhow::Result<()> {
+    use talaria_sequoia::database::DatabaseManager;
+
+    println!();
+    section_header("Reduction Analysis");
+
+    // Try to detect which one is the reduction profile
+    // Format: "database:profile" or just "database"
+    let (from_db, from_profile) = parse_db_with_profile(from_name);
+    let (to_db, to_profile) = parse_db_with_profile(to_name);
+
+    let (original_db, reduced_profile) = if from_profile.is_some() {
+        (to_db, from_profile)
+    } else if to_profile.is_some() {
+        (from_db, to_profile)
+    } else {
+        // Neither has a profile specified, can't do reduction analysis
+        info("Reduction analysis requires comparing a database with its reduction profile");
+        info("Format: 'database/name:profile' (e.g., 'uniprot/swissprot:auto-detect')");
+        return Ok(());
+    };
+
+    if reduced_profile.is_none() {
+        return Ok(());
+    }
+
+    let profile = reduced_profile.unwrap();
+
+    // Load the reduction manifest
+    let manager = DatabaseManager::new(None)?;
+    let manifest = match load_reduction_manifest(&manager, original_db, profile) {
+        Ok(Some(manifest)) => manifest,
+        Ok(None) => {
+            warning(&format!("Reduction profile '{}' not found for database '{}'", profile, original_db));
+            return Ok(());
+        }
+        Err(e) => {
+            warning(&format!("Failed to load reduction profile: {}", e));
+            return Ok(());
+        }
+    };
+
+    subsection_header("Reduction Overview");
+
+    // Display reduction parameters
+    tree_item(false, "Profile", Some(profile));
+    tree_item(false, "Source Database", Some(original_db));
+    tree_item(false, "Target Aligner", Some(&format!("{:?}", manifest.parameters.target_aligner.unwrap_or(talaria_sequoia::TargetAligner::Lambda))));
+    tree_item(false, "Similarity Threshold", Some(&format!("{:.1}%", manifest.parameters.similarity_threshold * 100.0)));
+    tree_item(true, "Taxonomy Aware", Some(&format!("{}", manifest.parameters.taxonomy_aware)));
+
+    println!();
+    subsection_header("Sequence Breakdown");
+
+    let stats = &manifest.statistics;
+    let mut table = create_standard_table();
+    table.set_header(vec![
+        header_cell("Category"),
+        header_cell("Count"),
+        header_cell("Percentage"),
+        header_cell("Description"),
+    ]);
+
+    table.add_row(vec![
+        "Original sequences",
+        &format_number(stats.original_sequences),
+        &"100.0%".to_string(),
+        &"Total sequences in source database".dimmed().to_string(),
+    ]);
+
+    let ref_pct = (stats.reference_sequences as f64 / stats.original_sequences as f64) * 100.0;
+    table.add_row(vec![
+        "Reference sequences",
+        &format_number(stats.reference_sequences),
+        &format!("{:.1}%", ref_pct),
+        &"Selected as representatives".green().to_string(),
+    ]);
+
+    let child_pct = (stats.child_sequences as f64 / stats.original_sequences as f64) * 100.0;
+    table.add_row(vec![
+        "Delta-encoded sequences",
+        &format_number(stats.child_sequences),
+        &format!("{:.1}%", child_pct),
+        &"Compressed as deltas".blue().to_string(),
+    ]);
+
+    println!("{}", table);
+
+    println!();
+    subsection_header("Storage Efficiency");
+
+    let mut storage_table = create_standard_table();
+    storage_table.set_header(vec![
+        header_cell("Metric"),
+        header_cell("Size"),
+        header_cell("vs Original"),
+    ]);
+
+    storage_table.add_row(vec![
+        "Original size",
+        &format_bytes(stats.original_size as usize),
+        &"100.0%".to_string(),
+    ]);
+
+    let reduced_pct = (stats.reduced_size as f64 / stats.original_size as f64) * 100.0;
+    let savings_pct = 100.0 - reduced_pct;
+    storage_table.add_row(vec![
+        "References only",
+        &format_bytes(stats.reduced_size as usize),
+        &format!("{:.1}% ({:.1}% saved)", reduced_pct, savings_pct).green().to_string(),
+    ]);
+
+    let total_pct = (stats.total_size_with_deltas as f64 / stats.original_size as f64) * 100.0;
+    let total_savings_pct = 100.0 - total_pct;
+    storage_table.add_row(vec![
+        "With delta encoding",
+        &format_bytes(stats.total_size_with_deltas as usize),
+        &format!("{:.1}% ({:.1}% saved)", total_pct, total_savings_pct).cyan().to_string(),
+    ]);
+
+    println!("{}", storage_table);
+
+    println!();
+    subsection_header("Reduction Metrics");
+
+    tree_item(false, "Achieved Reduction Ratio", Some(&format!("{:.2}x", stats.actual_reduction_ratio)));
+    tree_item(false, "Sequence Coverage", Some(&format!("{:.1}%", stats.sequence_coverage)));
+    tree_item(false, "Unique Taxa Covered", Some(&format_number(stats.unique_taxa)));
+    tree_item(true, "Deduplication Ratio", Some(&format!("{:.2}x", stats.deduplication_ratio)));
+
+    // Add visual representation
+    println!();
+    subsection_header("Visual Breakdown");
+
+    let bar_width = 60;
+    let ref_width = ((stats.reference_sequences as f64 / stats.original_sequences as f64) * bar_width as f64) as usize;
+    let delta_width = bar_width - ref_width;
+
+    println!("  References: {}{} {:.1}%",
+        "█".repeat(ref_width).green(),
+        "░".repeat(delta_width).dimmed(),
+        ref_pct
+    );
+    println!("  Deltas:     {}{} {:.1}%",
+        "░".repeat(ref_width).dimmed(),
+        "█".repeat(delta_width).blue(),
+        child_pct
+    );
+
+    println!();
+
+    Ok(())
+}
+
+/// Apply reduction filters - for reduction profiles, leave manifests as-is
+/// The reduction creates separate chunks not in SEQUOIA storage, so we can't filter
+/// Instead, the reduction analysis section shows the meaningful comparison
+fn apply_reduction_filters(
+    _manager: &talaria_sequoia::database::DatabaseManager,
+    _db_ref_a: &talaria_core::types::DatabaseReference,
+    _db_ref_b: &talaria_core::types::DatabaseReference,
+    manifest_a: talaria_sequoia::TemporalManifest,
+    manifest_b: talaria_sequoia::TemporalManifest,
+    _storage: &talaria_sequoia::storage::SequoiaStorage,
+) -> anyhow::Result<(talaria_sequoia::TemporalManifest, talaria_sequoia::TemporalManifest)> {
+    // Don't filter - reduction chunks aren't in SEQUOIA storage
+    // The meaningful comparison is in the Reduction Analysis section
+    Ok((manifest_a, manifest_b))
+}
+
+/// Parse database spec with optional profile (format: "database/name:profile")
+fn parse_db_with_profile(spec: &str) -> (&str, Option<&str>) {
+    if let Some(colon_pos) = spec.rfind(':') {
+        // Check if this looks like a profile (not a path with C:/ etc)
+        if colon_pos > 1 && !spec.starts_with("C:") && !spec.starts_with("D:") {
+            let db = &spec[..colon_pos];
+            let profile = &spec[colon_pos + 1..];
+            return (db, Some(profile));
+        }
+    }
+    (spec, None)
+}
+
+/// Load a reduction manifest for a database and profile
+fn load_reduction_manifest(
+    manager: &talaria_sequoia::database::DatabaseManager,
+    db_name: &str,
+    profile: &str,
+) -> anyhow::Result<Option<talaria_sequoia::operations::ReductionManifest>> {
+    // Parse database name (format: source/dataset)
+    let parts: Vec<&str> = db_name.split('/').collect();
+    if parts.len() != 2 {
+        anyhow::bail!("Invalid database name format. Expected 'source/dataset'");
+    }
+
+    let source = parts[0];
+    let dataset = parts[1];
+
+    // Get the current version for this database
+    let databases = manager.list_databases()?;
+    let db_info = databases.iter().find(|db| db.name == db_name)
+        .ok_or_else(|| anyhow::anyhow!("Database '{}' not found", db_name))?;
+
+    // Load the reduction manifest
+    let storage = &manager.get_repository().storage;
+    storage.get_database_reduction_by_profile(source, dataset, &db_info.version, profile)
 }

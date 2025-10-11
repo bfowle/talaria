@@ -33,7 +33,7 @@ impl<'a> SequoiaVerifier<'a> {
             match self.verify_chunk(&chunk_meta.hash) {
                 Ok(_) => chunks_verified += 1,
                 Err(e) => {
-                    eprintln!("Chunk {} verification failed: {}", chunk_meta.hash, e);
+                    tracing::info!("Chunk {} verification failed: {}", chunk_meta.hash, e);
                     invalid_chunks.push(chunk_meta.hash.to_hex());
                 }
             }
@@ -81,7 +81,7 @@ impl<'a> SequoiaVerifier<'a> {
         // Check sequence root
         if let Some(computed_root) = dag.root_hash() {
             if computed_root != self.manifest.sequence_root {
-                eprintln!(
+                tracing::info!(
                     "Sequence root mismatch: expected {}, got {}",
                     self.manifest.sequence_root, computed_root
                 );
@@ -100,7 +100,7 @@ impl<'a> SequoiaVerifier<'a> {
             if !tax_hashes.is_empty() {
                 let computed_tax_root = self.compute_taxonomy_root(tax_hashes)?;
                 if computed_tax_root != self.manifest.taxonomy_root {
-                    eprintln!(
+                    tracing::info!(
                         "Taxonomy root mismatch: expected {}, got {}",
                         self.manifest.taxonomy_root, computed_tax_root
                     );
@@ -170,7 +170,7 @@ impl<'a> SequoiaVerifier<'a> {
             // For now, we just verify the signature format is valid
             // In production, this would verify against a public key
             if attestation.signature.len() != 64 {
-                eprintln!("Invalid signature length: {}", attestation.signature.len());
+                tracing::info!("Invalid signature length: {}", attestation.signature.len());
                 return Ok(false);
             }
 
@@ -194,7 +194,7 @@ impl<'a> SequoiaVerifier<'a> {
                     // Signature is valid
                 }
                 Err(_) => {
-                    eprintln!("Invalid signature for authority: {}", attestation.authority);
+                    tracing::info!("Invalid signature for authority: {}", attestation.authority);
                     return Ok(false);
                 }
             }
@@ -282,7 +282,7 @@ impl<'a> SequoiaVerifier<'a> {
 
         let orphan_count = orphaned.len();
         if orphan_count > 0 {
-            eprintln!(
+            tracing::info!(
                 "Warning: {} potential orphaned chunks in storage",
                 orphan_count
             );
@@ -322,7 +322,7 @@ impl<'a> SequoiaVerifier<'a> {
         let taxonomy = crate::taxonomy::TaxonomyManager::new(&self.storage.base_path)?;
 
         if !taxonomy.has_taxonomy() {
-            eprintln!("Warning: No taxonomy loaded, skipping consistency checks");
+            tracing::info!("Warning: No taxonomy loaded, skipping consistency checks");
             return Ok(());
         }
 
@@ -347,14 +347,14 @@ impl<'a> SequoiaVerifier<'a> {
         }
 
         if !invalid_taxids.is_empty() {
-            eprintln!(
+            tracing::info!(
                 "Found {} invalid taxon IDs out of {} checked",
                 invalid_taxids.len(),
                 checked_count
             );
             // Log first few invalid IDs
             for (i, taxid) in invalid_taxids.iter().take(10).enumerate() {
-                eprintln!("  [{}] Invalid taxon ID: {}", i + 1, taxid);
+                tracing::info!("  [{}] Invalid taxon ID: {}", i + 1, taxid);
             }
         }
 
@@ -363,7 +363,7 @@ impl<'a> SequoiaVerifier<'a> {
         if self.manifest.taxonomy_root != expected_tax_root
             && self.manifest.taxonomy_root != SHA256Hash::zero()
         {
-            eprintln!("Warning: Manifest taxonomy root doesn't match current taxonomy");
+            tracing::info!("Warning: Manifest taxonomy root doesn't match current taxonomy");
         }
 
         Ok(())
@@ -646,7 +646,7 @@ impl<'a> BatchVerifier<'a> {
                     .verify_chunk(hash)
                     .map(|_| (hash.clone(), true))
                     .unwrap_or_else(|e| {
-                        eprintln!("Verification failed for chunk {}: {}", hash, e);
+                        tracing::info!("Verification failed for chunk {}: {}", hash, e);
                         (hash.clone(), false)
                     })
             })

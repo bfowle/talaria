@@ -6,9 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::Arc;
 
-// TODO: Update when talaria-sequoia is extracted
-// use talaria_sequoia::types::{ChunkMetadata, SHA256Hash, TaxonId};
-use crate::core::types::{ChunkMetadata, SHA256Hash, TaxonId};
+use talaria_core::types::{ChunkMetadata, SHA256Hash, TaxonId};
 
 /// Query options for chunk searches
 #[derive(Debug, Clone, Default)]

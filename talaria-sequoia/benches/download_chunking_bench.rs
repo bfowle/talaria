@@ -17,13 +17,13 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
 use talaria_bio::sequence::Sequence;
-use talaria_test::fixtures::test_database_source;
 use talaria_sequoia::{
     chunker::{ChunkingStrategy, TaxonomicChunker},
     database::DatabaseManager,
     download::DatabaseSource,
     storage::SequenceStorage,
 };
+use talaria_test::fixtures::test_database_source;
 use tempfile::{NamedTempFile, TempDir};
 
 /// Generate a test FASTA file with specified number of sequences

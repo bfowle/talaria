@@ -1,6 +1,7 @@
 use crate::cli::formatting::output::*;
 use clap::Args;
 use std::path::PathBuf;
+use talaria_sequoia::SequoiaRepository;
 
 #[derive(Args)]
 pub struct ReconstructArgs {
@@ -313,8 +314,8 @@ pub fn run(args: ReconstructArgs) -> anyhow::Result<()> {
 
     // Generate report if requested
     if let Some(report_path) = &args.report_output {
-        use talaria_sequoia::operations::ReconstructionResult;
         use std::time::Duration;
+        use talaria_sequoia::operations::ReconstructionResult;
 
         // Track which sequences failed (if any)
         let failed_sequences: Vec<String> = if !requested_sequences.is_empty() {
@@ -392,8 +393,12 @@ fn reconstruct_from_sequoia(
         paths::talaria_databases_dir()
     });
 
-    // Open SEQUOIA storage
+    // Open SEQUOIA storage and database manager
     let storage = SequoiaStorage::open(&sequoia_path)?;
+
+    // Need DatabaseManager to get version information
+    use talaria_sequoia::database::DatabaseManager;
+    let manager = DatabaseManager::new(Some(sequoia_path.to_string_lossy().to_string()))?;
 
     // Parse profile to extract database info if present (format: source/dataset:profile or just profile)
     let (source, dataset, profile_name) = if profile.contains('/') && profile.contains(':') {
@@ -425,9 +430,17 @@ fn reconstruct_from_sequoia(
         ));
     };
 
+    // Get database info to retrieve version
+    let db_name = format!("{}/{}", source, dataset);
+    let databases = manager.list_databases()?;
+    let db_info = databases
+        .iter()
+        .find(|db| db.name == db_name)
+        .ok_or_else(|| anyhow::anyhow!("Database '{}' not found", db_name))?;
+
     // Load reduction manifest by profile
     let manifest = storage
-        .get_database_reduction_by_profile(source, dataset, profile_name)?
+        .get_database_reduction_by_profile(source, dataset, &db_info.version, profile_name)?
         .ok_or_else(|| {
             anyhow::anyhow!(
                 "Profile '{}' not found for database '{}/{}'",
@@ -687,8 +700,10 @@ fn show_version_history(args: &ReconstructArgs) -> anyhow::Result<()> {
         .clone()
         .unwrap_or_else(paths::talaria_databases_dir);
 
-    // Load temporal index
-    let temporal_index = TemporalIndex::new(&sequoia_path)?;
+    // Load temporal index - need to open storage first to get RocksDB
+    let repository = SequoiaRepository::open(&sequoia_path)?;
+    let rocksdb = repository.storage.sequence_storage.get_rocksdb();
+    let temporal_index = TemporalIndex::load(&sequoia_path, rocksdb)?;
 
     // Get version history
     let history = temporal_index.get_version_history(20)?;
@@ -753,6 +768,8 @@ mod tests {
             sequence_version: None,
             taxonomy_version: None,
             show_versions: false,
+            report_format: "text".to_string(),
+            report_output: None,
         };
 
         assert_eq!(
@@ -891,6 +908,8 @@ mod tests {
             sequence_version: None,
             taxonomy_version: None,
             show_versions: false,
+            report_format: "text".to_string(),
+            report_output: None,
         };
 
         let args_without_delta = ReconstructArgs {
@@ -906,6 +925,8 @@ mod tests {
             sequence_version: None,
             taxonomy_version: None,
             show_versions: false,
+            report_format: "text".to_string(),
+            report_output: None,
         };
 
         // With delta file - standard reconstruction
@@ -944,6 +965,8 @@ mod tests {
             sequence_version: None,
             taxonomy_version: None,
             show_versions: false,
+            report_format: "text".to_string(),
+            report_output: None,
         };
 
         let args_verify = ReconstructArgs {
@@ -959,6 +982,8 @@ mod tests {
             sequence_version: None,
             taxonomy_version: None,
             show_versions: false,
+            report_format: "text".to_string(),
+            report_output: None,
         };
 
         assert!(args_list_only.list_only);

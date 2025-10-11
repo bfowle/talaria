@@ -179,7 +179,7 @@ impl ChunkClient {
 
     /// Build URL for a specific chunk
     fn build_chunk_url(&self, hash: &SHA256Hash) -> Result<String> {
-        let hash_str = hash.to_string();
+        let hash_str = hash.to_hex(); // Use full hex, not truncated Display
 
         // Use first 2 chars as prefix for sharding (like git)
         let prefix = &hash_str[..2];
@@ -388,6 +388,7 @@ mod tests {
         .unwrap();
         let url = client.build_chunk_url(&hash).unwrap();
 
+        // URL format: {base}/chunks/{first_2_chars}/{remaining_62_chars}
         assert_eq!(url, "https://example.com/repo/chunks/ab/cdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890");
     }
 }

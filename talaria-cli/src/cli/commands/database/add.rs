@@ -55,7 +55,7 @@ pub struct AddArgs {
 
 pub fn run(args: AddArgs) -> anyhow::Result<()> {
     use crate::cli::formatting::output::*;
-    use crate::cli::progress::{create_progress_bar, create_spinner};
+    use crate::cli::progress::create_progress_bar;
     use chrono::Utc;
     use std::sync::Arc;
     use talaria_bio::parse_fasta;
@@ -124,6 +124,82 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     // Create directories
     std::fs::create_dir_all(&db_path)?;
 
+    // Determine database source enum
+    // Extract just the database name from dataset (handles "uniprot/uniref50" → "uniref50")
+    let db_type = dataset.split('/').last().unwrap_or(&dataset);
+
+    let database_source_enum = if args.source == "custom" {
+        DatabaseSource::Custom(dataset.clone())
+    } else if args.source == "uniprot" {
+        // Parse the dataset name to determine which UniProt database
+        match db_type.to_lowercase().as_str() {
+            "swissprot" => DatabaseSource::UniProt(UniProtDatabase::SwissProt),
+            "trembl" => DatabaseSource::UniProt(UniProtDatabase::TrEMBL),
+            "uniref50" => DatabaseSource::UniProt(UniProtDatabase::UniRef50),
+            "uniref90" => DatabaseSource::UniProt(UniProtDatabase::UniRef90),
+            "uniref100" => DatabaseSource::UniProt(UniProtDatabase::UniRef100),
+            _ => {
+                eprintln!("Warning: Unknown UniProt database '{}', defaulting to SwissProt", db_type);
+                DatabaseSource::UniProt(UniProtDatabase::SwissProt)
+            }
+        }
+    } else if args.source == "ncbi" {
+        DatabaseSource::NCBI(NCBIDatabase::NR)
+    } else {
+        DatabaseSource::Custom(format!("{}/{}", args.source, dataset))
+    };
+
+    // Check taxonomy prerequisites
+    use talaria_sequoia::taxonomy::TaxonomyPrerequisites;
+    let prereqs = TaxonomyPrerequisites::new();
+    prereqs.display_status();
+
+    if args.download_prerequisites {
+        prereqs.ensure_prerequisites(true)?;
+    }
+
+    // Check file size to determine processing path
+    let file_size = std::fs::metadata(&args.input)?.len();
+    const STREAMING_THRESHOLD: u64 = 1_000_000_000; // 1GB
+
+    if file_size > STREAMING_THRESHOLD {
+        // LARGE FILE PATH: Use streaming mode to avoid OOM
+        action(&format!(
+            "Large file detected ({:.2} GB), using streaming mode...",
+            file_size as f64 / 1_073_741_824.0
+        ));
+        println!();
+
+        // Create progress callback
+        let progress_callback = |msg: &str| {
+            action(msg);
+        };
+
+        // Use manager.chunk_database() which automatically handles:
+        // 1. Streaming processing (no OOM!)
+        // 2. Automatic deduplication
+        // 3. Manifest storage
+        let mut manager_mut = manager;
+        manager_mut.chunk_database(
+            &args.input,
+            &database_source_enum,
+            Some(&progress_callback)
+        )?;
+
+        // Flush storage
+        manager_mut.get_repository().storage.sequence_storage.flush()?;
+
+        println!();
+        success(&format!(
+            "Large file processed successfully using streaming mode (avoided OOM)"
+        ));
+        println!();
+        info("Note: Use 'database list' to see the stored database");
+
+        return Ok(());
+    }
+
+    // SMALL FILE PATH: Use original in-memory path with detailed stats
     // Read FASTA file
     action(&format!("Reading FASTA file: {:?}", args.input));
     let sequences = parse_fasta(&args.input)?;
@@ -140,25 +216,7 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
         Some(&format_number(sequence_count)),
     );
 
-    // Check taxonomy prerequisites
-    use talaria_sequoia::taxonomy::TaxonomyPrerequisites;
-    let prereqs = TaxonomyPrerequisites::new();
-    prereqs.display_status();
-
-    if args.download_prerequisites {
-        prereqs.ensure_prerequisites(true)?;
-    }
-
     // Create chunker with sequence storage
-    let database_source_enum = if args.source == "custom" {
-        DatabaseSource::Custom(dataset.clone())
-    } else if args.source == "uniprot" {
-        DatabaseSource::UniProt(UniProtDatabase::SwissProt)
-    } else if args.source == "ncbi" {
-        DatabaseSource::NCBI(NCBIDatabase::NR)
-    } else {
-        DatabaseSource::Custom(format!("{}/{}", args.source, dataset))
-    };
     let strategy = ChunkingStrategy::default();
     let mut chunker =
         TaxonomicChunker::new(strategy, sequence_storage, database_source_enum.clone());
@@ -167,13 +225,23 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     action("Processing sequences with deduplication...");
     println!();
 
-    // Track deduplication in real-time
-    let spinner = create_spinner("Storing canonical sequences...");
+    // Create progress bar for sequence processing
+    let pb = create_progress_bar(sequence_count as u64, "Processing sequences");
+    let pb_clone = pb.clone();
 
-    // Process sequences with automatic deduplication
-    let chunk_manifests = chunker.chunk_sequences_canonical(sequences)?;
+    // Create progress callback to update the UI
+    let progress_callback = Box::new(move |count: usize, msg: &str| {
+        pb_clone.set_position(count as u64);
+        pb_clone.set_message(msg.to_string());
+    });
 
-    spinner.finish_and_clear();
+    // Process sequences with automatic deduplication and progress tracking
+    let chunk_manifests = chunker.chunk_sequences_canonical_with_progress(
+        sequences,
+        Some(progress_callback)
+    )?;
+
+    pb.finish_and_clear();
 
     // IMPORTANT: Flush sequence storage after processing
     // This ensures the packed storage index is persisted to disk
@@ -298,14 +366,25 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
         previous_version: None,
     };
 
-    // Save manifest in Talaria format in the version directory
-    let manifest_path_tal = db_path.join("manifest.tal");
-    let mut tal_content = Vec::with_capacity(TALARIA_MAGIC.len() + 1024 * 512);
-    tal_content.extend_from_slice(TALARIA_MAGIC);
-    tal_content.extend_from_slice(&rmp_serde::to_vec(&temporal_manifest)?);
-    std::fs::write(&manifest_path_tal, &tal_content)?;
+    // Save manifest to RocksDB using shared function (NO filesystem writes)
+    let chunk_count = temporal_manifest.chunk_index.len();
+    let sequence_count = temporal_manifest.chunk_index.iter().map(|c| c.sequence_count).sum();
+    let total_size = temporal_manifest.chunk_index.iter().map(|c| c.size).sum();
 
-    // Create symlink for "current" version
+    manager.save_manifest_to_repository(
+        &args.source,
+        &dataset,
+        &version,
+        &temporal_manifest,
+        chunk_count,
+        sequence_count,
+        total_size,
+    )?;
+
+    // Flush RocksDB to ensure data is persisted
+    manager.get_repository().storage.sequence_storage.get_rocksdb().flush()?;
+
+    // Create symlink for "current" version (legacy filesystem)
     let current_link = db_base.join("current");
     if current_link.exists() {
         std::fs::remove_file(&current_link).ok();
@@ -382,10 +461,13 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
 
 // Helper function to load taxonomy mappings using unified TaxonomyProvider
 fn load_taxonomy_mappings() -> anyhow::Result<HashMap<String, talaria_sequoia::TaxonId>> {
-    use talaria_utils::taxonomy::{load_taxonomy_mappings as load_mappings, TaxonomyMappingSource};
+    use talaria_utils::taxonomy::{
+        load_taxonomy_mappings_with_fallback, TaxonomyMappingSource,
+    };
 
-    // Use NCBI mappings for the add command (most common case)
-    let mappings: HashMap<String, u32> = load_mappings(TaxonomyMappingSource::NCBI)?;
+    // Prefer NCBI mappings for the add command, but fallback to UniProt if needed
+    let mappings: HashMap<String, u32> =
+        load_taxonomy_mappings_with_fallback(TaxonomyMappingSource::NCBI)?;
 
     // Convert to TaxonId type
     Ok(mappings

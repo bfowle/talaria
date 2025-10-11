@@ -464,11 +464,8 @@ fn build_chunk_index_for_version(
     database: Option<&str>,
     version: Option<&str>,
 ) -> Result<ChunkIndex> {
-    use glob::glob;
-    use talaria_core::system::paths;
-    use talaria_sequoia::Manifest;
+    use talaria_sequoia::database::DatabaseManager;
 
-    let databases_dir = paths::talaria_databases_dir();
     action(&format!(
         "Building chunk index for {}@{}...",
         database.unwrap_or("*"),
@@ -482,114 +479,70 @@ fn build_chunk_index_for_version(
         by_database: std::collections::HashMap::new(),
     };
 
-    // Build specific pattern for version lookup
-    let patterns = if let (Some(db), Some(ver)) = (database, version) {
-        // Parse database into provider/name
-        let parts: Vec<&str> = db.split('/').collect();
-        if parts.len() == 2 {
-            vec![
-                format!(
-                    "{}/versions/{}/{}/{}/manifest.tal",
-                    databases_dir.display(),
-                    parts[0],
-                    parts[1],
-                    ver
-                ),
-                format!(
-                    "{}/versions/{}/{}/{}/manifest.json",
-                    databases_dir.display(),
-                    parts[0],
-                    parts[1],
-                    ver
-                ),
-            ]
-        } else {
-            // Try to find it in any provider
-            vec![
-                format!(
-                    "{}/versions/*/{}/{}/manifest.tal",
-                    databases_dir.display(),
-                    db,
-                    ver
-                ),
-                format!(
-                    "{}/versions/*/{}/{}/manifest.json",
-                    databases_dir.display(),
-                    db,
-                    ver
-                ),
-            ]
-        }
-    } else {
-        // Should not happen, but handle gracefully
+    // If no specific version requested, use default index
+    if database.is_none() || version.is_none() {
         return build_chunk_index();
-    };
+    }
 
-    for pattern in &patterns {
-        if let Ok(paths) = glob(pattern) {
-            for path in paths.flatten() {
-                // Try to load the manifest
-                match Manifest::load_file(&path) {
-                    Ok(manifest) => {
-                        // Get database name from path
-                        let database_name = extract_database_name(&path);
+    let db = database.unwrap();
+    let ver = version.unwrap();
 
-                        // Process chunks from manifest
-                        if let Some(temporal_manifest) = manifest.get_data() {
-                            for chunk_meta in &temporal_manifest.chunk_index {
-                                // Create ChunkInfo from metadata
-                                let chunk_info = ChunkDisplayInfo {
-                                    hash: chunk_meta.hash.clone(),
-                                    database: database_name.clone(),
-                                    version: temporal_manifest.version.clone(),
-                                    taxonomy: extract_taxonomy_info(chunk_meta),
-                                    sequence_count: chunk_meta.sequence_count,
-                                    size: chunk_meta.size as u64,
-                                    compressed_size: chunk_meta
-                                        .compressed_size
-                                        .unwrap_or(chunk_meta.size)
-                                        as u64,
-                                    compression_ratio: if let Some(compressed) =
-                                        chunk_meta.compressed_size
-                                    {
-                                        chunk_meta.size as f32 / compressed as f32
-                                    } else {
-                                        1.0
-                                    },
-                                    reference_sequences: Vec::new(), // Not available in ManifestMetadata
-                                    created_at: temporal_manifest.created_at.to_rfc3339(),
-                                };
+    // Open DatabaseManager to access RocksDB manifests
+    let manager = DatabaseManager::new(None)?;
+    let rocksdb = manager.get_repository().storage.sequence_storage.get_rocksdb();
 
-                                // Index by hash
-                                let hash = chunk_meta.hash.clone();
-                                index.by_hash.insert(hash.clone(), chunk_info.clone());
+    // Query specific version from RocksDB
+    let manifest_key = format!("manifest:{}:{}", db, ver);
 
-                                // Index by database
-                                index
-                                    .by_database
-                                    .entry(database_name.clone())
-                                    .or_default()
-                                    .insert(hash.clone());
+    if let Some(manifest_bytes) = rocksdb.get_manifest(&manifest_key)? {
+        // Deserialize manifest
+        let temporal_manifest: talaria_sequoia::TemporalManifest =
+            bincode::deserialize(&manifest_bytes)?;
 
-                                // Index by taxonomy
-                                for tax_info in &chunk_info.taxonomy {
-                                    index
-                                        .by_taxid
-                                        .entry(tax_info.taxid)
-                                        .or_default()
-                                        .push(hash.clone());
-                                }
+        // Process chunks from manifest
+        for chunk_meta in &temporal_manifest.chunk_index {
+            // Create ChunkInfo from metadata
+            let chunk_info = ChunkDisplayInfo {
+                hash: chunk_meta.hash.clone(),
+                database: db.to_string(),
+                version: temporal_manifest.version.clone(),
+                taxonomy: extract_taxonomy_info(chunk_meta),
+                sequence_count: chunk_meta.sequence_count,
+                size: chunk_meta.size as u64,
+                compressed_size: chunk_meta
+                    .compressed_size
+                    .unwrap_or(chunk_meta.size)
+                    as u64,
+                compression_ratio: if let Some(compressed) = chunk_meta.compressed_size {
+                    chunk_meta.size as f32 / compressed as f32
+                } else {
+                    1.0
+                },
+                reference_sequences: Vec::new(), // Not available in ManifestMetadata
+                created_at: temporal_manifest.created_at.to_rfc3339(),
+            };
 
-                                // Note: Accession indexing would require loading full chunk data
-                            }
-                        }
-                    }
-                    Err(_) => {
-                        // Skip manifests we can't read
-                        continue;
-                    }
-                }
+            // Index by hash
+            let hash = chunk_meta.hash.clone();
+            index.by_hash.insert(hash.clone(), chunk_info.clone());
+
+            // Index by database
+            index
+                .by_database
+                .entry(db.to_string())
+                .or_default()
+                .insert(hash.clone());
+
+            // Index by taxonomy
+            for tax_info in &chunk_info.taxonomy {
+                index
+                    .by_taxid
+                    .entry(tax_info.taxid)
+                    .or_default()
+                    .push(hash.clone());
             }
+
+            // Note: Accession indexing would require loading full chunk data
         }
     }
 
@@ -597,12 +550,9 @@ fn build_chunk_index_for_version(
 }
 
 fn build_chunk_index() -> Result<ChunkIndex> {
-    use glob::glob;
-    use talaria_core::system::paths;
-    use talaria_sequoia::Manifest;
+    use talaria_sequoia::database::DatabaseManager;
 
-    let databases_dir = paths::talaria_databases_dir();
-    action("Building chunk index from local manifests...");
+    action("Building chunk index from RocksDB...");
 
     let mut index = ChunkIndex {
         by_hash: std::collections::HashMap::new(),
@@ -611,83 +561,72 @@ fn build_chunk_index() -> Result<ChunkIndex> {
         by_database: std::collections::HashMap::new(),
     };
 
-    // Find manifest files only in current versions
-    // Pattern for versioned databases: versions/{provider}/{db}/current/manifest.*
-    let pattern1 = format!(
-        "{}/versions/*/*/current/manifest.tal",
-        databases_dir.display()
-    );
-    let pattern2 = format!(
-        "{}/versions/*/*/current/manifest.json",
-        databases_dir.display()
-    );
-    // Also check taxonomy directory (no versioning)
-    let pattern3 = format!("{}/taxonomy/*/manifest.tal", databases_dir.display());
-    let pattern4 = format!("{}/taxonomy/*/manifest.json", databases_dir.display());
+    // Open DatabaseManager to access RocksDB manifests
+    let manager = DatabaseManager::new(None)?;
+    let databases = manager.list_databases()?;
 
-    for pattern in &[pattern1, pattern2, pattern3, pattern4] {
-        if let Ok(paths) = glob(pattern) {
-            for path in paths.flatten() {
-                // Try to load the manifest
-                match Manifest::load_file(&path) {
-                    Ok(manifest) => {
-                        // Get database name from path
-                        let database_name = extract_database_name(&path);
+    // Process each database's manifest from RocksDB
+    for db_info in databases {
+        // Get the manifest for this database from RocksDB
+        let rocksdb = manager.get_repository().storage.sequence_storage.get_rocksdb();
 
-                        // Process chunks from manifest
-                        if let Some(temporal_manifest) = manifest.get_data() {
-                            for chunk_meta in &temporal_manifest.chunk_index {
-                                // Create ChunkInfo from metadata
-                                let chunk_info = ChunkDisplayInfo {
-                                    hash: chunk_meta.hash.clone(),
-                                    database: database_name.clone(),
-                                    version: temporal_manifest.version.clone(),
-                                    taxonomy: extract_taxonomy_info(chunk_meta),
-                                    sequence_count: chunk_meta.sequence_count,
-                                    size: chunk_meta.size as u64,
-                                    compressed_size: chunk_meta
-                                        .compressed_size
-                                        .unwrap_or(chunk_meta.size)
-                                        as u64,
-                                    compression_ratio: if let Some(compressed) =
-                                        chunk_meta.compressed_size
-                                    {
-                                        chunk_meta.size as f32 / compressed as f32
-                                    } else {
-                                        1.0
-                                    },
-                                    reference_sequences: Vec::new(), // Not available in ManifestMetadata
-                                    created_at: temporal_manifest.created_at.to_rfc3339(),
-                                };
+        // Try to get current version manifest
+        let alias_key = format!("alias:{}:current", db_info.name);
+        if let Some(version_bytes) = rocksdb.get_manifest(&alias_key)? {
+            let version = String::from_utf8(version_bytes)?;
+            let manifest_key = format!("manifest:{}:{}", db_info.name, version);
 
-                                // Index by hash
-                                let hash = chunk_meta.hash.clone();
-                                index.by_hash.insert(hash.clone(), chunk_info.clone());
+            if let Some(manifest_bytes) = rocksdb.get_manifest(&manifest_key)? {
+                // Deserialize manifest
+                let temporal_manifest: talaria_sequoia::TemporalManifest =
+                    bincode::deserialize(&manifest_bytes)?;
 
-                                // Index by database (use HashSet to avoid duplicates)
-                                index
-                                    .by_database
-                                    .entry(database_name.clone())
-                                    .or_default()
-                                    .insert(hash.clone());
+                // Process chunks from manifest
+                for chunk_meta in &temporal_manifest.chunk_index {
+                    // Create ChunkInfo from metadata
+                    let chunk_info = ChunkDisplayInfo {
+                        hash: chunk_meta.hash.clone(),
+                        database: db_info.name.clone(),
+                        version: temporal_manifest.version.clone(),
+                        taxonomy: extract_taxonomy_info(chunk_meta),
+                        sequence_count: chunk_meta.sequence_count,
+                        size: chunk_meta.size as u64,
+                        compressed_size: chunk_meta
+                            .compressed_size
+                            .unwrap_or(chunk_meta.size)
+                            as u64,
+                        compression_ratio: if let Some(compressed) =
+                            chunk_meta.compressed_size
+                        {
+                            chunk_meta.size as f32 / compressed as f32
+                        } else {
+                            1.0
+                        },
+                        reference_sequences: Vec::new(), // Not available in ManifestMetadata
+                        created_at: temporal_manifest.created_at.to_rfc3339(),
+                    };
 
-                                // Index by taxonomy
-                                for tax_info in &chunk_info.taxonomy {
-                                    index
-                                        .by_taxid
-                                        .entry(tax_info.taxid)
-                                        .or_default()
-                                        .push(hash.clone());
-                                }
+                    // Index by hash
+                    let hash = chunk_meta.hash.clone();
+                    index.by_hash.insert(hash.clone(), chunk_info.clone());
 
-                                // Note: Accession indexing would require loading full chunk data
-                            }
-                        }
+                    // Index by database (use HashSet to avoid duplicates)
+                    index
+                        .by_database
+                        .entry(db_info.name.clone())
+                        .or_default()
+                        .insert(hash.clone());
+
+                    // Index by taxonomy
+                    for tax_info in &chunk_info.taxonomy {
+                        index
+                            .by_taxid
+                            .entry(tax_info.taxid)
+                            .or_default()
+                            .push(hash.clone());
                     }
-                    Err(_) => {
-                        // Skip manifests we can't read
-                        continue;
-                    }
+
+                    // Note: Accession indexing would require loading full chunk data
                 }
             }
         }
@@ -696,33 +635,7 @@ fn build_chunk_index() -> Result<ChunkIndex> {
     Ok(index)
 }
 
-fn extract_database_name(path: &std::path::Path) -> String {
-    // Extract database name from path like ~/.talaria/databases/versions/custom/cholera/20250918_040507/manifest.tal
-    let components: Vec<_> = path.components().collect();
-
-    for (i, comp) in components.iter().enumerate() {
-        if comp.as_os_str() == "databases" {
-            // Look for pattern after databases/
-            if i + 2 < components.len() {
-                if let Some(db_type) = components[i + 1].as_os_str().to_str() {
-                    if db_type == "versions" && i + 3 < components.len() {
-                        // databases/versions/{provider}/{database}
-                        if let (Some(provider), Some(db_name)) = (
-                            components[i + 2].as_os_str().to_str(),
-                            components[i + 3].as_os_str().to_str(),
-                        ) {
-                            return format!("{}/{}", provider, db_name);
-                        }
-                    } else if db_type == "taxonomy" {
-                        return "taxonomy".to_string();
-                    }
-                }
-            }
-        }
-    }
-
-    "unknown".to_string()
-}
+// Removed: extract_database_name() - no longer needed as we query RocksDB directly
 
 fn extract_taxonomy_info(chunk_meta: &talaria_sequoia::ManifestMetadata) -> Vec<TaxonomyInfo> {
     let mut taxonomy = Vec::new();

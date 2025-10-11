@@ -93,15 +93,16 @@ pub fn run(args: HistoryArgs) -> Result<()> {
         let _ = manager.init_temporal_for_existing();
     }
 
-    // Get temporal index
-    let temporal_index = TemporalIndex::load(&sequoia_path)?;
+    // Get temporal index (reuse RocksDB from repository)
+    let rocksdb = repository.storage.sequence_storage.get_rocksdb();
+    let temporal_index = TemporalIndex::load(&sequoia_path, rocksdb)?;
     spinner.finish_and_clear();
 
     // Use new generic framework or legacy format handling
     if args.report_output.is_some() {
         // Use new generic framework
-        use talaria_sequoia::operations::{HistoryResult, VersionHistoryEntry};
         use std::time::Duration;
+        use talaria_sequoia::operations::{HistoryResult, VersionHistoryEntry};
 
         // Get version history
         let history = temporal_index.get_version_history(args.limit)?;
@@ -144,11 +145,15 @@ pub fn run(args: HistoryArgs) -> Result<()> {
             duration: Duration::from_secs(0), // TODO: Track actual duration
         };
 
-        let report_path = args.report_output.as_ref().or(args.output.as_ref()).unwrap();
+        let report_path = args
+            .report_output
+            .as_ref()
+            .or(args.output.as_ref())
+            .unwrap();
         crate::cli::commands::save_report(&result, &args.report_format, report_path)?;
         success(&format!("Report saved to {}", report_path.display()));
     } else {
-        // Use legacy format handling for backward compatibility
+        // Use standard format handling
         let report = match args.format.as_str() {
             "json" => generate_json_report(&temporal_index, &repository, &args)?,
             "markdown" | "md" => generate_markdown_report(&temporal_index, &repository, &args)?,

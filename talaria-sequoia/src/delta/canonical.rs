@@ -144,16 +144,21 @@ impl MyersDeltaCompressor {
                 let k_idx = (k + offset as isize) as usize;
 
                 // Determine the starting x position
-                let mut x = if k == -(d as isize) || (k != d as isize && v[k_idx - 1] < v[k_idx + 1]) {
-                    v[k_idx + 1]
-                } else {
-                    v[k_idx - 1] + 1
-                };
+                let mut x =
+                    if k == -(d as isize) || (k != d as isize && v[k_idx - 1] < v[k_idx + 1]) {
+                        v[k_idx + 1]
+                    } else {
+                        v[k_idx - 1] + 1
+                    };
 
                 let mut y = x - k;
 
                 // Extend along diagonal as far as possible
-                while (x as usize) < n && (y as usize) < m && y >= 0 && a[x as usize] == b[y as usize] {
+                while (x as usize) < n
+                    && (y as usize) < m
+                    && y >= 0
+                    && a[x as usize] == b[y as usize]
+                {
                     x += 1;
                     y += 1;
                 }
@@ -203,7 +208,13 @@ impl MyersDeltaCompressor {
     /// (O(k*min(n,m)) time complexity and early termination), not the backtracking.
     /// This extraction method is correct and efficient for sequences that passed
     /// the banded forward search.
-    fn backtrack_lcs(&self, _trace: &[Vec<isize>], a: &[u8], b: &[u8], _offset: usize) -> Vec<(usize, usize, usize)> {
+    fn backtrack_lcs(
+        &self,
+        _trace: &[Vec<isize>],
+        a: &[u8],
+        b: &[u8],
+        _offset: usize,
+    ) -> Vec<(usize, usize, usize)> {
         // Extract LCS using dynamic programming on the sequences that passed
         // the banded constraint check
         let n = a.len();
@@ -216,10 +227,10 @@ impl MyersDeltaCompressor {
         // Build LCS length table
         for i in 1..=n {
             for j in 1..=m {
-                if a[i-1] == b[j-1] {
-                    curr[j] = prev[j-1] + 1;
+                if a[i - 1] == b[j - 1] {
+                    curr[j] = prev[j - 1] + 1;
                 } else {
-                    curr[j] = curr[j-1].max(prev[j]);
+                    curr[j] = curr[j - 1].max(prev[j]);
                 }
             }
             std::mem::swap(&mut prev, &mut curr);
@@ -234,27 +245,27 @@ impl MyersDeltaCompressor {
         let mut dp = vec![vec![0; m + 1]; n + 1];
         for ii in 1..=n {
             for jj in 1..=m {
-                if a[ii-1] == b[jj-1] {
-                    dp[ii][jj] = dp[ii-1][jj-1] + 1;
+                if a[ii - 1] == b[jj - 1] {
+                    dp[ii][jj] = dp[ii - 1][jj - 1] + 1;
                 } else {
-                    dp[ii][jj] = dp[ii-1][jj].max(dp[ii][jj-1]);
+                    dp[ii][jj] = dp[ii - 1][jj].max(dp[ii][jj - 1]);
                 }
             }
         }
 
         // Extract consecutive match segments
         while i > 0 && j > 0 {
-            if a[i-1] == b[j-1] {
+            if a[i - 1] == b[j - 1] {
                 // Found a match, extend backwards to find the segment
                 let end_i = i;
 
-                while i > 0 && j > 0 && a[i-1] == b[j-1] {
+                while i > 0 && j > 0 && a[i - 1] == b[j - 1] {
                     i -= 1;
                     j -= 1;
                 }
 
                 matches.push((i, j, end_i - i));
-            } else if i > 0 && (j == 0 || dp[i-1][j] >= dp[i][j-1]) {
+            } else if i > 0 && (j == 0 || dp[i - 1][j] >= dp[i][j - 1]) {
                 i -= 1;
             } else {
                 j -= 1;
@@ -760,9 +771,15 @@ mod tests {
 
         // Verify reconstruction (most important test)
         let reconstructed = compressor.apply_delta(reference, &delta).unwrap();
-        assert_eq!(reconstructed, variant, "Delta reconstruction must produce exact original sequence");
+        assert_eq!(
+            reconstructed, variant,
+            "Delta reconstruction must produce exact original sequence"
+        );
 
         // Delta should have operations (not be empty)
-        assert!(!delta.ops.is_empty(), "Delta should contain operations for the changes");
+        assert!(
+            !delta.ops.is_empty(),
+            "Delta should contain operations for the changes"
+        );
     }
 }

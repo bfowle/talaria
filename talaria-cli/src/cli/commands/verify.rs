@@ -104,8 +104,8 @@ pub fn run(args: VerifyArgs) -> Result<()> {
 
     // Generate report if requested
     if let Some(report_path) = &args.report_output {
-        use talaria_sequoia::operations::VerificationResult;
         use std::time::Duration;
+        use talaria_sequoia::operations::VerificationResult;
 
         // This is a simple verification, create basic result
         let result = VerificationResult {

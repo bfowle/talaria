@@ -3,7 +3,6 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use talaria_bio::sequence::Sequence;
-use talaria_test::fixtures::test_database_source;
 /// Performance regression tests for download and chunking pipeline
 ///
 /// These tests ensure that performance doesn't degrade over time.
@@ -11,10 +10,10 @@ use talaria_test::fixtures::test_database_source;
 use talaria_sequoia::{
     chunker::{ChunkingStrategy, TaxonomicChunker},
     database::DatabaseManager,
-    download::DatabaseSource,
     performance::{get_system_info, AdaptiveConfigBuilder, AdaptiveManager},
     storage::SequenceStorage,
 };
+use talaria_test::fixtures::test_database_source;
 use tempfile::TempDir;
 
 /// Minimum acceptable throughput in sequences per second
@@ -44,8 +43,11 @@ fn test_throughput_baseline() {
     let temp_dir = TempDir::new().unwrap();
     let storage = Arc::new(SequenceStorage::new(temp_dir.path()).unwrap());
 
-    let mut chunker =
-        TaxonomicChunker::new(ChunkingStrategy::default(), storage, test_database_source("performance"));
+    let mut chunker = TaxonomicChunker::new(
+        ChunkingStrategy::default(),
+        storage,
+        test_database_source("performance"),
+    );
 
     // Generate 100k sequences for testing
     let sequences = generate_test_sequences(100_000);
@@ -86,8 +88,11 @@ fn test_memory_usage() {
     let temp_dir = TempDir::new().unwrap();
     let storage = Arc::new(SequenceStorage::new(temp_dir.path()).unwrap());
 
-    let mut chunker =
-        TaxonomicChunker::new(ChunkingStrategy::default(), storage, test_database_source("performance"));
+    let mut chunker = TaxonomicChunker::new(
+        ChunkingStrategy::default(),
+        storage,
+        test_database_source("performance"),
+    );
 
     // Process 100k sequences
     let sequences = generate_test_sequences(100_000);
@@ -341,8 +346,11 @@ fn test_cpu_utilization() {
     let sequences = generate_test_sequences(100_000);
     let temp_dir = TempDir::new().unwrap();
     let storage = Arc::new(SequenceStorage::new(temp_dir.path()).unwrap());
-    let mut chunker =
-        TaxonomicChunker::new(ChunkingStrategy::default(), storage, test_database_source("performance"));
+    let mut chunker = TaxonomicChunker::new(
+        ChunkingStrategy::default(),
+        storage,
+        test_database_source("performance"),
+    );
 
     chunker.set_quiet_mode(true);
     let _result = chunker.chunk_sequences_canonical(sequences).unwrap();

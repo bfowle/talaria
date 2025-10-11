@@ -6,10 +6,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::types::{DatabaseSource, SHA256Hash, SequenceType};
-use talaria_storage::types::{
-    CanonicalSequence, SequenceRepresentation, SequenceRepresentations,
-};
 use chrono::Utc;
+use talaria_storage::types::{CanonicalSequence, SequenceRepresentation, SequenceRepresentations};
 
 /// Lightweight sequence information
 pub struct SequenceInfo {
@@ -790,14 +788,14 @@ impl SequenceStorage {
 
     /// Rebuild all indices by scanning the backend storage
     pub fn rebuild_index(&self) -> Result<()> {
-        println!("Rebuilding sequence storage indices...");
+        tracing::info!("Rebuilding sequence storage indices...");
 
         // Clearing RocksDB indices would require iterating and deleting all keys
         // For now, we'll overwrite as we go
 
         // Rebuild secondary indices from backend data
         let all_hashes = self.backend.list_all_hashes()?;
-        println!(
+        tracing::info!(
             "  Rebuilding secondary indices for {} sequences",
             all_hashes.len()
         );
@@ -852,7 +850,7 @@ impl SequenceStorage {
 
         // Save rebuilt indices
         self.save_indices()?;
-        println!("  Secondary indices rebuilt and saved");
+        tracing::info!("  Secondary indices rebuilt and saved");
 
         Ok(())
     }

@@ -52,7 +52,8 @@ impl RetroactiveAnalyzer {
     /// Initialize from a base path
     pub fn from_path(base_path: &std::path::Path) -> Result<Self> {
         let storage = SequoiaStorage::open(base_path)?;
-        let temporal_index = TemporalIndex::load(base_path)?;
+        let rocksdb = storage.sequence_storage.get_rocksdb();
+        let temporal_index = TemporalIndex::load(base_path, rocksdb)?;
         let taxonomy_manager = TaxonomyManager::load(base_path)?;
 
         Ok(Self {

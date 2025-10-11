@@ -8,7 +8,7 @@ use reqwest::StatusCode;
 use serde_json;
 use std::fs;
 use std::path::{Path, PathBuf};
-use talaria_utils::display::progress::create_progress_bar;
+// UI imports removed - using progress_callback pattern instead
 
 /// Magic bytes for Talaria manifest format: "TAL" + version byte
 pub const TALARIA_MAGIC: &[u8] = b"TAL\x01";
@@ -477,19 +477,19 @@ impl Manifest {
     }
 
     /// Create a manifest for a set of chunks
+    /// TODO: Add progress_callback parameter
     pub fn create_from_chunks(
         &mut self,
         chunks: Vec<ChunkManifest>,
         taxonomy_root: MerkleHash,
         sequence_root: MerkleHash,
     ) -> Result<TemporalManifest> {
-        // Create progress bar for manifest creation
-        let progress = create_progress_bar(chunks.len() as u64, "Creating manifest metadata");
+        // TODO: Use progress_callback instead of progress bar
+        tracing::debug!("Creating manifest metadata for {} chunks", chunks.len());
 
         let chunk_index: Vec<ManifestMetadata> = chunks
             .iter()
             .map(|chunk| {
-                progress.inc(1);
                 ManifestMetadata {
                     hash: chunk.chunk_hash.clone(),
                     taxon_ids: chunk.taxon_ids.clone(),
@@ -500,7 +500,7 @@ impl Manifest {
             })
             .collect();
 
-        progress.finish_with_message("Manifest metadata created");
+        tracing::info!("Manifest metadata created for {} chunks", chunk_index.len());
 
         // Generate ETag from content
         let etag = Self::generate_etag(&taxonomy_root, &sequence_root);

@@ -15,6 +15,10 @@ use talaria_sequoia::download::{DatabaseSource, Stage};
 // use talaria_utils::display::format::format_bytes;
 
 pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource) -> Result<()> {
+    // Create span for tracing (global filter will capture this automatically)
+    let _span = tracing::info_span!("database_download", source = %database_source).entered();
+    tracing::info!("Starting database download for {}", database_source);
+
     // Apply CLI flag overrides for environment variables
     if let Some(ref manifest_server) = args.manifest_server {
         std::env::set_var("TALARIA_MANIFEST_SERVER", manifest_server);
@@ -67,9 +71,11 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
     }
 
     // Initialize manager first
+    tracing::debug!("Initializing DatabaseManager");
     let mut manager = DatabaseManager::with_options(None, args.json)?;
 
     // Ensure version integrity (fix symlinks, create version.json if missing)
+    tracing::debug!("Ensuring version integrity for {}", database_source);
     manager.ensure_version_integrity(&database_source)?;
 
     // Check for resumable operations BEFORE creating the task list UI
@@ -260,15 +266,47 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
             if let Some(s) = spinner.take() {
                 s.finish_and_clear();
             }
-        } else if msg.contains("Downloading full database") || msg.contains("Downloading database file") {
+        } else if msg.contains("Database already processed into SEQUOIA format") {
+            // Database exists in RocksDB, skip all processing
             tl.update_task(check_task, TaskStatus::Complete);
-            tl.update_task(download_task, TaskStatus::InProgress);
+            tl.update_task(download_task, TaskStatus::Complete);
+            tl.update_task(process_task, TaskStatus::Skipped);
+            tl.update_task(store_task, TaskStatus::Skipped);
+            tl.update_task(manifest_task, TaskStatus::Skipped);
+
+            if let Some(s) = spinner.take() {
+                s.finish_and_clear();
+            }
+            println!("  {} {}", "✓".green(), msg);
+        } else if msg.contains("Cleaning up workspace") {
+            println!("  {} {}", "●".cyan(), msg);
+        } else if msg.contains("Database is up to date") {
+            if let Some(s) = spinner.take() {
+                s.finish_and_clear();
+            }
+            println!("\n  {} {}", "✓".green().bold(), msg);
+        } else if msg.contains("Using existing download, processing into SEQUOIA format") {
+            // Existing download needs processing
+            tl.update_task(check_task, TaskStatus::Complete);
+            tl.update_task(download_task, TaskStatus::Complete);
+            tl.update_task(process_task, TaskStatus::InProgress);
+
+            if let Some(s) = spinner.take() {
+                s.finish_and_clear();
+            }
+            println!("\n  {} {}", "●".yellow(), msg);
+        } else if msg.contains("Downloading full database")
+            || msg.contains("Downloading database file")
+        {
+            tl.update_task(check_task, TaskStatus::Complete);
+            // Don't create a spinner here - the DownloadProgress bar will handle display
+            // Creating a spinner causes flickering as both try to display simultaneously
             drop(tl);
 
             if let Some(s) = spinner.take() {
                 s.finish_and_clear();
             }
-            *spinner = Some(create_spinner(msg));
+            // Don't create a new spinner - let DownloadProgress handle it
         } else if msg.contains("Download complete") {
             if let Some(s) = spinner.take() {
                 s.finish_and_clear();

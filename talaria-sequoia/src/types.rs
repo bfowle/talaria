@@ -7,8 +7,8 @@ pub use talaria_core::types::{SHA256Hash, TaxonId};
 
 // Re-export storage types from talaria-storage to avoid duplication
 pub use talaria_storage::types::{
-    CanonicalSequence, ChunkClassification, ChunkFormat, ChunkManifest, SequenceRepresentation,
-    SequenceRepresentations, SequenceRef,
+    CanonicalSequence, ChunkClassification, ChunkFormat, ChunkManifest, SequenceRef,
+    SequenceRepresentation, SequenceRepresentations,
 };
 
 // Custom serialization module for DateTime to handle MessagePack
@@ -112,6 +112,28 @@ impl BiTemporalCoordinate {
 // TaxonId is now imported from talaria_core::types
 
 // SequenceRef is now imported from talaria_storage::types
+
+/// Taxonomy-aware chunk containing sequences grouped by taxonomy
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaxonomyAwareChunk {
+    /// Primary taxon ID for this chunk
+    pub primary_taxon: TaxonId,
+
+    /// All taxon IDs present in this chunk
+    pub taxon_ids: Vec<TaxonId>,
+
+    /// Chunk data (compressed sequences)
+    #[serde(with = "serde_bytes")]
+    pub data: Vec<u8>,
+
+    /// Metadata about sequences in this chunk
+    pub sequence_count: usize,
+    pub total_size: usize,
+
+    /// Temporal information
+    #[serde(with = "datetime_serde")]
+    pub created_at: DateTime<Utc>,
+}
 
 /// Discrepancy between taxonomy annotations
 #[derive(Debug, Clone, Serialize, Deserialize)]

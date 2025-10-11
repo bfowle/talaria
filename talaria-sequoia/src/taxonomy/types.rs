@@ -111,6 +111,59 @@ impl TaxonomyManifest {
             policy: TaxonomyVersionPolicy::default(),
         }
     }
+
+    /// Save manifest to RocksDB
+    pub fn save_to_rocksdb(
+        &self,
+        rocksdb: &talaria_storage::backend::RocksDBBackend,
+        version: &str,
+    ) -> anyhow::Result<()> {
+        let key = format!("taxonomy_manifest:{}", version);
+        let data = bincode::serialize(self)?;
+        rocksdb.put_manifest(&key, &data)?;
+        Ok(())
+    }
+
+    /// Load manifest from RocksDB
+    pub fn load_from_rocksdb(
+        rocksdb: &talaria_storage::backend::RocksDBBackend,
+        version: &str,
+    ) -> anyhow::Result<Option<Self>> {
+        let key = format!("taxonomy_manifest:{}", version);
+        if let Some(data) = rocksdb.get_manifest(&key)? {
+            let manifest = bincode::deserialize(&data)?;
+            Ok(Some(manifest))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Load latest manifest from RocksDB
+    pub fn load_latest_from_rocksdb(
+        rocksdb: &talaria_storage::backend::RocksDBBackend,
+    ) -> anyhow::Result<Option<Self>> {
+        // Try to get current version alias
+        if let Some(version_bytes) = rocksdb.get_manifest("taxonomy_alias:current")? {
+            let version = String::from_utf8(version_bytes)?;
+            Self::load_from_rocksdb(rocksdb, &version)
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Save as current version
+    pub fn save_as_current(
+        &self,
+        rocksdb: &talaria_storage::backend::RocksDBBackend,
+    ) -> anyhow::Result<()> {
+        // Save the manifest
+        self.save_to_rocksdb(rocksdb, &self.version)?;
+
+        // Update current alias
+        rocksdb.put_manifest("taxonomy_alias:current", self.version.as_bytes())?;
+
+        Ok(())
+    }
 }
 
 /// Taxonomy version policy

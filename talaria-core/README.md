@@ -2,10 +2,19 @@
 
 ## Overview
 
-`talaria-core` is the foundational module of the Talaria sequence database reduction system. It provides essential shared utilities, configuration management, error handling, path management, and version control that all other Talaria modules depend upon. This module ensures consistency across the entire Talaria ecosystem by centralizing critical infrastructure components.
+`talaria-core` is the foundational module of the Talaria sequence database reduction system. It provides essential shared types, utilities, configuration management, error handling, path management, and version control that all other Talaria modules depend upon. This module ensures consistency across the entire Talaria ecosystem by centralizing critical infrastructure components.
+
+### Architectural Role
+
+`talaria-core` provides primitive types and utilities used by both:
+- **`talaria-storage`**: Uses core types like `SHA256Hash`, `StorageStats`, `VerificationError`
+- **`talaria-sequoia`**: Uses the same core types plus additional ones like `ChunkMetadata`, `TaxonId`
+
+This shared foundation prevents duplication and ensures type consistency across the storage and business logic layers.
 
 ### Purpose
 
+- **Shared Type Definitions**: Primitive types used across all modules (`SHA256Hash`, `ChunkInfo`, `StorageStats`, etc.)
 - **Centralized Configuration**: Unified configuration management for all Talaria components
 - **Error Handling**: Consistent error types and propagation across modules
 - **Path Management**: Environment-aware path resolution with caching

@@ -75,8 +75,8 @@ impl BackupManager {
             anyhow::bail!("Backup '{}' already exists", name);
         }
 
-        println!("Creating backup '{}'...", name);
-        println!("  Flushing database to disk...");
+        tracing::info!("Creating backup '{}'...", name);
+        tracing::debug!("  Flushing database to disk...");
 
         // Create RocksDB backup (with flush)
         let backup_id = rocksdb
@@ -90,8 +90,7 @@ impl BackupManager {
             .find(|(id, _, _)| *id == backup_id)
             .ok_or_else(|| anyhow::anyhow!("Backup ID {} not found", backup_id))?;
 
-        let created_at = DateTime::from_timestamp(*timestamp, 0)
-            .unwrap_or_else(|| Utc::now());
+        let created_at = DateTime::from_timestamp(*timestamp, 0).unwrap_or_else(|| Utc::now());
 
         // Create metadata
         let metadata = BackupMetadata {
@@ -103,17 +102,11 @@ impl BackupManager {
         };
 
         // Save metadata
-        fs::write(
-            &metadata_path,
-            serde_json::to_string_pretty(&metadata)?,
-        )?;
+        fs::write(&metadata_path, serde_json::to_string_pretty(&metadata)?)?;
 
-        println!("✓ Backup '{}' created successfully", name);
-        println!("  Backup ID: {}", backup_id);
-        println!(
-            "  Size: {:.2} MB",
-            size_bytes / 1_048_576
-        );
+        tracing::info!("✓ Backup '{}' created successfully", name);
+        tracing::info!("  Backup ID: {}", backup_id);
+        tracing::info!("  Size: {:.2} MB", size_bytes / 1_048_576);
 
         Ok(metadata)
     }
@@ -168,22 +161,22 @@ impl BackupManager {
         let backup_dir = self.rocksdb_backup_dir();
         let restore_dir = self.rocksdb_data_dir();
 
-        println!("Restoring backup '{}'...", name);
-        println!(
+        tracing::info!("Restoring backup '{}'...", name);
+        tracing::info!(
             "  Created: {}",
             metadata.created_at.format("%Y-%m-%d %H:%M:%S UTC")
         );
         if let Some(ref desc) = metadata.description {
-            println!("  Description: {}", desc);
+            tracing::info!("  Description: {}", desc);
         }
 
-        println!("  Backup ID: {}", metadata.id);
-        println!("  Size: {:.2} MB", metadata.size_bytes as f64 / 1_048_576.0);
+        tracing::info!("  Backup ID: {}", metadata.id);
+        tracing::info!("  Size: {:.2} MB", metadata.size_bytes as f64 / 1_048_576.0);
 
         // Verify backup exists
         RocksDBBackend::verify_backup(&backup_dir, metadata.id)
             .context("Backup verification failed")?;
-        println!("✓ Backup verification passed");
+        tracing::info!("✓ Backup verification passed");
 
         // NOTE: In practice, you would need to:
         // 1. Shut down the current RocksDB instance
@@ -192,11 +185,13 @@ impl BackupManager {
         // 4. Restart the RocksDB instance
         //
         // This is a simplified implementation that assumes the database is not running
-        println!("⚠ WARNING: This will replace the current database!");
-        println!("  Please ensure the database is shut down before proceeding.");
+        tracing::warn!("⚠ WARNING: This will replace the current database!");
+        tracing::warn!("  Please ensure the database is shut down before proceeding.");
 
         // For now, just restore to a temporary location for safety
-        let temp_restore = self.backups_dir.join(format!("restore_temp_{}", metadata.id));
+        let temp_restore = self
+            .backups_dir
+            .join(format!("restore_temp_{}", metadata.id));
         if temp_restore.exists() {
             fs::remove_dir_all(&temp_restore)?;
         }
@@ -204,8 +199,14 @@ impl BackupManager {
         RocksDBBackend::restore_from_latest_backup(&backup_dir, &temp_restore)
             .context("Failed to restore backup")?;
 
-        println!("✓ Backup restored to temporary location: {}", temp_restore.display());
-        println!("  Manual step required: Replace {} with restored data", restore_dir.display());
+        tracing::info!(
+            "✓ Backup restored to temporary location: {}",
+            temp_restore.display()
+        );
+        tracing::warn!(
+            "  Manual step required: Replace {} with restored data",
+            restore_dir.display()
+        );
 
         Ok(())
     }
@@ -215,13 +216,13 @@ impl BackupManager {
         let metadata = self.get_backup_metadata(name)?;
         let backup_dir = self.rocksdb_backup_dir();
 
-        println!("Verifying backup '{}'...", name);
-        println!("  Backup ID: {}", metadata.id);
+        tracing::info!("Verifying backup '{}'...", name);
+        tracing::info!("  Backup ID: {}", metadata.id);
 
         RocksDBBackend::verify_backup(&backup_dir, metadata.id)
             .context("Backup verification failed")?;
 
-        println!("✓ Backup '{}' verification passed", name);
+        tracing::info!("✓ Backup '{}' verification passed", name);
         Ok(())
     }
 
@@ -230,15 +231,15 @@ impl BackupManager {
         let metadata = self.get_backup_metadata(name)?;
         let metadata_path = self.metadata_dir().join(format!("{}.json", name));
 
-        println!("Deleting backup '{}'...", name);
-        println!("  Backup ID: {}", metadata.id);
+        tracing::info!("Deleting backup '{}'...", name);
+        tracing::info!("  Backup ID: {}", metadata.id);
 
         // Note: RocksDB BackupEngine doesn't support deleting specific backups by ID
         // We can only purge old backups. For now, just delete the metadata.
         fs::remove_file(&metadata_path)?;
 
-        println!("✓ Backup '{}' metadata deleted", name);
-        println!("  Note: RocksDB backup files remain. Use 'purge' to clean old backups.");
+        tracing::info!("✓ Backup '{}' metadata deleted", name);
+        tracing::info!("  Note: RocksDB backup files remain. Use 'purge' to clean old backups.");
 
         Ok(())
     }
@@ -247,12 +248,15 @@ impl BackupManager {
     pub fn purge_old_backups(&self, num_to_keep: usize) -> Result<()> {
         let backup_dir = self.rocksdb_backup_dir();
 
-        println!("Purging old backups, keeping {} most recent...", num_to_keep);
+        tracing::info!(
+            "Purging old backups, keeping {} most recent...",
+            num_to_keep
+        );
 
         RocksDBBackend::purge_old_backups(&backup_dir, num_to_keep)
             .context("Failed to purge old backups")?;
 
-        println!("✓ Old backups purged successfully");
+        tracing::info!("✓ Old backups purged successfully");
 
         // Also clean up metadata for deleted backups
         self.cleanup_orphaned_metadata()?;
@@ -293,7 +297,7 @@ impl BackupManager {
         }
 
         if removed > 0 {
-            println!("  Cleaned up {} orphaned metadata files", removed);
+            tracing::info!("  Cleaned up {} orphaned metadata files", removed);
         }
 
         Ok(())

@@ -196,7 +196,7 @@ impl ReferenceSelectorImpl {
         }
 
         pb.finish_and_clear();
-        println!("Selected {} references", references.len());
+        tracing::info!("Selected {} references", references.len());
 
         // Phase 2: Assign non-reference sequences to their best matching reference
         // Calculate how many sequences need assignment
@@ -252,7 +252,7 @@ impl ReferenceSelectorImpl {
         }
 
         pb2.finish_and_clear();
-        println!(
+        tracing::info!(
             "Assigned {} sequences to {} references",
             sequences_to_assign,
             references.len()
@@ -402,7 +402,7 @@ impl ReferenceSelectorImpl {
         }
 
         pb.finish_and_clear();
-        println!("Selected {} reference sequences", references.len());
+        tracing::info!("Selected {} reference sequences", references.len());
 
         SelectionResult {
             references,
@@ -532,7 +532,7 @@ impl ReferenceSelectorImpl {
                     // Stop if improvement over last 10 references is less than 0.1%
                     if recent_improvement < 0.001 {
                         pb.finish_and_clear();
-                        println!(
+                        tracing::info!(
                             "Auto-detected {} references (coverage: {:.1}%, plateau reached)",
                             references.len(),
                             coverage_ratio * 100.0
@@ -545,7 +545,7 @@ impl ReferenceSelectorImpl {
             // Stop if we've covered 95% of sequences (but ensure minimum coverage first)
             if coverage_ratio > 0.95 && references.len() >= MIN_REFERENCES {
                 pb.finish_and_clear();
-                println!(
+                tracing::info!(
                     "Auto-detected {} references (coverage: {:.1}%)",
                     references.len(),
                     coverage_ratio * 100.0
@@ -556,7 +556,7 @@ impl ReferenceSelectorImpl {
             // Limit to reasonable number of references (e.g., 10% of sequences)
             if references.len() >= sequences.len() / 10 && references.len() >= MIN_REFERENCES {
                 pb.finish_and_clear();
-                println!(
+                tracing::info!(
                     "Auto-detected {} references (coverage: {:.1}%, max references reached)",
                     references.len(),
                     coverage_ratio * 100.0
@@ -586,7 +586,7 @@ impl ReferenceSelectorImpl {
         // If we found very few sequences, fall back to simple selection
         if final_coverage < 0.01 && sequences.len() > 1000 {
             pb.finish_and_clear();
-            println!(
+            tracing::info!(
                 "Auto-detection found too few matches, falling back to length-based selection"
             );
             // Use simple selection with 10% ratio as fallback
@@ -594,7 +594,7 @@ impl ReferenceSelectorImpl {
         }
 
         pb.finish_and_clear();
-        println!(
+        tracing::info!(
             "Auto-detected {} references (final coverage: {:.1}%)",
             references.len(),
             final_coverage * 100.0
@@ -671,7 +671,7 @@ impl ReferenceSelectorImpl {
         }
 
         pb.finish_and_clear();
-        println!("Selected {} references with alignment", references.len());
+        tracing::info!("Selected {} references with alignment", references.len());
 
         SelectionResult {
             references,
@@ -1081,10 +1081,10 @@ impl ReferenceSelectorImpl {
                     ));
 
                     // Suppress LAMBDA's individual progress bars
-                    println!(
+                    tracing::debug!(
                         "Note: Individual LAMBDA progress bars are suppressed in parallel mode."
                     );
-                    println!("Overall progress will be shown as batches complete.");
+                    tracing::info!("Overall progress will be shown as batches complete.");
 
                     let processed = Arc::new(AtomicUsize::new(0));
                     let alignments_found = Arc::new(AtomicUsize::new(0));
@@ -1450,12 +1450,12 @@ impl ReferenceSelectorImpl {
 
         pb2.finish_and_clear();
 
-        println!(
+        tracing::info!(
             "Selected {} references ({:.1}% of total)",
             references.len(),
             ref_percentage
         );
-        println!(
+        tracing::info!(
             "Covered: {} sequences, Uncovered: {} sequences ({:.1}% coverage)",
             covered_count,
             uncovered_count,
@@ -1464,7 +1464,7 @@ impl ReferenceSelectorImpl {
 
         // Warn if too many sequences are uncovered
         if uncovered_count > total_count / 10 {
-            println!(
+            tracing::info!(
                 "⚠️  Warning: {} sequences ({:.1}%) remain uncovered. Consider adjusting identity threshold.",
                 uncovered_count,
                 (uncovered_count as f64 / total_count as f64) * 100.0
@@ -1640,7 +1640,7 @@ impl ReferenceSelectorImpl {
         }
 
         pb2.finish_and_clear();
-        println!(
+        tracing::info!(
             "Selected {} references using similarity matrix",
             references.len()
         );

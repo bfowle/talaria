@@ -55,9 +55,12 @@ fn validate_from_sequoia(db_ref_str: &str, profile: String) -> Result<()> {
 
     let pb = create_spinner("Initializing SEQUOIA storage...");
 
-    // Initialize SEQUOIA storage
+    // Initialize SEQUOIA storage and database manager
     let sequoia_path = talaria_core::system::paths::talaria_databases_dir();
     let storage = SequoiaStorage::open(&sequoia_path)?;
+
+    use talaria_sequoia::database::DatabaseManager;
+    let manager = DatabaseManager::new(Some(sequoia_path.to_string_lossy().to_string()))?;
 
     pb.set_message("Loading reduction manifest...");
 
@@ -72,9 +75,16 @@ fn validate_from_sequoia(db_ref_str: &str, profile: String) -> Result<()> {
     let source = parts[0];
     let dataset = parts[1];
 
+    // Get database info to retrieve version
+    let databases = manager.list_databases()?;
+    let db_info = databases
+        .iter()
+        .find(|db| db.name == db_ref_str)
+        .ok_or_else(|| anyhow::anyhow!("Database '{}' not found", db_ref_str))?;
+
     // Get the reduction manifest for the profile
     let manifest = storage
-        .get_database_reduction_by_profile(source, dataset, &profile)?
+        .get_database_reduction_by_profile(source, dataset, &db_info.version, &profile)?
         .ok_or_else(|| {
             anyhow::anyhow!(
                 "Reduction manifest not found for profile '{}' in database '{}'",
@@ -358,7 +368,9 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<()> {
 
     // TODO: Re-implement report generation using new generic framework
     if let Some(_report_path) = args.report {
-        eprintln!("Warning: Report generation is temporarily disabled pending migration to new framework");
+        eprintln!(
+            "Warning: Report generation is temporarily disabled pending migration to new framework"
+        );
     }
 
     Ok(())

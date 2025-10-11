@@ -2,7 +2,6 @@
 ///
 /// Provides trait-based reporting that works across all commands.
 /// Commands implement `Reportable` to convert their results into generic `Report` structures.
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

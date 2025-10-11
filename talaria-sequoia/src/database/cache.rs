@@ -2,7 +2,6 @@
 ///
 /// Caches results of expensive operations like listing databases, versions, and statistics.
 /// Cache is invalidated when databases are added, deleted, or updated.
-
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -114,7 +113,11 @@ impl MetadataCache {
     }
 
     /// Get cached version list for a specific database
-    pub fn get_version_list(&self, source: &str, dataset: &str) -> Option<Vec<DatabaseVersionInfo>> {
+    pub fn get_version_list(
+        &self,
+        source: &str,
+        dataset: &str,
+    ) -> Option<Vec<DatabaseVersionInfo>> {
         let key = format!("{}:{}", source, dataset);
         let cache = self.version_lists.read().ok()?;
         let cached = cache.get(&key)?;
@@ -128,7 +131,12 @@ impl MetadataCache {
     }
 
     /// Cache version list for a specific database
-    pub fn set_version_list(&self, source: &str, dataset: &str, versions: Vec<DatabaseVersionInfo>) -> Result<()> {
+    pub fn set_version_list(
+        &self,
+        source: &str,
+        dataset: &str,
+        versions: Vec<DatabaseVersionInfo>,
+    ) -> Result<()> {
         let key = format!("{}:{}", source, dataset);
 
         let cached = CachedVersionList {
@@ -143,7 +151,9 @@ impl MetadataCache {
         }
 
         // Persist to disk
-        let cache_file = self.cache_dir.join(format!("versions_{}.json", key.replace('/', "_")));
+        let cache_file = self
+            .cache_dir
+            .join(format!("versions_{}.json", key.replace('/', "_")));
         let json = serde_json::to_string_pretty(&cached)?;
         std::fs::write(cache_file, json)?;
 
@@ -184,6 +194,15 @@ impl MetadataCache {
         Ok(())
     }
 
+    /// Invalidate just the database list cache (lighter than invalidate_all)
+    pub fn invalidate_database_list(&self) {
+        if let Ok(mut cache) = self.database_list.write() {
+            *cache = None;
+        }
+        // Clear persistent cache file
+        let _ = std::fs::remove_file(self.cache_dir.join("database_list.json"));
+    }
+
     /// Invalidate all caches (call when database changes)
     pub fn invalidate_all(&self) {
         if let Ok(mut cache) = self.database_list.write() {
@@ -219,7 +238,9 @@ impl MetadataCache {
         }
 
         // Clear persistent cache files
-        let version_cache = self.cache_dir.join(format!("versions_{}.json", key.replace('/', "_")));
+        let version_cache = self
+            .cache_dir
+            .join(format!("versions_{}.json", key.replace('/', "_")));
         let _ = std::fs::remove_file(version_cache);
         let _ = std::fs::remove_file(self.cache_dir.join("database_list.json"));
         let _ = std::fs::remove_file(self.cache_dir.join("stats.json"));
@@ -258,7 +279,8 @@ impl MetadataCache {
                 if filename_str.starts_with("versions_") && filename_str.ends_with(".json") {
                     if let Ok(json) = std::fs::read_to_string(&path) {
                         if let Ok(cached) = serde_json::from_str::<CachedVersionList>(&json) {
-                            if cached.version == CACHE_VERSION && !self.is_expired(cached.timestamp) {
+                            if cached.version == CACHE_VERSION && !self.is_expired(cached.timestamp)
+                            {
                                 // Extract key from filename
                                 let key = filename_str
                                     .trim_start_matches("versions_")
@@ -351,16 +373,15 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let cache = MetadataCache::new(temp_dir.path().to_path_buf()).unwrap();
 
-        let databases = vec![
-            DatabaseInfo {
-                name: "test/db1".to_string(),
-                version: "v1".to_string(),
-                created_at: chrono::Utc::now(),
-                chunk_count: 10,
-                total_size: 1000,
-                reduction_profiles: vec![],
-            }
-        ];
+        let databases = vec![DatabaseInfo {
+            name: "test/db1".to_string(),
+            version: "v1".to_string(),
+            created_at: chrono::Utc::now(),
+            chunk_count: 10,
+            sequence_count: 100,
+            total_size: 1000,
+            reduction_profiles: vec![],
+        }];
 
         // Cache should be empty initially
         assert!(cache.get_database_list().is_none());

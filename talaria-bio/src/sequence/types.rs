@@ -10,7 +10,7 @@ pub struct Sequence {
     pub id: String,
     pub description: Option<String>,
     pub sequence: Vec<u8>,
-    pub taxon_id: Option<u32>, // Legacy field, kept for backward compatibility
+    pub taxon_id: Option<u32>,
     #[serde(default)]
     pub taxonomy_sources: TaxonomySources, // New: track all taxonomy sources
 }

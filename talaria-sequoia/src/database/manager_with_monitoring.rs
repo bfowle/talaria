@@ -20,34 +20,34 @@ impl DatabaseManager {
 
         // Get file size for estimation
         let file_size = std::fs::metadata(file_path)?.len();
-        println!("Starting processing of {:.1} GB file", file_size as f64 / 1_073_741_824.0);
+        tracing::info!("Starting processing of {:.1} GB file", file_size as f64 / 1_073_741_824.0);
 
         // Call the existing streaming method with monitoring
         self.chunk_database_streaming_with_monitor(file_path, source, monitor.clone())?;
 
         // Generate and display final report
         let report = monitor.generate_report();
-        println!("\n{}", report.format());
+        tracing::info!("\n{}", report.format());
 
         // Save report to file
         let report_path = Path::new("performance_report.json");
         let json = report.to_json()?;
         std::fs::write(report_path, json)?;
-        println!("Performance report saved to: {}", report_path.display());
+        tracing::info!("Performance report saved to: {}", report_path.display());
 
         // Check for bottlenecks
         if !report.bottlenecks.is_empty() {
-            println!("\n⚠️  Performance bottlenecks detected:");
+            tracing::info!("\n⚠️  Performance bottlenecks detected:");
             for bottleneck in &report.bottlenecks {
-                println!("  - {:?}", bottleneck);
+                tracing::info!("  - {:?}", bottleneck);
             }
         }
 
         // Show recommendations
         if !report.recommendations.is_empty() {
-            println!("\n💡 Performance recommendations:");
+            tracing::info!("\n💡 Performance recommendations:");
             for rec in &report.recommendations {
-                println!("  • {}", rec);
+                tracing::info!("  • {}", rec);
             }
         }
 
@@ -103,7 +103,7 @@ impl DatabaseManager {
                     if total_sequences % 10000 == 0 {
                         let bottlenecks = monitor.detect_bottlenecks();
                         if !bottlenecks.is_empty() {
-                            eprintln!("Bottleneck detected: {:?}", bottlenecks[0]);
+                            tracing::info!("Bottleneck detected: {:?}", bottlenecks[0]);
                         }
                     }
                 }

@@ -215,7 +215,8 @@ fn test_temporal_versioning_workflow() -> Result<()> {
     let storage_path = temp_dir.path().join("sequoia");
     
     let mut storage = SequoiaStorage::new(storage_path.clone())?;
-    let mut temporal_index = TemporalIndex::new(storage_path.join("temporal"))?;
+    let rocksdb = storage.sequence_storage.get_rocksdb();
+    let mut temporal_index = TemporalIndex::new(&storage_path, rocksdb)?;
     
     // Create versions over time
     let versions = vec!["1.0.0", "1.1.0", "1.2.0", "2.0.0"];

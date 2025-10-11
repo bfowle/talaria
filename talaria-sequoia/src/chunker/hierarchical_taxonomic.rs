@@ -10,7 +10,7 @@ use anyhow::Result;
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
 use talaria_bio::sequence::Sequence;
-use talaria_utils::display::progress::{create_progress_bar, create_spinner};
+// UI imports removed - using progress_callback pattern instead
 
 /// Hierarchical taxonomic levels used for chunking
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -123,13 +123,14 @@ impl HierarchicalTaxonomicChunker {
     }
 
     /// Chunk sequences using hierarchical taxonomic organization
+    /// TODO: Add progress_callback parameter
     pub fn chunk_sequences_hierarchical(
         &mut self,
         sequences: Vec<Sequence>,
     ) -> Result<Vec<ChunkManifest>> {
         // Step 1: Store sequences canonically
-        let storing_progress =
-            create_progress_bar(sequences.len() as u64, "Storing canonical sequences");
+        // TODO: Use progress_callback instead of progress bar
+        tracing::debug!("Storing {} canonical sequences", sequences.len());
 
         let mut sequence_records = Vec::new();
         let dedup_count = 0;
@@ -173,30 +174,24 @@ impl HierarchicalTaxonomicChunker {
 
                 sequence_records.push((hash.clone(), taxon_id, seq.id.clone()));
             }
-
-            storing_progress.set_position(sequence_records.len() as u64);
         }
 
         // Save indices after all sequences are processed
         self.sequence_storage.save_indices()?;
-        storing_progress.finish_and_clear();
 
-        use talaria_utils::display::output::format_number;
-        println!(
+        tracing::info!(
             "Stored {} sequences ({} new, {} deduplicated)",
-            format_number(sequence_records.len()),
-            format_number(new_count),
-            format_number(dedup_count)
+            sequence_records.len(),
+            new_count,
+            dedup_count
         );
 
         // Step 2: Build taxonomic hierarchy
-        let hierarchy_progress = create_spinner("Building taxonomic hierarchy");
+        tracing::debug!("Building taxonomic hierarchy");
         let hierarchy = self.build_taxonomic_hierarchy(&sequence_records)?;
-        hierarchy_progress.finish_and_clear();
 
         // Step 3: Create hierarchical chunks
-        let chunking_progress =
-            create_progress_bar(hierarchy.len() as u64, "Creating hierarchical chunks");
+        tracing::debug!("Creating {} hierarchical chunks", hierarchy.len());
 
         let mut manifests = Vec::new();
         for (rank, rank_groups) in hierarchy {
@@ -205,16 +200,13 @@ impl HierarchicalTaxonomicChunker {
                     self.create_rank_manifests(rank, parent_taxon, sequences_in_group)?;
                 manifests.extend(rank_manifests);
             }
-            chunking_progress.inc(1);
         }
 
-        chunking_progress.finish_and_clear();
-        println!("Created {} hierarchical chunk manifests", manifests.len());
+        tracing::info!("Created {} hierarchical chunk manifests", manifests.len());
 
         // Step 4: Apply cross-level optimization
-        let optimization_progress = create_spinner("Optimizing chunk hierarchy");
+        tracing::debug!("Optimizing chunk hierarchy");
         manifests = self.optimize_hierarchy(manifests)?;
-        optimization_progress.finish_and_clear();
 
         Ok(manifests)
     }
@@ -433,7 +425,7 @@ impl HierarchicalTaxonomicChunker {
         }
 
         let original_count = manifests.len();
-        println!(
+        tracing::info!(
             "Optimized from {} to {} chunks (removed {} redundant)",
             original_count,
             optimized.len(),
@@ -479,6 +471,7 @@ mod tests {
 
     #[test]
     #[serial_test::serial]
+    #[ignore] // Requires taxonomy data: talaria database download ncbi/taxonomy
     fn test_hierarchical_chunking() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let sequence_storage = SequenceStorage::new(temp_dir.path())?;

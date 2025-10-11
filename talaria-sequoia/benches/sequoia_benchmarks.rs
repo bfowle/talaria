@@ -11,14 +11,14 @@ use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criteri
 use std::sync::Arc;
 use talaria_bio::sequence::Sequence;
 use talaria_core::{SHA256Hash, TaxonId};
-use talaria_test::fixtures::test_database_source;
 use talaria_sequoia::{
     chunker::{ChunkingStrategy, HierarchicalTaxonomicChunker, TaxonomicChunker},
-    storage::{SequoiaStorage, SequenceStorage},
+    storage::{SequenceStorage, SequoiaStorage},
     temporal::bi_temporal::BiTemporalDatabase,
     types::{DatabaseSource, ManifestMetadata},
     verification::merkle::MerkleDAG,
 };
+use talaria_test::fixtures::test_database_source;
 use tempfile::TempDir;
 
 /// Generate test sequences of varying sizes

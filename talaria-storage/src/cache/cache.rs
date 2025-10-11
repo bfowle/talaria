@@ -1,6 +1,4 @@
 /// Alignment cache for performance optimization
-// TODO: Update when talaria-bio alignment is properly exposed
-// use talaria_bio::alignment::AlignmentResult;
 
 // Cache-specific alignment result
 #[derive(Debug, Clone)]

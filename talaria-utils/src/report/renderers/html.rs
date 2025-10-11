@@ -1,8 +1,7 @@
 /// Generic HTML renderer for Report type
-
 use crate::report::core::{
-    Cell, CellStyle, ChangeDirection, ChartData, Metric, MetricSeverity, Report,
-    Section, SectionContent, Table,
+    Cell, CellStyle, ChangeDirection, ChartData, Metric, MetricSeverity, Report, Section,
+    SectionContent, Table,
 };
 use anyhow::Result;
 
@@ -263,10 +262,7 @@ fn render_metrics(html: &mut String, metrics: &[Metric]) {
             MetricSeverity::Normal => "",
         };
 
-        html.push_str(&format!(
-            "<div class=\"metric {}\">\n",
-            severity_class
-        ));
+        html.push_str(&format!("<div class=\"metric {}\">\n", severity_class));
         html.push_str(&format!(
             "  <div class=\"metric-label\">{}</div>\n",
             metric.label
@@ -342,7 +338,10 @@ fn render_key_value_list(html: &mut String, items: &[(String, String)]) {
     for (key, value) in items {
         html.push_str("  <div class=\"key-value-item\">\n");
         html.push_str(&format!("    <div class=\"key-value-key\">{}</div>\n", key));
-        html.push_str(&format!("    <div class=\"key-value-value\">{}</div>\n", value));
+        html.push_str(&format!(
+            "    <div class=\"key-value-value\">{}</div>\n",
+            value
+        ));
         html.push_str("  </div>\n");
     }
 
@@ -380,7 +379,11 @@ fn render_chart(html: &mut String, chart: &ChartData) {
         html.push_str("    <tr>\n");
         html.push_str(&format!("      <td>{}</td>\n", label));
         for dataset in &chart.datasets {
-            let value = dataset.data.get(i).map(|v| v.to_string()).unwrap_or_else(|| "-".to_string());
+            let value = dataset
+                .data
+                .get(i)
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "-".to_string());
             html.push_str(&format!("      <td>{}</td>\n", value));
         }
         html.push_str("    </tr>\n");

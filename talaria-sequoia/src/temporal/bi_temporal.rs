@@ -31,7 +31,8 @@ pub struct BiTemporalDatabase {
 impl BiTemporalDatabase {
     /// Create a new bi-temporal database
     pub fn new(storage: Arc<SequoiaStorage>) -> Result<Self> {
-        let temporal_index = TemporalIndex::new(&storage.base_path)?;
+        let rocksdb = storage.sequence_storage.get_rocksdb();
+        let temporal_index = TemporalIndex::new(&storage.base_path, rocksdb)?;
 
         Ok(Self {
             storage,
@@ -112,10 +113,8 @@ impl BiTemporalDatabase {
         let sequence_root = self.compute_sequence_merkle_root(&filtered_chunks)?;
         let taxonomy_root = self.compute_taxonomy_merkle_root(&taxonomy_version)?;
 
-        // Create the manifest
-        let mut manifest = Manifest::new(&self.storage.base_path.join("manifest.tal"))?;
-
         // Build a TemporalManifest from our data
+        // NOTE: We no longer write to filesystem manifest.tal - all manifests go to RocksDB
         let temporal_manifest = TemporalManifest {
             version: format!(
                 "{}_{}",
@@ -150,6 +149,9 @@ impl BiTemporalDatabase {
             previous_version: state.manifest.and_then(|m| Some(m.version)),
         };
 
+        // Return the temporal manifest directly
+        // The caller should save it to RocksDB using DatabaseManager::save_manifest_to_repository
+        let mut manifest = Manifest::new_with_path(&self.storage.base_path);
         manifest.set_from_temporal(temporal_manifest)?;
         Ok(manifest)
     }
@@ -430,7 +432,7 @@ impl DatabaseSnapshot {
 
         let sequence_count = assembler.stream_assembly(&chunk_hashes, &mut file)?;
 
-        println!(
+        tracing::info!(
             "Exported {} sequences to {}",
             sequence_count,
             path.display()

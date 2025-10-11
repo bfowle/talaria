@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use flate2::read::GzDecoder;
 use reqwest::Client;
 use std::fs::File;
-use std::io::{self, BufReader, Write};
+use std::io::{self, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 
 use super::progress::DownloadProgress;
@@ -257,9 +257,48 @@ impl NCBIDownloader {
             }
         }
 
+        // Final flush before validation
+        file.flush()?;
+        drop(file); // Close the file handle before moving
+
+        // Validate that we downloaded the complete file
+        if total_size > 0 && downloaded < total_size {
+            let missing_bytes = total_size - downloaded;
+            tracing::error!(
+                "Incomplete download: got {} bytes, expected {} bytes ({} bytes missing)",
+                downloaded,
+                total_size,
+                missing_bytes
+            );
+            return Err(anyhow::anyhow!(
+                "Incomplete download: got {} bytes, expected {} bytes. Missing {} bytes. \n\
+                 The download can be resumed by running the command again with --resume.",
+                downloaded,
+                total_size,
+                missing_bytes
+            ));
+        }
+
+        tracing::info!("Download complete ({} bytes), moving to final location", downloaded);
+
         // Move to final location
         std::fs::rename(&temp_path, output_path)
             .context("Failed to move file to final location")?;
+
+        // Validate gzip file integrity
+        if output_path.extension().and_then(|s| s.to_str()) == Some("gz") {
+            progress.set_message("Validating gzip file integrity...");
+            if let Err(e) = Self::validate_gzip_file(output_path) {
+                tracing::error!("Gzip validation failed: {}", e);
+                return Err(anyhow::anyhow!(
+                    "Downloaded file appears to be corrupted: {}. \n\
+                     Please delete {} and try again.",
+                    e,
+                    output_path.display()
+                ));
+            }
+            tracing::info!("Gzip file validation passed");
+        }
 
         progress.set_message("Download complete!");
         progress.finish();
@@ -338,6 +377,30 @@ impl NCBIDownloader {
             progress.set_current(downloaded as usize);
         }
 
+        // Final flush before decompression
+        file.flush()?;
+        drop(file); // Close the file handle before decompression
+
+        // Validate that we downloaded the complete file
+        if total_size > 0 && downloaded < total_size {
+            let missing_bytes = total_size - downloaded;
+            tracing::error!(
+                "Incomplete download: got {} bytes, expected {} bytes ({} bytes missing)",
+                downloaded,
+                total_size,
+                missing_bytes
+            );
+            return Err(anyhow::anyhow!(
+                "Incomplete download: got {} bytes, expected {} bytes. Missing {} bytes. \n\
+                 The download can be resumed by running the command again with --resume.",
+                downloaded,
+                total_size,
+                missing_bytes
+            ));
+        }
+
+        tracing::info!("Download complete ({} bytes), starting decompression", downloaded);
+
         progress.set_message("Decompressing file...");
 
         // Decompress
@@ -401,6 +464,33 @@ impl NCBIDownloader {
         };
 
         Ok(info.to_string())
+    }
+
+    /// Quick validation that a .gz file has valid gzip headers and structure
+    /// This doesn't decompress the entire file, just validates the headers
+    pub fn validate_gzip_file(file_path: &Path) -> Result<()> {
+        let file = File::open(file_path)
+            .context("Failed to open file for gzip validation")?;
+
+        // Try to read just the gzip header
+        let mut decoder = GzDecoder::new(BufReader::new(file));
+        let mut buffer = [0u8; 1024];
+
+        // Try to read first chunk - this will validate the header
+        match decoder.read(&mut buffer) {
+            Ok(0) => {
+                // Empty file
+                Err(anyhow::anyhow!("Gzip file is empty"))
+            }
+            Ok(_) => {
+                // Successfully read header and some data
+                Ok(())
+            }
+            Err(e) => {
+                // Failed to read - likely corrupted header
+                Err(anyhow::anyhow!("Invalid gzip file: {}", e))
+            }
+        }
     }
 }
 

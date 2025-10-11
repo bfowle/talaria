@@ -143,10 +143,10 @@ pub async fn perform_sync(
 
     // Execute operations (unless dry run)
     if options.dry_run {
-        println!("DRY RUN - No changes will be made");
-        println!("Would upload: {} files", to_upload.len());
-        println!("Would download: {} files", to_download.len());
-        println!(
+        tracing::info!("DRY RUN - No changes will be made");
+        tracing::info!("Would upload: {} files", to_upload.len());
+        tracing::info!("Would download: {} files", to_download.len());
+        tracing::info!(
             "Would delete: {} files",
             to_delete_local.len() + to_delete_remote.len()
         );

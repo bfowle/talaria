@@ -18,11 +18,7 @@ use talaria_utils::report::Reportable;
 ///
 /// This is a helper function that all commands can use to generate
 /// reports in a consistent way.
-pub fn save_report<T: Reportable>(
-    result: &T,
-    format: &str,
-    output_path: &Path,
-) -> Result<()> {
+pub fn save_report<T: Reportable>(result: &T, format: &str, output_path: &Path) -> Result<()> {
     use talaria_utils::report::{render_csv, render_html, render_json, render_text};
 
     let report = result.to_report();

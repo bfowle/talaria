@@ -7,6 +7,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::{debug, info};
 
 use crate::SHA256Hash;
 use talaria_core::{system::paths, DatabaseSource, NCBIDatabase, UniProtDatabase};
@@ -317,7 +318,38 @@ impl DownloadState {
         let mut contents = String::new();
         file.read_to_string(&mut contents)
             .context("Failed to read state file")?;
-        serde_json::from_str(&contents).context("Failed to parse state file")
+        let mut state: DownloadState =
+            serde_json::from_str(&contents).context("Failed to parse state file")?;
+
+        // If we're in the Downloading stage, check if a partial .tmp file exists
+        // and update bytes_done to match the actual file size (for proper resume)
+        if let Stage::Downloading {
+            ref mut bytes_done,
+            ref url,
+            total_bytes: _,
+        } = state.stage
+        {
+            // Extract filename from URL
+            if let Some(filename) = url.split('/').last() {
+                // Check for .tmp file
+                let tmp_file = state.workspace.join(format!("{}.tmp", filename));
+                if tmp_file.exists() {
+                    if let Ok(metadata) = fs::metadata(&tmp_file) {
+                        let file_size = metadata.len();
+                        if file_size > *bytes_done {
+                            tracing::info!(
+                                "Found partial download: {} bytes in .tmp file, updating state from {} bytes",
+                                file_size,
+                                *bytes_done
+                            );
+                            *bytes_done = file_size;
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(state)
     }
 
     /// Save state to file
@@ -449,7 +481,10 @@ impl DownloadState {
 
 /// Generate deterministic workspace path for a database
 pub fn get_download_workspace(source: &DatabaseSource) -> PathBuf {
+    let _span = tracing::debug_span!("get_download_workspace", source = %source).entered();
+
     let base = paths::talaria_downloads_dir();
+    debug!("Creating download workspace for {}", source);
 
     // Ensure downloads directory exists
     fs::create_dir_all(&base).ok();
@@ -679,6 +714,9 @@ pub fn find_resumable_downloads() -> Result<Vec<DownloadState>> {
 pub fn find_existing_workspace_for_source(
     source: &DatabaseSource,
 ) -> Result<Option<(PathBuf, DownloadState)>> {
+    let _span = tracing::debug_span!("find_existing_workspace", source = %source).entered();
+
+    info!("Searching for existing workspace for {}", source);
     let downloads_dir = paths::talaria_downloads_dir();
 
     if !downloads_dir.exists() {
@@ -769,13 +807,15 @@ mod tests {
         std::env::set_var("TALARIA_DATA_DIR", temp_dir.path());
 
         let source = DatabaseSource::UniProt(UniProtDatabase::UniRef50);
-        let (_, workspace) = create_test_workspace(&source, Stage::Complete).unwrap();
+        let (_temp_dir, workspace) = create_test_workspace(&source, Stage::Complete).unwrap();
 
         // Move workspace to downloads dir
         let downloads_dir = paths::talaria_downloads_dir();
         fs::create_dir_all(&downloads_dir).unwrap();
         let target = downloads_dir.join(workspace.file_name().unwrap());
-        fs::rename(&workspace, &target).unwrap();
+        // Copy instead of rename to avoid cross-device link issues
+        fs::create_dir_all(&target).unwrap();
+        fs::copy(workspace.join("state.json"), target.join("state.json")).unwrap();
 
         let result = find_existing_workspace_for_source(&source).unwrap();
         assert!(result.is_some());

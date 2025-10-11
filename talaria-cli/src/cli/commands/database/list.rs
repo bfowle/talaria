@@ -48,6 +48,8 @@ pub enum SortField {
 }
 
 pub fn run(args: ListArgs) -> anyhow::Result<()> {
+    let _span = tracing::info_span!("database_list").entered();
+
     use crate::cli::progress::create_spinner;
     use humansize::{format_size, BINARY};
     use talaria_sequoia::database::DatabaseManager;
@@ -61,7 +63,10 @@ pub fn run(args: ListArgs) -> anyhow::Result<()> {
 
     // Initialize database manager
     let spinner = create_spinner("Scanning for databases...");
-    let manager = DatabaseManager::new(None)?;
+    let manager = {
+        let _span = tracing::info_span!("initialize_database_manager").entered();
+        DatabaseManager::new(None)?
+    };
 
     // If --all-versions is specified, show version hierarchy
     if args.all_versions {
@@ -69,7 +74,10 @@ pub fn run(args: ListArgs) -> anyhow::Result<()> {
         return run_all_versions_list(&manager);
     }
 
-    let databases = manager.list_databases()?;
+    let databases = {
+        let _span = tracing::info_span!("list_databases").entered();
+        manager.list_databases()?
+    };
     spinner.finish_and_clear();
 
     if databases.is_empty() {
@@ -88,6 +96,7 @@ pub fn run(args: ListArgs) -> anyhow::Result<()> {
             let items = vec![
                 ("Version", db.version.clone()),
                 ("Created", db.created_at.format("%Y-%m-%d").to_string()),
+                ("Sequences", format_number(db.sequence_count)),
                 ("Chunks", format_number(db.chunk_count)),
                 ("Size", format_size(db.total_size, BINARY)),
             ];
@@ -129,6 +138,7 @@ pub fn run(args: ListArgs) -> anyhow::Result<()> {
         table.set_header(vec![
             header_cell("Database"),
             header_cell("Version"),
+            header_cell("Sequences"),
             header_cell("Chunks"),
             header_cell("Size"),
             header_cell("Reductions"),
@@ -148,6 +158,7 @@ pub fn run(args: ListArgs) -> anyhow::Result<()> {
             table.add_row(vec![
                 Cell::new(&db.name),
                 Cell::new(&db.version),
+                Cell::new(format_number(db.sequence_count)),
                 Cell::new(format_number(db.chunk_count)),
                 Cell::new(format_size(db.total_size, BINARY)),
                 Cell::new(&reductions),
@@ -161,7 +172,11 @@ pub fn run(args: ListArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_all_versions_list(manager: &talaria_sequoia::database::DatabaseManager) -> anyhow::Result<()> {
+fn run_all_versions_list(
+    manager: &talaria_sequoia::database::DatabaseManager,
+) -> anyhow::Result<()> {
+    let _span = tracing::debug_span!("database_list_all_versions").entered();
+
     use humansize::{format_size, BINARY};
     use std::collections::HashMap;
 
@@ -194,7 +209,12 @@ fn run_all_versions_list(manager: &talaria_sequoia::database::DatabaseManager) -
             "{} {} {} {}",
             "●".cyan().bold(),
             db_name.bold(),
-            format!("({} version{})", versions.len(), if versions.len() == 1 { "" } else { "s" }).dimmed(),
+            format!(
+                "({} version{})",
+                versions.len(),
+                if versions.len() == 1 { "" } else { "s" }
+            )
+            .dimmed(),
             format!("└ RocksDB: manifest:{}:*", db_name.replace('/', ":")).dimmed()
         );
 
@@ -235,12 +255,19 @@ fn run_all_versions_list(manager: &talaria_sequoia::database::DatabaseManager) -
 
     println!();
     info("Use 'talaria database versions list <database>' for detailed version info");
-    info(&format!("Storage location: {}", talaria_core::system::paths::talaria_databases_dir().join("sequences/rocksdb").display()));
+    info(&format!(
+        "Storage location: {}",
+        talaria_core::system::paths::talaria_databases_dir()
+            .join("sequences/rocksdb")
+            .display()
+    ));
 
     Ok(())
 }
 
 fn run_bitemporal_list(args: ListArgs) -> anyhow::Result<()> {
+    let _span = tracing::debug_span!("database_list_bitemporal").entered();
+
     use chrono::{NaiveDate, Utc};
     use std::sync::Arc;
     use talaria_core::system::paths;

@@ -63,7 +63,8 @@ pub fn require_taxonomy() -> Result<()> {
 }
 
 /// Get path to taxonomy mapping file for a specific database source
-pub fn get_taxonomy_mapping_path(source_type: TaxonomyMappingSource) -> Result<PathBuf> {
+/// Returns None if the file doesn't exist (allows fallback logic)
+pub fn get_taxonomy_mapping_path(source_type: TaxonomyMappingSource) -> Option<PathBuf> {
     let mappings_dir = get_taxonomy_mappings_dir();
 
     let filename = match source_type {
@@ -73,17 +74,11 @@ pub fn get_taxonomy_mapping_path(source_type: TaxonomyMappingSource) -> Result<P
 
     let path = mappings_dir.join(filename);
 
-    if !path.exists() {
-        anyhow::bail!(
-            "Taxonomy mapping file not found: {}\n\
-             \n\
-             Download with:\n\
-             \x1b[1m  talaria database download ncbi/prot-accession2taxid\x1b[0m",
-            path.display()
-        );
+    if path.exists() {
+        Some(path)
+    } else {
+        None
     }
-
-    Ok(path)
 }
 
 /// Type of taxonomy mapping source
@@ -109,7 +104,21 @@ where
     use std::fs::File;
     use std::io::{BufRead, BufReader};
 
-    let mapping_file = get_taxonomy_mapping_path(source)?;
+    let mapping_file = get_taxonomy_mapping_path(source)
+        .ok_or_else(|| {
+            let mappings_dir = get_taxonomy_mappings_dir();
+            let filename = match source {
+                TaxonomyMappingSource::UniProt => "uniprot_idmapping.dat.gz",
+                TaxonomyMappingSource::NCBI => "prot.accession2taxid.gz",
+            };
+            anyhow::anyhow!(
+                "Taxonomy mapping file not found: {}\n\
+                 \n\
+                 Download with:\n\
+                 \x1b[1m  talaria database download ncbi/prot-accession2taxid\x1b[0m",
+                mappings_dir.join(filename).display()
+            )
+        })?;
     let mut mappings = HashMap::new();
 
     let file = File::open(&mapping_file)
@@ -159,6 +168,49 @@ where
     }
 
     Ok(mappings)
+}
+
+/// Load taxonomy mappings with automatic fallback
+///
+/// Tries the preferred source first, then falls back to any available mapping file.
+/// This allows UniProt databases to use NCBI mappings when UniProt idmapping isn't available.
+pub fn load_taxonomy_mappings_with_fallback<TaxonId>(
+    preferred_source: TaxonomyMappingSource,
+) -> Result<HashMap<String, TaxonId>>
+where
+    TaxonId: From<u32>,
+{
+    // Try preferred source first
+    if let Ok(mappings) = load_taxonomy_mappings(preferred_source) {
+        return Ok(mappings);
+    }
+
+    // Try the other source as fallback
+    let fallback_source = match preferred_source {
+        TaxonomyMappingSource::UniProt => TaxonomyMappingSource::NCBI,
+        TaxonomyMappingSource::NCBI => TaxonomyMappingSource::UniProt,
+    };
+
+    if let Ok(mappings) = load_taxonomy_mappings(fallback_source) {
+        return Ok(mappings);
+    }
+
+    // No mappings found at all
+    let mappings_dir = get_taxonomy_mappings_dir();
+    anyhow::bail!(
+        "No taxonomy mappings available.\n\
+         \n\
+         Expected one of:\n\
+         - {}/uniprot_idmapping.dat.gz\n\
+         - {}/prot.accession2taxid.gz\n\
+         \n\
+         Download with:\n\
+         \x1b[1m  talaria database download ncbi/prot-accession2taxid\x1b[0m\n\
+         OR\n\
+         \x1b[1m  talaria database download uniprot/idmapping\x1b[0m",
+        mappings_dir.display(),
+        mappings_dir.display()
+    )
 }
 
 #[cfg(test)]

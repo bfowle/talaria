@@ -59,7 +59,7 @@
 //!         &mut progress,
 //!     ).await?;
 //!
-//!     println!("Downloaded to: {}", path.display());
+//!     tracing::info!("Downloaded to: {}", path.display());
 //!     Ok(())
 //! }
 //! ```

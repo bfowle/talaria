@@ -180,7 +180,10 @@ pub fn run(args: UpdateArgs) -> Result<()> {
 
     // Generate report if requested
     if let Some(report_path) = &args.report_output {
-        use talaria_sequoia::operations::{UpdateResult, DatabaseComparison, ChunkAnalysis, SequenceAnalysis, TaxonomyAnalysis, StorageMetrics};
+        use talaria_sequoia::operations::{
+            ChunkAnalysis, DatabaseComparison, SequenceAnalysis, StorageMetrics, TaxonomyAnalysis,
+            UpdateResult,
+        };
 
         // Build empty comparison (not applicable for update operations)
         let comparison = DatabaseComparison {
@@ -225,8 +228,14 @@ pub fn run(args: UpdateArgs) -> Result<()> {
         };
 
         let result = UpdateResult {
-            updated_databases: updates_available.iter().map(|(name, _, _)| name.clone()).collect(),
-            failed_databases: errors.iter().map(|(name, err)| (name.clone(), err.clone())).collect(),
+            updated_databases: updates_available
+                .iter()
+                .map(|(name, _, _)| name.clone())
+                .collect(),
+            failed_databases: errors
+                .iter()
+                .map(|(name, err)| (name.clone(), err.clone()))
+                .collect(),
             dry_run: args.dry_run,
             comparison,
             duration: std::time::Duration::from_secs(0),

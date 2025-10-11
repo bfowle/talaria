@@ -1,4 +1,9 @@
 //! Storage backend implementations for Talaria
+//!
+//! This crate provides low-level storage backends and utilities for the Talaria project.
+//! It focuses on providing efficient storage implementations (RocksDB, filesystem),
+//! compression, caching, and I/O operations. Business logic and storage traits are
+//! defined in talaria-sequoia to avoid circular dependencies.
 
 pub mod backend;
 pub mod cache;
@@ -10,34 +15,10 @@ pub mod io;
 pub mod optimization;
 pub mod types;
 
-// Re-export commonly used types and traits from core
-pub use core::{
-    ChunkInfo,
-    ChunkMetadata,
-    // Traits
-    ChunkStorage,
-    ChunkType,
-    DeltaChunk,
-    DeltaStorage,
-    GCResult,
-    OperationType,
-    ProcessingState,
-    ReductionManifest,
-    ReductionStorage,
-    RemoteStatus,
-    RemoteStorage,
-    // Types
-    SHA256Hash,
-    SourceInfo,
-    StatefulStorage,
-    StorageStats,
-    SyncResult,
-    TaxonId,
-    TaxonomyAwareChunk,
-    TaxonomyStats,
-    TaxonomyStorage,
-    VerificationError,
-    VerificationErrorType,
+// Re-export commonly used types from core
+pub use core::types::{
+    ChunkInfo, ChunkMetadata, ChunkType, DeltaChunk, GCResult, RemoteStatus, SHA256Hash,
+    StorageStats, SyncResult, TaxonId, TaxonomyStats, VerificationError, VerificationErrorType,
 };
 
 // Re-export from index module

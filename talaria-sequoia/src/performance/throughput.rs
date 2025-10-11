@@ -541,7 +541,7 @@ mod tests {
 
         let bottlenecks = monitor.detect_bottlenecks();
         // Bottlenecks might be detected based on system state
-        println!("Detected bottlenecks: {:?}", bottlenecks);
+        tracing::info!("Detected bottlenecks: {:?}", bottlenecks);
     }
 
     #[test]

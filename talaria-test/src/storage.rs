@@ -7,7 +7,7 @@ use crate::TestEnvironment;
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use talaria_core::types::SHA256Hash;
-use talaria_sequoia::storage::{SequoiaStorage, SequenceStorage};
+use talaria_sequoia::storage::{SequenceStorage, SequoiaStorage};
 
 /// Test storage wrapper with helpers
 pub struct TestStorage {

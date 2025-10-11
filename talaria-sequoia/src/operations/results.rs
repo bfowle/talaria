@@ -1,14 +1,13 @@
+use super::database_diff::DatabaseComparison;
 /// Result types for operations that implement Reportable
 ///
 /// These types aggregate operation results and provide a clean interface
 /// for generating reports across different output formats.
-
 use super::reduction::{ReductionManifest, ReductionParameters, ReductionStatistics};
 use super::selection::traits::SelectionStats;
-use super::database_diff::DatabaseComparison;
 use crate::types::SHA256Hash;
-use std::time::Duration;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use talaria_bio::taxonomy::TaxonomyDiscrepancy;
 use talaria_utils::report::{
     Cell, CellStyle, Metric, MetricSeverity, Report, Reportable, Section, Table,
@@ -309,7 +308,10 @@ impl Reportable for ReductionResult {
             .metadata("profile", self.manifest.profile.clone());
 
         // Summary metrics
-        let reduction_ratio = (1.0 - (self.statistics.reference_sequences as f64 / self.statistics.original_sequences as f64)) * 100.0;
+        let reduction_ratio = (1.0
+            - (self.statistics.reference_sequences as f64
+                / self.statistics.original_sequences as f64))
+            * 100.0;
         let summary_metrics = vec![
             Metric::new("Original Sequences", self.statistics.original_sequences)
                 .with_severity(MetricSeverity::Info),
@@ -317,16 +319,20 @@ impl Reportable for ReductionResult {
                 .with_severity(MetricSeverity::Success),
             Metric::new("Child Sequences", self.statistics.child_sequences)
                 .with_severity(MetricSeverity::Info),
-            Metric::new("Reduction Ratio", format!("{:.1}%", reduction_ratio))
-                .with_severity(if reduction_ratio > 80.0 {
+            Metric::new("Reduction Ratio", format!("{:.1}%", reduction_ratio)).with_severity(
+                if reduction_ratio > 80.0 {
                     MetricSeverity::Success
                 } else if reduction_ratio > 50.0 {
                     MetricSeverity::Warning
                 } else {
                     MetricSeverity::Normal
-                }),
-            Metric::new("Deduplication Ratio", format!("{:.2}x", self.statistics.deduplication_ratio))
-                .with_severity(MetricSeverity::Success),
+                },
+            ),
+            Metric::new(
+                "Deduplication Ratio",
+                format!("{:.2}x", self.statistics.deduplication_ratio),
+            )
+            .with_severity(MetricSeverity::Success),
             Metric::new("Unique Taxa", self.statistics.unique_taxa),
         ];
         report = report.section(Section::summary("Summary", summary_metrics));
@@ -345,7 +351,10 @@ impl Reportable for ReductionResult {
             Cell::new("Total with Deltas"),
             Cell::new(format_bytes(self.statistics.total_size_with_deltas)),
         ]);
-        let space_saved = self.statistics.original_size.saturating_sub(self.statistics.total_size_with_deltas);
+        let space_saved = self
+            .statistics
+            .original_size
+            .saturating_sub(self.statistics.total_size_with_deltas);
         size_table.add_row(vec![
             Cell::new("Space Saved"),
             Cell::new(format_bytes(space_saved)).with_style(CellStyle::Success),
@@ -354,20 +363,44 @@ impl Reportable for ReductionResult {
 
         // Parameters
         let params_items = vec![
-            ("Similarity Threshold".to_string(), format!("{:.1}%", self.parameters.similarity_threshold * 100.0)),
-            ("Reduction Ratio".to_string(), format!("{:.1}%", self.parameters.reduction_ratio * 100.0)),
-            ("Min Length".to_string(), self.parameters.min_length.to_string()),
-            ("Taxonomy Aware".to_string(), self.parameters.taxonomy_aware.to_string()),
+            (
+                "Similarity Threshold".to_string(),
+                format!("{:.1}%", self.parameters.similarity_threshold * 100.0),
+            ),
+            (
+                "Reduction Ratio".to_string(),
+                format!("{:.1}%", self.parameters.reduction_ratio * 100.0),
+            ),
+            (
+                "Min Length".to_string(),
+                self.parameters.min_length.to_string(),
+            ),
+            (
+                "Taxonomy Aware".to_string(),
+                self.parameters.taxonomy_aware.to_string(),
+            ),
         ];
         report = report.section(Section::key_value("Parameters", params_items));
 
         // Selection stats if available
         if let Some(stats) = &self.selection_stats {
             let sel_items = vec![
-                ("Total Sequences".to_string(), stats.total_sequences.to_string()),
-                ("References Selected".to_string(), stats.references_selected.to_string()),
-                ("Average Identity".to_string(), format!("{:.1}%", stats.avg_identity * 100.0)),
-                ("Coverage".to_string(), format!("{:.1}%", stats.coverage * 100.0)),
+                (
+                    "Total Sequences".to_string(),
+                    stats.total_sequences.to_string(),
+                ),
+                (
+                    "References Selected".to_string(),
+                    stats.references_selected.to_string(),
+                ),
+                (
+                    "Average Identity".to_string(),
+                    format!("{:.1}%", stats.avg_identity * 100.0),
+                ),
+                (
+                    "Coverage".to_string(),
+                    format!("{:.1}%", stats.coverage * 100.0),
+                ),
             ];
             report = report.section(Section::key_value("Selection Statistics", sel_items));
         }
@@ -384,33 +417,35 @@ impl Reportable for ValidationResult {
 
         // Summary metrics
         let summary_metrics = vec![
-            Metric::new("Status", if self.valid { "VALID" } else { "INVALID" })
-                .with_severity(if self.valid {
+            Metric::new("Status", if self.valid { "VALID" } else { "INVALID" }).with_severity(
+                if self.valid {
                     MetricSeverity::Success
                 } else {
                     MetricSeverity::Error
-                }),
+                },
+            ),
             Metric::new("Total Sequences", self.statistics.total_sequences),
             Metric::new("Valid Sequences", self.statistics.valid_sequences)
                 .with_severity(MetricSeverity::Success),
-            Metric::new("Invalid Sequences", self.statistics.invalid_sequences)
-                .with_severity(if self.statistics.invalid_sequences > 0 {
+            Metric::new("Invalid Sequences", self.statistics.invalid_sequences).with_severity(
+                if self.statistics.invalid_sequences > 0 {
                     MetricSeverity::Error
                 } else {
                     MetricSeverity::Success
-                }),
-            Metric::new("Errors", self.errors.len())
-                .with_severity(if self.errors.is_empty() {
-                    MetricSeverity::Success
-                } else {
-                    MetricSeverity::Error
-                }),
-            Metric::new("Warnings", self.warnings.len())
-                .with_severity(if self.warnings.is_empty() {
+                },
+            ),
+            Metric::new("Errors", self.errors.len()).with_severity(if self.errors.is_empty() {
+                MetricSeverity::Success
+            } else {
+                MetricSeverity::Error
+            }),
+            Metric::new("Warnings", self.warnings.len()).with_severity(
+                if self.warnings.is_empty() {
                     MetricSeverity::Success
                 } else {
                     MetricSeverity::Warning
-                }),
+                },
+            ),
         ];
         report = report.section(Section::summary("Summary", summary_metrics));
 
@@ -450,10 +485,8 @@ impl Reportable for ValidationResult {
 
         // Warnings table
         if !self.warnings.is_empty() {
-            let mut warnings_table = Table::new(vec![
-                "Message".to_string(),
-                "Location".to_string(),
-            ]);
+            let mut warnings_table =
+                Table::new(vec!["Message".to_string(), "Location".to_string()]);
             for warning in self.warnings.iter().take(20) {
                 warnings_table.add_row(vec![
                     Cell::new(&warning.message).with_style(CellStyle::Warning),
@@ -484,31 +517,41 @@ impl Reportable for GarbageCollectionResult {
 
         // Summary metrics
         let summary_metrics = vec![
-            Metric::new("Chunks Removed", self.chunks_removed)
-                .with_severity(if self.chunks_removed > 0 {
+            Metric::new("Chunks Removed", self.chunks_removed).with_severity(
+                if self.chunks_removed > 0 {
                     MetricSeverity::Success
                 } else {
                     MetricSeverity::Info
-                }),
-            Metric::new("Space Reclaimed", format_bytes(self.space_reclaimed))
-                .with_severity(if self.space_reclaimed > 0 {
+                },
+            ),
+            Metric::new("Space Reclaimed", format_bytes(self.space_reclaimed)).with_severity(
+                if self.space_reclaimed > 0 {
                     MetricSeverity::Success
                 } else {
                     MetricSeverity::Info
-                }),
-            Metric::new("Compaction", if self.compaction_performed { "Yes" } else { "No" })
-                .with_severity(if self.compaction_performed {
-                    MetricSeverity::Success
+                },
+            ),
+            Metric::new(
+                "Compaction",
+                if self.compaction_performed {
+                    "Yes"
                 } else {
-                    MetricSeverity::Info
-                }),
+                    "No"
+                },
+            )
+            .with_severity(if self.compaction_performed {
+                MetricSeverity::Success
+            } else {
+                MetricSeverity::Info
+            }),
             Metric::new("Orphaned Chunks", self.orphaned_chunks.len()),
         ];
         report = report.section(Section::summary("Summary", summary_metrics));
 
         // Orphaned chunks (if any, show sample)
         if !self.orphaned_chunks.is_empty() {
-            let items: Vec<String> = self.orphaned_chunks
+            let items: Vec<String> = self
+                .orphaned_chunks
                 .iter()
                 .take(10)
                 .map(|h| h.to_hex()[..16].to_string())
@@ -535,33 +578,43 @@ impl Reportable for VerificationResult {
 
         // Summary metrics
         let summary_metrics = vec![
-            Metric::new("Status", if self.valid { "VALID" } else { "INVALID" })
-                .with_severity(if self.valid {
+            Metric::new("Status", if self.valid { "VALID" } else { "INVALID" }).with_severity(
+                if self.valid {
                     MetricSeverity::Success
                 } else {
                     MetricSeverity::Error
-                }),
+                },
+            ),
             Metric::new("Total Chunks", self.statistics.total_chunks),
             Metric::new("Verified Chunks", self.statistics.verified_chunks)
                 .with_severity(MetricSeverity::Success),
-            Metric::new("Corrupted Chunks", self.statistics.corrupted_chunks)
-                .with_severity(if self.statistics.corrupted_chunks > 0 {
+            Metric::new("Corrupted Chunks", self.statistics.corrupted_chunks).with_severity(
+                if self.statistics.corrupted_chunks > 0 {
                     MetricSeverity::Error
                 } else {
                     MetricSeverity::Success
-                }),
-            Metric::new("Missing Chunks", self.statistics.missing_chunks)
-                .with_severity(if self.statistics.missing_chunks > 0 {
+                },
+            ),
+            Metric::new("Missing Chunks", self.statistics.missing_chunks).with_severity(
+                if self.statistics.missing_chunks > 0 {
                     MetricSeverity::Error
                 } else {
                     MetricSeverity::Success
-                }),
-            Metric::new("Merkle Tree", if self.merkle_valid { "Valid" } else { "Invalid" })
-                .with_severity(if self.merkle_valid {
-                    MetricSeverity::Success
+                },
+            ),
+            Metric::new(
+                "Merkle Tree",
+                if self.merkle_valid {
+                    "Valid"
                 } else {
-                    MetricSeverity::Error
-                }),
+                    "Invalid"
+                },
+            )
+            .with_severity(if self.merkle_valid {
+                MetricSeverity::Success
+            } else {
+                MetricSeverity::Error
+            }),
         ];
         report = report.section(Section::summary("Summary", summary_metrics));
 
@@ -621,7 +674,9 @@ impl Reportable for VerificationResult {
             Cell::new(format_bytes(self.statistics.verified_bytes)),
         ]);
         if self.statistics.total_bytes > 0 {
-            let percentage = (self.statistics.verified_bytes as f64 / self.statistics.total_bytes as f64) * 100.0;
+            let percentage = (self.statistics.verified_bytes as f64
+                / self.statistics.total_bytes as f64)
+                * 100.0;
             stats_table.add_row(vec![
                 Cell::new("Verification Coverage"),
                 Cell::new(format!("{:.1}%", percentage)),
@@ -651,12 +706,13 @@ impl Reportable for UpdateResult {
                 }),
             Metric::new("Updated Databases", self.updated_databases.len())
                 .with_severity(MetricSeverity::Success),
-            Metric::new("Failed Databases", self.failed_databases.len())
-                .with_severity(if self.failed_databases.is_empty() {
+            Metric::new("Failed Databases", self.failed_databases.len()).with_severity(
+                if self.failed_databases.is_empty() {
                     MetricSeverity::Success
                 } else {
                     MetricSeverity::Error
-                }),
+                },
+            ),
         ];
         report = report.section(Section::summary("Summary", summary_metrics));
 
@@ -698,36 +754,40 @@ impl Reportable for ReconstructionResult {
         };
 
         let summary_metrics = vec![
-            Metric::new("Status", if self.success { "SUCCESS" } else { "FAILED" })
-                .with_severity(if self.success {
+            Metric::new("Status", if self.success { "SUCCESS" } else { "FAILED" }).with_severity(
+                if self.success {
                     MetricSeverity::Success
                 } else {
                     MetricSeverity::Error
-                }),
+                },
+            ),
             Metric::new("Total Sequences", self.total_sequences),
             Metric::new("Reconstructed", self.sequences_reconstructed)
                 .with_severity(MetricSeverity::Success),
-            Metric::new("Failed", self.failed_sequences.len())
-                .with_severity(if !self.failed_sequences.is_empty() {
+            Metric::new("Failed", self.failed_sequences.len()).with_severity(
+                if !self.failed_sequences.is_empty() {
                     MetricSeverity::Error
                 } else {
                     MetricSeverity::Success
-                }),
-            Metric::new("Success Rate", format!("{:.1}%", success_rate))
-                .with_severity(if success_rate >= 99.0 {
+                },
+            ),
+            Metric::new("Success Rate", format!("{:.1}%", success_rate)).with_severity(
+                if success_rate >= 99.0 {
                     MetricSeverity::Success
                 } else if success_rate >= 95.0 {
                     MetricSeverity::Warning
                 } else {
                     MetricSeverity::Error
-                }),
+                },
+            ),
             Metric::new("Output Size", format_bytes(self.output_size)),
         ];
         report = report.section(Section::summary("Summary", summary_metrics));
 
         // Failed sequences (if any)
         if !self.failed_sequences.is_empty() {
-            let items: Vec<String> = self.failed_sequences
+            let items: Vec<String> = self
+                .failed_sequences
                 .iter()
                 .take(20)
                 .map(|s| s.clone())
@@ -754,14 +814,22 @@ impl Reportable for MirrorResult {
 
         // Summary metrics
         let summary_metrics = vec![
-            Metric::new("Total Chunks", self.total_chunks)
-                .with_severity(MetricSeverity::Info),
-            Metric::new("Transferred Chunks", self.transferred_chunks)
-                .with_severity(if self.transferred_chunks > 0 { MetricSeverity::Success } else { MetricSeverity::Info }),
-            Metric::new("Skipped Chunks", self.skipped_chunks)
-                .with_severity(MetricSeverity::Info),
-            Metric::new("Failed Chunks", self.failed_chunks)
-                .with_severity(if self.failed_chunks > 0 { MetricSeverity::Error } else { MetricSeverity::Success }),
+            Metric::new("Total Chunks", self.total_chunks).with_severity(MetricSeverity::Info),
+            Metric::new("Transferred Chunks", self.transferred_chunks).with_severity(
+                if self.transferred_chunks > 0 {
+                    MetricSeverity::Success
+                } else {
+                    MetricSeverity::Info
+                },
+            ),
+            Metric::new("Skipped Chunks", self.skipped_chunks).with_severity(MetricSeverity::Info),
+            Metric::new("Failed Chunks", self.failed_chunks).with_severity(
+                if self.failed_chunks > 0 {
+                    MetricSeverity::Error
+                } else {
+                    MetricSeverity::Success
+                },
+            ),
             Metric::new("Data Transferred", format_bytes(self.bytes_transferred))
                 .with_severity(MetricSeverity::Success),
         ];
@@ -817,21 +885,41 @@ impl Reportable for UpdateCheckResult {
 
         // Summary metrics
         let summary_metrics = vec![
-            Metric::new("Update Available", if self.update_available { "Yes" } else { "No" })
-                .with_severity(if self.update_available { MetricSeverity::Warning } else { MetricSeverity::Success }),
+            Metric::new(
+                "Update Available",
+                if self.update_available { "Yes" } else { "No" },
+            )
+            .with_severity(if self.update_available {
+                MetricSeverity::Warning
+            } else {
+                MetricSeverity::Success
+            }),
             Metric::new("Current Version", self.current_version.clone())
                 .with_severity(MetricSeverity::Info),
-            Metric::new("Latest Version", self.latest_version.clone())
-                .with_severity(if self.update_available { MetricSeverity::Warning } else { MetricSeverity::Info }),
+            Metric::new("Latest Version", self.latest_version.clone()).with_severity(
+                if self.update_available {
+                    MetricSeverity::Warning
+                } else {
+                    MetricSeverity::Info
+                },
+            ),
         ];
         report = report.section(Section::summary("Summary", summary_metrics));
 
         // Version information
-        let mut version_table = Table::new(vec!["Property".to_string(), "Current".to_string(), "Latest".to_string()]);
+        let mut version_table = Table::new(vec![
+            "Property".to_string(),
+            "Current".to_string(),
+            "Latest".to_string(),
+        ]);
         version_table.add_row(vec![
             Cell::new("Version"),
             Cell::new(&self.current_version),
-            Cell::new(&self.latest_version).with_style(if self.update_available { CellStyle::Warning } else { CellStyle::Normal }),
+            Cell::new(&self.latest_version).with_style(if self.update_available {
+                CellStyle::Warning
+            } else {
+                CellStyle::Normal
+            }),
         ]);
         if let Some(ref release_date) = self.latest_release_date {
             version_table.add_row(vec![
@@ -872,10 +960,25 @@ impl Reportable for DiscrepancyResult {
         let summary_metrics = vec![
             Metric::new("Sequences Checked", self.sequences_checked)
                 .with_severity(MetricSeverity::Info),
-            Metric::new("Discrepancies Found", discrepancy_count)
-                .with_severity(if discrepancy_count > 0 { MetricSeverity::Warning } else { MetricSeverity::Success }),
-            Metric::new("Accuracy", format!("{:.2}%", (1.0 - (discrepancy_count as f64 / self.sequences_checked as f64)) * 100.0))
-                .with_severity(if discrepancy_count == 0 { MetricSeverity::Success } else { MetricSeverity::Warning }),
+            Metric::new("Discrepancies Found", discrepancy_count).with_severity(
+                if discrepancy_count > 0 {
+                    MetricSeverity::Warning
+                } else {
+                    MetricSeverity::Success
+                },
+            ),
+            Metric::new(
+                "Accuracy",
+                format!(
+                    "{:.2}%",
+                    (1.0 - (discrepancy_count as f64 / self.sequences_checked as f64)) * 100.0
+                ),
+            )
+            .with_severity(if discrepancy_count == 0 {
+                MetricSeverity::Success
+            } else {
+                MetricSeverity::Warning
+            }),
         ];
         report = report.section(Section::summary("Summary", summary_metrics));
 
@@ -890,7 +993,9 @@ impl Reportable for DiscrepancyResult {
             // Show up to 50 discrepancies
             let show_count = std::cmp::min(50, self.discrepancies.len());
             for discrepancy in &self.discrepancies[..show_count] {
-                let conflicts_str = discrepancy.conflicts.iter()
+                let conflicts_str = discrepancy
+                    .conflicts
+                    .iter()
                     .map(|(src, taxid)| format!("{:?}:{}", src, taxid))
                     .collect::<Vec<_>>()
                     .join(", ");
@@ -903,7 +1008,10 @@ impl Reportable for DiscrepancyResult {
 
             if self.discrepancies.len() > show_count {
                 disc_table.add_row(vec![
-                    Cell::new(format!("... and {} more", self.discrepancies.len() - show_count)),
+                    Cell::new(format!(
+                        "... and {} more",
+                        self.discrepancies.len() - show_count
+                    )),
                     Cell::new(""),
                     Cell::new(""),
                     Cell::new(""),
@@ -935,8 +1043,15 @@ impl Reportable for OptimizationResult {
                 .with_severity(MetricSeverity::Info),
             Metric::new("Space After", format_bytes(self.space_after))
                 .with_severity(MetricSeverity::Success),
-            Metric::new("Space Saved", format_bytes(self.space_before - self.space_after))
-                .with_severity(if space_saved_pct > 5.0 { MetricSeverity::Success } else { MetricSeverity::Info }),
+            Metric::new(
+                "Space Saved",
+                format_bytes(self.space_before - self.space_after),
+            )
+            .with_severity(if space_saved_pct > 5.0 {
+                MetricSeverity::Success
+            } else {
+                MetricSeverity::Info
+            }),
             Metric::new("Chunks Compacted", self.chunks_compacted)
                 .with_severity(MetricSeverity::Info),
             Metric::new("Indices Rebuilt", self.indices_rebuilt)
@@ -956,11 +1071,19 @@ impl Reportable for OptimizationResult {
         ]);
         details_table.add_row(vec![
             Cell::new("Storage compaction"),
-            Cell::new(if self.compaction_performed { "Yes" } else { "No" }),
+            Cell::new(if self.compaction_performed {
+                "Yes"
+            } else {
+                "No"
+            }),
         ]);
         details_table.add_row(vec![
             Cell::new("Defragmentation"),
-            Cell::new(if self.defragmentation_performed { "Yes" } else { "No" }),
+            Cell::new(if self.defragmentation_performed {
+                "Yes"
+            } else {
+                "No"
+            }),
         ]);
         report = report.section(Section::table("Optimization Details", details_table));
 
@@ -976,8 +1099,12 @@ impl Reportable for OptimizationResult {
         ]);
         space_table.add_row(vec![
             Cell::new("Space saved"),
-            Cell::new(format!("{} ({:.1}%)", format_bytes(self.space_before - self.space_after), space_saved_pct))
-                .with_style(CellStyle::Success),
+            Cell::new(format!(
+                "{} ({:.1}%)",
+                format_bytes(self.space_before - self.space_after),
+                space_saved_pct
+            ))
+            .with_style(CellStyle::Success),
         ]);
         report = report.section(Section::table("Space Savings", space_table));
 
@@ -996,10 +1123,8 @@ impl Reportable for DatabaseInfoResult {
                 .with_severity(MetricSeverity::Info),
             Metric::new("Total Size", format_bytes(self.total_size))
                 .with_severity(MetricSeverity::Info),
-            Metric::new("Total Chunks", self.total_chunks)
-                .with_severity(MetricSeverity::Info),
-            Metric::new("Versions", self.versions)
-                .with_severity(MetricSeverity::Info),
+            Metric::new("Total Chunks", self.total_chunks).with_severity(MetricSeverity::Info),
+            Metric::new("Versions", self.versions).with_severity(MetricSeverity::Info),
         ];
         report = report.section(Section::summary("Summary", summary_metrics));
 
@@ -1009,25 +1134,13 @@ impl Reportable for DatabaseInfoResult {
             Cell::new("Database Name"),
             Cell::new(&self.database_name),
         ]);
-        basic_table.add_row(vec![
-            Cell::new("Source"),
-            Cell::new(&self.source),
-        ]);
-        basic_table.add_row(vec![
-            Cell::new("Dataset"),
-            Cell::new(&self.dataset),
-        ]);
+        basic_table.add_row(vec![Cell::new("Source"), Cell::new(&self.source)]);
+        basic_table.add_row(vec![Cell::new("Dataset"), Cell::new(&self.dataset)]);
         if let Some(ref version) = self.current_version {
-            basic_table.add_row(vec![
-                Cell::new("Current Version"),
-                Cell::new(version),
-            ]);
+            basic_table.add_row(vec![Cell::new("Current Version"), Cell::new(version)]);
         }
         if let Some(ref date) = self.last_updated {
-            basic_table.add_row(vec![
-                Cell::new("Last Updated"),
-                Cell::new(date),
-            ]);
+            basic_table.add_row(vec![Cell::new("Last Updated"), Cell::new(date)]);
         }
         report = report.section(Section::table("Basic Information", basic_table));
 
@@ -1128,39 +1241,61 @@ impl Reportable for StatsResult {
             + self.composition.n_count
             + self.composition.other_count;
 
-        let mut comp_table = Table::new(vec!["Base".to_string(), "Count".to_string(), "Percentage".to_string()]);
+        let mut comp_table = Table::new(vec![
+            "Base".to_string(),
+            "Count".to_string(),
+            "Percentage".to_string(),
+        ]);
         comp_table.add_row(vec![
             Cell::new("A (Adenine)"),
             Cell::new(self.composition.a_count.to_string()),
-            Cell::new(format!("{:.2}%", (self.composition.a_count as f64 / total_bases as f64) * 100.0)),
+            Cell::new(format!(
+                "{:.2}%",
+                (self.composition.a_count as f64 / total_bases as f64) * 100.0
+            )),
         ]);
         comp_table.add_row(vec![
             Cell::new("C (Cytosine)"),
             Cell::new(self.composition.c_count.to_string()),
-            Cell::new(format!("{:.2}%", (self.composition.c_count as f64 / total_bases as f64) * 100.0)),
+            Cell::new(format!(
+                "{:.2}%",
+                (self.composition.c_count as f64 / total_bases as f64) * 100.0
+            )),
         ]);
         comp_table.add_row(vec![
             Cell::new("G (Guanine)"),
             Cell::new(self.composition.g_count.to_string()),
-            Cell::new(format!("{:.2}%", (self.composition.g_count as f64 / total_bases as f64) * 100.0)),
+            Cell::new(format!(
+                "{:.2}%",
+                (self.composition.g_count as f64 / total_bases as f64) * 100.0
+            )),
         ]);
         comp_table.add_row(vec![
             Cell::new("T (Thymine)"),
             Cell::new(self.composition.t_count.to_string()),
-            Cell::new(format!("{:.2}%", (self.composition.t_count as f64 / total_bases as f64) * 100.0)),
+            Cell::new(format!(
+                "{:.2}%",
+                (self.composition.t_count as f64 / total_bases as f64) * 100.0
+            )),
         ]);
         if self.composition.n_count > 0 {
             comp_table.add_row(vec![
                 Cell::new("N (Unknown)"),
                 Cell::new(self.composition.n_count.to_string()).with_style(CellStyle::Warning),
-                Cell::new(format!("{:.2}%", (self.composition.n_count as f64 / total_bases as f64) * 100.0)),
+                Cell::new(format!(
+                    "{:.2}%",
+                    (self.composition.n_count as f64 / total_bases as f64) * 100.0
+                )),
             ]);
         }
         if self.composition.other_count > 0 {
             comp_table.add_row(vec![
                 Cell::new("Other"),
                 Cell::new(self.composition.other_count.to_string()).with_style(CellStyle::Warning),
-                Cell::new(format!("{:.2}%", (self.composition.other_count as f64 / total_bases as f64) * 100.0)),
+                Cell::new(format!(
+                    "{:.2}%",
+                    (self.composition.other_count as f64 / total_bases as f64) * 100.0
+                )),
             ]);
         }
         comp_table.add_row(vec![
@@ -1182,7 +1317,10 @@ impl Reportable for StatsResult {
             }
             if self.length_distribution.len() > show_count {
                 dist_table.add_row(vec![
-                    Cell::new(format!("... and {} more bins", self.length_distribution.len() - show_count)),
+                    Cell::new(format!(
+                        "... and {} more bins",
+                        self.length_distribution.len() - show_count
+                    )),
                     Cell::new(""),
                 ]);
             }
@@ -1202,28 +1340,35 @@ impl Reportable for TaxonomyCoverageResult {
         let summary_metrics = vec![
             Metric::new("Total Sequences", self.total_sequences)
                 .with_severity(MetricSeverity::Info),
-            Metric::new("Unique Taxa", self.unique_taxa)
-                .with_severity(MetricSeverity::Info),
-            Metric::new("Coverage Rate", format!("{:.1}%", (self.unique_taxa as f64 / self.total_sequences as f64) * 100.0))
-                .with_severity(MetricSeverity::Success),
+            Metric::new("Unique Taxa", self.unique_taxa).with_severity(MetricSeverity::Info),
+            Metric::new(
+                "Coverage Rate",
+                format!(
+                    "{:.1}%",
+                    (self.unique_taxa as f64 / self.total_sequences as f64) * 100.0
+                ),
+            )
+            .with_severity(MetricSeverity::Success),
         ];
         report = report.section(Section::summary("Summary", summary_metrics));
 
         // Coverage by rank
         if !self.coverage_by_rank.is_empty() {
-            let mut rank_table = Table::new(vec!["Taxonomic Rank".to_string(), "Count".to_string()]);
+            let mut rank_table =
+                Table::new(vec!["Taxonomic Rank".to_string(), "Count".to_string()]);
             for (rank, count) in &self.coverage_by_rank {
-                rank_table.add_row(vec![
-                    Cell::new(rank),
-                    Cell::new(count.to_string()),
-                ]);
+                rank_table.add_row(vec![Cell::new(rank), Cell::new(count.to_string())]);
             }
             report = report.section(Section::table("Coverage by Rank", rank_table));
         }
 
         // Most common taxa
         if !self.most_common_taxa.is_empty() {
-            let mut common_table = Table::new(vec!["Taxon".to_string(), "Sequences".to_string(), "Percentage".to_string()]);
+            let mut common_table = Table::new(vec![
+                "Taxon".to_string(),
+                "Sequences".to_string(),
+                "Percentage".to_string(),
+            ]);
             let show_count = std::cmp::min(20, self.most_common_taxa.len());
             for (taxon, count) in &self.most_common_taxa[..show_count] {
                 let percentage = (*count as f64 / self.total_sequences as f64) * 100.0;
@@ -1235,7 +1380,10 @@ impl Reportable for TaxonomyCoverageResult {
             }
             if self.most_common_taxa.len() > show_count {
                 common_table.add_row(vec![
-                    Cell::new(format!("... and {} more", self.most_common_taxa.len() - show_count)),
+                    Cell::new(format!(
+                        "... and {} more",
+                        self.most_common_taxa.len() - show_count
+                    )),
                     Cell::new(""),
                     Cell::new(""),
                 ]);
@@ -1248,14 +1396,14 @@ impl Reportable for TaxonomyCoverageResult {
             let mut rare_table = Table::new(vec!["Taxon".to_string(), "Sequences".to_string()]);
             let show_count = std::cmp::min(10, self.rare_taxa.len());
             for (taxon, count) in &self.rare_taxa[..show_count] {
-                rare_table.add_row(vec![
-                    Cell::new(taxon),
-                    Cell::new(count.to_string()),
-                ]);
+                rare_table.add_row(vec![Cell::new(taxon), Cell::new(count.to_string())]);
             }
             if self.rare_taxa.len() > show_count {
                 rare_table.add_row(vec![
-                    Cell::new(format!("... and {} more", self.rare_taxa.len() - show_count)),
+                    Cell::new(format!(
+                        "... and {} more",
+                        self.rare_taxa.len() - show_count
+                    )),
                     Cell::new(""),
                 ]);
             }
@@ -1296,14 +1444,19 @@ impl Reportable for HistoryResult {
     fn to_report(&self) -> Report {
         let mut report = Report::builder("Version History", "history")
             .metadata("duration", format!("{:.2?}", self.duration))
-            .metadata("date_range", format!("{} to {}", self.date_range.0, self.date_range.1));
+            .metadata(
+                "date_range",
+                format!("{} to {}", self.date_range.0, self.date_range.1),
+            );
 
         // Summary metrics
         let summary_metrics = vec![
-            Metric::new("Total Versions", self.total_versions)
-                .with_severity(MetricSeverity::Info),
-            Metric::new("Date Range", format!("{} to {}", self.date_range.0, self.date_range.1))
-                .with_severity(MetricSeverity::Info),
+            Metric::new("Total Versions", self.total_versions).with_severity(MetricSeverity::Info),
+            Metric::new(
+                "Date Range",
+                format!("{} to {}", self.date_range.0, self.date_range.1),
+            )
+            .with_severity(MetricSeverity::Info),
         ];
         report = report.section(Section::summary("Summary", summary_metrics));
 
@@ -1328,7 +1481,10 @@ impl Reportable for HistoryResult {
             }
             if self.versions.len() > show_count {
                 version_table.add_row(vec![
-                    Cell::new(format!("... and {} more versions", self.versions.len() - show_count)),
+                    Cell::new(format!(
+                        "... and {} more versions",
+                        self.versions.len() - show_count
+                    )),
                     Cell::new(""),
                     Cell::new(""),
                     Cell::new(""),
@@ -1340,12 +1496,10 @@ impl Reportable for HistoryResult {
 
         // Storage evolution
         if !self.storage_evolution.is_empty() {
-            let mut storage_table = Table::new(vec!["Date".to_string(), "Storage Size".to_string()]);
+            let mut storage_table =
+                Table::new(vec!["Date".to_string(), "Storage Size".to_string()]);
             for (date, size) in &self.storage_evolution {
-                storage_table.add_row(vec![
-                    Cell::new(date),
-                    Cell::new(format_bytes(*size)),
-                ]);
+                storage_table.add_row(vec![Cell::new(date), Cell::new(format_bytes(*size))]);
             }
             report = report.section(Section::table("Storage Evolution", storage_table));
         }

@@ -40,21 +40,21 @@ impl DeadlockDetector {
                 }
 
                 // Deadlock detected!
-                eprintln!("\n═══════════════════════════════════════════════════");
-                eprintln!("                DEADLOCK DETECTED!");
-                eprintln!("═══════════════════════════════════════════════════");
+                tracing::warn!("\n═══════════════════════════════════════════════════");
+                tracing::warn!("                DEADLOCK DETECTED!");
+                tracing::warn!("═══════════════════════════════════════════════════");
 
                 for (i, threads) in deadlocks.iter().enumerate() {
-                    eprintln!("\nDeadlock #{}", i + 1);
-                    eprintln!("───────────────────────────────────────────────────");
+                    tracing::warn!("\nDeadlock #{}", i + 1);
+                    tracing::warn!("───────────────────────────────────────────────────");
 
                     for t in threads {
-                        eprintln!("Thread {:?}:", t.thread_id());
-                        eprintln!("{:#?}", t.backtrace());
+                        tracing::warn!("Thread {:?}:", t.thread_id());
+                        tracing::warn!("{:#?}", t.backtrace());
                     }
                 }
 
-                eprintln!("═══════════════════════════════════════════════════\n");
+                tracing::warn!("═══════════════════════════════════════════════════\n");
 
                 // Log to tracing system as well
                 for (i, threads) in deadlocks.iter().enumerate() {

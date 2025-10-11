@@ -1,8 +1,6 @@
 /// Download manager with state machine coordination
 use anyhow::{bail, Context, Result};
-use flate2::read::GzDecoder;
-use std::fs::{self, File};
-use std::io::BufReader;
+use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{debug, error, info, warn};
 
@@ -12,7 +10,6 @@ use super::workspace::{
 };
 use super::{DownloadProgress, NCBIDownloader, UniProtDownloader};
 use crate::resilience::validation::DownloadStateValidator;
-use crate::resilience::{with_retry, RetryPolicy};
 use crate::resilience::{RecoveryStrategy, StateValidator, ValidationResult};
 use talaria_core::{DatabaseSource, NCBIDatabase, UniProtDatabase};
 
@@ -78,6 +75,14 @@ impl DownloadManager {
         options: DownloadOptions,
         progress: &mut DownloadProgress,
     ) -> Result<PathBuf> {
+        let _span = tracing::info_span!(
+            "download_with_state",
+            source = %source,
+            resume = options.resume,
+            force = options.force
+        ).entered();
+
+        tracing::info!("Starting download with state management for {}", source);
         // Try to find existing workspace if resuming
         let (workspace, mut state) = if options.resume && !options.force {
             progress.set_message(&format!(
@@ -87,6 +92,16 @@ impl DownloadManager {
 
             match find_existing_workspace_for_source(&source)? {
                 Some((existing_workspace, existing_state)) => {
+                    tracing::info!(
+                        "Found existing workspace at: {}",
+                        existing_workspace.display()
+                    );
+                    tracing::Span::current().record(
+                        "workspace",
+                        existing_workspace.display().to_string().as_str(),
+                    );
+                    tracing::Span::current()
+                        .record("stage", format!("{:?}", existing_state.stage).as_str());
                     progress.set_message(&format!(
                         "Found existing download at: {}",
                         existing_workspace.display()
@@ -94,8 +109,12 @@ impl DownloadManager {
                     (existing_workspace, existing_state)
                 }
                 None => {
+                    tracing::info!("No existing workspace found, creating new one");
                     progress.set_message("No existing download found, starting fresh");
                     let new_workspace = get_download_workspace(&source);
+                    tracing::Span::current()
+                        .record("workspace", new_workspace.display().to_string().as_str());
+                    tracing::Span::current().record("stage", "New");
                     (
                         new_workspace.clone(),
                         DownloadState::new(source.clone(), new_workspace),
@@ -388,39 +407,31 @@ impl DownloadManager {
 
                 Stage::Decompressing {
                     source_file,
-                    target_file,
+                    target_file: _,
                 } => {
                     if !source_file.exists() {
                         bail!("Compressed file not found: {}", source_file.display());
                     }
 
-                    // Check if already decompressed
-                    if target_file.exists() {
-                        if let Ok(metadata) = target_file.metadata() {
-                            progress.set_message(&format!(
-                                "Using existing decompressed file ({})...",
-                                format_bytes(metadata.len())
-                            ));
-                        } else {
-                            progress.set_message("Using existing decompressed file...");
-                        }
+                    // OPTIMIZATION: Skip decompression entirely!
+                    // FASTA parser (talaria-bio/src/formats/fasta.rs:302) can read .gz files directly
+                    // This saves ~50-100 GB of disk I/O and 40-60 minutes of processing time
+
+                    if let Ok(metadata) = source_file.metadata() {
+                        progress.set_message(&format!(
+                            "Skipping decompression - FASTA parser will stream-decompress {} file directly",
+                            format_bytes(metadata.len())
+                        ));
                     } else {
-                        if let Ok(metadata) = source_file.metadata() {
-                            progress.set_message(&format!(
-                                "Decompressing {} file...",
-                                format_bytes(metadata.len())
-                            ));
-                        } else {
-                            progress.set_message("Decompressing file...");
-                        }
-                        self.decompress_file(source_file, target_file)?;
+                        progress.set_message(
+                            "Skipping decompression - will stream-decompress during processing",
+                        );
                     }
 
-                    state.files.decompressed = Some(target_file.clone());
-                    // Don't track as temp file - it needs to survive for processing
-                    // state.files.track_temp_file(target_file.clone());
-                    // Keep decompressed file on failure for retry
-                    state.files.preserve_on_failure(target_file.clone());
+                    // Use compressed file directly as "decompressed" output
+                    // FASTA parser auto-detects .gz extension and decompresses on-the-fly
+                    state.files.decompressed = Some(source_file.clone());
+                    state.files.preserve_on_failure(source_file.clone());
 
                     state.transition_to(Stage::Processing {
                         chunks_done: 0,
@@ -594,7 +605,7 @@ impl DownloadManager {
         source: &DatabaseSource,
         workspace: &Path,
         url: &str,
-        resume_from: u64,
+        _resume_from: u64,
         _skip_verify: bool,
         progress: &mut DownloadProgress,
     ) -> Result<(PathBuf, u64)> {
@@ -603,8 +614,24 @@ impl DownloadManager {
             .split('/')
             .last()
             .ok_or_else(|| anyhow::anyhow!("Invalid URL"))?;
-        let _temp_path = workspace.join(format!("{}.part", filename));
         let final_path = workspace.join(filename);
+
+        // Check for partial download file (.tmp extension used by downloaders)
+        let temp_path = workspace.join(format!("{}.tmp", filename));
+        let should_resume = temp_path.exists();
+
+        if should_resume {
+            let partial_size = fs::metadata(&temp_path)?.len();
+            progress.set_message(&format!(
+                "Found partial download: {:.2} MB, resuming...",
+                partial_size as f64 / 1_048_576.0
+            ));
+            info!(
+                "Resuming download from {} bytes (partial file: {})",
+                partial_size,
+                temp_path.display()
+            );
+        }
 
         // Check if already complete
         if final_path.exists() {
@@ -621,7 +648,7 @@ impl DownloadManager {
                 info!("Starting UniProt download from {}", url);
                 // Download compressed file to workspace
                 downloader
-                    .download_compressed_with_resume(url, &final_path, progress, resume_from > 0)
+                    .download_compressed_with_resume(url, &final_path, progress, should_resume)
                     .await
                     .context("Failed to download UniProt file")?;
             }
@@ -630,7 +657,7 @@ impl DownloadManager {
                 info!("Starting NCBI download from {}", url);
                 // Download compressed file to workspace
                 downloader
-                    .download_compressed_with_resume(url, &final_path, progress, resume_from > 0)
+                    .download_compressed_with_resume(url, &final_path, progress, should_resume)
                     .await
                     .context("Failed to download NCBI file")?;
             }
@@ -641,28 +668,9 @@ impl DownloadManager {
         Ok((final_path, size))
     }
 
-    /// Decompress a gzipped file with retry logic
-    fn decompress_file(&self, source: &Path, target: &Path) -> Result<()> {
-        let retry_policy = RetryPolicy::for_file_io();
-
-        with_retry(
-            || {
-                debug!("Decompressing {:?} to {:?}", source, target);
-
-                let input = File::open(source).context("Failed to open compressed file")?;
-                let mut decoder = GzDecoder::new(BufReader::new(input));
-                let mut output = File::create(target).context("Failed to create output file")?;
-
-                std::io::copy(&mut decoder, &mut output).context("Failed to decompress data")?;
-                output.sync_all().context("Failed to sync output file")?;
-
-                info!("Successfully decompressed file");
-                Ok(())
-            },
-            &retry_policy,
-            "File decompression",
-        )
-    }
+    // decompress_file method removed - no longer needed
+    // FASTA parser (talaria-bio/src/formats/fasta.rs:302) handles .gz files directly
+    // This saves ~50-100 GB of disk I/O per large database download
 
     /// Clean up workspace
     fn cleanup_workspace(
@@ -940,31 +948,9 @@ mod tests {
         assert!(workspace.exists());
     }
 
-    #[test]
-    fn test_decompress_file_creates_output() {
-        let temp_dir = TempDir::new().unwrap();
-
-        // Create a simple gzipped file
-        use flate2::write::GzEncoder;
-        use flate2::Compression;
-        use std::io::Write;
-
-        let source = temp_dir.path().join("test.gz");
-        let target = temp_dir.path().join("test.txt");
-
-        // Create compressed file
-        let mut encoder = GzEncoder::new(File::create(&source).unwrap(), Compression::default());
-        encoder.write_all(b"Hello, World!").unwrap();
-        encoder.finish().unwrap();
-
-        // Decompress
-        let manager = DownloadManager::new().unwrap();
-        manager.decompress_file(&source, &target).unwrap();
-
-        // Verify decompressed content
-        let content = fs::read_to_string(&target).unwrap();
-        assert_eq!(content, "Hello, World!");
-    }
+    // test_decompress_file_creates_output removed - decompression no longer happens
+    // The optimization skips decompression entirely and passes .gz files directly to FASTA parser
+    // See tests/download_gz_optimization_test.rs for new optimization tests
 
     #[test]
     fn test_cleanup_workspace_respects_environment() {

@@ -71,7 +71,7 @@ impl ManifestFormat for TalariaFormat {
             // Zstandard magic bytes detected
             zstd::decode_all(data)?
         } else {
-            // Not compressed (for backwards compatibility)
+            // Not compressed
             data.to_vec()
         };
 

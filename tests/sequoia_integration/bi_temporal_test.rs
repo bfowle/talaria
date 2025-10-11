@@ -34,9 +34,10 @@ fn test_bi_temporal_different_times() -> Result<()> {
     
     // Create bi-temporal database
     let mut db = BiTemporalDatabase::new(storage.clone())?;
-    
+
     // Create a temporal index and add some test data
-    let mut temporal_index = TemporalIndex::new(temp_dir.path())?;
+    let rocksdb = storage.sequence_storage.get_rocksdb();
+    let mut temporal_index = TemporalIndex::new(temp_dir.path(), rocksdb)?;
     
     // Add a sequence version from January 2024
     let jan_2024 = chrono::DateTime::parse_from_rfc3339("2024-01-15T00:00:00Z")

@@ -1,5 +1,6 @@
 //! Core utilities and types shared across all Talaria crates
 
+pub mod audit;
 pub mod config;
 pub mod error;
 pub mod system;

@@ -128,7 +128,7 @@ impl DiscrepancyDetector {
 
         // Scan storage for taxonomy discrepancies
         let stats = storage.get_stats();
-        eprintln!(
+        tracing::info!(
             "Scanning {} chunks for taxonomy discrepancies...",
             stats.total_chunks
         );
@@ -148,7 +148,7 @@ impl DiscrepancyDetector {
                                 discrepancies.append(&mut chunk_discrepancies);
                             }
                             Err(e) => {
-                                eprintln!(
+                                tracing::info!(
                                     "Error detecting discrepancies in chunk {}: {}",
                                     chunk_info.hash, e
                                 );
@@ -158,12 +158,12 @@ impl DiscrepancyDetector {
                     // If not a ChunkManifest, skip it (could be delta chunk, etc.)
                 }
                 Err(e) => {
-                    eprintln!("Failed to read chunk {}: {}", chunk_info.hash, e);
+                    tracing::info!("Failed to read chunk {}: {}", chunk_info.hash, e);
                 }
             }
         }
 
-        eprintln!("Found {} discrepancies", discrepancies.len());
+        tracing::info!("Found {} discrepancies", discrepancies.len());
         Ok(discrepancies)
     }
 

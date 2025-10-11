@@ -121,22 +121,20 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
         use talaria_sequoia::download::parse_database_source;
 
         match parse_database_source(&args.database) {
-            Ok(source) => {
-                match manager.get_taxonomy_mappings_for_source(&source) {
-                    Ok(mappings) => {
-                        let count = mappings.len();
-                        detector.set_taxonomy_mappings(mappings);
-                        spinner.finish_and_clear();
-                        println!("✓ Loaded {} taxonomy mappings", count);
-                        count
-                    }
-                    Err(e) => {
-                        spinner.finish_and_clear();
-                        println!("ℹ No taxonomy mappings available: {}", e);
-                        0
-                    }
+            Ok(source) => match manager.get_taxonomy_mappings_for_source(&source) {
+                Ok(mappings) => {
+                    let count = mappings.len();
+                    detector.set_taxonomy_mappings(mappings);
+                    spinner.finish_and_clear();
+                    println!("✓ Loaded {} taxonomy mappings", count);
+                    count
                 }
-            }
+                Err(e) => {
+                    spinner.finish_and_clear();
+                    println!("ℹ No taxonomy mappings available: {}", e);
+                    0
+                }
+            },
             Err(_) => {
                 // Custom database - no standard mappings
                 spinner.finish_and_clear();
@@ -288,9 +286,9 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
 
     // Generate report if requested
     if let Some(report_path) = &args.report_output {
-        use talaria_sequoia::operations::DiscrepancyResult;
-        use talaria_bio::taxonomy::{TaxonomyDiscrepancy, TaxonomySource};
         use std::time::Duration;
+        use talaria_bio::taxonomy::{TaxonomyDiscrepancy, TaxonomySource};
+        use talaria_sequoia::operations::DiscrepancyResult;
 
         let discrepancies: Vec<TaxonomyDiscrepancy> = filtered_discrepancies
             .iter()
@@ -323,7 +321,11 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
         };
 
         crate::cli::commands::save_report(&result, &args.report_format, report_path)?;
-        println!("\n{} Report saved to {}", "✓".green().bold(), report_path.display());
+        println!(
+            "\n{} Report saved to {}",
+            "✓".green().bold(),
+            report_path.display()
+        );
     }
 
     Ok(())

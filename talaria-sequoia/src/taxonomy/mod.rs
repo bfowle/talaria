@@ -6,7 +6,6 @@ pub mod filter;
 pub mod manifest;
 pub mod prerequisites;
 pub mod types;
-pub mod version_store;
 
 // Re-export commonly used types
 pub use prerequisites::TaxonomyPrerequisites;
@@ -24,7 +23,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use talaria_core::system::paths;
-use talaria_utils::display::progress::{create_hidden_progress_bar, create_progress_bar, create_spinner};
+// UI imports removed - using progress_callback pattern instead
 
 pub struct TaxonomyManager {
     base_path: PathBuf,
@@ -113,15 +112,20 @@ impl TaxonomyManager {
 
     /// Load NCBI taxonomy from tree directory files
     pub fn load_ncbi_taxonomy(&mut self, tree_dir: &Path) -> Result<()> {
-        self.load_ncbi_taxonomy_with_progress(tree_dir, true)
+        // No progress callback - silent loading
+        self.load_ncbi_taxonomy_with_progress(tree_dir, None)
     }
 
     /// Load NCBI taxonomy with optional progress display
     pub fn load_ncbi_taxonomy_quiet(&mut self, tree_dir: &Path) -> Result<()> {
-        self.load_ncbi_taxonomy_with_progress(tree_dir, false)
+        self.load_ncbi_taxonomy_with_progress(tree_dir, None)
     }
 
-    fn load_ncbi_taxonomy_with_progress(&mut self, tree_dir: &Path, show_progress: bool) -> Result<()> {
+    fn load_ncbi_taxonomy_with_progress(
+        &mut self,
+        tree_dir: &Path,
+        progress_callback: Option<&dyn Fn(&str)>,
+    ) -> Result<()> {
         // Files should be directly in the tree directory
         let nodes_file = tree_dir.join("nodes.dmp");
         let names_file = tree_dir.join("names.dmp");
@@ -138,16 +142,17 @@ impl TaxonomyManager {
         let mut nodes: HashMap<TaxonId, TaxonomyNode> = HashMap::new();
         let mut parent_map: HashMap<TaxonId, TaxonId> = HashMap::new();
 
-        // Count lines for progress bar
-        let total_nodes = nodes_content.lines().count() as u64;
-        let nodes_progress = if show_progress {
-            create_progress_bar(total_nodes, "Parsing nodes.dmp")
-        } else {
-            create_hidden_progress_bar()
-        };
+        let total_nodes = nodes_content.lines().count();
+        if let Some(cb) = progress_callback {
+            cb(&format!("Parsing {} nodes from nodes.dmp", total_nodes));
+        }
 
-        for line in nodes_content.lines() {
-            nodes_progress.inc(1);
+        for (idx, line) in nodes_content.lines().enumerate() {
+            if idx % 10000 == 0 && idx > 0 {
+                if let Some(cb) = progress_callback {
+                    cb(&format!("Parsed {}/{} nodes", idx, total_nodes));
+                }
+            }
             let parts: Vec<&str> = line.split("\t|\t").collect();
             if parts.len() < 3 {
                 continue;
@@ -176,21 +181,24 @@ impl TaxonomyManager {
                 parent_map.insert(taxon_id, parent_id);
             }
         }
-        nodes_progress.finish_with_message("Nodes parsed");
+        if let Some(cb) = progress_callback {
+            cb("Nodes parsed");
+        }
 
         // Parse names.dmp for scientific names
         let names_content = fs::read_to_string(&names_file)?;
 
-        // Count lines for progress bar
-        let total_names = names_content.lines().count() as u64;
-        let names_progress = if show_progress {
-            create_progress_bar(total_names, "Parsing names.dmp")
-        } else {
-            create_hidden_progress_bar()
-        };
+        let total_names = names_content.lines().count();
+        if let Some(cb) = progress_callback {
+            cb(&format!("Parsing {} names from names.dmp", total_names));
+        }
 
-        for line in names_content.lines() {
-            names_progress.inc(1);
+        for (idx, line) in names_content.lines().enumerate() {
+            if idx % 10000 == 0 && idx > 0 {
+                if let Some(cb) = progress_callback {
+                    cb(&format!("Parsed {}/{} names", idx, total_names));
+                }
+            }
             let parts: Vec<&str> = line.split("\t|\t").collect();
             if parts.len() < 4 {
                 continue;
@@ -207,20 +215,22 @@ impl TaxonomyManager {
                 }
             }
         }
-        names_progress.finish_with_message("Names parsed");
+        if let Some(cb) = progress_callback {
+            cb("Names parsed");
+        }
 
         // Build children lists
-        let build_progress = if show_progress {
-            create_spinner("Building taxonomy tree")
-        } else {
-            create_hidden_progress_bar()
-        };
+        if let Some(cb) = progress_callback {
+            cb("Building taxonomy tree");
+        }
         for (child_id, parent_id) in &parent_map {
             if let Some(parent) = nodes.get_mut(parent_id) {
                 parent.children.push(*child_id);
             }
         }
-        build_progress.finish_with_message("Taxonomy tree built");
+        if let Some(cb) = progress_callback {
+            cb("Taxonomy tree built");
+        }
 
         // Find root (taxon ID 1 is typically the root)
         let root = nodes

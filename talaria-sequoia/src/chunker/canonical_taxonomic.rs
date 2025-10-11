@@ -6,9 +6,6 @@ use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::Arc;
 use talaria_bio::sequence::Sequence;
-use talaria_utils::display::progress::{
-    create_hidden_progress_bar, create_progress_bar, create_spinner,
-};
 
 /// Taxonomic chunker that works with canonical sequences
 pub struct TaxonomicChunker {
@@ -104,11 +101,7 @@ impl TaxonomicChunker {
         use rayon::prelude::*;
 
         // Step 1: Pre-process sequences in parallel to prepare data
-        let storing_progress = if self.quiet_mode {
-            create_hidden_progress_bar() // Hidden progress bar for quiet mode
-        } else {
-            create_progress_bar(sequences.len() as u64, "Processing sequences")
-        };
+        tracing::debug!("Processing {} sequences", sequences.len());
 
         // Process sequences in parallel to prepare headers and convert to strings
         let prepared_sequences: Vec<_> = sequences
@@ -135,22 +128,13 @@ impl TaxonomicChunker {
             })
             .collect();
 
-        storing_progress.finish_and_clear();
-
         // Notify progress callback about preparation completion
         if let Some(ref callback) = progress_callback {
             callback(prepared_sequences.len(), "Prepared sequences");
         }
 
         // Step 2: Store sequences in parallel batches (optimized for performance)
-        let storing_progress = if self.quiet_mode {
-            create_hidden_progress_bar() // Hidden progress bar for quiet mode
-        } else {
-            create_progress_bar(
-                prepared_sequences.len() as u64,
-                "Storing canonical sequences",
-            )
-        };
+        tracing::debug!("Storing {} canonical sequences", prepared_sequences.len());
 
         // Optimized batch sizes for high-throughput processing
         const BATCH_SIZE: usize = 200_000; // Process 200k sequences at once (increased from 50k)
@@ -191,9 +175,6 @@ impl TaxonomicChunker {
                     all_results.push((hash.clone(), *taxon_id, id.clone()));
                 }
 
-                // Update progress
-                storing_progress.set_position(all_results.len() as u64);
-
                 // Update progress callback less frequently to reduce overhead
                 mini_batch_count += 1;
                 if mini_batch_count % 5 == 0 {
@@ -219,25 +200,19 @@ impl TaxonomicChunker {
             self.sequence_storage.save_indices()?;
         }
 
-        storing_progress.finish_and_clear();
-        use talaria_utils::display::output::format_number;
         if !self.quiet_mode {
-            println!(
+            tracing::info!(
                 "Stored {} sequences ({} new, {} deduplicated)",
-                format_number(all_results.len()),
-                format_number(new_count),
-                format_number(dedup_count)
+                all_results.len(),
+                new_count,
+                dedup_count
             );
         }
 
         let sequence_records = all_results;
 
         // Step 2: Group sequences by taxonomy
-        let grouping_progress = if self.quiet_mode {
-            create_hidden_progress_bar() // Hidden progress bar for quiet mode
-        } else {
-            create_progress_bar(sequence_records.len() as u64, "Grouping by taxonomy")
-        };
+        tracing::debug!("Grouping {} sequences by taxonomy", sequence_records.len());
 
         let mut taxon_groups: HashMap<TaxonId, Vec<SHA256Hash>> = HashMap::new();
         for (hash, taxon_id, _) in &sequence_records {
@@ -245,10 +220,7 @@ impl TaxonomicChunker {
                 .entry(*taxon_id)
                 .or_default()
                 .push(hash.clone());
-            grouping_progress.inc(1);
         }
-
-        grouping_progress.finish_and_clear();
 
         // Notify progress callback about grouping completion
         if let Some(ref callback) = progress_callback {
@@ -271,7 +243,7 @@ impl TaxonomicChunker {
             } else {
                 format!(" (taxon_ids: {})", sample_taxids.join(", "))
             };
-            println!(
+            tracing::info!(
                 "Grouped into {} taxonomic groups{}",
                 taxon_groups.len(),
                 taxid_info
@@ -279,11 +251,7 @@ impl TaxonomicChunker {
         }
 
         // Step 3: Create chunk manifests
-        let chunking_progress = if self.quiet_mode {
-            create_hidden_progress_bar() // Hidden progress bar for quiet mode
-        } else {
-            create_progress_bar(taxon_groups.len() as u64, "Creating chunk manifests")
-        };
+        tracing::debug!("Creating chunk manifests for {} taxonomic groups", taxon_groups.len());
 
         // Compute versions ONCE before parallel processing to avoid file system contention
         let taxonomy_version = self.get_taxonomy_version();
@@ -312,7 +280,7 @@ impl TaxonomicChunker {
         };
 
         if !self.quiet_mode && num_taxa > 1000 {
-            println!(
+            tracing::info!(
                 "Processing {} taxonomic groups in chunks of {} (large dataset mode)",
                 num_taxa, parallel_chunk_size
             );
@@ -325,13 +293,13 @@ impl TaxonomicChunker {
             // Add progress reporting for large datasets
             if !self.quiet_mode {
                 if num_taxa > 5000 && chunk_idx % 100 == 0 {
-                    println!(
+                    tracing::info!(
                         "  Processing taxonomic chunk {}/{}",
                         chunk_idx + 1,
                         total_chunks
                     );
                 } else if num_taxa > 1000 && chunk_idx % 10 == 0 {
-                    eprintln!(
+                    tracing::info!(
                         "DEBUG: Processing chunk {}/{} ({} taxa in this chunk)",
                         chunk_idx + 1,
                         total_chunks,
@@ -359,31 +327,23 @@ impl TaxonomicChunker {
                 Err(e) => return Err(e),
             }
 
-            // Update progress based on chunks processed
-            let progress = ((chunk_idx + 1) as u64 * chunking_progress.length().unwrap_or(0))
-                / total_chunks as u64;
-            chunking_progress.set_position(progress);
+            // Log progress for large datasets
+            if !self.quiet_mode && num_taxa > 1000 {
+                tracing::debug!("Processed chunk {}/{}", chunk_idx + 1, total_chunks);
+            }
         }
 
         // Flatten all results
         let mut manifests: Vec<ChunkManifest> =
             all_manifest_results.into_iter().flatten().collect();
-
-        chunking_progress.finish_and_clear();
         if !self.quiet_mode {
-            println!("Created {} chunk manifests", manifests.len());
+            tracing::info!("Created {} chunk manifests", manifests.len());
         }
 
         // Step 4: Apply special taxa rules
-        if !self.quiet_mode {
-            let special_progress = create_spinner("Applying special taxa rules");
-            manifests =
-                self.apply_special_taxa_rules(manifests, taxonomy_version, sequence_version)?;
-            special_progress.finish_and_clear();
-        } else {
-            manifests =
-                self.apply_special_taxa_rules(manifests, taxonomy_version, sequence_version)?;
-        }
+        tracing::debug!("Applying special taxa rules");
+        manifests =
+            self.apply_special_taxa_rules(manifests, taxonomy_version, sequence_version)?;
 
         Ok(manifests)
     }

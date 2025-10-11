@@ -4,8 +4,7 @@ use std::path::Path;
 use talaria_bio::parse_fasta;
 use talaria_bio::sequence::Sequence;
 use talaria_utils::report::{
-    ComparisonResult, ModifiedSequence, RenamedSequence, SequenceChange,
-    SequenceInfo,
+    ComparisonResult, ModifiedSequence, RenamedSequence, SequenceChange, SequenceInfo,
 };
 
 #[derive(Debug, Clone)]
@@ -40,13 +39,13 @@ impl DatabaseDiffer {
     }
 
     pub fn compare(&self, old_path: &Path, new_path: &Path) -> Result<ComparisonResult> {
-        println!("Loading old database...");
+        tracing::debug!("Loading old database...");
         let old_sequences = self.load_database(old_path)?;
 
-        println!("Loading new database...");
+        tracing::debug!("Loading new database...");
         let new_sequences = self.load_database(new_path)?;
 
-        println!(
+        tracing::info!(
             "Comparing {} vs {} sequences...",
             old_sequences.len(),
             new_sequences.len()
@@ -121,12 +120,7 @@ impl DatabaseDiffer {
         }
 
         // Calculate statistics
-        result.calculate_statistics(
-            &old_sequences,
-            &new_sequences,
-            |s| s.len(),
-            |s| s.taxon_id,
-        );
+        result.calculate_statistics(&old_sequences, &new_sequences, |s| s.len(), |s| s.taxon_id);
 
         Ok(result)
     }

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use talaria_bio::sequence::Sequence;
 use talaria_sequoia::types::{ChunkStrategy, SHA256Hash, SpecialTaxon, TaxonId};
 use talaria_sequoia::{ChunkingStrategy, TaxonomicChunker};
-use talaria_storage::ChunkStorage;
+use talaria_sequoia::storage::ChunkStorage;
 /// Integration tests for trait implementations
 ///
 /// These tests verify that all trait implementations work correctly

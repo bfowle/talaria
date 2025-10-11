@@ -6,12 +6,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use talaria_core::types::TemporalVersionInfo as VersionInfo;
+use talaria_storage::backend::RocksDBBackend;
 
 /// Manages temporal aspects of the SEQUOIA system
+/// Now uses RocksDB as single source of truth (no filesystem JSON)
 #[derive(Clone)]
 pub struct TemporalIndex {
     pub base_path: PathBuf,
+    rocksdb: Arc<RocksDBBackend>,
     sequence_timeline: BTreeMap<DateTime<Utc>, SequenceVersion>,
     taxonomy_timeline: BTreeMap<DateTime<Utc>, TaxonomyVersion>,
     cross_references: Vec<TemporalCrossReference>,
@@ -77,12 +81,11 @@ pub enum HeaderChangeType {
 }
 
 impl TemporalIndex {
-    pub fn new(base_path: &Path) -> Result<Self> {
-        let temporal_dir = base_path.join("temporal");
-        fs::create_dir_all(&temporal_dir)?;
-
+    /// Create new temporal index with RocksDB backend
+    pub fn new(base_path: &Path, rocksdb: Arc<RocksDBBackend>) -> Result<Self> {
         Ok(Self {
-            base_path: temporal_dir,
+            base_path: base_path.to_path_buf(),
+            rocksdb,
             sequence_timeline: BTreeMap::new(),
             taxonomy_timeline: BTreeMap::new(),
             cross_references: Vec::new(),
@@ -391,59 +394,52 @@ impl TemporalIndex {
         }
     }
 
-    pub fn load(base_path: &Path) -> Result<Self> {
-        let mut index = Self::new(base_path)?;
+    /// Load temporal index from RocksDB
+    pub fn load(base_path: &Path, rocksdb: Arc<RocksDBBackend>) -> Result<Self> {
+        let mut index = Self::new(base_path, rocksdb.clone())?;
 
-        // Load timelines
-        let seq_timeline_file = index.base_path.join("sequence_timeline.json");
-        if seq_timeline_file.exists() {
-            let content = fs::read_to_string(&seq_timeline_file)?;
-            index.sequence_timeline = serde_json::from_str(&content)?;
+        // Load timelines from RocksDB
+        if let Some(data) = rocksdb.get_manifest("temporal:sequence_timeline")? {
+            index.sequence_timeline = bincode::deserialize(&data)?;
         }
 
-        let tax_timeline_file = index.base_path.join("taxonomy_timeline.json");
-        if tax_timeline_file.exists() {
-            let content = fs::read_to_string(&tax_timeline_file)?;
-            index.taxonomy_timeline = serde_json::from_str(&content)?;
+        if let Some(data) = rocksdb.get_manifest("temporal:taxonomy_timeline")? {
+            index.taxonomy_timeline = bincode::deserialize(&data)?;
         }
 
         // Load cross-references
-        let cross_ref_file = index.base_path.join("cross_references.json");
-        if cross_ref_file.exists() {
-            let content = fs::read_to_string(&cross_ref_file)?;
-            index.cross_references = serde_json::from_str(&content)?;
+        if let Some(data) = rocksdb.get_manifest("temporal:cross_references")? {
+            index.cross_references = bincode::deserialize(&data)?;
         }
 
         // Load header history
-        let header_history_file = index.base_path.join("header_history.json");
-        if header_history_file.exists() {
-            let content = fs::read_to_string(&header_history_file)?;
-            index.header_history = serde_json::from_str(&content)?;
+        if let Some(data) = rocksdb.get_manifest("temporal:header_history")? {
+            index.header_history = bincode::deserialize(&data)?;
         }
 
         Ok(index)
     }
 
+    /// Save temporal index to RocksDB (single source of truth)
     pub fn save(&self) -> Result<()> {
-        // Save sequence timeline
-        let seq_timeline_file = self.base_path.join("sequence_timeline.json");
-        let content = serde_json::to_string_pretty(&self.sequence_timeline)?;
-        fs::write(seq_timeline_file, content)?;
+        // Save sequence timeline to RocksDB
+        let data = bincode::serialize(&self.sequence_timeline)?;
+        self.rocksdb.put_manifest("temporal:sequence_timeline", &data)?;
 
         // Save taxonomy timeline
-        let tax_timeline_file = self.base_path.join("taxonomy_timeline.json");
-        let content = serde_json::to_string_pretty(&self.taxonomy_timeline)?;
-        fs::write(tax_timeline_file, content)?;
+        let data = bincode::serialize(&self.taxonomy_timeline)?;
+        self.rocksdb.put_manifest("temporal:taxonomy_timeline", &data)?;
 
         // Save cross-references
-        let cross_ref_file = self.base_path.join("cross_references.json");
-        let content = serde_json::to_string_pretty(&self.cross_references)?;
-        fs::write(cross_ref_file, content)?;
+        let data = bincode::serialize(&self.cross_references)?;
+        self.rocksdb.put_manifest("temporal:cross_references", &data)?;
 
         // Save header history
-        let header_history_file = self.base_path.join("header_history.json");
-        let content = serde_json::to_string_pretty(&self.header_history)?;
-        fs::write(header_history_file, content)?;
+        let data = bincode::serialize(&self.header_history)?;
+        self.rocksdb.put_manifest("temporal:header_history", &data)?;
+
+        // Flush to ensure persistence
+        self.rocksdb.flush()?;
 
         Ok(())
     }
@@ -778,10 +774,10 @@ impl TemporalIndex {
                 if let Some(data) = data {
                     // Deserialize TemporalManifest from RocksDB
                     let _temporal_manifest: TemporalManifest = rmp_serde::from_slice(&data)
-                    .or_else(|_| serde_json::from_slice(&data))
-                    .map_err(|e| {
-                        anyhow::anyhow!("Failed to deserialize versioned manifest: {}", e)
-                    })?;
+                        .or_else(|_| serde_json::from_slice(&data))
+                        .map_err(|e| {
+                            anyhow::anyhow!("Failed to deserialize versioned manifest: {}", e)
+                        })?;
 
                     // Create a Manifest wrapper
                     let _manifest = crate::Manifest::new(&self.base_path)?;
@@ -826,7 +822,7 @@ impl TemporalIndex {
 
     /// Rebuild the temporal index
     pub fn rebuild_index(&self) -> Result<()> {
-        println!("Rebuilding temporal index...");
+        tracing::info!("Rebuilding temporal index...");
 
         // Would rebuild from stored versions
         let temporal_dir = self.base_path.join("temporal");
@@ -838,7 +834,7 @@ impl TemporalIndex {
 
                 if path.extension() == Some(std::ffi::OsStr::new("json")) {
                     // Parse and re-index version file
-                    println!("  Re-indexing: {}", path.display());
+                    tracing::info!("  Re-indexing: {}", path.display());
                 }
             }
         }

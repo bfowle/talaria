@@ -28,6 +28,31 @@ pub struct Cli {
     /// Number of threads to use (0 = all available)
     #[arg(short = 'j', long, default_value = "0", global = true)]
     pub threads: usize,
+
+    /// Enable comprehensive audit logging for debugging
+    #[arg(
+        long,
+        global = true,
+        help = "Enable audit logging to track all function calls and data flow"
+    )]
+    pub audit: bool,
+
+    /// Custom audit log file path (defaults to $TALARIA_HOME/logs/audit-{timestamp}.log)
+    #[arg(
+        long,
+        global = true,
+        value_name = "PATH",
+        help = "Custom path for audit log file"
+    )]
+    pub audit_file: Option<String>,
+
+    /// Include trace-level spans in audit log (very verbose)
+    #[arg(
+        long,
+        global = true,
+        help = "Include trace-level information in audit log"
+    )]
+    pub audit_trace: bool,
 }
 
 #[derive(Subcommand)]

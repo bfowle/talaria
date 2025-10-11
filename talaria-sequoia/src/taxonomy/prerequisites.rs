@@ -16,16 +16,16 @@ impl TaxonomyPrerequisites {
 
     /// Display the status of taxonomy prerequisites
     pub fn display_status(&self) {
-        println!("Checking taxonomy prerequisites...");
+        tracing::info!("Checking taxonomy prerequisites...");
 
         let nodes_path = self.taxonomy_dir.join("nodes.dmp");
         let names_path = self.taxonomy_dir.join("names.dmp");
 
         if nodes_path.exists() && names_path.exists() {
-            println!("  ✓ Taxonomy database found");
+            tracing::info!("  ✓ Taxonomy database found");
         } else {
-            println!("  ✗ Taxonomy database not found");
-            println!("    Run with --download-prerequisites to download");
+            tracing::info!("  ✗ Taxonomy database not found");
+            tracing::info!("    Run with --download-prerequisites to download");
         }
     }
 
@@ -53,7 +53,7 @@ impl TaxonomyPrerequisites {
         use std::fs;
         use tar::Archive;
 
-        println!("Downloading NCBI taxonomy database...");
+        tracing::info!("Downloading NCBI taxonomy database...");
 
         // Create directory if needed
         fs::create_dir_all(&self.taxonomy_dir)?;
@@ -69,13 +69,13 @@ impl TaxonomyPrerequisites {
             response.bytes().await
         })?;
 
-        println!(
+        tracing::info!(
             "  Writing taxonomy archive ({:.2} MB)...",
             bytes.len() as f64 / 1_048_576.0
         );
         fs::write(&taxdump_file, bytes)?;
 
-        println!("  Extracting taxonomy files...");
+        tracing::info!("  Extracting taxonomy files...");
 
         // Extract the tar.gz file
         let tar_gz = fs::File::open(&taxdump_file)?;
@@ -86,7 +86,7 @@ impl TaxonomyPrerequisites {
         // Clean up tar file
         fs::remove_file(taxdump_file).ok();
 
-        println!("  ✓ Taxonomy database downloaded and extracted");
+        tracing::info!("  ✓ Taxonomy database downloaded and extracted");
 
         Ok(())
     }

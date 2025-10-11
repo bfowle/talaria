@@ -96,8 +96,8 @@ pub fn run(args: TaxaCoverageArgs) -> Result<()> {
     // Legacy format handling or new report generation
     if args.report_output.is_some() {
         // Use new generic framework
-        use talaria_sequoia::operations::{TaxonomyCoverageResult, TaxonomyComparison};
         use std::time::Duration;
+        use talaria_sequoia::operations::{TaxonomyComparison, TaxonomyCoverageResult};
 
         // Build coverage by rank - use rank_coverage which has this info already
         let coverage_by_rank: Vec<(String, usize)> = primary_coverage
@@ -159,7 +159,11 @@ pub fn run(args: TaxaCoverageArgs) -> Result<()> {
             duration: Duration::from_secs(0), // TODO: Track actual duration
         };
 
-        let report_path = args.report_output.as_ref().or(args.output.as_ref()).unwrap();
+        let report_path = args
+            .report_output
+            .as_ref()
+            .or(args.output.as_ref())
+            .unwrap();
         crate::cli::commands::save_report(&result, &args.report_format, report_path)?;
         println!(
             "{} Report saved to {}",
@@ -167,7 +171,7 @@ pub fn run(args: TaxaCoverageArgs) -> Result<()> {
             report_path.display()
         );
     } else {
-        // Use legacy format handling for backward compatibility
+        // Use standard format handling
         let report = match args.format.as_str() {
             "json" => generate_json_report(&primary_coverage, comparison.as_ref()),
             "csv" => generate_csv_report(&primary_coverage, comparison.as_ref()),

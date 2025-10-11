@@ -2,7 +2,18 @@
 
 ## Overview
 
-The `talaria-storage` module provides the foundational storage layer for the Talaria bioinformatics system. It implements high-performance, content-addressed storage using RocksDB's LSM-tree architecture, with support for compression, delta encoding, and cloud storage integration. The module is designed as a low-level storage abstraction that other Talaria components build upon.
+The `talaria-storage` module provides low-level storage backends and utilities for the Talaria bioinformatics system. It implements high-performance, content-addressed storage using RocksDB's LSM-tree architecture, with support for compression, caching, and format detection. This is a pure backend library - business logic and storage traits are defined in `talaria-sequoia`.
+
+### Architectural Role
+
+`talaria-storage` focuses exclusively on:
+- **Storage Backends**: RocksDB implementation with optimized configuration
+- **Compression**: Zstandard compression with dictionary support
+- **Caching**: Multi-level caching for frequently accessed data
+- **Format Detection**: Automatic format detection and serialization
+- **I/O Operations**: Efficient file and network I/O
+
+**Important**: This module does NOT contain business logic traits like `ChunkStorage`, `DeltaStorage`, etc. These traits have been moved to `talaria-sequoia` to maintain proper architectural layering and avoid circular dependencies.
 
 ### Key Features
 

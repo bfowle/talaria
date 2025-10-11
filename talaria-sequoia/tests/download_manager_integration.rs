@@ -5,10 +5,10 @@ use std::fs;
 use std::path::PathBuf;
 use talaria_core::system::paths::bypass_cache_for_tests;
 use talaria_core::{DatabaseSource, UniProtDatabase};
-use talaria_test::fixtures::test_database_source;
 use talaria_sequoia::download::workspace::{
     find_resumable_downloads, get_download_workspace, DownloadState, Stage,
 };
+use talaria_test::fixtures::test_database_source;
 use tempfile::TempDir;
 
 // Static initializer to enable bypass for all tests

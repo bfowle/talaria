@@ -10,10 +10,9 @@
 /// 1. Implement `Reportable` for your command's result type
 /// 2. Call `result.to_report()` to get a generic `Report`
 /// 3. Use renderers (`render_html`, `render_json`, etc.) to output in desired format
-
 pub mod core;
-pub mod types;
 pub mod renderers;
+pub mod types;
 
 // Re-export core generic types
 pub use core::{

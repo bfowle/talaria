@@ -1,12 +1,13 @@
 use crate::storage::SequoiaStorage;
 /// FASTA reassembly from content-addressed chunks
 use crate::types::{MerkleProof, SHA256Hash, TaxonId, TemporalManifest};
-use talaria_storage::types::SequenceRepresentations;
 use crate::verification::Verifier as SequoiaVerifier;
 use anyhow::{Context, Result};
+use rayon::prelude::*;
 use std::io::Write;
 use talaria_bio::sequence::Sequence;
 use talaria_bio::taxonomy::{StandardTaxonomyFormatter, TaxonomyFormatter};
+use talaria_storage::types::SequenceRepresentations;
 use tracing as log;
 
 pub struct FastaAssembler<'a> {
@@ -41,21 +42,108 @@ impl<'a> FastaAssembler<'a> {
         Ok(sequences)
     }
 
-    /// Stream assembly to a writer (memory-efficient)
+    /// Stream assembly to a writer (memory-efficient, sequential)
     pub fn stream_assembly<W: Write>(
         &self,
         chunk_hashes: &[SHA256Hash],
         writer: &mut W,
     ) -> Result<usize> {
-        let mut total_sequences = 0;
+        // For small datasets (< 1000 chunks), use sequential processing
+        // For large datasets, use parallel version
+        if chunk_hashes.len() < 1000 {
+            let mut total_sequences = 0;
 
-        for hash in chunk_hashes {
-            let count = self.stream_chunk_to_writer(hash, writer)?;
-            total_sequences += count;
+            for hash in chunk_hashes {
+                let count = self.stream_chunk_to_writer(hash, writer)?;
+                total_sequences += count;
+            }
+
+            // Ensure all data is written
+            writer.flush()?;
+
+            Ok(total_sequences)
+        } else {
+            self.stream_assembly_parallel(chunk_hashes, writer)
+        }
+    }
+
+    /// Stream assembly with parallel chunk loading (for large databases)
+    /// Processes chunks in batches to avoid loading everything into memory at once
+    pub fn stream_assembly_parallel<W: Write>(
+        &self,
+        chunk_hashes: &[SHA256Hash],
+        writer: &mut W,
+    ) -> Result<usize> {
+        // Process in batches to avoid OOM with massive databases
+        // Each batch loads ~1000 chunks at a time (~1-2 GB memory)
+        const ASSEMBLY_CHUNK_BATCH: usize = 1000;
+
+        log::info!(
+            "Using windowed parallel assembly for {} chunks ({} chunks per window)",
+            chunk_hashes.len(),
+            ASSEMBLY_CHUNK_BATCH
+        );
+
+        let mut total_sequences = 0;
+        let total_chunks = chunk_hashes.len();
+        let num_batches = (total_chunks + ASSEMBLY_CHUNK_BATCH - 1) / ASSEMBLY_CHUNK_BATCH;
+
+        // Process chunks in windows of ASSEMBLY_CHUNK_BATCH
+        for (batch_idx, chunk_batch) in chunk_hashes.chunks(ASSEMBLY_CHUNK_BATCH).enumerate() {
+            log::debug!(
+                "Processing chunk batch {}/{} ({} chunks)...",
+                batch_idx + 1,
+                num_batches,
+                chunk_batch.len()
+            );
+
+            // Load this batch of chunks in parallel
+            let chunk_sequences: Vec<Result<Vec<Sequence>>> = chunk_batch
+                .par_iter()
+                .map(|hash| self.extract_sequences_from_chunk(hash))
+                .collect();
+
+            // Write sequences immediately and drop them from memory
+            for sequences_result in chunk_sequences {
+                let sequences = sequences_result?;
+                for seq in sequences {
+                    // Write FASTA entry
+                    write!(writer, ">{}", seq.id)?;
+                    if let Some(desc) = &seq.description {
+                        write!(writer, " {}", desc)?;
+                    }
+                    writeln!(writer)?;
+
+                    // Write sequence (wrapped at 80 chars for standard FASTA)
+                    let seq_str = String::from_utf8_lossy(&seq.sequence);
+                    for (i, chunk) in seq_str.as_bytes().chunks(80).enumerate() {
+                        if i > 0 {
+                            writeln!(writer)?;
+                        }
+                        writer.write_all(chunk)?;
+                    }
+                    writeln!(writer)?;
+
+                    total_sequences += 1;
+                }
+            }
+
+            // Sequences dropped here, memory freed before next batch
+
+            if batch_idx % 10 == 0 && batch_idx > 0 {
+                log::info!(
+                    "Progress: {}/{} chunks processed, {} sequences assembled",
+                    (batch_idx + 1) * ASSEMBLY_CHUNK_BATCH.min(total_chunks - batch_idx * ASSEMBLY_CHUNK_BATCH),
+                    total_chunks,
+                    total_sequences
+                );
+            }
         }
 
         // Ensure all data is written
         writer.flush()?;
+
+        log::info!("Parallel assembly completed: {} sequences from {} chunks", total_sequences, total_chunks);
 
         Ok(total_sequences)
     }
@@ -87,11 +175,11 @@ impl<'a> FastaAssembler<'a> {
                 let canonical = match self.storage.sequence_storage.load_canonical(seq_hash) {
                     Ok(c) => c,
                     Err(e) => {
-                        eprintln!(
+                        tracing::error!(
                             "WARNING: Failed to load canonical sequence {}: {}",
                             seq_hash, e
                         );
-                        eprintln!("  This might indicate the sequence storage is not properly initialized.");
+                        tracing::error!("  This might indicate the sequence storage is not properly initialized.");
                         return Err(anyhow::anyhow!(
                             "Failed to load canonical sequence {}: {}",
                             seq_hash,
@@ -148,7 +236,7 @@ impl<'a> FastaAssembler<'a> {
         if is_json {
             if let Ok(manifest) = serde_json::from_slice::<crate::ChunkManifest>(&chunk_data) {
                 log::debug!("Successfully deserialized ChunkManifest from JSON");
-                eprintln!("  Sequence refs: {}", manifest.sequence_refs.len());
+                tracing::error!("  Sequence refs: {}", manifest.sequence_refs.len());
 
                 // Load actual sequences from canonical storage
                 let mut sequences = Vec::new();
@@ -158,11 +246,11 @@ impl<'a> FastaAssembler<'a> {
                     let canonical = match self.storage.sequence_storage.load_canonical(seq_hash) {
                         Ok(c) => c,
                         Err(e) => {
-                            eprintln!(
+                            tracing::error!(
                                 "WARNING: Failed to load canonical sequence {} (index {}): {}",
                                 seq_hash, idx, e
                             );
-                            eprintln!("  This might indicate the sequence storage is not properly initialized.");
+                            tracing::error!("  This might indicate the sequence storage is not properly initialized.");
                             return Err(anyhow::anyhow!(
                                 "Failed to load canonical sequence {}: {}",
                                 seq_hash,
@@ -223,12 +311,12 @@ impl<'a> FastaAssembler<'a> {
 
         // Otherwise, we have an unknown format
         log::debug!("Chunk {} has unknown format", hash);
-        eprintln!("  Size: {} bytes", chunk_data.len());
-        eprintln!(
+        tracing::error!("  Size: {} bytes", chunk_data.len());
+        tracing::error!(
             "  First 100 bytes (hex): {:02x?}",
             &chunk_data[..chunk_data.len().min(100)]
         );
-        eprintln!(
+        tracing::error!(
             "  First 100 bytes (text): {:?}",
             String::from_utf8_lossy(&chunk_data[..chunk_data.len().min(100)])
         );
@@ -441,7 +529,7 @@ impl<'a> FastaAssembler<'a> {
             if self.verify_on_assembly {
                 let computed_hash = SHA256Hash::compute(&chunk_data);
                 if computed_hash != expected_hash {
-                    eprintln!(
+                    tracing::error!(
                         "Warning: Chunk hash mismatch during assembly!\n  Expected: {}\n  Computed: {}",
                         expected_hash, computed_hash
                     );

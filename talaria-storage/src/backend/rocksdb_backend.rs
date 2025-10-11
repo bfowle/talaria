@@ -284,6 +284,36 @@ impl RocksDBBackend {
         Ok(())
     }
 
+    /// Compact all column families to compress uncompressed L0/L1 data
+    /// This is critical after bulk writes to ensure data is properly compressed
+    pub fn compact(&self) -> Result<()> {
+        use rocksdb::{CompactOptions, BottommostLevelCompaction};
+
+        let cfs = vec![
+            cf_names::SEQUENCES,
+            cf_names::REPRESENTATIONS,
+            cf_names::MANIFESTS,
+            cf_names::INDICES,
+            cf_names::MERKLE,
+            cf_names::TEMPORAL,
+        ];
+
+        // Configure compaction options to force bottommost level compaction
+        // This ensures ALL data gets compressed, not just upper levels
+        let mut compact_opts = CompactOptions::default();
+        compact_opts.set_bottommost_level_compaction(BottommostLevelCompaction::ForceOptimized);
+        compact_opts.set_exclusive_manual_compaction(true);
+
+        for cf_name in cfs {
+            let cf = self.cf_handle(cf_name)?;
+            eprintln!("  Compacting column family: {}", cf_name);
+            // Compact the entire key range for this column family
+            // ForceOptimized ensures bottommost level is compacted without double-compacting
+            self.db.compact_range_cf_opt(&cf, None::<&[u8]>, None::<&[u8]>, &compact_opts);
+        }
+        Ok(())
+    }
+
     /// Store a manifest entry
     pub fn put_manifest(&self, key: &str, value: &[u8]) -> Result<()> {
         let cf = self.cf_handle(cf_names::MANIFESTS)?;
@@ -339,6 +369,55 @@ impl RocksDBBackend {
     /// Delete a manifest entry
     pub fn delete_manifest(&self, key: &str) -> Result<()> {
         let cf = self.cf_handle(cf_names::MANIFESTS)?;
+        self.db.delete_cf(&cf, key.as_bytes())?;
+        Ok(())
+    }
+
+    /// Store lightweight database metadata for fast listing
+    /// Key format: "db_meta:{source}:{dataset}"
+    /// Stored in INDICES column family for performance
+    pub fn put_database_metadata(
+        &self,
+        source: &str,
+        dataset: &str,
+        metadata: &[u8],
+    ) -> Result<()> {
+        let key = format!("db_meta:{}:{}", source, dataset);
+        let cf = self.cf_handle(cf_names::INDICES)?;
+        self.db
+            .put_cf_opt(&cf, key.as_bytes(), metadata, &self.write_opts)?;
+        Ok(())
+    }
+
+    /// Get database metadata
+    pub fn get_database_metadata(&self, source: &str, dataset: &str) -> Result<Option<Vec<u8>>> {
+        let key = format!("db_meta:{}:{}", source, dataset);
+        let cf = self.cf_handle(cf_names::INDICES)?;
+        Ok(self.db.get_cf(&cf, key.as_bytes())?)
+    }
+
+    /// List all database metadata entries (fast - only returns small metadata, not full manifests)
+    pub fn list_database_metadata(&self) -> Result<Vec<(String, Vec<u8>)>> {
+        let cf = self.cf_handle(cf_names::INDICES)?;
+        let mut metadata_list = Vec::new();
+
+        let iter = self.db.prefix_iterator_cf(&cf, b"db_meta:");
+        for item in iter {
+            let (key, value) = item?;
+            let key_str = String::from_utf8_lossy(&key).to_string();
+            if !key_str.starts_with("db_meta:") {
+                break; // Reached end of prefix range
+            }
+            metadata_list.push((key_str, value.to_vec()));
+        }
+
+        Ok(metadata_list)
+    }
+
+    /// Delete database metadata
+    pub fn delete_database_metadata(&self, source: &str, dataset: &str) -> Result<()> {
+        let key = format!("db_meta:{}:{}", source, dataset);
+        let cf = self.cf_handle(cf_names::INDICES)?;
         self.db.delete_cf(&cf, key.as_bytes())?;
         Ok(())
     }
@@ -408,7 +487,10 @@ impl RocksDBBackend {
 
         // Open or create database
         let db = DB::open_cf_descriptors(&db_opts, &path, cf_descriptors)
-            .context("Failed to open RocksDB")?;
+            .map_err(|e| {
+                eprintln!("RocksDB open error details: {:?}", e);
+                anyhow::anyhow!("Failed to open RocksDB at path: {}. Error: {}", path.display(), e)
+            })?;
 
         // Configure write options
         let mut write_opts = WriteOptions::default();
@@ -436,6 +518,11 @@ impl RocksDBBackend {
         opts.set_bytes_per_sync(1024 * 1024); // 1MB
         opts.increase_parallelism(num_cpus::get() as i32);
 
+        // Compaction settings - ensure auto-compaction is active
+        opts.set_level_compaction_dynamic_level_bytes(true);
+        opts.set_max_bytes_for_level_base(512 * 1024 * 1024); // 512MB
+        opts.set_max_bytes_for_level_multiplier(10.0);
+
         // Write buffer configuration
         opts.set_write_buffer_size((config.write_buffer_size_mb * 1024 * 1024) as usize);
         opts.set_max_write_buffer_number(config.max_write_buffer_number as i32);
@@ -456,10 +543,12 @@ impl RocksDBBackend {
         opts.set_compression_type(compression_type);
 
         // Set compression for each level
+        // CRITICAL: Enable compression on ALL levels to prevent massive storage bloat
+        // Previous config had L0/L1 uncompressed which caused 234GB of uncompressed data!
         let compression_per_level = vec![
-            rocksdb::DBCompressionType::None, // L0: No compression for fast writes
-            rocksdb::DBCompressionType::None, // L1: No compression
-            compression_type,                 // L2+: Full compression
+            compression_type, // L0: Compress immediately (fixed from None)
+            compression_type, // L1: Compress (fixed from None)
+            compression_type, // L2+: Full compression
             compression_type,
             compression_type,
             compression_type,
@@ -504,8 +593,9 @@ impl RocksDBBackend {
                 opts.set_bottommost_compression_type(rocksdb::DBCompressionType::Zstd);
             }
             cf_names::INDICES => {
-                // Indices are small and accessed frequently
-                opts.set_compression_type(rocksdb::DBCompressionType::None);
+                // Indices store large amounts of sequence->hash mappings
+                // CRITICAL: Enable compression - these files can be 200MB+ each!
+                opts.set_compression_type(rocksdb::DBCompressionType::Zstd);
                 opts.optimize_for_point_lookup(512); // 512MB block cache
             }
             cf_names::MANIFESTS => {
@@ -657,8 +747,7 @@ impl RocksDBBackend {
     ) -> Result<u32> {
         // Create backup directory if it doesn't exist
         let backup_path = backup_dir.as_ref();
-        std::fs::create_dir_all(backup_path)
-            .context("Failed to create backup directory")?;
+        std::fs::create_dir_all(backup_path).context("Failed to create backup directory")?;
 
         // Initialize backup engine
         let mut backup_opts = BackupEngineOptions::new(backup_path)?;
@@ -694,16 +783,12 @@ impl RocksDBBackend {
     ///
     /// # Note
     /// This will overwrite any existing data in restore_dir
-    pub fn restore_from_latest_backup<P: AsRef<Path>>(
-        backup_dir: P,
-        restore_dir: P,
-    ) -> Result<()> {
+    pub fn restore_from_latest_backup<P: AsRef<Path>>(backup_dir: P, restore_dir: P) -> Result<()> {
         let backup_path = backup_dir.as_ref();
         let restore_path = restore_dir.as_ref();
 
         // Create restore directory if it doesn't exist
-        std::fs::create_dir_all(restore_path)
-            .context("Failed to create restore directory")?;
+        std::fs::create_dir_all(restore_path).context("Failed to create restore directory")?;
 
         // Initialize backup engine
         let backup_opts = BackupEngineOptions::new(backup_path)?;
@@ -809,6 +894,7 @@ pub trait RocksDBIndexOps {
     fn get_manifest(&self, key: &str) -> Result<Option<Vec<u8>>>;
     fn list_manifests(&self) -> Result<Vec<(String, Vec<u8>)>>;
     fn flush(&self) -> Result<()>;
+    fn compact(&self) -> Result<()>;
 }
 
 // Implement the trait for Arc<RocksDBBackend> to allow shared access
@@ -847,6 +933,10 @@ impl RocksDBIndexOps for Arc<RocksDBBackend> {
 
     fn flush(&self) -> Result<()> {
         (**self).flush()
+    }
+
+    fn compact(&self) -> Result<()> {
+        (**self).compact()
     }
 }
 
@@ -1099,7 +1189,7 @@ impl Drop for RocksDBBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::SequenceType;
+    use talaria_core::types::SequenceType;
     use tempfile::TempDir;
 
     #[test]

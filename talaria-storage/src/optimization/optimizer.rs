@@ -5,9 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-// TODO: Update when talaria-sequoia is extracted
-// use talaria_sequoia::types::SHA256Hash;
-use crate::core::types::SHA256Hash;
+use talaria_core::types::SHA256Hash;
 
 /// Storage optimization strategy
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

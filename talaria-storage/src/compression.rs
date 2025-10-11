@@ -3,11 +3,11 @@
 /// Provides specialized compression for biological sequence data,
 /// using Zstandard with trained dictionaries for taxonomy-aware compression.
 use crate::types::{ChunkFormat, ChunkManifest, SequenceRef};
-use talaria_core::types::{SHA256Hash, TaxonId};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use talaria_core::types::{SHA256Hash, TaxonId};
 
 /// Compression configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

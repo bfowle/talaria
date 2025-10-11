@@ -1,8 +1,7 @@
 /// Generic text renderer for Report type
-
 use crate::report::core::{
-    CellStyle, ChangeDirection, ChartData, Metric, MetricSeverity, Report, Section,
-    SectionContent, Table,
+    CellStyle, ChangeDirection, ChartData, Metric, MetricSeverity, Report, Section, SectionContent,
+    Table,
 };
 use anyhow::Result;
 
@@ -86,11 +85,7 @@ fn render_table(output: &mut String, table: &Table) {
     }
 
     // Calculate column widths
-    let mut widths: Vec<usize> = table
-        .headers
-        .iter()
-        .map(|h| h.len())
-        .collect();
+    let mut widths: Vec<usize> = table.headers.iter().map(|h| h.len()).collect();
 
     for row in &table.rows {
         for (i, cell) in row.iter().enumerate() {
@@ -143,11 +138,7 @@ fn render_table(output: &mut String, table: &Table) {
 }
 
 fn render_key_value_list(output: &mut String, items: &[(String, String)]) {
-    let max_key_width = items
-        .iter()
-        .map(|(k, _)| k.len())
-        .max()
-        .unwrap_or(0);
+    let max_key_width = items.iter().map(|(k, _)| k.len()).max().unwrap_or(0);
 
     for (key, value) in items {
         output.push_str(&format!(
@@ -166,7 +157,11 @@ fn render_bullet_list(output: &mut String, items: &[String]) {
 }
 
 fn render_chart(output: &mut String, chart: &ChartData) {
-    output.push_str(&format!("  {} ({})\n", chart.title, format_chart_type(&chart.chart_type)));
+    output.push_str(&format!(
+        "  {} ({})\n",
+        chart.title,
+        format_chart_type(&chart.chart_type)
+    ));
 
     // Simple text representation of chart data
     let max_label_width = chart.labels.iter().map(|l| l.len()).max().unwrap_or(0);

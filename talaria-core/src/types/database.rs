@@ -27,12 +27,12 @@ pub enum UniProtDatabase {
 /// NCBI database variants
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum NCBIDatabase {
-    RefSeq,        // Generic RefSeq (for backwards compatibility)
+    RefSeq,
     RefSeqProtein, // RefSeq protein database
     RefSeqGenomic, // RefSeq genomic database
     NR,
     NT,
-    GenBank,       // GenBank database
+    GenBank, // GenBank database
     /// Taxonomy related files
     Taxonomy,
     ProtAccession2TaxId,

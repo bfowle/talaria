@@ -10,8 +10,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use talaria_storage::backend::{RocksDBBackend, RocksDBIndexOps};
 use crate::types::{DatabaseSource, SHA256Hash, TaxonId};
+use talaria_storage::backend::{RocksDBBackend, RocksDBIndexOps};
 
 /// Bloom filter for O(1) sequence existence checks
 /// Using simple bit vector for now, can upgrade to cuckoo filter later
@@ -415,7 +415,7 @@ mod tests {
         let source = DatabaseSource::UniProt(talaria_core::UniProtDatabase::SwissProt);
 
         // Add sequence
-        indices.add_sequence(
+        let _ = indices.add_sequence(
             hash.clone(),
             Some(accession.clone()),
             Some(taxon_id.clone()),
@@ -428,8 +428,11 @@ mod tests {
         assert!(indices.get_by_taxonomy(taxon_id.clone()).contains(&hash));
         assert!(indices.get_by_database(&source).contains(&hash));
 
-        // Save and reload
+        // Save and explicitly drop to release RocksDB lock
         indices.save()?;
+        drop(indices);
+
+        // Reload
         let indices2 = SequenceIndices::load(&temp_dir.path().join("indices"))?;
 
         // Verify persistence

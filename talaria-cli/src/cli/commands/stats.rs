@@ -82,17 +82,23 @@ pub fn run(args: StatsArgs) -> anyhow::Result<()> {
 
     // Generate report if requested
     if let Some(report_path) = &args.report_output {
-        use talaria_sequoia::operations::{StatsResult, CompositionStats};
         use std::time::Duration;
+        use talaria_sequoia::operations::{CompositionStats, StatsResult};
 
         // Calculate composition counts from frequencies and total length
         let total_bases = stats.total_length;
-        let a_count = (stats.nucleotide_frequencies.get(&b'A').unwrap_or(&0.0) / 100.0 * total_bases as f64) as usize;
-        let c_count = (stats.nucleotide_frequencies.get(&b'C').unwrap_or(&0.0) / 100.0 * total_bases as f64) as usize;
-        let g_count = (stats.nucleotide_frequencies.get(&b'G').unwrap_or(&0.0) / 100.0 * total_bases as f64) as usize;
-        let t_count = (stats.nucleotide_frequencies.get(&b'T').unwrap_or(&0.0) / 100.0 * total_bases as f64) as usize;
-        let n_count = (stats.nucleotide_frequencies.get(&b'N').unwrap_or(&0.0) / 100.0 * total_bases as f64) as usize;
-        let other_count = total_bases.saturating_sub(a_count + c_count + g_count + t_count + n_count);
+        let a_count = (stats.nucleotide_frequencies.get(&b'A').unwrap_or(&0.0) / 100.0
+            * total_bases as f64) as usize;
+        let c_count = (stats.nucleotide_frequencies.get(&b'C').unwrap_or(&0.0) / 100.0
+            * total_bases as f64) as usize;
+        let g_count = (stats.nucleotide_frequencies.get(&b'G').unwrap_or(&0.0) / 100.0
+            * total_bases as f64) as usize;
+        let t_count = (stats.nucleotide_frequencies.get(&b'T').unwrap_or(&0.0) / 100.0
+            * total_bases as f64) as usize;
+        let n_count = (stats.nucleotide_frequencies.get(&b'N').unwrap_or(&0.0) / 100.0
+            * total_bases as f64) as usize;
+        let other_count =
+            total_bases.saturating_sub(a_count + c_count + g_count + t_count + n_count);
 
         let result = StatsResult {
             total_sequences: stats.total_sequences,

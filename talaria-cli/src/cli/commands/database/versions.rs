@@ -184,11 +184,18 @@ fn list_versions(args: ListVersionsArgs) -> Result<()> {
         let display_name = if args.show_timestamps {
             format!(
                 "{} ({})",
-                version.upstream_version.as_ref().unwrap_or(&version.timestamp),
+                version
+                    .upstream_version
+                    .as_ref()
+                    .unwrap_or(&version.timestamp),
                 version.timestamp.dimmed()
             )
         } else {
-            version.upstream_version.as_ref().unwrap_or(&version.timestamp).to_string()
+            version
+                .upstream_version
+                .as_ref()
+                .unwrap_or(&version.timestamp)
+                .to_string()
         };
 
         if args.detailed {
@@ -211,7 +218,10 @@ fn list_versions(args: ListVersionsArgs) -> Result<()> {
 
             println!("    Chunks:     {}", version.chunk_count);
             println!("    Sequences:  {}", version.sequence_count);
-            println!("    Size:       {}", format_size(version.total_size, BINARY));
+            println!(
+                "    Size:       {}",
+                format_size(version.total_size, BINARY)
+            );
 
             if !version.aliases.is_empty() {
                 println!("    Aliases:    {}", version.aliases.join(", ").dimmed());
@@ -261,7 +271,10 @@ fn set_current(args: SetCurrentArgs) -> Result<()> {
         .set_version_alias(&db_ref.source, &db_ref.dataset, &timestamp, "current")
         .context("Failed to set current version")?;
 
-    let display_name = version.upstream_version.as_ref().unwrap_or(&version.timestamp);
+    let display_name = version
+        .upstream_version
+        .as_ref()
+        .unwrap_or(&version.timestamp);
     print_success(&format!(
         "Set {} ({}) as current version for {}",
         display_name.cyan(),
@@ -272,10 +285,7 @@ fn set_current(args: SetCurrentArgs) -> Result<()> {
     // Optionally set as stable too
     if args.as_stable {
         manager.set_version_alias(&db_ref.source, &db_ref.dataset, &timestamp, "stable")?;
-        print_success(&format!(
-            "Also tagged {} as stable",
-            display_name.cyan()
-        ));
+        print_success(&format!("Also tagged {} as stable", display_name.cyan()));
     }
 
     Ok(())
@@ -299,7 +309,9 @@ fn tag_version(args: TagVersionArgs) -> Result<()> {
 
     // Check if alias already exists (by checking if it resolves to anything)
     if !args.force {
-        if let Ok(existing) = manager.resolve_version_reference(&db_ref.source, &db_ref.dataset, &args.alias) {
+        if let Ok(existing) =
+            manager.resolve_version_reference(&db_ref.source, &db_ref.dataset, &args.alias)
+        {
             if existing != timestamp {
                 print_warning(&format!(
                     "Alias '{}' already points to a different version. Use --force to overwrite.",
@@ -315,7 +327,10 @@ fn tag_version(args: TagVersionArgs) -> Result<()> {
         .set_version_alias(&db_ref.source, &db_ref.dataset, &timestamp, &args.alias)
         .context("Failed to create alias")?;
 
-    let display_name = version.upstream_version.as_ref().unwrap_or(&version.timestamp);
+    let display_name = version
+        .upstream_version
+        .as_ref()
+        .unwrap_or(&version.timestamp);
     print_success(&format!(
         "Created alias '{}' → {} ({})",
         args.alias.cyan(),
@@ -337,9 +352,7 @@ fn untag_version(args: UntagVersionArgs) -> Result<()> {
 
     // Get version info for display
     let versions = manager.list_database_versions(&db_ref.source, &db_ref.dataset)?;
-    let version = versions
-        .iter()
-        .find(|v| v.timestamp == target_timestamp);
+    let version = versions.iter().find(|v| v.timestamp == target_timestamp);
 
     // Display what will be removed
     println!();
@@ -408,7 +421,10 @@ fn show_info(args: InfoVersionArgs) -> Result<()> {
     );
 
     let mut info = vec![];
-    let display_name = version.upstream_version.as_ref().unwrap_or(&version.timestamp);
+    let display_name = version
+        .upstream_version
+        .as_ref()
+        .unwrap_or(&version.timestamp);
     info.push(("Version", display_name.to_string()));
     info.push(("Timestamp", version.timestamp.clone()));
 
@@ -435,10 +451,7 @@ fn show_info(args: InfoVersionArgs) -> Result<()> {
 
     tree_section("Details", info, false);
 
-    println!(
-        "\n{} Manifest stored in RocksDB",
-        "✓".green().bold()
-    );
+    println!("\n{} Manifest stored in RocksDB", "✓".green().bold());
 
     Ok(())
 }
@@ -451,4 +464,3 @@ fn import_version(_args: ImportVersionArgs) -> Result<()> {
     println!("Use 'talaria database download' to add databases to the repository.");
     Ok(())
 }
-

@@ -61,7 +61,11 @@ pub fn execute(cmd: &BackupCommand) -> Result<()> {
         BackupSubcommand::Create { name, description } => {
             // Get RocksDB backend from DatabaseManager
             let db_manager = DatabaseManager::new(None)?;
-            let rocksdb = db_manager.get_repository().storage.sequence_storage.get_rocksdb();
+            let rocksdb = db_manager
+                .get_repository()
+                .storage
+                .sequence_storage
+                .get_rocksdb();
 
             let metadata = manager.create_backup(&rocksdb, name, description.clone())?;
             println!();

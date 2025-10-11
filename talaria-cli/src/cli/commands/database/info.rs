@@ -23,6 +23,10 @@ pub struct InfoArgs {
     #[arg(long)]
     pub show_reductions: bool,
 
+    /// Show global repository statistics (may be slow with large databases)
+    #[arg(long)]
+    pub show_global_stats: bool,
+
     /// Query at specific sequence date (e.g., "2020-01-01")
     #[arg(long)]
     pub sequence_date: Option<String>,
@@ -104,14 +108,22 @@ pub fn run(args: InfoArgs) -> anyhow::Result<()> {
 
             // Show taxonomy and sequence roots if available
             let seq_root = if manifest.sequence_root.0.iter().all(|&b| b == 0) {
-                "Not available (older format)".to_string()
+                if manifest.etag.starts_with("streaming-") {
+                    "Not computed (streaming mode)".to_string()
+                } else {
+                    "Not available (older format)".to_string()
+                }
             } else {
                 format!("{:?}", manifest.sequence_root)
             };
             tree_item(false, "Sequence Root", Some(&seq_root));
 
             let tax_root = if manifest.taxonomy_root.0.iter().all(|&b| b == 0) {
-                "Not available (older format)".to_string()
+                if manifest.etag.starts_with("streaming-") {
+                    "Not computed (streaming mode)".to_string()
+                } else {
+                    "Not available (older format)".to_string()
+                }
             } else {
                 format!("{:?}", manifest.taxonomy_root)
             };
@@ -120,17 +132,26 @@ pub fn run(args: InfoArgs) -> anyhow::Result<()> {
     }
 
     // Storage section - expand in detailed mode
+    // If size is 0 (streaming manifest), recalculate from manifest
+    let total_size: usize = if db_info.total_size == 0 {
+        if let Ok(manifest) = manager.get_manifest(&db_info.name) {
+            manifest.chunk_index.iter().map(|c| c.size).sum()
+        } else {
+            0
+        }
+    } else {
+        db_info.total_size
+    };
+
     let mut storage_items = vec![
+        ("Sequences", format_number(db_info.sequence_count)),
         ("Chunks", format_number(db_info.chunk_count)),
-        ("Size", format_size(db_info.total_size, BINARY)),
+        ("Size", format_size(total_size, BINARY)),
     ];
 
     if matches!(args.format, OutputFormat::Detailed) {
         // Add more storage details
         if let Ok(manifest) = manager.get_manifest(&db_info.name) {
-            let total_sequences: usize =
-                manifest.chunk_index.iter().map(|c| c.sequence_count).sum();
-            storage_items.push(("Total Sequences", format_number(total_sequences)));
 
             // Show chunk distribution
             let min_chunk_size = manifest
@@ -146,7 +167,7 @@ pub fn run(args: InfoArgs) -> anyhow::Result<()> {
                 .max()
                 .unwrap_or(0);
             let avg_chunk_size = if !manifest.chunk_index.is_empty() {
-                db_info.total_size / manifest.chunk_index.len()
+                total_size / manifest.chunk_index.len()
             } else {
                 0
             };
@@ -183,9 +204,24 @@ pub fn run(args: InfoArgs) -> anyhow::Result<()> {
             let dataset = parts[1];
 
             let mut rocksdb_items = vec![
-                ("Manifest Key", format!("manifest:{}:{}:{}", source, dataset, db_info.version)),
-                ("Alias Keys", format!("alias:{}:{}:current, alias:{}:{}:latest", source, dataset, source, dataset)),
-                ("Storage Path", paths::talaria_databases_dir().join("sequences/rocksdb").display().to_string()),
+                (
+                    "Manifest Key",
+                    format!("manifest:{}:{}:{}", source, dataset, db_info.version),
+                ),
+                (
+                    "Alias Keys",
+                    format!(
+                        "alias:{}:{}:current, alias:{}:{}:latest",
+                        source, dataset, source, dataset
+                    ),
+                ),
+                (
+                    "Storage Path",
+                    paths::talaria_databases_dir()
+                        .join("sequences/rocksdb")
+                        .display()
+                        .to_string(),
+                ),
             ];
 
             // Try to get version count
@@ -220,7 +256,7 @@ pub fn run(args: InfoArgs) -> anyhow::Result<()> {
                     let source = parts[0];
                     let dataset = parts[1];
                     if let Ok(Some(manifest)) =
-                        storage.get_database_reduction_by_profile(source, dataset, profile)
+                        storage.get_database_reduction_by_profile(source, dataset, &db_info.version, profile)
                     {
                         let is_last_profile = idx == db_info.reduction_profiles.len() - 1;
                         let reduction_items = vec![
@@ -268,24 +304,29 @@ pub fn run(args: InfoArgs) -> anyhow::Result<()> {
         info("This will be implemented in a future update");
     }
 
-    // Show storage benefits as tree
-    let stats = manager.get_stats()?;
-    let benefits_items = vec![
-        (
-            "Deduplication ratio",
-            format!("{:.2}x", stats.deduplication_ratio),
-        ),
-        (
-            "Storage saved",
-            format!(
-                "~{}%",
-                ((1.0 - 1.0 / stats.deduplication_ratio) * 100.0) as i32
+    // Show storage benefits as tree (only if explicitly requested)
+    // This loads all databases into memory and can cause OOM on large repositories
+    if args.show_global_stats {
+        let stats = manager.get_stats()?;
+        let benefits_items = vec![
+            (
+                "Deduplication ratio",
+                format!("{:.2}x", stats.deduplication_ratio),
             ),
-        ),
-        ("Incremental updates", "Enabled".to_string()),
-        ("Cryptographic verification", "SHA256".to_string()),
-    ];
-    tree_section("Storage Benefits", benefits_items, true);
+            (
+                "Storage saved",
+                format!(
+                    "~{}%",
+                    ((1.0 - 1.0 / stats.deduplication_ratio) * 100.0) as i32
+                ),
+            ),
+            ("Incremental updates", "Enabled".to_string()),
+            ("Cryptographic verification", "SHA256".to_string()),
+        ];
+        tree_section("Storage Benefits", benefits_items, true);
+    } else {
+        info("Tip: Use --show-global-stats to see repository-wide storage statistics");
+    }
 
     println!();
 
@@ -322,7 +363,7 @@ pub fn run(args: InfoArgs) -> anyhow::Result<()> {
             dataset,
             total_sequences,
             total_chunks: db_info.chunk_count,
-            total_size: db_info.total_size as u64,
+            total_size: total_size as u64,
             versions: 1, // TODO: Get actual version count from temporal index
             current_version: Some(db_info.version.clone()),
             last_updated: Some(db_info.created_at.format("%Y-%m-%d %H:%M:%S").to_string()),
@@ -474,7 +515,7 @@ fn show_profile_info(
     // Load the reduction profile manifest
     let storage = manager.get_storage();
     let profile_manifest = storage
-        .get_database_reduction_by_profile(source, dataset, profile)?
+        .get_database_reduction_by_profile(source, dataset, &db_info.version, profile)?
         .ok_or_else(|| {
             anyhow::anyhow!(
                 "Profile '{}' not found for database '{}'",

@@ -87,9 +87,9 @@ pub use operations::{
     SelectionAlgorithm, SelectionResult, SelectionStats, SequenceAnalysis, StorageMetrics,
     TaxonDistribution, TaxonomyAnalysis, TemporalManifestDiffer, TraitSelectionResult,
 };
-pub use talaria_storage::format;
 pub use storage::indices;
 pub use storage::sequence::SequenceStorage as sequence_storage;
+pub use talaria_storage::format;
 pub use taxonomy::evolution::{
     MassReclassification, TaxonEvolutionReport, TaxonomyEvolutionTracker,
 };
@@ -120,7 +120,8 @@ impl SequoiaRepository {
         let storage = SequoiaStorage::new(base_path)?;
         let manifest = Manifest::new_with_path(base_path);
         let taxonomy = taxonomy::TaxonomyManager::load(base_path)?;
-        let temporal = TemporalIndex::new(base_path)?;
+        let rocksdb = storage.sequence_storage.get_rocksdb();
+        let temporal = TemporalIndex::new(base_path, rocksdb)?;
 
         Ok(Self {
             storage,
@@ -136,7 +137,8 @@ impl SequoiaRepository {
         let manifest =
             Manifest::load(base_path).unwrap_or_else(|_| Manifest::new_with_path(base_path));
         let taxonomy = taxonomy::TaxonomyManager::load(base_path)?;
-        let temporal = TemporalIndex::load(base_path)?;
+        let rocksdb = storage.sequence_storage.get_rocksdb();
+        let temporal = TemporalIndex::load(base_path, rocksdb)?;
 
         Ok(Self {
             storage,

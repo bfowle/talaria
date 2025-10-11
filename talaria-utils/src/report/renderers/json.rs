@@ -1,5 +1,4 @@
 /// Generic JSON renderer for Report type
-
 use crate::report::core::Report;
 use anyhow::Result;
 

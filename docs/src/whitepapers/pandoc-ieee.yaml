@@ -1,0 +1,67 @@
+# Pandoc metadata for IEEE-style formatting
+title: "HERALD: Content-Addressed Storage for Efficient Biological Database Synchronization"
+author:
+  - name: "Andromeda Tech, LLC"
+    #affiliation: "Institution"
+    email: "contact@androm.tech"
+abstract: |
+  **Background:** Biological sequence databases are experiencing exponential growth, doubling every 18 months and outpacing Moore's Law. Current distribution methods require complete database downloads for each update, resulting in terabyte-scale redundant transfers and preventing reproducible research due to lack of version control and integrity verification.
+
+  **Methods:** We present HERALD (Hierarchical Evolutionary Repository with Adaptive Lineage Deltas), a content-addressed storage system that combines cryptographic hashing, Merkle directed acyclic graphs, bi-temporal versioning, and evolution-aware delta encoding.
+
+  **Results:** HERALD achieves 95-99% bandwidth reduction for database updates compared to traditional full downloads. Storage requirements are reduced by 45-90% through global deduplication across databases.
+
+  **Conclusions:** By treating biological sequences as content-addressed objects in a Merkle DAG, HERALD transforms database distribution from a bandwidth-intensive synchronization problem into an efficient differential update system with strong integrity guarantees.
+
+keywords: ["biological databases", "content-addressed storage", "Merkle trees", "data synchronization", "reproducibility"]
+
+# Document settings
+documentclass: article
+fontsize: 11pt
+geometry:
+  - margin=1in
+  - letterpaper
+# Professional academic fonts (in order of preference)
+# Latin Modern: Best Unicode support, traditional academic TeX
+# STIX Two: Professional scientific publishing standard (if available)
+# Libertinus: ACM publication standard
+# TeX Gyre Pagella: Elegant Palatino-like
+# TeX Gyre Termes: IEEE standard (limited Unicode subscripts)
+mainfont: "Latin Modern Roman"  # Best Unicode support
+sansfont: "Latin Modern Sans"
+monofont: "Latin Modern Mono"
+mathfont: "Latin Modern Math"
+colorlinks: true
+linkcolor: blue
+urlcolor: blue
+toccolor: black
+numbersections: true
+toc: true
+toc-depth: 3
+highlight-style: tango
+
+# LaTeX header includes for better formatting
+header-includes:
+  - \usepackage{unicode-math}  # Unicode support for math
+  - \usepackage{microtype}  # Better typography
+  - \usepackage{parskip}    # Better paragraph spacing
+  - \setlength{\parindent}{0pt}
+  - \setlength{\parskip}{0.8em}
+  - \usepackage{setspace}
+  - \onehalfspacing
+  - \usepackage{titlesec}
+  - \titlespacing*{\section}{0pt}{3.5ex plus 1ex minus .2ex}{2.3ex plus .2ex}
+  - \titlespacing*{\subsection}{0pt}{3.25ex plus 1ex minus .2ex}{1.5ex plus .2ex}
+  - \titlespacing*{\subsubsection}{0pt}{3.25ex plus 1ex minus .2ex}{1.5ex plus .2ex}
+  - \usepackage{booktabs}  # Better tables
+  - \usepackage{array}
+  - \renewcommand{\arraystretch}{1.3}
+  - \usepackage{enumitem}
+  - \setlist[itemize]{itemsep=0.3em, topsep=0.5em}
+  - \setlist[enumerate]{itemsep=0.3em, topsep=0.5em}
+  - \usepackage{fancyhdr}
+  - \pagestyle{fancy}
+  - \fancyhf{}
+  - \rhead{\thepage}
+  - \lhead{\nouppercase{\leftmark}}
+  - \renewcommand{\headrulewidth}{0.4pt}

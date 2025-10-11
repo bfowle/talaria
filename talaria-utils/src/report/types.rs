@@ -2,7 +2,6 @@
 ///
 /// These types represent the results of comparing two sequence databases,
 /// tracking additions, removals, modifications, and statistical changes.
-
 use super::core::{Cell, CellStyle, Metric, MetricSeverity, Report, Reportable, Section, Table};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -25,12 +24,7 @@ pub struct ComparisonResult {
 }
 
 impl ComparisonResult {
-    pub fn new(
-        old_path: PathBuf,
-        new_path: PathBuf,
-        old_count: usize,
-        new_count: usize,
-    ) -> Self {
+    pub fn new(old_path: PathBuf, new_path: PathBuf, old_count: usize, new_count: usize) -> Self {
         Self {
             old_path,
             new_path,
@@ -46,8 +40,13 @@ impl ComparisonResult {
     }
 
     /// Calculate aggregate statistics from sequence data
-    pub fn calculate_statistics<S, FL, FT>(&mut self, old_sequences: &HashMap<String, S>, new_sequences: &HashMap<String, S>, get_len: FL, get_taxon: FT)
-    where
+    pub fn calculate_statistics<S, FL, FT>(
+        &mut self,
+        old_sequences: &HashMap<String, S>,
+        new_sequences: &HashMap<String, S>,
+        get_len: FL,
+        get_taxon: FT,
+    ) where
         FL: Fn(&S) -> usize,
         FT: Fn(&S) -> Option<u32>,
     {
@@ -101,7 +100,12 @@ pub struct SequenceInfo {
 }
 
 impl SequenceInfo {
-    pub fn new(id: String, description: Option<String>, length: usize, taxon_id: Option<u32>) -> Self {
+    pub fn new(
+        id: String,
+        description: Option<String>,
+        length: usize,
+        taxon_id: Option<u32>,
+    ) -> Self {
         Self {
             id,
             description,
@@ -211,13 +215,11 @@ impl Reportable for ComparisonResult {
         // Summary metrics section
         let total_changes = self.added.len() + self.removed.len() + self.modified.len();
         let summary_metrics = vec![
-            Metric::new("Total Changes", total_changes).with_severity(
-                if total_changes > 1000 {
-                    MetricSeverity::Warning
-                } else {
-                    MetricSeverity::Normal
-                },
-            ),
+            Metric::new("Total Changes", total_changes).with_severity(if total_changes > 1000 {
+                MetricSeverity::Warning
+            } else {
+                MetricSeverity::Normal
+            }),
             Metric::new("Added Sequences", self.added.len()).with_severity(
                 if self.added.len() > 0 {
                     MetricSeverity::Success
@@ -247,7 +249,8 @@ impl Reportable for ComparisonResult {
                     "{} → {} ({:+})",
                     format_number(self.statistics.old_total_length),
                     format_number(self.statistics.new_total_length),
-                    self.statistics.new_total_length as i64 - self.statistics.old_total_length as i64
+                    self.statistics.new_total_length as i64
+                        - self.statistics.old_total_length as i64
                 ),
             ),
             (
@@ -274,17 +277,26 @@ impl Reportable for ComparisonResult {
 
         // Added sequences table (top 20)
         if !self.added.is_empty() {
-            let mut table = Table::new(vec!["ID".to_string(), "Length".to_string(), "Taxon ID".to_string()]);
+            let mut table = Table::new(vec![
+                "ID".to_string(),
+                "Length".to_string(),
+                "Taxon ID".to_string(),
+            ]);
             for seq in self.added.iter().take(20) {
                 table.add_row(vec![
                     Cell::new(&seq.id).with_style(CellStyle::Success),
                     Cell::new(seq.length),
-                    Cell::new(seq.taxon_id.map(|t| t.to_string()).unwrap_or_else(|| "-".to_string())),
+                    Cell::new(
+                        seq.taxon_id
+                            .map(|t| t.to_string())
+                            .unwrap_or_else(|| "-".to_string()),
+                    ),
                 ]);
             }
             if self.added.len() > 20 {
                 table.add_row(vec![
-                    Cell::new(format!("... and {} more", self.added.len() - 20)).with_style(CellStyle::Muted),
+                    Cell::new(format!("... and {} more", self.added.len() - 20))
+                        .with_style(CellStyle::Muted),
                     Cell::new(""),
                     Cell::new(""),
                 ]);
@@ -297,17 +309,26 @@ impl Reportable for ComparisonResult {
 
         // Removed sequences table (top 20)
         if !self.removed.is_empty() {
-            let mut table = Table::new(vec!["ID".to_string(), "Length".to_string(), "Taxon ID".to_string()]);
+            let mut table = Table::new(vec![
+                "ID".to_string(),
+                "Length".to_string(),
+                "Taxon ID".to_string(),
+            ]);
             for seq in self.removed.iter().take(20) {
                 table.add_row(vec![
                     Cell::new(&seq.id).with_style(CellStyle::Warning),
                     Cell::new(seq.length),
-                    Cell::new(seq.taxon_id.map(|t| t.to_string()).unwrap_or_else(|| "-".to_string())),
+                    Cell::new(
+                        seq.taxon_id
+                            .map(|t| t.to_string())
+                            .unwrap_or_else(|| "-".to_string()),
+                    ),
                 ]);
             }
             if self.removed.len() > 20 {
                 table.add_row(vec![
-                    Cell::new(format!("... and {} more", self.removed.len() - 20)).with_style(CellStyle::Muted),
+                    Cell::new(format!("... and {} more", self.removed.len() - 20))
+                        .with_style(CellStyle::Muted),
                     Cell::new(""),
                     Cell::new(""),
                 ]);

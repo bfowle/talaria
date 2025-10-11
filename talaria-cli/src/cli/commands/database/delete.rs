@@ -12,9 +12,13 @@ pub struct DeleteArgs {
     /// Database reference: source/dataset[@version][:profile]
     ///
     /// Examples:
+    ///
     ///   uniprot/swissprot               - Delete entire database (all versions)
+    ///
     ///   uniprot/swissprot@2024_04       - Delete specific version
+    ///
     ///   uniprot/swissprot@current       - Delete current version
+    ///
     ///   uniprot/swissprot@my-test-tag   - Delete version by alias
     pub database: String,
 
@@ -54,10 +58,7 @@ fn delete_single_version(
     db_ref: &talaria_core::types::DatabaseReference,
     args: &DeleteArgs,
 ) -> Result<()> {
-    let version_ref = db_ref
-        .version
-        .as_ref()
-        .expect("Version should be present");
+    let version_ref = db_ref.version.as_ref().expect("Version should be present");
 
     // Get version info
     let version_info = manager
@@ -69,9 +70,18 @@ fn delete_single_version(
 
     // Display what will be deleted
     println!();
-    println!("{} {}", "⚠".yellow().bold(), "You are about to delete:".bold());
+    println!(
+        "{} {}",
+        "⚠".yellow().bold(),
+        "You are about to delete:".bold()
+    );
     println!();
-    println!("  {}  {}/{}", "Database:".dimmed(), db_ref.source, db_ref.dataset);
+    println!(
+        "  {}  {}/{}",
+        "Database:".dimmed(),
+        db_ref.source,
+        db_ref.dataset
+    );
     println!(
         "  {}   {}",
         "Version:".dimmed(),
@@ -81,7 +91,12 @@ fn delete_single_version(
             .unwrap_or(&version_info.timestamp)
             .cyan()
     );
-    println!("  {}    {} ({})", "Timestamp:".dimmed(), version_info.timestamp.dimmed(), version_info.created_at.format("%Y-%m-%d %H:%M UTC"));
+    println!(
+        "  {}    {} ({})",
+        "Timestamp:".dimmed(),
+        version_info.timestamp.dimmed(),
+        version_info.created_at.format("%Y-%m-%d %H:%M UTC")
+    );
     println!(
         "  {}    {}",
         "Chunks:".dimmed(),
@@ -148,12 +163,20 @@ fn delete_single_version(
     println!("  Chunks may be shared with other versions or databases.");
     println!(
         "  Run {} to remove orphaned chunks.",
-        format!("'talaria database clean {}/{}'", db_ref.source, db_ref.dataset).cyan()
+        format!(
+            "'talaria database clean {}/{}'",
+            db_ref.source, db_ref.dataset
+        )
+        .cyan()
     );
     println!();
 
     if args.dry_run {
-        println!("{} {} (dry run)", "✓".green(), "Would delete this version".dimmed());
+        println!(
+            "{} {} (dry run)",
+            "✓".green(),
+            "Would delete this version".dimmed()
+        );
         return Ok(());
     }
 
@@ -182,7 +205,11 @@ fn delete_single_version(
         .context("Failed to delete version")?;
 
     println!();
-    println!("{} Deleted version {}", "✓".green().bold(), version_ref.cyan());
+    println!(
+        "{} Deleted version {}",
+        "✓".green().bold(),
+        version_ref.cyan()
+    );
     println!(
         "  {}",
         format!(
@@ -201,7 +228,12 @@ fn delete_single_version(
             .collect();
 
         if let Some(latest) = remaining_versions.first() {
-            manager.set_version_alias(&db_ref.source, &db_ref.dataset, &latest.timestamp, "current")?;
+            manager.set_version_alias(
+                &db_ref.source,
+                &db_ref.dataset,
+                &latest.timestamp,
+                "current",
+            )?;
             println!(
                 "{} Reassigned 'current' to {}",
                 "✓".green(),
@@ -243,7 +275,9 @@ fn delete_entire_database(
     let total_sequences: usize = versions.iter().map(|v| v.sequence_count).sum();
 
     // Find current version
-    let current_version = versions.iter().find(|v| v.aliases.contains(&"current".to_string()));
+    let current_version = versions
+        .iter()
+        .find(|v| v.aliases.contains(&"current".to_string()));
 
     // Display what will be deleted
     println!();
@@ -253,8 +287,17 @@ fn delete_entire_database(
         "You are about to delete ENTIRE DATABASE:".bold()
     );
     println!();
-    println!("  {}  {}/{}", "Database:".dimmed(), db_ref.source, db_ref.dataset);
-    println!("  {}  {}", "Versions:".dimmed(), versions.len().to_string().cyan());
+    println!(
+        "  {}  {}/{}",
+        "Database:".dimmed(),
+        db_ref.source,
+        db_ref.dataset
+    );
+    println!(
+        "  {}  {}",
+        "Versions:".dimmed(),
+        versions.len().to_string().cyan()
+    );
     println!(
         "  {}    {} (total across all versions)",
         "Chunks:".dimmed(),
@@ -319,7 +362,11 @@ fn delete_entire_database(
     println!("  Chunks will remain in storage (may be shared with other databases).");
     println!(
         "  Run {} to remove orphaned chunks.",
-        format!("'talaria database clean {}/{}'", db_ref.source, db_ref.dataset).cyan()
+        format!(
+            "'talaria database clean {}/{}'",
+            db_ref.source, db_ref.dataset
+        )
+        .cyan()
     );
     println!();
 
@@ -369,7 +416,11 @@ fn delete_entire_database(
     for version in &deleted_versions {
         println!(
             "  {}",
-            format!("• Removed manifest:{}:{}:{}", db_ref.source, db_ref.dataset, version).dimmed()
+            format!(
+                "• Removed manifest:{}:{}:{}",
+                db_ref.source, db_ref.dataset, version
+            )
+            .dimmed()
         );
     }
     println!();

@@ -21,7 +21,7 @@
 //! # let db2_path = PathBuf::from("/path/to/db2");
 //! let differ = DatabaseDiffer::new(&db1_path, &db2_path)?;
 //! let comparison = differ.compare()?;
-//! println!("Shared chunks: {}", comparison.chunk_analysis.shared_chunks.len());
+//! tracing::info!("Shared chunks: {}", comparison.chunk_analysis.shared_chunks.len());
 //! # Ok(())
 //! # }
 //! ```
@@ -81,14 +81,14 @@ pub use reduction::{
     ReferenceChunk,
 };
 pub use reference_selector::{ReferenceSelectorImpl, SelectionAlgorithm, SelectionResult};
+pub use results::{
+    CompositionStats, DatabaseInfoResult, DiscrepancyResult, GarbageCollectionResult,
+    HistoryResult, MirrorResult, OptimizationResult, ReconstructionResult, ReductionResult,
+    StatsResult, TaxonomyComparison, TaxonomyCoverageInfo, TaxonomyCoverageResult,
+    UpdateCheckResult, UpdateResult, ValidationResult, VerificationResult, VersionHistoryEntry,
+};
 pub use selection::traits::{
     AlignmentBasedSelector, AlignmentScore, RecommendedParams, ReferenceSelector, SelectionStats,
     TraitSelectionResult,
 };
 pub use state::{OperationType, ProcessingState, ProcessingStateManager, SourceInfo};
-pub use results::{
-    CompositionStats, DiscrepancyResult, GarbageCollectionResult, HistoryResult, MirrorResult,
-    OptimizationResult, ReconstructionResult, ReductionResult, StatsResult,
-    TaxonomyComparison, TaxonomyCoverageInfo, TaxonomyCoverageResult, UpdateCheckResult,
-    UpdateResult, ValidationResult, VersionHistoryEntry, VerificationResult, DatabaseInfoResult,
-};

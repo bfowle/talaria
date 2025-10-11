@@ -307,7 +307,7 @@ fn test_reduction_creates_profile_not_database() {
 
     // 5. Verify the profile is associated with the database
     let profiles = manager
-        .get_reduction_profiles_for_database("custom/testdb")
+        .get_reduction_profiles_for_database("custom/testdb", version)
         .unwrap();
     assert!(
         profiles.contains(&"test-50-percent".to_string()),

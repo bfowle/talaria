@@ -2,7 +2,17 @@
 
 ## Overview
 
-SEQUOIA (Sequence Query Optimization with Indexed Architecture) is the core storage and indexing engine for Talaria. It provides a content-addressed storage system with cryptographic verification, bi-temporal versioning, and taxonomy-aware chunking for efficient management of biological sequence databases.
+SEQUOIA (Sequence Query Optimization with Indexed Architecture) is the core business logic and storage orchestration layer for Talaria. It provides content-addressed storage abstractions, cryptographic verification, bi-temporal versioning, and taxonomy-aware chunking for efficient management of biological sequence databases.
+
+### Architectural Role
+
+`talaria-sequoia` serves as the business logic layer that:
+- **Defines Storage Traits**: Contains all storage trait definitions (`ChunkStorage`, `DeltaStorage`, `ManifestStorage`, etc.)
+- **Imports Backends**: Uses storage backends from `talaria-storage` (RocksDB, compression, caching)
+- **Implements Business Logic**: Chunking strategies, versioning, manifest management, delta encoding
+- **Orchestrates Operations**: Coordinates complex multi-step storage operations
+
+**Important**: Storage traits were moved here from `talaria-storage` to maintain proper architectural separation and avoid circular dependencies. This module imports low-level backends from `talaria-storage` and adds business logic on top.
 
 ### Key Features
 
@@ -97,8 +107,7 @@ talaria-sequoia/
 │   │   ├── core.rs                     # Temporal index
 │   │   ├── bi_temporal.rs              # Bi-temporal database
 │   │   ├── retroactive.rs              # Retroactive analysis
-│   │   ├── renderable.rs               # Temporal rendering
-│   │   └── version_store.rs            # Version management
+│   │   └── renderable.rs               # Temporal rendering
 │   ├── verification/                   # Verification and validation
 │   │   ├── merkle.rs                   # Merkle DAG implementation
 │   │   ├── verifier.rs                 # Cryptographic verification
@@ -114,8 +123,7 @@ talaria-sequoia/
 │   │   ├── filter.rs                   # Boolean taxonomy filtering
 │   │   ├── extractor.rs                # Taxonomy extraction
 │   │   ├── discrepancy.rs              # Discrepancy detection
-│   │   ├── manifest.rs                 # Taxonomy manifests
-│   │   └── version_store.rs            # Taxonomy versioning
+│   │   └── manifest.rs                 # Taxonomy manifests
 │   ├── database/                       # Database management
 │   │   ├── manager.rs                  # Database manager
 │   │   └── diff.rs                     # Database diffing
@@ -372,22 +380,6 @@ This enables queries like:
 - "Give me the database as of January with March taxonomy"
 - "Show how taxonomy reclassification affects sequence organization"
 - "Track sequence additions over time with consistent taxonomy"
-
-### Version Store
-
-```rust
-let version_store = FilesystemVersionStore::new(path)?;
-
-// List versions
-let versions = version_store.list_versions(ListOptions {
-    after: Some(DateTime::from(2024, 1, 1)),
-    before: None,
-    limit: 10,
-})?;
-
-// Get specific version
-let v1_0_0 = version_store.get_version("v1.0.0")?;
-```
 
 ### Retroactive Analysis
 

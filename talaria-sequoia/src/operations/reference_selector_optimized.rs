@@ -162,8 +162,8 @@ impl OptimizedReferenceSelector {
         target_ratio: f64,
         aligner: &mut dyn Aligner,
     ) -> Result<SelectionResult> {
-        println!("🔬 Graph centrality-based reference selection (SEQUOIA 5-dimensional approach)");
-        println!(
+        tracing::info!("🔬 Graph centrality-based reference selection (SEQUOIA 5-dimensional approach)");
+        tracing::info!(
             "  Formula: Score = {:.1}·Degree + {:.1}·Betweenness + {:.1}·Coverage",
             self.alpha, self.beta, self.gamma
         );
@@ -181,7 +181,7 @@ impl OptimizedReferenceSelector {
         sequences: &[Sequence],
         _aligner: &mut dyn Aligner,
     ) -> Result<(UnGraph<String, f64>, HashMap<String, NodeIndex>)> {
-        println!("  Building similarity graph...");
+        tracing::info!("  Building similarity graph...");
         let mut graph = UnGraph::<String, f64>::new_undirected();
         let mut node_map = HashMap::new();
 
@@ -226,7 +226,7 @@ impl OptimizedReferenceSelector {
         let (graph, node_map) = graph_data;
         let target_count = (sequences.len() as f64 * target_ratio) as usize;
 
-        println!("  Calculating centrality metrics...");
+        tracing::info!("  Calculating centrality metrics...");
 
         // Calculate metrics for each node
         let mut graph_nodes = Vec::new();
@@ -263,9 +263,9 @@ impl OptimizedReferenceSelector {
                 .unwrap_or(Ordering::Equal)
         });
 
-        println!("  Top 5 centrality scores:");
+        tracing::info!("  Top 5 centrality scores:");
         for (i, node) in graph_nodes.iter().take(5).enumerate() {
-            println!(
+            tracing::info!(
                 "    {}. {} - Score: {:.2} (D:{:.0}, B:{:.2}, C:{:.0})",
                 i + 1,
                 &node.sequence_id[..node.sequence_id.len().min(20)],
@@ -307,11 +307,11 @@ impl OptimizedReferenceSelector {
             }
         }
 
-        println!(
+        tracing::info!(
             "  Selected {} references based on centrality",
             references.len()
         );
-        println!("  Covered {} sequences", discarded.len());
+        tracing::info!("  Covered {} sequences", discarded.len());
 
         Ok(SelectionResult {
             references,

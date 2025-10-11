@@ -78,7 +78,7 @@ impl UnifiedProgressTracker {
                 .unwrap()
                 .progress_chars("█▓▒░ "),
         );
-        main_bar.set_message(format!("🔄 {}", operation_name));
+        main_bar.set_message(operation_name.to_string());
 
         let main_bar = multi.add(main_bar);
         // Don't use steady_tick - causes ETA miscalculation
@@ -111,7 +111,7 @@ impl UnifiedProgressTracker {
 
         match &new_stage {
             OperationStage::Discovery => {
-                main_bar.set_message("🔍 Checking for existing downloads...");
+                main_bar.set_message("Checking for existing downloads...");
                 main_bar.set_position(5);
             }
 
@@ -130,7 +130,7 @@ impl UnifiedProgressTracker {
                 let detail = ProgressBar::new(*bytes_total);
                 detail.set_style(
                     ProgressStyle::default_bar()
-                        .template("     📥 Downloading: [{bar:40.green/white}] {bytes}/{total_bytes} ({bytes_per_sec}) {msg}")
+                        .template("  Downloading [{bar:40.green/white}] {bytes}/{total_bytes} ({bytes_per_sec}) {msg}")
                         .unwrap()
                         .progress_chars("═╾─")
                 );
@@ -140,7 +140,7 @@ impl UnifiedProgressTracker {
                 // Don't use steady_tick - causes ETA miscalculation
                 *self.detail_bar.lock() = Some(detail);
 
-                main_bar.set_message("📥 Downloading database...");
+                main_bar.set_message("Downloading database...");
             }
 
             OperationStage::Processing {
@@ -165,7 +165,7 @@ impl UnifiedProgressTracker {
                     let bar = ProgressBar::new(*total as u64);
                     bar.set_style(
                         ProgressStyle::default_bar()
-                            .template("     🧬 Processing: [{bar:40.yellow/white}] {pos}/{len} sequences (batch {msg})")
+                            .template("   Processing [{bar:40.yellow/white}] {pos}/{len} sequences (batch {msg})")
                             .unwrap()
                             .progress_chars("▰▱ ")
                     );
@@ -176,8 +176,10 @@ impl UnifiedProgressTracker {
                     let bar = ProgressBar::new_spinner();
                     bar.set_style(
                         ProgressStyle::default_spinner()
-                            .template("     🧬 Processing: {spinner:.yellow} {pos} sequences (batch {msg})")
-                            .unwrap()
+                            .template(
+                                "   Processing {spinner:.yellow} {pos} sequences (batch {msg})",
+                            )
+                            .unwrap(),
                     );
                     bar.set_position(*sequences_processed as u64);
                     bar.set_message(format!("{}", batches_processed));
@@ -188,7 +190,7 @@ impl UnifiedProgressTracker {
                 // Don't use steady_tick - causes ETA miscalculation
                 *self.detail_bar.lock() = Some(detail);
 
-                main_bar.set_message("🧬 Processing sequences...");
+                main_bar.set_message("Processing sequences...");
             }
 
             OperationStage::Storing {
@@ -201,7 +203,7 @@ impl UnifiedProgressTracker {
                 let detail = ProgressBar::new_spinner();
                 detail.set_style(
                     ProgressStyle::default_spinner()
-                        .template("     💾 Storing: {spinner:.cyan} {msg}")
+                        .template("      Storing {spinner:.cyan} {msg}")
                         .unwrap(),
                 );
                 detail.set_message(format!(
@@ -215,30 +217,28 @@ impl UnifiedProgressTracker {
                 // Don't use steady_tick - causes ETA miscalculation
                 *self.detail_bar.lock() = Some(detail);
 
-                main_bar.set_message("💾 Storing canonical sequences...");
+                main_bar.set_message("Storing canonical sequences...");
             }
 
             OperationStage::IndexBuilding => {
                 main_bar.set_position(85);
-                main_bar.set_message("🔨 Building indices...");
+                main_bar.set_message("Building indices...");
             }
 
             OperationStage::ManifestCreation => {
                 main_bar.set_position(90);
-                main_bar.set_message("📋 Creating manifest...");
+                main_bar.set_message("Creating manifest...");
             }
 
             OperationStage::Finalization => {
                 main_bar.set_position(95);
-                main_bar.set_message("🏁 Finalizing...");
+                main_bar.set_message("Finalizing...");
             }
 
             OperationStage::Complete { total_time } => {
                 main_bar.set_position(100);
-                main_bar.finish_with_message(format!(
-                    "✅ Complete in {}",
-                    format_duration(*total_time)
-                ));
+                main_bar
+                    .finish_with_message(format!("Complete in {}", format_duration(*total_time)));
 
                 if let Some(bar) = self.detail_bar.lock().take() {
                     bar.finish_and_clear();
@@ -321,7 +321,7 @@ impl UnifiedProgressTracker {
 
         // Use the multi-progress suspend feature to print without disrupting bars
         self.multi.suspend(|| {
-            println!("  {}", message);
+            tracing::info!("  {}", message);
         });
     }
 

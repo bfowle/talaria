@@ -5,6 +5,7 @@ use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{self, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
+use tracing::info;
 
 use super::progress::DownloadProgress;
 
@@ -55,6 +56,16 @@ impl UniProtDownloader {
         progress: &mut DownloadProgress,
         skip_verify: bool,
     ) -> Result<()> {
+        let _span = tracing::info_span!(
+            "download_swissprot",
+            output = %output_path.display(),
+            skip_verify = skip_verify
+        ).entered();
+
+        info!(
+            "Downloading SwissProt database to {}",
+            output_path.display()
+        );
         let url = format!(
             "{}/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz",
             self.base_url
@@ -214,7 +225,7 @@ impl UniProtDownloader {
                         0
                     };
 
-                    eprintln!(
+                    tracing::info!(
                         "Warning: Failed to read chunk at {}% ({} MB downloaded): {}",
                         percent,
                         bytes_so_far / (1024 * 1024),
@@ -234,7 +245,7 @@ impl UniProtDownloader {
                     }
 
                     // Try to continue with next chunk
-                    eprintln!(
+                    tracing::info!(
                         "Attempting to continue download (error {}/{})",
                         consecutive_errors, MAX_CONSECUTIVE_ERRORS
                     );
@@ -256,13 +267,58 @@ impl UniProtDownloader {
 
         // Final flush before moving
         file.flush()?;
+        drop(file); // Close the file handle before renaming
+
+        // Validate that we downloaded the complete file
+        if total_size > 0 && downloaded < total_size {
+            let missing_bytes = total_size - downloaded;
+            tracing::error!(
+                "Incomplete download: got {} bytes, expected {} bytes ({} bytes missing)",
+                downloaded,
+                total_size,
+                missing_bytes
+            );
+            return Err(anyhow::anyhow!(
+                "Incomplete download: got {} bytes, expected {} bytes. Missing {} bytes. \n\
+                 The download can be resumed by running the command again with --resume.",
+                downloaded,
+                total_size,
+                missing_bytes
+            ));
+        }
+
+        tracing::info!(
+            "Download stream complete ({} bytes), renaming {} to {}",
+            downloaded,
+            temp_path.display(),
+            output_path.display()
+        );
 
         // Move to final location
         std::fs::rename(&temp_path, output_path)
             .context("Failed to move file to final location")?;
 
+        tracing::info!("File renamed successfully, validating gzip integrity");
+
+        // Validate gzip file integrity
+        if output_path.extension().and_then(|s| s.to_str()) == Some("gz") {
+            progress.set_message("Validating gzip file integrity...");
+            if let Err(e) = Self::validate_gzip_file(output_path) {
+                tracing::error!("Gzip validation failed: {}", e);
+                return Err(anyhow::anyhow!(
+                    "Downloaded file appears to be corrupted: {}. \n\
+                     Please delete {} and try again.",
+                    e,
+                    output_path.display()
+                ));
+            }
+            tracing::info!("Gzip file validation passed");
+        }
+
         progress.set_message("Download complete!");
         progress.finish();
+
+        tracing::info!("Download fully complete");
 
         Ok(())
     }
@@ -296,6 +352,14 @@ impl UniProtDownloader {
         skip_verify: bool,
         resume: bool,
     ) -> Result<()> {
+        let _span = tracing::info_span!(
+            "download_and_extract",
+            url = %url,
+            output = %output_path.display(),
+            skip_verify = skip_verify,
+            resume = resume
+        ).entered();
+        info!("Downloading and extracting from {}", url);
         progress.set_message(&format!("Downloading from {}", url));
 
         let temp_path = output_path.with_extension("gz.tmp");
@@ -360,7 +424,7 @@ impl UniProtDownloader {
                         0
                     };
 
-                    eprintln!(
+                    tracing::info!(
                         "Warning: Failed to read chunk at {}% ({} MB downloaded): {}",
                         percent,
                         bytes_so_far / (1024 * 1024),
@@ -380,7 +444,7 @@ impl UniProtDownloader {
                     }
 
                     // Try to continue with next chunk
-                    eprintln!(
+                    tracing::info!(
                         "Attempting to continue download (error {}/{})",
                         consecutive_errors, MAX_CONSECUTIVE_ERRORS
                     );
@@ -402,6 +466,27 @@ impl UniProtDownloader {
 
         // Final flush before decompressing
         file.flush()?;
+        drop(file); // Close the file handle before decompression
+
+        // Validate that we downloaded the complete file
+        if total_size > 0 && downloaded < total_size {
+            let missing_bytes = total_size - downloaded;
+            tracing::error!(
+                "Incomplete download: got {} bytes, expected {} bytes ({} bytes missing)",
+                downloaded,
+                total_size,
+                missing_bytes
+            );
+            return Err(anyhow::anyhow!(
+                "Incomplete download: got {} bytes, expected {} bytes. Missing {} bytes. \n\
+                 The download can be resumed by running the command again with --resume.",
+                downloaded,
+                total_size,
+                missing_bytes
+            ));
+        }
+
+        tracing::info!("Download complete ({} bytes), starting decompression", downloaded);
 
         progress.set_message("Decompressing file...");
 
@@ -467,6 +552,33 @@ impl UniProtDownloader {
         let calculated = format!("{:x}", result);
 
         Ok(calculated == expected_checksum)
+    }
+
+    /// Quick validation that a .gz file has valid gzip headers and structure
+    /// This doesn't decompress the entire file, just validates the headers
+    pub fn validate_gzip_file(file_path: &Path) -> Result<()> {
+        let file = File::open(file_path)
+            .context("Failed to open file for gzip validation")?;
+
+        // Try to read just the gzip header
+        let mut decoder = GzDecoder::new(BufReader::new(file));
+        let mut buffer = [0u8; 1024];
+
+        // Try to read first chunk - this will validate the header
+        match decoder.read(&mut buffer) {
+            Ok(0) => {
+                // Empty file
+                Err(anyhow::anyhow!("Gzip file is empty"))
+            }
+            Ok(_) => {
+                // Successfully read header and some data
+                Ok(())
+            }
+            Err(e) => {
+                // Failed to read - likely corrupted header
+                Err(anyhow::anyhow!("Invalid gzip file: {}", e))
+            }
+        }
     }
 
     #[allow(dead_code)]

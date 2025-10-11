@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
-use talaria_core::types::{DatabaseSource, SequenceType, SHA256Hash, TaxonId};
+use talaria_core::types::{DatabaseSource, SHA256Hash, SequenceType, TaxonId};
 use talaria_core::StorageStats;
 
 // Custom serialization module for DateTime to handle MessagePack
@@ -45,7 +45,12 @@ impl ChunkFormat {
     /// Detect format from data magic bytes
     pub fn detect(data: &[u8]) -> Self {
         // Detect zstd magic bytes: 0x28, 0xB5, 0x2F, 0xFD
-        if data.len() >= 4 && data[0] == 0x28 && data[1] == 0xB5 && data[2] == 0x2F && data[3] == 0xFD {
+        if data.len() >= 4
+            && data[0] == 0x28
+            && data[1] == 0xB5
+            && data[2] == 0x2F
+            && data[3] == 0xFD
+        {
             ChunkFormat::Binary
         } else {
             // No compression detected - treat as uncompressed

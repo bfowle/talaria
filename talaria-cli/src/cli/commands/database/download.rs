@@ -966,7 +966,11 @@ fn check_database_updates(database: &str, _force: bool) -> anyhow::Result<()> {
     use talaria_sequoia::database::DatabaseManager;
     use talaria_utils::database::database_ref::parse_database_reference;
 
-    println!("\n{} Checking for updates: {}", "►".cyan().bold(), database.bold());
+    println!(
+        "\n{} Checking for updates: {}",
+        "►".cyan().bold(),
+        database.bold()
+    );
 
     let manager = DatabaseManager::new(None)?;
     let db_ref = parse_database_reference(database)?;
@@ -998,20 +1002,34 @@ fn check_database_updates(database: &str, _force: bool) -> anyhow::Result<()> {
                 } else {
                     println!("{} Update available", "▶".yellow().bold());
                     println!("  Remote version: {}", remote_manifest.version);
-                    let remote_size: u64 = remote_manifest.chunk_index.iter().map(|c| c.size as u64).sum();
+                    let remote_size: u64 = remote_manifest
+                        .chunk_index
+                        .iter()
+                        .map(|c| c.size as u64)
+                        .sum();
                     let size_diff = (remote_size as i64) - (local_size as i64);
 
                     if size_diff > 0 {
-                        println!("  Size change: +{}", format_size(size_diff as u64, BINARY).green());
+                        println!(
+                            "  Size change: +{}",
+                            format_size(size_diff as u64, BINARY).green()
+                        );
                     } else if size_diff < 0 {
-                        println!("  Size change: -{}", format_size(size_diff.unsigned_abs(), BINARY).red());
+                        println!(
+                            "  Size change: -{}",
+                            format_size(size_diff.unsigned_abs(), BINARY).red()
+                        );
                     }
 
                     println!("\n  Run: talaria database download {} --force", database);
                 }
             }
             Err(e) => {
-                println!("{} Could not fetch remote manifest: {}", "⚠".yellow().bold(), e);
+                println!(
+                    "{} Could not fetch remote manifest: {}",
+                    "⚠".yellow().bold(),
+                    e
+                );
                 println!("  (This is normal if no remote manifest server is configured)");
             }
         }

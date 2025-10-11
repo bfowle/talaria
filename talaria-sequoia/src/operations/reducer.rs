@@ -268,12 +268,17 @@ impl Reducer {
         }
         if !self.silent {
             selection_pb.finish_and_clear();
-            println!("Reference selection complete");
+            tracing::info!("Reference selection complete");
         }
 
         // Step 2: Encode deltas (if not skipped)
         // Capture original count before moving sequences
         let original_count = sequences.len();
+
+        // Show progress message for delta encoding preparation
+        if !self.silent {
+            action("Preparing sequences for delta encoding...");
+        }
 
         let deltas = if self.no_deltas {
             // Skip delta encoding entirely
@@ -370,7 +375,7 @@ impl Reducer {
             }
             if !self.silent {
                 encoding_pb.finish_and_clear();
-                println!("Delta encoding complete");
+                tracing::info!("Delta encoding complete");
             }
 
             deltas
@@ -427,6 +432,14 @@ impl Reducer {
         children: &HashMap<String, Vec<String>>,
         sequences: &[Sequence],
     ) -> HashMap<String, Vec<String>> {
+        // Calculate total children to filter
+        let total_children: usize = children.values().map(|v| v.len()).sum();
+
+        // Show progress message if filtering many sequences
+        if !self.silent && total_children > 10000 {
+            action(&format!("Filtering {} sequences by length...", format_number(total_children)));
+        }
+
         let seq_map: HashMap<String, &Sequence> =
             sequences.iter().map(|s| (s.id.clone(), s)).collect();
 

@@ -37,12 +37,14 @@ fn test_cross_database_deduplication() -> Result<()> {
         uniprot_source.clone(),
     )?;
     canonical_hashes.insert(hash1.clone());
-    indices.add_sequence(
-        hash1.clone(),
-        Some("sp|P12345|GFP_ECOLI".to_string()),
-        Some(TaxonId(562)),
-        Some(uniprot_source.clone()),
-    );
+    indices
+        .add_sequence(
+            hash1.clone(),
+            Some("sp|P12345|GFP_ECOLI".to_string()),
+            Some(TaxonId(562)),
+            Some(uniprot_source.clone()),
+        )
+        .unwrap();
     total_sequences += 1;
 
     // Unique to UniProt
@@ -52,12 +54,14 @@ fn test_cross_database_deduplication() -> Result<()> {
         uniprot_source.clone(),
     )?;
     canonical_hashes.insert(hash_unique_uniprot.clone());
-    indices.add_sequence(
-        hash_unique_uniprot.clone(),
-        Some("sp|Q67890|UNIQUE_SWISS".to_string()),
-        Some(TaxonId(9606)),
-        Some(uniprot_source.clone()),
-    );
+    indices
+        .add_sequence(
+            hash_unique_uniprot.clone(),
+            Some("sp|Q67890|UNIQUE_SWISS".to_string()),
+            Some(TaxonId(9606)),
+            Some(uniprot_source.clone()),
+        )
+        .unwrap();
     total_sequences += 1;
 
     // Import NCBI sequences
@@ -72,12 +76,14 @@ fn test_cross_database_deduplication() -> Result<()> {
     )?;
     // Should return same hash as UniProt
     assert_eq!(hash1, hash2, "Same sequence should have same hash");
-    indices.add_sequence(
-        hash2.clone(),
-        Some("NP_123456.1".to_string()),
-        Some(TaxonId(562)),
-        Some(ncbi_source.clone()),
-    );
+    indices
+        .add_sequence(
+            hash2.clone(),
+            Some("NP_123456.1".to_string()),
+            Some(TaxonId(562)),
+            Some(ncbi_source.clone()),
+        )
+        .unwrap();
     total_sequences += 1;
 
     // Unique to NCBI
@@ -87,12 +93,14 @@ fn test_cross_database_deduplication() -> Result<()> {
         ncbi_source.clone(),
     )?;
     canonical_hashes.insert(hash_unique_ncbi.clone());
-    indices.add_sequence(
-        hash_unique_ncbi.clone(),
-        Some("NP_789012.1".to_string()),
-        Some(TaxonId(10090)),
-        Some(ncbi_source.clone()),
-    );
+    indices
+        .add_sequence(
+            hash_unique_ncbi.clone(),
+            Some("NP_789012.1".to_string()),
+            Some(TaxonId(10090)),
+            Some(ncbi_source.clone()),
+        )
+        .unwrap();
     total_sequences += 1;
 
     // Import RefSeq sequences
@@ -108,12 +116,14 @@ fn test_cross_database_deduplication() -> Result<()> {
     // Should return same hash as UniProt and NCBI
     assert_eq!(hash1, hash3, "Same sequence should have same hash");
     assert_eq!(hash2, hash3, "Same sequence should have same hash");
-    indices.add_sequence(
-        hash3,
-        Some("YP_003456.1".to_string()),
-        Some(TaxonId(83333)),
-        Some(refseq_source.clone()),
-    );
+    indices
+        .add_sequence(
+            hash3,
+            Some("YP_003456.1".to_string()),
+            Some(TaxonId(83333)),
+            Some(refseq_source.clone()),
+        )
+        .unwrap();
     total_sequences += 1;
 
     // Unique to RefSeq
@@ -123,12 +133,14 @@ fn test_cross_database_deduplication() -> Result<()> {
         refseq_source.clone(),
     )?;
     canonical_hashes.insert(hash_unique_refseq.clone());
-    indices.add_sequence(
-        hash_unique_refseq.clone(),
-        Some("YP_007890.1".to_string()),
-        Some(TaxonId(559292)),
-        Some(refseq_source.clone()),
-    );
+    indices
+        .add_sequence(
+            hash_unique_refseq.clone(),
+            Some("YP_007890.1".to_string()),
+            Some(TaxonId(559292)),
+            Some(refseq_source.clone()),
+        )
+        .unwrap();
     total_sequences += 1;
 
     // Calculate storage statistics

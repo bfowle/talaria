@@ -1,5 +1,4 @@
 /// Generic CSV renderer for Report type
-
 use crate::report::core::{Report, Section, SectionContent, Table};
 use anyhow::Result;
 
@@ -40,7 +39,11 @@ fn render_section(output: &mut String, section: &Section) -> Result<()> {
         SectionContent::Metrics(metrics) => {
             output.push_str("Metric,Value,Change From,Change To\n");
             for metric in metrics {
-                let change_from = metric.change.as_ref().map(|c| c.from.as_str()).unwrap_or("");
+                let change_from = metric
+                    .change
+                    .as_ref()
+                    .map(|c| c.from.as_str())
+                    .unwrap_or("");
                 let change_to = metric.change.as_ref().map(|c| c.to.as_str()).unwrap_or("");
                 output.push_str(&format!(
                     "\"{}\",\"{}\",\"{}\",\"{}\"\n",
@@ -82,7 +85,11 @@ fn render_section(output: &mut String, section: &Section) -> Result<()> {
             for (i, label) in chart.labels.iter().enumerate() {
                 output.push_str(&format!("\"{}\"", escape_csv(label)));
                 for dataset in &chart.datasets {
-                    let value = dataset.data.get(i).map(|v| v.to_string()).unwrap_or_default();
+                    let value = dataset
+                        .data
+                        .get(i)
+                        .map(|v| v.to_string())
+                        .unwrap_or_default();
                     output.push_str(&format!(",{}", value));
                 }
                 output.push_str("\n");

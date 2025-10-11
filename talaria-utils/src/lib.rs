@@ -70,5 +70,6 @@ pub use report::{
 // Taxonomy utilities
 pub use taxonomy::{
     get_taxonomy_mappings_dir, get_taxonomy_tree_path, has_taxonomy, load_taxonomy_mappings,
-    require_taxonomy, TaxonomyMappingSource, TaxonomyProvider,
+    load_taxonomy_mappings_with_fallback, require_taxonomy, TaxonomyMappingSource,
+    TaxonomyProvider,
 };

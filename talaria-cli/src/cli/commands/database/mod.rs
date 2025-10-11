@@ -244,7 +244,8 @@ fn run_stats() -> anyhow::Result<()> {
     println!("{}", "RocksDB Storage".bold());
     println!("{}", "─".repeat(60));
 
-    let rocksdb_path = talaria_core::system::paths::talaria_databases_dir().join("sequences/rocksdb");
+    let rocksdb_path =
+        talaria_core::system::paths::talaria_databases_dir().join("sequences/rocksdb");
     println!(
         "{} {}",
         "Storage path:".bold(),

@@ -124,7 +124,9 @@ impl CleanCmd {
         // Phase 2: Find unreferenced sequences (optional - very slow)
         if self.unreferenced_sequences && self.check_sequences {
             use crate::cli::formatting::output::*;
-            warning("Checking unreferenced sequences - this may take a long time with large databases");
+            warning(
+                "Checking unreferenced sequences - this may take a long time with large databases",
+            );
             results.unreferenced_seqs = self.remove_unreferenced_sequences(repository)?;
         } else if self.unreferenced_sequences && !self.check_sequences {
             use crate::cli::formatting::output::*;
@@ -195,7 +197,10 @@ impl CleanCmd {
         let mut manager = DatabaseManager::new(None)?;
         let databases = manager.list_databases()?;
 
-        info(&format!("Found {} databases in unified storage", databases.len()));
+        info(&format!(
+            "Found {} databases in unified storage",
+            databases.len()
+        ));
 
         // Get mutable access to repository for clean operations
         let repository = manager.get_repository_mut();
@@ -207,13 +212,17 @@ impl CleanCmd {
 
         // Phase 1: Find orphaned chunks (scans ALL databases)
         if self.orphaned_chunks {
-            results.orphaned_chunks = self.remove_orphaned_chunks_all_databases(repository, &databases)?;
+            results.orphaned_chunks =
+                self.remove_orphaned_chunks_all_databases(repository, &databases)?;
         }
 
         // Phase 2: Find unreferenced sequences (optional - very slow)
         if self.unreferenced_sequences && self.check_sequences {
-            warning("Checking unreferenced sequences - this may take a long time with large databases");
-            results.unreferenced_seqs = self.remove_unreferenced_sequences_all_databases(repository, &databases)?;
+            warning(
+                "Checking unreferenced sequences - this may take a long time with large databases",
+            );
+            results.unreferenced_seqs =
+                self.remove_unreferenced_sequences_all_databases(repository, &databases)?;
         } else if self.unreferenced_sequences && !self.check_sequences {
             info("Skipped unreferenced sequence check (use --check-sequences to enable)");
         }
@@ -267,11 +276,10 @@ impl CleanCmd {
         Ok(())
     }
 
-
     fn remove_orphaned_chunks(&self, repository: &mut SequoiaRepository) -> Result<(usize, usize)> {
         use crate::cli::formatting::output::*;
-        use std::time::Instant;
         use indicatif::{ProgressBar, ProgressStyle};
+        use std::time::Instant;
 
         let start = Instant::now();
         subsection_header("Finding Orphaned Chunks");
@@ -303,7 +311,7 @@ impl CleanCmd {
             ProgressStyle::default_bar()
                 .template("  Scanning chunks [{bar:40}] {pos}/{len} ({per_sec})")
                 .unwrap()
-                .progress_chars("=>-")
+                .progress_chars("=>-"),
         );
 
         // Find orphans
@@ -334,7 +342,11 @@ impl CleanCmd {
                 repository.storage.remove_chunks_batch(&orphans)?;
             }
 
-            println!("  Found {} orphaned chunks ({})", format_number(count), format_size(total_removed));
+            println!(
+                "  Found {} orphaned chunks ({})",
+                format_number(count),
+                format_size(total_removed)
+            );
             success(&format!("Removed in {:.1}s", start.elapsed().as_secs_f64()));
         } else {
             empty("No orphaned chunks found");
@@ -343,7 +355,10 @@ impl CleanCmd {
         Ok((count, total_removed))
     }
 
-    fn remove_unreferenced_sequences(&self, repository: &mut SequoiaRepository) -> Result<(usize, usize)> {
+    fn remove_unreferenced_sequences(
+        &self,
+        repository: &mut SequoiaRepository,
+    ) -> Result<(usize, usize)> {
         use crate::cli::formatting::output::*;
         use std::time::Instant;
 
@@ -390,7 +405,11 @@ impl CleanCmd {
                 }
             }
 
-            println!("  Found {} unreferenced sequences ({})", format_number(count), format_size(total_removed));
+            println!(
+                "  Found {} unreferenced sequences ({})",
+                format_number(count),
+                format_size(total_removed)
+            );
             success(&format!("Removed in {:.1}s", start.elapsed().as_secs_f64()));
         } else {
             empty("No unreferenced sequences found");
@@ -438,7 +457,11 @@ impl CleanCmd {
         }
 
         if total_removed > 0 {
-            println!("  Found {} expired cache entries ({})", format_number(count), format_size(total_removed));
+            println!(
+                "  Found {} expired cache entries ({})",
+                format_number(count),
+                format_size(total_removed)
+            );
             success(&format!("Removed in {:.1}s", start.elapsed().as_secs_f64()));
         } else {
             empty("No expired cache entries found");
@@ -488,7 +511,11 @@ impl CleanCmd {
         }
 
         if total_removed > 0 {
-            println!("  Found {} incomplete downloads ({})", format_number(count), format_size(total_removed));
+            println!(
+                "  Found {} incomplete downloads ({})",
+                format_number(count),
+                format_size(total_removed)
+            );
             success(&format!("Removed in {:.1}s", start.elapsed().as_secs_f64()));
         } else {
             empty("No incomplete downloads found");
@@ -503,12 +530,15 @@ impl CleanCmd {
         databases: &[talaria_sequoia::database::manager::DatabaseInfo],
     ) -> Result<(usize, usize)> {
         use crate::cli::formatting::output::*;
-        use std::time::Instant;
         use indicatif::{ProgressBar, ProgressStyle};
+        use std::time::Instant;
 
         let start = Instant::now();
         subsection_header("Finding Orphaned Chunks");
-        info(&format!("Scanning {} databases for chunk references...", databases.len()));
+        info(&format!(
+            "Scanning {} databases for chunk references...",
+            databases.len()
+        ));
 
         // Get all referenced chunks from ALL databases
         let mut referenced_chunks = HashSet::new();
@@ -521,7 +551,10 @@ impl CleanCmd {
 
         // Add chunks from ALL temporal versions (all databases)
         let temporal_manifests = repository.temporal.list_all_manifests()?;
-        info(&format!("Scanning {} temporal versions...", temporal_manifests.len()));
+        info(&format!(
+            "Scanning {} temporal versions...",
+            temporal_manifests.len()
+        ));
         for manifest in temporal_manifests {
             for chunk in manifest.chunks {
                 referenced_chunks.insert(chunk);
@@ -538,7 +571,7 @@ impl CleanCmd {
             ProgressStyle::default_bar()
                 .template("  Scanning chunks [{bar:40}] {pos}/{len} ({per_sec})")
                 .unwrap()
-                .progress_chars("=>-")
+                .progress_chars("=>-"),
         );
 
         // Find orphans
@@ -569,7 +602,11 @@ impl CleanCmd {
                 repository.storage.remove_chunks_batch(&orphans)?;
             }
 
-            println!("  Found {} orphaned chunks ({})", format_number(count), format_size(total_removed));
+            println!(
+                "  Found {} orphaned chunks ({})",
+                format_number(count),
+                format_size(total_removed)
+            );
             success(&format!("Removed in {:.1}s", start.elapsed().as_secs_f64()));
         } else {
             empty("No orphaned chunks found");
@@ -588,7 +625,10 @@ impl CleanCmd {
 
         let start = Instant::now();
         subsection_header("Finding Unreferenced Sequences");
-        info(&format!("Scanning {} databases for sequence references...", databases.len()));
+        info(&format!(
+            "Scanning {} databases for sequence references...",
+            databases.len()
+        ));
 
         // Get all referenced sequences from chunks across ALL databases
         let mut referenced_sequences = HashSet::new();
@@ -631,7 +671,11 @@ impl CleanCmd {
                 }
             }
 
-            println!("  Found {} unreferenced sequences ({})", format_number(count), format_size(total_removed));
+            println!(
+                "  Found {} unreferenced sequences ({})",
+                format_number(count),
+                format_size(total_removed)
+            );
             success(&format!("Removed in {:.1}s", start.elapsed().as_secs_f64()));
         } else {
             empty("No unreferenced sequences found");
@@ -645,11 +689,7 @@ impl CleanCmd {
         Ok(stats.total_size)
     }
 
-    fn display_results(
-        &self,
-        results: &CleanResults,
-        elapsed: std::time::Duration,
-    ) -> Result<()> {
+    fn display_results(&self, results: &CleanResults, elapsed: std::time::Duration) -> Result<()> {
         use crate::cli::formatting::output::*;
 
         println!();
