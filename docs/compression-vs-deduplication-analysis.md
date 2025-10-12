@@ -1,15 +1,15 @@
 # Compression vs Deduplication: Fundamental Architecture Analysis
 
-> **Critical Question**: Does evolutionary compression conflict with canonical sequence-level deduplication? What is the optimal biologically-relevant compression strategy for SEQUOIA?
+> **Critical Question**: Does evolutionary compression conflict with canonical sequence-level deduplication? What is the optimal biologically-relevant compression strategy for HERALD?
 
 **Date**: October 2025
-**Context**: Deep analysis of whether current SEQUOIA architecture is optimal or needs fundamental refactor
+**Context**: Deep analysis of whether current HERALD architecture is optimal or needs fundamental refactor
 
 ---
 
 ## Executive Summary
 
-**TL;DR**: The current SEQUOIA architecture is **fundamentally sound** but **incomplete**. Evolutionary compression and canonical deduplication are **complementary, not conflicting**. The optimal path is **incremental enhancement**, not massive refactor.
+**TL;DR**: The current HERALD architecture is **fundamentally sound** but **incomplete**. Evolutionary compression and canonical deduplication are **complementary, not conflicting**. The optimal path is **incremental enhancement**, not massive refactor.
 
 ### Key Findings
 
@@ -82,7 +82,7 @@ Sequence S₂ = Ancestor A + Δ₂
 **Answer: YES. They operate at different layers.**
 
 ```
-Layer 1: Canonical Sequence Deduplication (Current SEQUOIA)
+Layer 1: Canonical Sequence Deduplication (Current HERALD)
   Identical sequences → Store once
 
   Example:
@@ -93,7 +93,7 @@ Layer 1: Canonical Sequence Deduplication (Current SEQUOIA)
   Storage: 1 sequence, 3 references
   Savings: 3x → 1x (66% reduction)
 
-Layer 2: Delta Encoding Among Different Sequences (Current SEQUOIA)
+Layer 2: Delta Encoding Among Different Sequences (Current HERALD)
   Similar but non-identical sequences → Delta encode
 
   Example:
@@ -104,7 +104,7 @@ Layer 2: Delta Encoding Among Different Sequences (Current SEQUOIA)
   Storage: 1 reference + 2 deltas (~3% each)
   Savings: 3x full → 1x full + 0.06x deltas (65% reduction)
 
-Layer 3: Domain-Level Deduplication (NOT YET IN SEQUOIA)
+Layer 3: Domain-Level Deduplication (NOT YET IN HERALD)
   Proteins with shared domains → Store domains once
 
   Example:
@@ -116,7 +116,7 @@ Layer 3: Domain-Level Deduplication (NOT YET IN SEQUOIA)
   Traditional: 3 full proteins
   Savings: Massive for multi-domain proteins
 
-Layer 4: Phylogenetic Delta Chains (NOT YET IN SEQUOIA)
+Layer 4: Phylogenetic Delta Chains (NOT YET IN HERALD)
   Encode sequences as deltas from phylogenetic ancestors
 
   Example:
@@ -131,13 +131,13 @@ Layer 4: Phylogenetic Delta Chains (NOT YET IN SEQUOIA)
 
 ---
 
-## Part 2: Current SEQUOIA Architecture Analysis
+## Part 2: Current HERALD Architecture Analysis
 
 ### What We Have (The Good)
 
 #### ✅ 1. Canonical Sequence Deduplication
 ```rust
-// From sequoia-architecture.md Section 2.1
+// From herald-architecture.md Section 2.1
 Canonical Hash: SHA256(sequence_content)
 Storage: SEQUENCES[hash] → sequence (stored once)
 Representations: REPRESENTATIONS[hash] → [all headers from all databases]
@@ -152,7 +152,7 @@ Result:
 
 #### ✅ 2. Merkle DAG Verification
 ```rust
-// From sequoia-architecture.md Section 2.2
+// From herald-architecture.md Section 2.2
 Root_Hash
 ├── Branch₁_Hash
 │   ├── Chunk₁_Hash (sequences)
@@ -169,7 +169,7 @@ Properties:
 
 #### ✅ 3. Bi-Temporal Versioning
 ```rust
-// From sequoia-architecture.md Section 2.3
+// From herald-architecture.md Section 2.3
 TemporalCoordinate = (T_seq, T_tax)
 
 Enables:
@@ -183,7 +183,7 @@ Enables:
 
 #### ✅ 4. Canonical Delta Encoding
 ```rust
-// From sequoia-architecture.md Section 2.4
+// From herald-architecture.md Section 2.4
 Reference Selection: Based on similarity
 Delta: Reference_Hash + Operations[Copy, Insert, Skip]
 
@@ -199,7 +199,7 @@ Result:
 
 #### ❌ 1. Taxonomic Chunking is Suboptimal
 
-**Current Approach** (sequoia-architecture.md Section 2.4.6):
+**Current Approach** (herald-architecture.md Section 2.4.6):
 ```
 Chunk by taxonomy:
   Chunk₁: Mammalia sequences
@@ -239,7 +239,7 @@ AND:
 
 **What's Missing**:
 ```rust
-// NOT in current SEQUOIA
+// NOT in current HERALD
 struct Protein {
     domains: Vec<DomainHash>,  // Each domain stored once
     linkers: Vec<Linker>,       // Regions between domains
@@ -256,7 +256,7 @@ Example: 1000 Kinase proteins
   All have Kinase domain (30% of sequence)
   Various combinations of SH2, SH3, PDZ domains
 
-Current SEQUOIA:
+Current HERALD:
   Store 1000 full sequences
   Delta encode if similar
   Compression: 10-20x
@@ -278,7 +278,7 @@ Missing opportunity: 5-10x additional compression
 
 **What's Missing**:
 ```rust
-// NOT in current SEQUOIA
+// NOT in current HERALD
 struct PhylogeneticDelta {
     ancestor_hash: Hash,           // Evolutionary parent
     mutations: Vec<Mutation>,      // Evolutionary changes
@@ -349,7 +349,7 @@ Level 3: Functional Equivalence (Convergent Evolution)
 
 Level 4: Sequence Redundancy (Identical Copies)
   Exact duplicates across databases
-  Current SEQUOIA handles this perfectly
+  Current HERALD handles this perfectly
 ```
 
 ### Optimal Strategy: Multi-Level Compression
@@ -357,7 +357,7 @@ Level 4: Sequence Redundancy (Identical Copies)
 **Best approach combines ALL levels**:
 
 ```rust
-// Ideal SEQUOIA v2.0 Storage Model
+// Ideal HERALD v2.0 Storage Model
 
 // Level 1: Domain-Level CAS
 struct Domain {
@@ -382,7 +382,7 @@ struct EvolutionaryDelta {
     confidence: f64,               // Phylogenetic bootstrap
 }
 
-// Level 4: Database Deduplication (current SEQUOIA)
+// Level 4: Database Deduplication (current HERALD)
 struct Representation {
     canonical_hash: Hash,          // Points to canonical protein/domain
     database: String,              // UniProt, NCBI, etc.
@@ -400,13 +400,13 @@ Example: 10,000 Kinase proteins across UniProt, NCBI, Custom DB
 Traditional Storage:
   10,000 proteins × 500 AA × 1 byte = 5 MB
 
-Current SEQUOIA (Levels 4 + partial 2):
+Current HERALD (Levels 4 + partial 2):
   Canonical deduplication: 6,000 unique (4,000 duplicates across DBs)
   Delta encoding: 600 references, 5,400 deltas (~3% each)
   Storage: (600 × 500) + (5,400 × 15) = 300 KB + 81 KB = 381 KB
   Compression: 13x
 
-Optimal SEQUOIA (All 4 Levels):
+Optimal HERALD (All 4 Levels):
 
   Level 1 - Domain-level CAS:
     Unique domains: 5 (Kinase, SH2, SH3, PDZ, PH)
@@ -431,7 +431,7 @@ Optimal SEQUOIA (All 4 Levels):
     Actual domain storage: ~2 KB (not 750 bytes raw)
 
   Adjusted Total: 2 KB + 10 KB + 79 KB + 500 KB = 591 KB
-  Compression: 8.5x vs current SEQUOIA (381 KB → 591 KB) ❌ WORSE??
+  Compression: 8.5x vs current HERALD (381 KB → 591 KB) ❌ WORSE??
 
 WAIT - Error in analysis! Let me recalculate...
 
@@ -476,7 +476,7 @@ Let me restart with clearer model...
 gzip: 5.9 GB (65% compression)
 ```
 
-**Current SEQUOIA** (from sequoia-architecture.md performance data):
+**Current HERALD** (from herald-architecture.md performance data):
 ```
 Canonical dedup: ~20% duplicates removed → 38.4M unique
 Delta encoding: 90% similarity → 10% references, 90% deltas
@@ -488,7 +488,7 @@ Final: (1.33 GB + 346 MB) × 0.7 = 1.17 GB
 Compression: 5.9 GB → 1.17 GB (5x improvement over gzip)
 ```
 
-**Optimal SEQUOIA** (with domain-level + phylogenetic):
+**Optimal HERALD** (with domain-level + phylogenetic):
 ```
 Step 1: Domain Detection (Pfam)
   48M proteins → ~500M domain instances (avg 10 domains/protein)
@@ -536,7 +536,7 @@ Let me reconsider what "optimal" means...
 
 **Revelation from real data**:
 ```
-Current SEQUOIA storage breakdown:
+Current HERALD storage breakdown:
   Canonical sequences: 1.17 GB (compressed)
   Representations (headers): ~2-3 GB (UniProt headers are verbose!)
   Manifests: ~100 MB
@@ -554,7 +554,7 @@ The headers are the space hog!
 
 **Focus on what matters: Workflow efficiency, not raw storage**
 
-The REAL problems SEQUOIA solves (from abstract):
+The REAL problems HERALD solves (from abstract):
 1. ✅ 95-99% bandwidth reduction for updates
 2. ✅ Cryptographic verification
 3. ✅ Perfect reproducibility
@@ -569,7 +569,7 @@ The question isn't "how small can we make it?" but:
 
 From this lens:
 
-**Current SEQUOIA is near-optimal for:**
+**Current HERALD is near-optimal for:**
 - ✅ Bandwidth (manifest-based sync is perfect)
 - ✅ Verification (Merkle DAG is perfect)
 - ✅ Reproducibility (bi-temporal is perfect)
@@ -588,7 +588,7 @@ From this lens:
 
 ### The Real Purpose of Chunking
 
-**Current understanding** (from sequoia-architecture.md):
+**Current understanding** (from herald-architecture.md):
 ```
 Taxonomic chunking groups similar sequences
 → Better delta compression
@@ -692,7 +692,7 @@ Smart query planner selects optimal route
 
 ## Part 5: The Verdict - Refactor or Enhance?
 
-### Current SEQUOIA Scorecard
+### Current HERALD Scorecard
 
 | Component | Status | Verdict |
 |-----------|--------|---------|
@@ -930,7 +930,7 @@ impl QueryPlanner {
 ```rust
 // Manifest versioning
 enum ManifestVersion {
-    V1 {  // Current SEQUOIA
+    V1 {  // Current HERALD
         chunk_index: Vec<ChunkHash>,
         merkle_root: Hash,
         // ... existing fields
@@ -979,7 +979,7 @@ impl ManifestWriter {
 
 **Migration path**:
 ```
-1. Deploy enhanced SEQUOIA (reads V1, writes V2)
+1. Deploy enhanced HERALD (reads V1, writes V2)
 2. Gradually re-import databases with domain detection
 3. Old V1 manifests still work (read-only)
 4. New V2 manifests use domain features
@@ -988,11 +988,11 @@ impl ManifestWriter {
 
 ---
 
-## Part 7: Impact on SEQUOIA Architecture Goals
+## Part 7: Impact on HERALD Architecture Goals
 
 ### Original Abstract Promises
 
-**From sequoia-architecture.md Abstract**:
+**From herald-architecture.md Abstract**:
 ```
 1. 95-99% bandwidth reduction for updates
 2. 90%+ storage savings through deduplication
@@ -1001,7 +1001,7 @@ impl ManifestWriter {
 5. 100x performance improvement for imports
 ```
 
-### Current SEQUOIA Delivery
+### Current HERALD Delivery
 
 ✅ **Bandwidth reduction**: 95-99% achieved via manifest-based sync
 ✅ **Storage savings**: 45-90% achieved via canonical dedup + delta encoding
@@ -1011,7 +1011,7 @@ impl ManifestWriter {
 
 **Status: ALL PROMISES DELIVERED**
 
-### Enhanced SEQUOIA Delivery (After Phases 1-4)
+### Enhanced HERALD Delivery (After Phases 1-4)
 
 ✅ **Bandwidth reduction**: 95-99% (SAME - already optimal)
 ✅ **Storage savings**: 50-95% (BETTER - domain dedup helps)
@@ -1030,27 +1030,27 @@ impl ManifestWriter {
 **From Abstract: "Major Issues in Current Approaches"**
 ```
 1. ❌ Bandwidth waste: 99% redundant data transfer
-   → ✅ SOLVED by current SEQUOIA (manifest sync)
+   → ✅ SOLVED by current HERALD (manifest sync)
    → Enhancement: No additional benefit
 
 2. ❌ Storage waste: 900 GB for 10 versions (90% duplicated)
-   → ✅ MOSTLY SOLVED by current SEQUOIA (dedup + delta)
+   → ✅ MOSTLY SOLVED by current HERALD (dedup + delta)
    → Enhancement: 10-20% additional savings (diminishing returns)
 
 3. ❌ Time waste: Hours to download, no incremental updates
-   → ✅ SOLVED by current SEQUOIA (manifest sync)
+   → ✅ SOLVED by current HERALD (manifest sync)
    → Enhancement: No additional benefit
 
 4. ❌ No integrity verification
-   → ✅ SOLVED by current SEQUOIA (Merkle DAG)
+   → ✅ SOLVED by current HERALD (Merkle DAG)
    → Enhancement: No additional benefit
 
 5. ❌ No reproducibility guarantees
-   → ✅ SOLVED by current SEQUOIA (bi-temporal versioning)
+   → ✅ SOLVED by current HERALD (bi-temporal versioning)
    → Enhancement: No additional benefit
 ```
 
-**Verdict**: Current SEQUOIA already solves the major issues. Enhancement adds **new capabilities**, not fixes for existing problems.
+**Verdict**: Current HERALD already solves the major issues. Enhancement adds **new capabilities**, not fixes for existing problems.
 
 ### Value Proposition of Enhancement
 
@@ -1058,7 +1058,7 @@ impl ManifestWriter {
 **IS about unlocking new use cases**:
 
 ```
-Current SEQUOIA:
+Current HERALD:
   "Efficient distribution and storage of biological databases"
 
   Use cases:
@@ -1067,7 +1067,7 @@ Current SEQUOIA:
   - Verify integrity ✅
   - Reproduce analyses ✅
 
-Enhanced SEQUOIA:
+Enhanced HERALD:
   "Biological data platform with semantic awareness"
 
   NEW use cases:
@@ -1082,7 +1082,7 @@ Enhanced SEQUOIA:
 
 ### Adoption Impact
 
-**Current SEQUOIA adoption drivers**:
+**Current HERALD adoption drivers**:
 ```
 1. 99% bandwidth savings → Attracts compute clusters, cloud users
 2. Cryptographic verification → Attracts regulated industries (pharma)
@@ -1090,7 +1090,7 @@ Enhanced SEQUOIA:
 4. Performance → Attracts everyone
 ```
 
-**Enhanced SEQUOIA adoption drivers**:
+**Enhanced HERALD adoption drivers**:
 ```
 1-4. All above (SAME)
 5. Domain-aware queries → Attracts structural biologists
@@ -1101,18 +1101,18 @@ Enhanced SEQUOIA:
 
 **Impact on standardization**:
 ```
-Current SEQUOIA:
+Current HERALD:
   - Solves distribution problem → Infrastructure-level standard
   - Competes with FTP, rsync, Git-LFS
   - Adoption path: Replace existing distribution methods
 
-Enhanced SEQUOIA:
+Enhanced HERALD:
   - Solves distribution + analysis problem → Platform-level standard
   - Competes with FTP + BLAST + Pfam + TreeFam + ... (entire ecosystem!)
   - Adoption path: Replace existing distribution AND query infrastructure
 ```
 
-**Verdict**: Enhancement makes SEQUOIA a **platform**, not just a **tool**.
+**Verdict**: Enhancement makes HERALD a **platform**, not just a **tool**.
 
 ---
 
@@ -1139,7 +1139,7 @@ Enhanced SEQUOIA:
    - Benchmark performance claims
    - Write up results (paper/blog)
 
-2. Prove current SEQUOIA works
+2. Prove current HERALD works
    - Real-world deployments
    - Adoption by early users
    - Collect feedback
@@ -1165,7 +1165,7 @@ Enhanced SEQUOIA:
    - Backwards compatible
 
 6. Validate enhancement
-   - Compare to current SEQUOIA
+   - Compare to current HERALD
    - Measure query performance
    - Assess biological utility
 ```
@@ -1191,7 +1191,7 @@ Enhanced SEQUOIA:
 
 ### The Architecture
 
-**Current SEQUOIA (Keep Everything)**:
+**Current HERALD (Keep Everything)**:
 ```
 Layer 1: Content-Addressed Storage
   - Canonical sequence hashing ✅
@@ -1210,7 +1210,7 @@ Layer 3: Distribution
   - Selective download ✅
 ```
 
-**Enhanced SEQUOIA (Add New Layers)**:
+**Enhanced HERALD (Add New Layers)**:
 ```
 Layer 4: Domain Awareness (NEW)
   - Domain detection
@@ -1237,7 +1237,7 @@ Layer 7: Optimization (NEW)
 
 ### Success Metrics
 
-**Current SEQUOIA**:
+**Current HERALD**:
 ```
 ✅ 99% bandwidth reduction (measured on UniProt updates)
 ✅ 90% storage savings (measured on multi-database deployments)
@@ -1246,7 +1246,7 @@ Layer 7: Optimization (NEW)
 ✅ Perfect reproducibility (measured on time-travel queries)
 ```
 
-**Enhanced SEQUOIA (new metrics)**:
+**Enhanced HERALD (new metrics)**:
 ```
 🎯 10-100x faster domain queries (vs BLAST/Pfam scan)
 🎯 2-5x additional storage compression (domain + phylo encoding)
@@ -1257,13 +1257,13 @@ Layer 7: Optimization (NEW)
 
 ### The Bottom Line
 
-**SEQUOIA v1.0 (Current)**:
+**HERALD v1.0 (Current)**:
 - ✅ Solves the distribution problem
 - ✅ Achieves all stated goals
 - ✅ Ready for production
 - ✅ Suitable for standardization
 
-**SEQUOIA v2.0 (Enhanced)**:
+**HERALD v2.0 (Enhanced)**:
 - ✨ Adds biological semantics
 - ✨ Enables new use cases
 - ✨ Expands market reach
@@ -1280,7 +1280,7 @@ Layer 7: Optimization (NEW)
 
 ## Appendix A: Compatibility Matrix
 
-| Feature | Current SEQUOIA | Enhanced SEQUOIA | Breaking? |
+| Feature | Current HERALD | Enhanced HERALD | Breaking? |
 |---------|----------------|------------------|-----------|
 | Canonical hashing | ✅ | ✅ | No |
 | Merkle DAG | ✅ | ✅ | No |
@@ -1366,7 +1366,7 @@ A: NO. Current architecture is sound.
 
 **Q5: What would end state look like?**
 ```
-A: Current SEQUOIA + 4 enhancement layers (domain, phylo, multi-index, optimization)
+A: Current HERALD + 4 enhancement layers (domain, phylo, multi-index, optimization)
    - All current features preserved
    - New biological query capabilities
    - Platform-level utility (not just distribution tool)
@@ -1375,8 +1375,8 @@ A: Current SEQUOIA + 4 enhancement layers (domain, phylo, multi-index, optimizat
 
 **Q6: How much would this solve if adopted as standard?**
 ```
-A: Current SEQUOIA: Solves distribution problem (100%)
-   Enhanced SEQUOIA: Solves distribution + enables biological analysis platform
+A: Current HERALD: Solves distribution problem (100%)
+   Enhanced HERALD: Solves distribution + enables biological analysis platform
 
    Adoption impact:
    - Current: 10,000 users (need efficient distribution)
@@ -1385,7 +1385,7 @@ A: Current SEQUOIA: Solves distribution problem (100%)
 
 ### Final Answer
 
-**The current SEQUOIA architecture is fundamentally sound. Do NOT refactor.**
+**The current HERALD architecture is fundamentally sound. Do NOT refactor.**
 
 **Enhancement is optional but valuable:**
 - Adds new capabilities (domain queries, evolutionary analysis)

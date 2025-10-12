@@ -58,7 +58,7 @@ uniprot/swissprot@2024-01-01:blast-30  # Specific version's reduction
 
 ### database
 
-Manage biological sequence databases with SEQUOIA (Sequence Query Optimization with Indexed Architecture) for efficient storage and updates.
+Manage biological sequence databases with HERALD (Sequence Query Optimization with Indexed Architecture) for efficient storage and updates.
 
 #### Usage
 ```bash
@@ -69,7 +69,7 @@ talaria database <SUBCOMMAND> [OPTIONS]
 
 ##### database download
 
-Download a new database using SEQUOIA.
+Download a new database using HERALD.
 
 ```bash
 talaria database download <SOURCE> [OPTIONS]
@@ -126,7 +126,7 @@ talaria database list
 
 ##### database add
 
-Add a custom FASTA file to SEQUOIA.
+Add a custom FASTA file to HERALD.
 
 ```bash
 talaria database add [OPTIONS]
@@ -148,7 +148,7 @@ talaria database add --source mylab --dataset proteins --input sequences.fasta
 
 ##### database list-sequences
 
-List sequences from a SEQUOIA database.
+List sequences from a HERALD database.
 
 ```bash
 talaria database list-sequences <DATABASE> [OPTIONS]
@@ -173,15 +173,15 @@ talaria database list-sequences uniprot/swissprot --format json -o sequences.jso
 
 **Example:**
 ```bash
-talaria sequoia gc --dry-run
+talaria herald gc --dry-run
 ```
 
-##### sequoia diff
+##### herald diff
 
-Compare two SEQUOIA database versions.
+Compare two HERALD database versions.
 
 ```bash
-talaria sequoia diff <OLD> <NEW> [OPTIONS]
+talaria herald diff <OLD> <NEW> [OPTIONS]
 ```
 
 **Arguments:**
@@ -194,7 +194,7 @@ talaria sequoia diff <OLD> <NEW> [OPTIONS]
 
 **Example:**
 ```bash
-talaria sequoia diff uniprot/swissprot@2024-01 uniprot/swissprot@2024-02
+talaria herald diff uniprot/swissprot@2024-01 uniprot/swissprot@2024-02
 ```
 
 ---
@@ -211,7 +211,7 @@ talaria reduce [OPTIONS]
 **Options:**
 - `-i, --input <PATH>`: Input FASTA file or database reference
 - `-o, --output <PATH>`: Output FASTA file
-- `-d, --database <DB>`: Use SEQUOIA database as input
+- `-d, --database <DB>`: Use HERALD database as input
 - `-r, --reduction-ratio <RATIO>`: Target reduction ratio (0.0-1.0)
 - `-a, --target-aligner <ALIGNER>`: Target aligner (blast, diamond, lambda, etc.)
 - `--profile <NAME>`: Name for this reduction profile
@@ -224,7 +224,7 @@ talaria reduce [OPTIONS]
 # Reduce from file
 talaria reduce -i input.fasta -o reduced.fasta -r 0.3
 
-# Reduce from SEQUOIA database
+# Reduce from HERALD database
 talaria reduce -d uniprot/swissprot -o reduced.fasta --profile blast-30 -r 0.3
 
 # Optimize for specific aligner

@@ -3,7 +3,7 @@ members = [
     "talaria-core",
     "talaria-bio",
     "talaria-storage",
-    "talaria-sequoia",
+    "talaria-herald",
     "talaria-tools",
     "talaria-cli",
     "talaria-utils",

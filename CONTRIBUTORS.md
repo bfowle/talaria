@@ -5,7 +5,7 @@
 The Talaria project is maintained by a dedicated team of bioinformaticians and software engineers.
 
 ### Project Lead
-- **Brett** - Architecture, SEQUOIA implementation, core algorithms
+- **Brett** - Architecture, HERALD implementation, core algorithms
 
 ### Core Contributors
 - Architecture and Design

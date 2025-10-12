@@ -1,7 +1,7 @@
 /// Simple test to verify database diff functionality compiles and works
 #[test]
 fn test_database_diff_format_bytes() {
-    use talaria_sequoia::format_bytes;
+    use talaria_herald::format_bytes;
 
     // Test basic byte formatting
     assert_eq!(format_bytes(0), "0 B");
@@ -16,7 +16,7 @@ fn test_database_diff_format_bytes() {
 
 #[test]
 fn test_database_comparison_struct() {
-    use talaria_sequoia::{DatabaseComparison, ChunkAnalysis, SequenceAnalysis, TaxonomyAnalysis, StorageMetrics};
+    use talaria_herald::{DatabaseComparison, ChunkAnalysis, SequenceAnalysis, TaxonomyAnalysis, StorageMetrics};
 
     // Create a mock comparison result
     let comparison = DatabaseComparison {
@@ -71,7 +71,7 @@ fn test_database_comparison_struct() {
 
 #[test]
 fn test_json_serialization() {
-    use talaria_sequoia::{DatabaseComparison, ChunkAnalysis, SequenceAnalysis, TaxonomyAnalysis, StorageMetrics};
+    use talaria_herald::{DatabaseComparison, ChunkAnalysis, SequenceAnalysis, TaxonomyAnalysis, StorageMetrics};
     use serde_json;
 
     let comparison = DatabaseComparison {

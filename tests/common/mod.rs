@@ -39,7 +39,7 @@ pub fn create_test_workspace(name: &str) -> Result<TempWorkspace, Box<dyn std::e
     // Create a temporary directory that will persist for the test duration
     let temp_dir = tempfile::tempdir()?;
     let config = WorkspaceConfig {
-        sequoia_root: temp_dir.path().join("sequoia"),
+        herald_root: temp_dir.path().join("herald"),
         preserve_on_failure: false,
         preserve_always: false,
         max_age_seconds: 86400,
@@ -60,7 +60,7 @@ pub fn create_shared_test_workspace(
 #[allow(dead_code)]
 pub fn test_workspace_config(base_dir: &Path) -> WorkspaceConfig {
     WorkspaceConfig {
-        sequoia_root: base_dir.join("sequoia"),
+        herald_root: base_dir.join("herald"),
         preserve_on_failure: false,
         preserve_always: false,
         max_age_seconds: 86400,

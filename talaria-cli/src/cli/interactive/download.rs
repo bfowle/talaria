@@ -11,7 +11,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
-use talaria_sequoia::download::{DatabaseSource, DownloadProgress, UniProtDatabase};
+use talaria_herald::download::{DatabaseSource, DownloadProgress, UniProtDatabase};
 
 pub struct DownloadWizard {
     state: WizardState,
@@ -197,7 +197,7 @@ pub fn run_download_wizard<B: Backend>(terminal: &mut Terminal<B>) -> io::Result
                         }
                     }));
 
-                    talaria_sequoia::download::download_database(
+                    talaria_herald::download::download_database(
                         source_clone,
                         &output_file,
                         &mut progress,

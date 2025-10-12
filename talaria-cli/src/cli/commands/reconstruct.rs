@@ -1,7 +1,7 @@
 use crate::cli::formatting::output::*;
 use clap::Args;
 use std::path::PathBuf;
-use talaria_sequoia::SequoiaRepository;
+use talaria_herald::HeraldRepository;
 
 #[derive(Args)]
 pub struct ReconstructArgs {
@@ -22,13 +22,13 @@ pub struct ReconstructArgs {
     #[arg(short, long, value_name = "FILE")]
     pub output: Option<PathBuf>,
 
-    /// Input from SEQUOIA repository profile
+    /// Input from HERALD repository profile
     #[arg(long, value_name = "PROFILE")]
-    pub sequoia_profile: Option<String>,
+    pub herald_profile: Option<String>,
 
-    /// SEQUOIA repository path (default: ${TALARIA_HOME}/databases)
+    /// HERALD repository path (default: ${TALARIA_HOME}/databases)
     #[arg(long, value_name = "PATH")]
-    pub sequoia_path: Option<PathBuf>,
+    pub herald_path: Option<PathBuf>,
 
     /// Only reconstruct specific sequences (by ID)
     #[arg(long)]
@@ -86,36 +86,36 @@ pub fn run(args: ReconstructArgs) -> anyhow::Result<()> {
     if args.at_time.is_some() || args.sequence_version.is_some() || args.taxonomy_version.is_some()
     {
         pb.set_message("Applying temporal constraints...");
-        // This will be passed to SEQUOIA reconstruction functions
+        // This will be passed to HERALD reconstruction functions
     }
 
-    // Validate arguments: need one of database, SEQUOIA, or file paths
+    // Validate arguments: need one of database, HERALD, or file paths
     let input_methods = [
         args.database.is_some(),
-        args.sequoia_profile.is_some(),
+        args.herald_profile.is_some(),
         args.references.is_some() && args.deltas.is_some(),
     ];
 
     if input_methods.iter().filter(|&&x| x).count() != 1 {
-        anyhow::bail!("Must specify exactly one input method: database reference, SEQUOIA profile, or both files (-r and -d)");
+        anyhow::bail!("Must specify exactly one input method: database reference, HERALD profile, or both files (-r and -d)");
     }
 
     // Resolve file paths and output name based on input method
     let (references_path, deltas_path, output_path, db_info) = if let Some(profile) =
-        &args.sequoia_profile
+        &args.herald_profile
     {
-        // Reconstruct from SEQUOIA profile
-        pb.set_message(format!("Loading SEQUOIA profile '{}'...", profile));
+        // Reconstruct from HERALD profile
+        pb.set_message(format!("Loading HERALD profile '{}'...", profile));
 
         let output = args
             .output
             .clone()
             .unwrap_or_else(|| PathBuf::from(format!("reconstructed_{}.fasta", profile)));
 
-        // Call SEQUOIA reconstruction and return early
-        reconstruct_from_sequoia(
+        // Call HERALD reconstruction and return early
+        reconstruct_from_herald(
             profile,
-            &args.sequoia_path,
+            &args.herald_path,
             &output,
             args.sequences.clone(),
             pb,
@@ -131,7 +131,7 @@ pub fn run(args: ReconstructArgs) -> anyhow::Result<()> {
             "Reduction profile required for reconstruction. Use format: 'database:profile' (e.g., 'uniprot/swissprot:blast-30')"
         ))?;
 
-        // Reconstruct from SEQUOIA using the database info and profile
+        // Reconstruct from HERALD using the database info and profile
         pb.set_message(format!(
             "Loading profile '{}' for {}...",
             profile,
@@ -146,11 +146,11 @@ pub fn run(args: ReconstructArgs) -> anyhow::Result<()> {
             ))
         });
 
-        // Call SEQUOIA reconstruction with database context
-        reconstruct_from_sequoia_database(
+        // Call HERALD reconstruction with database context
+        reconstruct_from_herald_database(
             &db_ref,
             &profile,
-            &args.sequoia_path,
+            &args.herald_path,
             &output,
             args.sequences.clone(),
             pb,
@@ -315,7 +315,7 @@ pub fn run(args: ReconstructArgs) -> anyhow::Result<()> {
     // Generate report if requested
     if let Some(report_path) = &args.report_output {
         use std::time::Duration;
-        use talaria_sequoia::operations::ReconstructionResult;
+        use talaria_herald::operations::ReconstructionResult;
 
         // Track which sequences failed (if any)
         let failed_sequences: Vec<String> = if !requested_sequences.is_empty() {
@@ -376,29 +376,29 @@ fn parse_database_with_profile(reference: &str) -> anyhow::Result<(String, Optio
     }
 }
 
-/// Reconstruct sequences from SEQUOIA profile
-fn reconstruct_from_sequoia(
+/// Reconstruct sequences from HERALD profile
+fn reconstruct_from_herald(
     profile: &str,
-    sequoia_path: &Option<PathBuf>,
+    herald_path: &Option<PathBuf>,
     output_path: &PathBuf,
     sequence_filter: Vec<String>,
     pb: indicatif::ProgressBar,
 ) -> anyhow::Result<()> {
-    use talaria_sequoia::{DeltaReconstructor, FastaAssembler, SequoiaStorage};
+    use talaria_herald::{DeltaReconstructor, FastaAssembler, HeraldStorage};
 
     use std::collections::HashSet;
 
-    let sequoia_path = sequoia_path.clone().unwrap_or_else(|| {
+    let herald_path = herald_path.clone().unwrap_or_else(|| {
         use talaria_core::system::paths;
         paths::talaria_databases_dir()
     });
 
-    // Open SEQUOIA storage and database manager
-    let storage = SequoiaStorage::open(&sequoia_path)?;
+    // Open HERALD storage and database manager
+    let storage = HeraldStorage::open(&herald_path)?;
 
     // Need DatabaseManager to get version information
-    use talaria_sequoia::database::DatabaseManager;
-    let manager = DatabaseManager::new(Some(sequoia_path.to_string_lossy().to_string()))?;
+    use talaria_herald::database::DatabaseManager;
+    let manager = DatabaseManager::new(Some(herald_path.to_string_lossy().to_string()))?;
 
     // Parse profile to extract database info if present (format: source/dataset:profile or just profile)
     let (source, dataset, profile_name) = if profile.contains('/') && profile.contains(':') {
@@ -513,14 +513,14 @@ fn reconstruct_from_sequoia(
     talaria_bio::write_fasta(output_path, &all_sequences)?;
 
     pb.finish_with_message(format!(
-        "✓ Reconstructed {} sequences from SEQUOIA profile '{}' to {}",
+        "✓ Reconstructed {} sequences from HERALD profile '{}' to {}",
         all_sequences.len(),
         profile,
         output_path.display()
     ));
 
     println!("\nReconstruction Statistics:");
-    println!("  Source: SEQUOIA profile '{}'", profile);
+    println!("  Source: HERALD profile '{}'", profile);
     println!(
         "  Total sequences: {}",
         manifest.statistics.original_sequences
@@ -540,29 +540,29 @@ fn reconstruct_from_sequoia(
     Ok(())
 }
 
-/// Reconstruct sequences from SEQUOIA database profile
-fn reconstruct_from_sequoia_database(
+/// Reconstruct sequences from HERALD database profile
+fn reconstruct_from_herald_database(
     db_ref: &talaria_utils::database::database_ref::DatabaseReference,
     profile: &str,
-    sequoia_path: &Option<PathBuf>,
+    herald_path: &Option<PathBuf>,
     output_path: &PathBuf,
     sequence_filter: Vec<String>,
     pb: indicatif::ProgressBar,
 ) -> anyhow::Result<()> {
     use std::collections::HashSet;
-    use talaria_sequoia::ReductionManifest;
-    use talaria_sequoia::{DeltaReconstructor, FastaAssembler, SequoiaStorage};
+    use talaria_herald::ReductionManifest;
+    use talaria_herald::{DeltaReconstructor, FastaAssembler, HeraldStorage};
 
-    let sequoia_path = sequoia_path.clone().unwrap_or_else(|| {
+    let herald_path = herald_path.clone().unwrap_or_else(|| {
         use talaria_core::system::paths;
         paths::talaria_databases_dir()
     });
 
-    // Open SEQUOIA storage
-    let storage = SequoiaStorage::new(&sequoia_path)?;
+    // Open HERALD storage
+    let storage = HeraldStorage::new(&herald_path)?;
 
     // Load reduction manifest from version-specific location
-    let manifest_path = sequoia_path
+    let manifest_path = herald_path
         .join("versions")
         .join(&db_ref.source)
         .join(&db_ref.dataset)
@@ -689,21 +689,21 @@ fn reconstruct_from_sequoia_database(
 /// Show version history for a database
 fn show_version_history(args: &ReconstructArgs) -> anyhow::Result<()> {
     use talaria_core::system::paths;
-    use talaria_sequoia::TemporalIndex;
+    use talaria_herald::TemporalIndex;
 
     println!("🕐 Bi-temporal Version History");
     println!("─────────────────────────────");
 
-    // Get SEQUOIA path
-    let sequoia_path = args
-        .sequoia_path
+    // Get HERALD path
+    let herald_path = args
+        .herald_path
         .clone()
         .unwrap_or_else(paths::talaria_databases_dir);
 
     // Load temporal index - need to open storage first to get RocksDB
-    let repository = SequoiaRepository::open(&sequoia_path)?;
+    let repository = HeraldRepository::open(&herald_path)?;
     let rocksdb = repository.storage.sequence_storage.get_rocksdb();
-    let temporal_index = TemporalIndex::load(&sequoia_path, rocksdb)?;
+    let temporal_index = TemporalIndex::load(&herald_path, rocksdb)?;
 
     // Get version history
     let history = temporal_index.get_version_history(20)?;
@@ -760,8 +760,8 @@ mod tests {
             references: Some("test_ref.fasta".into()),
             deltas: Some("test_deltas.fasta".into()),
             output: Some("output.fasta".into()),
-            sequoia_profile: None,
-            sequoia_path: None,
+            herald_profile: None,
+            herald_path: None,
             sequences: vec![],
             list_only: false,
             at_time: None,
@@ -900,8 +900,8 @@ mod tests {
             references: Some("ref.fasta".into()),
             deltas: Some("deltas.fasta".into()),
             output: Some("output.fasta".into()),
-            sequoia_profile: None,
-            sequoia_path: None,
+            herald_profile: None,
+            herald_path: None,
             sequences: vec![],
             list_only: false,
             at_time: None,
@@ -917,8 +917,8 @@ mod tests {
             references: Some("ref.fasta".into()),
             deltas: None,
             output: Some("output.fasta".into()),
-            sequoia_profile: Some("blast-30".to_string()),
-            sequoia_path: None,
+            herald_profile: Some("blast-30".to_string()),
+            herald_path: None,
             sequences: vec![],
             list_only: false,
             at_time: None,
@@ -935,7 +935,7 @@ mod tests {
         // Without delta file - requires database/profile for database reconstruction
         assert!(args_without_delta.deltas.is_none());
         assert!(args_without_delta.database.is_some());
-        assert!(args_without_delta.sequoia_profile.is_some());
+        assert!(args_without_delta.herald_profile.is_some());
     }
 
     #[test]
@@ -957,8 +957,8 @@ mod tests {
             references: Some("dummy.fasta".into()),
             deltas: None,
             output: Some("output.fasta".into()),
-            sequoia_profile: None,
-            sequoia_path: None,
+            herald_profile: None,
+            herald_path: None,
             sequences: vec![],
             list_only: true,
             at_time: None,
@@ -974,8 +974,8 @@ mod tests {
             references: Some("dummy.fasta".into()),
             deltas: None,
             output: Some("output.fasta".into()),
-            sequoia_profile: Some("blast-30".to_string()),
-            sequoia_path: None,
+            herald_profile: Some("blast-30".to_string()),
+            herald_path: None,
             sequences: vec![],
             list_only: false,
             at_time: None,

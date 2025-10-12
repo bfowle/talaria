@@ -59,10 +59,10 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     use chrono::Utc;
     use std::sync::Arc;
     use talaria_bio::parse_fasta;
-    use talaria_sequoia::chunker::{ChunkingStrategy, TaxonomicChunker};
-    use talaria_sequoia::database::DatabaseManager;
-    use talaria_sequoia::MerkleDAG;
-    use talaria_sequoia::{
+    use talaria_herald::chunker::{ChunkingStrategy, TaxonomicChunker};
+    use talaria_herald::database::DatabaseManager;
+    use talaria_herald::MerkleDAG;
+    use talaria_herald::{
         BiTemporalCoordinate, DatabaseSource, ManifestMetadata, NCBIDatabase, SHA256Hash,
         SHA256HashExt, SerializedMerkleTree, TemporalManifest, UniProtDatabase,
     };
@@ -90,7 +90,7 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     use talaria_core::system::paths;
     let base_path = paths::talaria_databases_dir();
 
-    // Create DatabaseManager first (it will initialize SequoiaStorage which creates a SequenceStorage)
+    // Create DatabaseManager first (it will initialize HeraldStorage which creates a SequenceStorage)
     let manager = DatabaseManager::new(Some(base_path.to_string_lossy().to_string()))?;
 
     // Reuse the existing SequenceStorage from the DatabaseManager's repository
@@ -150,7 +150,7 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     };
 
     // Check taxonomy prerequisites
-    use talaria_sequoia::taxonomy::TaxonomyPrerequisites;
+    use talaria_herald::taxonomy::TaxonomyPrerequisites;
     let prereqs = TaxonomyPrerequisites::new();
     prereqs.display_status();
 
@@ -460,7 +460,7 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
 }
 
 // Helper function to load taxonomy mappings using unified TaxonomyProvider
-fn load_taxonomy_mappings() -> anyhow::Result<HashMap<String, talaria_sequoia::TaxonId>> {
+fn load_taxonomy_mappings() -> anyhow::Result<HashMap<String, talaria_herald::TaxonId>> {
     use talaria_utils::taxonomy::{
         load_taxonomy_mappings_with_fallback, TaxonomyMappingSource,
     };
@@ -472,7 +472,7 @@ fn load_taxonomy_mappings() -> anyhow::Result<HashMap<String, talaria_sequoia::T
     // Convert to TaxonId type
     Ok(mappings
         .into_iter()
-        .map(|(k, v)| (k, talaria_sequoia::TaxonId(v)))
+        .map(|(k, v)| (k, talaria_herald::TaxonId(v)))
         .collect())
 }
 

@@ -132,7 +132,7 @@ Follow the architecture:
 - `talaria-core` - Core types and configuration
 - `talaria-bio` - Bioinformatics algorithms
 - `talaria-storage` - Storage backends
-- `talaria-sequoia` - Content-addressed storage
+- `talaria-herald` - Content-addressed storage
 - `talaria-tools` - External tool integration
 - `talaria-utils` - Utilities and helpers
 - `talaria-cli` - Command-line interface
@@ -155,7 +155,7 @@ This project follows the [Conventional Commits](https://www.conventionalcommits.
 
 ```bash
 # Good
-git commit -m "feat(sequoia): add parallel chunk processing"
+git commit -m "feat(herald): add parallel chunk processing"
 git commit -m "fix(cli): correct memory leak in reduce command"
 git commit -m "docs(api): update reducer documentation"
 git commit -m "refactor!: restructure module hierarchy"
@@ -255,7 +255,7 @@ cargo clippy --fix
 cargo test --all
 
 # Run specific module tests
-cargo test -p talaria-sequoia
+cargo test -p talaria-herald
 
 # Run with output for debugging
 cargo test -- --nocapture

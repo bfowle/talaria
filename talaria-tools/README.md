@@ -116,7 +116,7 @@ pub struct AlignmentConfig {
 
 ### 2. LAMBDA Aligner (`aligners/lambda/`)
 
-The primary aligner implementation, optimized for protein sequence alignment with Sequoia integration.
+The primary aligner implementation, optimized for protein sequence alignment with Herald integration.
 
 #### Key Features
 
@@ -1005,7 +1005,7 @@ Part of the Talaria project. See main repository for license information.
 ## See Also
 
 - [Talaria CLI Documentation](../talaria-cli/README.md)
-- [Talaria Sequoia Documentation](../talaria-sequoia/README.md)
+- [Talaria Herald Documentation](../talaria-herald/README.md)
 - [Talaria Bio Documentation](../talaria-bio/README.md)
 - [LAMBDA Aligner](https://github.com/seqan/lambda)
 - [NCBI BLAST+](https://blast.ncbi.nlm.nih.gov/)

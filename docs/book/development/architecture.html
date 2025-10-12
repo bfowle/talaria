@@ -159,10 +159,10 @@
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
-                        <a href="https://github.com/Andromeda-Tech/talaria" title="Git repository" aria-label="Git repository">
+                        <a href="https://github.com/bfowle/talaria" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/Andromeda-Tech/talaria/edit/main/docs/src/development/architecture.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/bfowle/talaria/edit/main/docs/src/development/architecture.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -206,11 +206,11 @@
 ├── talaria-core/        # Shared utilities and types
 ├── talaria-bio/         # Bioinformatics library
 ├── talaria-storage/     # Storage backend abstractions
-├── talaria-sequoia/        # Content-addressed sequence graph
+├── talaria-herald/        # Content-addressed sequence graph
 ├── talaria-tools/       # External tool integrations
 ├── talaria-cli/         # Command-line interface
 └── tests/               # Integration tests
-    ├── sequoia_integration/
+    ├── herald_integration/
     ├── reduction_pipeline/
     ├── database_operations/
     ├── tool_integration/
@@ -218,11 +218,11 @@
 </code></pre>
 <h3 id="crate-dependencies"><a class="header" href="#crate-dependencies">Crate Dependencies</a></h3>
 <pre class="mermaid">graph TD
-    CLI[talaria-cli] --&gt; SEQUOIA[talaria-sequoia]
+    CLI[talaria-cli] --&gt; HERALD[talaria-herald]
     CLI --&gt; Tools[talaria-tools]
     CLI --&gt; Bio[talaria-bio]
-    SEQUOIA --&gt; Storage[talaria-storage]
-    SEQUOIA --&gt; Bio
+    HERALD --&gt; Storage[talaria-storage]
+    HERALD --&gt; Bio
     Storage --&gt; Core[talaria-core]
     Bio --&gt; Core
     Tools --&gt; Bio
@@ -286,12 +286,12 @@
 <li>Multi-level caching with various eviction policies</li>
 <li>Storage optimization strategies</li>
 </ul>
-<h3 id="talaria-sequoia"><a class="header" href="#talaria-sequoia">talaria-sequoia</a></h3>
+<h3 id="talaria-herald"><a class="header" href="#talaria-herald">talaria-herald</a></h3>
 <p>Content-addressed sequence graph system:</p>
-<pre><code>talaria-sequoia/
+<pre><code>talaria-herald/
 ├── src/
 │   ├── lib.rs           # Public API
-│   ├── storage.rs       # SEQUOIA storage
+│   ├── storage.rs       # HERALD storage
 │   ├── manifest.rs      # Manifest management
 │   ├── chunker/         # Chunking strategies
 │   │   ├── mod.rs
@@ -360,7 +360,7 @@
 
     subgraph &quot;Core Libraries&quot;
         B1[talaria-bio]
-        B2[talaria-sequoia]
+        B2[talaria-herald]
         B3[talaria-tools]
         B4[talaria-storage]
     end
@@ -445,14 +445,14 @@ impl ChunkingStrategyBuilder {
 <h3 id="3-repository-pattern-for-data-access"><a class="header" href="#3-repository-pattern-for-data-access">3. Repository Pattern for Data Access</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>pub struct SEQUOIARepository {
-    storage: SEQUOIAStorage,
+</span>pub struct HERALDRepository {
+    storage: HERALDStorage,
     manifest: Manifest,
     taxonomy: TaxonomyManager,
     temporal: TemporalIndex,
 }
 
-impl SEQUOIARepository {
+impl HERALDRepository {
     pub fn store_sequences(&amp;mut self, sequences: Vec&lt;Sequence&gt;) -&gt; Result&lt;Vec&lt;ChunkMetadata&gt;&gt;;
     pub fn extract_taxon(&amp;self, taxon: &amp;str) -&gt; Result&lt;Vec&lt;Sequence&gt;&gt;;
     pub fn verify(&amp;self) -&gt; Result&lt;VerificationResult&gt;;
@@ -465,13 +465,13 @@ impl SEQUOIARepository {
     B --&gt; C[Taxonomy Mapping]
     C --&gt; D[Chunking Strategy]
     D --&gt; E[Reference Selection]
-    E --&gt; F{SEQUOIA Storage?}
+    E --&gt; F{HERALD Storage?}
     F --&gt;|Yes| G[Content Addressing]
     F --&gt;|No| H[Delta Encoding]
     G --&gt; I[Merkle DAG]
     H --&gt; I
     I --&gt; J[Write Output]
-    J --&gt; K[Reduced FASTA/SEQUOIA]
+    J --&gt; K[Reduced FASTA/HERALD]
 
     style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
     style K stroke:#388e3c,stroke-width:3px,fill:#a5d6a7
@@ -479,13 +479,13 @@ impl SEQUOIARepository {
 <h2 id="testing-architecture"><a class="header" href="#testing-architecture">Testing Architecture</a></h2>
 <h3 id="test-organization"><a class="header" href="#test-organization">Test Organization</a></h3>
 <pre><code>tests/
-├── sequoia_integration/        # SEQUOIA system tests
+├── herald_integration/        # HERALD system tests
 │   ├── basic_operations.rs
 │   ├── manifest_operations.rs
 │   └── temporal_operations.rs
 ├── reduction_pipeline/      # Reduction workflow tests
 │   ├── basic_reduction.rs
-│   ├── sequoia_reduction.rs
+│   ├── herald_reduction.rs
 │   └── reference_selection.rs
 ├── database_operations/     # Database management tests
 │   ├── fetch_tests.rs
@@ -587,7 +587,7 @@ pub enum TalariaError {
 <h2 id="future-architecture"><a class="header" href="#future-architecture">Future Architecture</a></h2>
 <h3 id="planned-enhancements"><a class="header" href="#planned-enhancements">Planned Enhancements</a></h3>
 <ol>
-<li><strong>Distributed SEQUOIA</strong>: Multi-node storage</li>
+<li><strong>Distributed HERALD</strong>: Multi-node storage</li>
 <li><strong>Cloud-Native</strong>: Kubernetes operators</li>
 <li><strong>GPU Acceleration</strong>: CUDA/ROCm support</li>
 <li><strong>WebAssembly</strong>: Browser-based tools</li>
@@ -607,7 +607,7 @@ pub enum TalariaError {
 <li><a href="contributing.html">Contributing</a> - Development guidelines</li>
 <li><a href="../api/cli-reference.html">API Reference</a> - CLI documentation</li>
 <li><a href="../advanced/performance.html">Performance</a> - Optimization guide</li>
-<li><a href="../sequoia/architecture.html">SEQUOIA Architecture</a> - SEQUOIA deep dive</li>
+<li><a href="../herald/architecture.html">HERALD Architecture</a> - HERALD deep dive</li>
 </ul>
 
                     </main>
@@ -633,22 +633,6 @@ pub enum TalariaError {
 
         </div>
 
-        <!-- Livereload script (if served using the cli tool) -->
-        <script>
-            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
-            const socket = new WebSocket(wsAddress);
-            socket.onmessage = function (event) {
-                if (event.data === "reload") {
-                    socket.close();
-                    location.reload();
-                }
-            };
-
-            window.onbeforeunload = function() {
-                socket.close();
-            }
-        </script>
 
 
 

@@ -76,12 +76,12 @@ fn validate_fetch_input(taxids: Option<String>, taxid_list: Option<PathBuf>) -> 
     }
 }
 
-/// Test the creation of SEQUOIA chunks from sequences
+/// Test the creation of HERALD chunks from sequences
 #[test]
 fn test_sequence_chunking() {
     use talaria_bio::sequence::Sequence;
-    use talaria_sequoia::chunker::{Chunker, TaxonomicChunker};
-    use talaria_sequoia::types::{ChunkStrategy, ChunkingStrategy, SpecialTaxon, TaxonId};
+    use talaria_herald::chunker::{Chunker, TaxonomicChunker};
+    use talaria_herald::types::{ChunkStrategy, ChunkingStrategy, SpecialTaxon, TaxonId};
 
     // Create test sequences
     let sequences = vec![
@@ -138,7 +138,7 @@ fn test_sequence_chunking() {
 #[test]
 fn test_manifest_creation() {
     use chrono::Utc;
-    use talaria_sequoia::types::{ChunkMetadata, SHA256Hash, TaxonId, TemporalManifest};
+    use talaria_herald::types::{ChunkMetadata, SHA256Hash, TaxonId, TemporalManifest};
 
     let manifest = TemporalManifest {
         version: "20240101_120000".to_string(),

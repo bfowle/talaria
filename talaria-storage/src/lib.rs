@@ -3,7 +3,7 @@
 //! This crate provides low-level storage backends and utilities for the Talaria project.
 //! It focuses on providing efficient storage implementations (RocksDB, filesystem),
 //! compression, caching, and I/O operations. Business logic and storage traits are
-//! defined in talaria-sequoia to avoid circular dependencies.
+//! defined in talaria-herald to avoid circular dependencies.
 
 pub mod backend;
 pub mod cache;

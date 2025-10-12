@@ -51,7 +51,7 @@ fi
 # Build with deadlock detection feature
 echo ""
 echo -e "${YELLOW}Building with deadlock detection enabled...${NC}"
-cd talaria-sequoia
+cd talaria-herald
 cargo build --features deadlock_detection --release
 
 # Run deadlock regression tests
@@ -117,7 +117,7 @@ echo "────────────────────────�
 
 # Look for nested lock patterns
 echo "Checking for nested mutex locks..."
-if grep -r "\.lock().*\.lock()" --include="*.rs" ../talaria-sequoia/src 2>/dev/null; then
+if grep -r "\.lock().*\.lock()" --include="*.rs" ../talaria-herald/src 2>/dev/null; then
     echo -e "${YELLOW}⚠ Warning: Found potential nested lock patterns${NC}"
     echo "  Review the above matches to ensure proper lock ordering"
 else
@@ -126,7 +126,7 @@ fi
 
 # Look for lock().unwrap() patterns that might hide issues
 echo "Checking for remaining std::sync::Mutex usage..."
-if grep -r "std::sync::Mutex" --include="*.rs" ../talaria-sequoia/src 2>/dev/null | \
+if grep -r "std::sync::Mutex" --include="*.rs" ../talaria-herald/src 2>/dev/null | \
    grep -v "Mutex as StdMutex" | \
    grep -v "use.*StdMutex"; then
     echo -e "${YELLOW}⚠ Warning: Found std::sync::Mutex usage${NC}"

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use crate::cli::formatting::output::{
     success as print_success, tree_section, warning as print_warning,
 };
-use talaria_sequoia::database::DatabaseManager;
+use talaria_herald::database::DatabaseManager;
 use talaria_utils::database::database_ref::parse_database_reference;
 
 #[derive(Args)]
@@ -459,7 +459,7 @@ fn show_info(args: InfoVersionArgs) -> Result<()> {
 fn import_version(_args: ImportVersionArgs) -> Result<()> {
     // Import functionality is deprecated with RocksDB-based storage
     // Versions are automatically tracked when databases are downloaded
-    print_warning("The 'import' command is deprecated with SEQUOIA RocksDB storage.");
+    print_warning("The 'import' command is deprecated with HERALD RocksDB storage.");
     println!("\nDatabase versions are automatically tracked when downloaded.");
     println!("Use 'talaria database download' to add databases to the repository.");
     Ok(())

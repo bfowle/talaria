@@ -234,23 +234,23 @@ pub fn run_reduce_wizard<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<(
                         }
                     };
 
-                    let mut reducer = talaria_sequoia::Reducer::new(config)
+                    let mut reducer = talaria_herald::Reducer::new(config)
                         .with_progress_callback(progress_callback)
                         .with_silent(false);
 
-                    // Convert CLI TargetAligner to SEQUOIA TargetAligner
+                    // Convert CLI TargetAligner to HERALD TargetAligner
                     let target_aligner = match wizard.aligner {
-                        crate::cli::TargetAligner::Lambda => talaria_sequoia::TargetAligner::Lambda,
-                        crate::cli::TargetAligner::Blast => talaria_sequoia::TargetAligner::Blast,
-                        crate::cli::TargetAligner::Kraken => talaria_sequoia::TargetAligner::Kraken,
+                        crate::cli::TargetAligner::Lambda => talaria_herald::TargetAligner::Lambda,
+                        crate::cli::TargetAligner::Blast => talaria_herald::TargetAligner::Blast,
+                        crate::cli::TargetAligner::Kraken => talaria_herald::TargetAligner::Kraken,
                         crate::cli::TargetAligner::Diamond => {
-                            talaria_sequoia::TargetAligner::Diamond
+                            talaria_herald::TargetAligner::Diamond
                         }
                         crate::cli::TargetAligner::MMseqs2 => {
-                            talaria_sequoia::TargetAligner::MMseqs2
+                            talaria_herald::TargetAligner::MMseqs2
                         }
                         crate::cli::TargetAligner::Generic => {
-                            talaria_sequoia::TargetAligner::Generic
+                            talaria_herald::TargetAligner::Generic
                         }
                     };
                     match reducer.reduce(sequences, 0.5, target_aligner) {

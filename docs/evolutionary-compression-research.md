@@ -94,7 +94,7 @@ HMM Approach:
   Total: 550 KB (5.4x compression)
 ```
 
-### 1.6 Homology-Aware Delta Encoding (Current SEQUOIA)
+### 1.6 Homology-Aware Delta Encoding (Current HERALD)
 
 **Canonical sequence + deltas**
 - Reference sequence selected by evolutionary centrality
@@ -282,7 +282,7 @@ struct SequenceAssembly {
 // Compression: 12.5x just from domain sharing
 ```
 
-## 3. Integration with SEQUOIA Principles
+## 3. Integration with HERALD Principles
 
 ### 3.1 Content-Addressed Storage + Evolutionary Structure
 
@@ -742,7 +742,7 @@ talaria predict evolution \
 
 ### Compression Improvements
 
-**Current SEQUOIA**:
+**Current HERALD**:
 - Taxonomic chunking + deltas: 10-100x
 
 **With Domain-Level CAS**:
@@ -763,7 +763,7 @@ talaria predict evolution \
 |----------|---------|---------------------------|
 | Traditional FASTA | 165 GB | 1x |
 | gzip | 48 GB | 3.4x |
-| Current SEQUOIA | 4.2 GB | 39x |
+| Current HERALD | 4.2 GB | 39x |
 | + Domain CAS | 840 MB | 196x |
 | + Phylogenetic | 168 MB | 982x |
 | + Graph/BWT | 33 MB | 5000x |
@@ -782,7 +782,7 @@ talaria predict evolution \
 
 **Ancestral Reconstruction**:
 - No traditional equivalent (impossible)
-- SEQUOIA: O(tree_depth) delta applications
+- HERALD: O(tree_depth) delta applications
 - Time: ~50-100ms per ancestral sequence
 
 ## 7. Research Questions
@@ -830,7 +830,7 @@ talaria predict evolution \
 
 ## 9. Comparative Analysis with Existing Solutions
 
-**Research completed**: See [Existing Solutions Analysis](./existing-solutions-analysis.md) for comprehensive comparison of SEQUOIA's approach with:
+**Research completed**: See [Existing Solutions Analysis](./existing-solutions-analysis.md) for comprehensive comparison of HERALD's approach with:
 
 - **NCBI**: FTP/rsync, daily incremental files, BLAST databases, RefSeq versioning
 - **UniProt**: API-based distribution, UniParc version tracking, proteome redundancy removal
@@ -839,6 +839,6 @@ talaria predict evolution \
 - **Content-Addressed Systems**: IPFS for biological data, SAMchain blockchain genomics
 - **Deduplication Research**: GenoDedup, TrieDedup, genomic data deduplication
 
-**Key Finding**: While individual components exist in isolation, **no existing solution combines biologically-relevant chunking, cryptographic verification, and computational scalability**. SEQUOIA represents a **greenfield opportunity** to unify these concepts in a purpose-built system for biological databases.
+**Key Finding**: While individual components exist in isolation, **no existing solution combines biologically-relevant chunking, cryptographic verification, and computational scalability**. HERALD represents a **greenfield opportunity** to unify these concepts in a purpose-built system for biological databases.
 
 See the [full analysis](./existing-solutions-analysis.md) for detailed gap analysis and competitive positioning.

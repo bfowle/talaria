@@ -35,14 +35,14 @@ usage() {
     echo "  -h, --help      Show this help message"
     echo ""
     echo "CRATE:"
-    echo "  Specific crate to test (e.g., talaria-sequoia, talaria-core)"
+    echo "  Specific crate to test (e.g., talaria-herald, talaria-core)"
     echo "  If omitted, runs coverage for entire workspace"
     echo ""
     echo "EXAMPLES:"
     echo "  $0                           # Full workspace coverage to terminal"
     echo "  $0 --html                    # Generate HTML report for workspace"
     echo "  $0 --html --open             # Generate and open HTML report"
-    echo "  $0 talaria-sequoia           # Coverage for specific crate"
+    echo "  $0 talaria-herald           # Coverage for specific crate"
     echo "  $0 talaria-core --html       # HTML coverage for talaria-core"
     exit 1
 }

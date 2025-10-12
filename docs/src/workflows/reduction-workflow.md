@@ -4,7 +4,7 @@ This document provides a comprehensive, step-by-step guide to Talaria's database
 
 ## Overview
 
-Talaria's reduction workflow transforms large sequence databases into compact, searchable representations while maintaining the ability to reconstruct original sequences. The process leverages SEQUOIA (Sequence Query Optimization with Indexed Architecture) for efficient storage and LAMBDA for accurate alignment-based selection.
+Talaria's reduction workflow transforms large sequence databases into compact, searchable representations while maintaining the ability to reconstruct original sequences. The process leverages HERALD (Sequence Query Optimization with Indexed Architecture) for efficient storage and LAMBDA for accurate alignment-based selection.
 
 ## Architecture Overview
 
@@ -13,7 +13,7 @@ graph TD
     A[Input FASTA] --> B[Sanitization]
     B --> C[Reference Selection]
     C --> D[Delta Encoding]
-    D --> E[SEQUOIA Storage]
+    D --> E[HERALD Storage]
     E --> F[Output Generation]
 
     B --> B1[Remove Invalid Sequences]
@@ -208,7 +208,7 @@ pub enum DeltaOp {
 }
 ```
 
-### Step 5: SEQUOIA Storage
+### Step 5: HERALD Storage
 
 The Sequence Query Optimization with Indexed Architecture stores data efficiently:
 
@@ -257,7 +257,7 @@ for chunk in chunks {
 
 Finally, Talaria produces the reduced database and metadata:
 
-#### 6.1 For Database Reductions (from SEQUOIA)
+#### 6.1 For Database Reductions (from HERALD)
 When reducing a database from the repository (e.g., `talaria reduce custom/cholera`):
 - **Profile Storage**: Reduction is stored as a profile in `${TALARIA_HOME}/databases/profiles/`
 - **No New Database**: Does NOT create a separate database entry
@@ -326,7 +326,7 @@ export TALARIA_PRESERVE_ON_FAILURE=1
 talaria reduce -i input.fasta -o output.fasta
 
 # If error occurs, workspace is preserved
-Workspace preserved at: ${TALARIA_HOME}/sequoia/preserved/20240315_123456_uuid
+Workspace preserved at: ${TALARIA_HOME}/herald/preserved/20240315_123456_uuid
 To inspect: talaria tools workspace inspect 20240315_123456_uuid
 ```
 
@@ -471,7 +471,7 @@ kraken2-build --build --db kraken_db
 
 ## See Also
 
-- [SEQUOIA Architecture](../sequoia/architecture.md) - Storage system details
+- [HERALD Architecture](../herald/architecture.md) - Storage system details
 - [LAMBDA Workflow](lambda-workflow.md) - LAMBDA-specific optimization
 - [Performance Guide](../advanced/performance.md) - Optimization techniques
 - [API Reference](../api/cli.md) - Complete CLI documentation

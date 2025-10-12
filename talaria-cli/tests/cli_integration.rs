@@ -423,19 +423,19 @@ fn test_tools_list_command() -> Result<()> {
 }
 
 #[test]
-fn test_reduce_with_sequoia_output() -> Result<()> {
+fn test_reduce_with_herald_output() -> Result<()> {
     let env = TestEnvironment::new()?;
 
     let input = env.create_input_file("test.fasta", &create_simple_fasta(10))?;
     let _output = env.output_path("reduced");
 
     // Add as database first
-    add_test_database(&input, "test_sequoia", env.temp_dir.path())?;
+    add_test_database(&input, "test_herald", env.temp_dir.path())?;
 
     let mut cmd = talaria_cmd();
     cmd.arg("reduce")
-        .arg("local/test_sequoia")
-        .arg("--sequoia-output")
+        .arg("local/test_herald")
+        .arg("--herald-output")
         .arg("--target-aligner")
         .arg("generic")
         .arg("--reduction-ratio")
@@ -500,7 +500,7 @@ fn test_chunk_lookup_command() -> Result<()> {
         .arg("seq_0")
         .env("TALARIA_HOME", env.temp_dir.path());
 
-    // This may fail if no SEQUOIA storage, but command should parse
+    // This may fail if no HERALD storage, but command should parse
     let _ = cmd.assert();
 
     Ok(())

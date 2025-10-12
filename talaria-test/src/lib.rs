@@ -7,7 +7,7 @@
 //! # Features
 //!
 //! - **Test Environment**: Isolated test environments with automatic cleanup
-//! - **Storage Helpers**: Test utilities for SEQUOIA storage operations
+//! - **Storage Helpers**: Test utilities for HERALD storage operations
 //! - **Mock Implementations**: Mock versions of core components for testing
 //! - **Fixtures**: Common test data and FASTA sequences
 //! - **Assertions**: Custom assertions for bioinformatics data

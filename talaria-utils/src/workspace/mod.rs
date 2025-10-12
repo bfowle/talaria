@@ -1,6 +1,6 @@
 //! Workspace management utilities
 
-pub mod sequoia;
+pub mod herald;
 pub mod temp;
 
 // Re-export main workspace types
@@ -9,4 +9,4 @@ pub use temp::{
     WorkspaceStats, WorkspaceStatus,
 };
 
-pub use sequoia::{SequoiaStatistics, SequoiaTransaction, SequoiaWorkspaceManager};
+pub use herald::{HeraldStatistics, HeraldTransaction, HeraldWorkspaceManager};

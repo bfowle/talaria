@@ -4,7 +4,7 @@
 
 `talaria-bio` is the core bioinformatics library for the Talaria sequence database reduction system. It provides fundamental biological sequence processing capabilities including FASTA I/O, sequence alignment, taxonomy management, delta encoding for compression, and integration with external biological databases.
 
-This module serves as the biological foundation layer that other Talaria components build upon, particularly `talaria-sequoia` (content-addressed storage), `talaria-cli` (command-line interface), and `talaria-tools` (external tool integration).
+This module serves as the biological foundation layer that other Talaria components build upon, particularly `talaria-herald` (content-addressed storage), `talaria-cli` (command-line interface), and `talaria-tools` (external tool integration).
 
 ## Architecture
 
@@ -80,7 +80,7 @@ pub struct TaxonomySources {
     pub user_specified: Option<u32>, // From user input
     pub mapping_lookup: Option<u32>, // From accession2taxid
     pub header_parsed: Option<u32>,  // Parsed from FASTA header
-    pub chunk_context: Option<u32>,  // From SEQUOIA chunk context
+    pub chunk_context: Option<u32>,  // From HERALD chunk context
 }
 
 // SequenceType is imported from talaria_core::types
@@ -223,16 +223,16 @@ let sequences = client.fetch_proteome(taxid).await?;
 
 ## Integration with Talaria System
 
-### 1. Used by `talaria-sequoia`
+### 1. Used by `talaria-herald`
 
-SEQUOIA (content-addressed storage) uses talaria-bio for:
+HERALD (content-addressed storage) uses talaria-bio for:
 - **Sequence parsing**: Reading FASTA files for chunking
 - **Delta generation**: Creating delta records for compression
 - **Taxonomy formatting**: Enriching headers with TaxID
 - **Retroactive analysis**: Time-travel queries on sequences
 
 ```rust
-// Example from talaria-sequoia/src/delta_generator.rs
+// Example from talaria-herald/src/delta_generator.rs
 use talaria_bio::compression::{DeltaEncoder, DeltaRecord};
 use talaria_bio::sequence::Sequence;
 

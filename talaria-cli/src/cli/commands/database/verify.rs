@@ -4,7 +4,7 @@ use crate::cli::global_config;
 use clap::Args;
 use colored::*;
 use talaria_core::system::paths;
-use talaria_sequoia::{SequoiaRepository, VerificationResult};
+use talaria_herald::{HeraldRepository, VerificationResult};
 
 #[derive(Args)]
 pub struct VerifyArgs {
@@ -36,7 +36,7 @@ pub fn run(args: VerifyArgs) -> anyhow::Result<()> {
             talaria_utils::database::database_ref::parse_database_reference(db_ref)?;
 
         // Verify database exists using DatabaseManager
-        use talaria_sequoia::database::DatabaseManager;
+        use talaria_herald::database::DatabaseManager;
         let manager = DatabaseManager::new(None)?;
         let db_name = format!("{}/{}", db_ref_parsed.source, db_ref_parsed.dataset);
         manager
@@ -64,7 +64,7 @@ pub fn run(args: VerifyArgs) -> anyhow::Result<()> {
         base_path.display()
     );
 
-    let repo = SequoiaRepository::open(&base_path)?;
+    let repo = HeraldRepository::open(&base_path)?;
 
     let result = if args.structure_only {
         verify_structure(&repo)?
@@ -131,7 +131,7 @@ pub fn run(args: VerifyArgs) -> anyhow::Result<()> {
     }
 }
 
-fn verify_structure(repo: &SequoiaRepository) -> anyhow::Result<VerificationResult> {
+fn verify_structure(repo: &HeraldRepository) -> anyhow::Result<VerificationResult> {
     let manifest_data = repo
         .manifest
         .get_data()

@@ -1,4 +1,4 @@
-/// RocksDB storage backend implementation for Sequoia
+/// RocksDB storage backend implementation for Herald
 ///
 /// This module provides high-performance storage using RocksDB's
 /// LSM-tree architecture for optimal write performance and scalability.
@@ -96,7 +96,7 @@ pub struct RocksDBBackend {
 }
 
 impl RocksDBBackend {
-    // Chunk storage methods (for direct use by SequoiaStorage)
+    // Chunk storage methods (for direct use by HeraldStorage)
 
     /// Check if a chunk exists
     pub fn chunk_exists(&self, hash: &SHA256Hash) -> Result<bool> {

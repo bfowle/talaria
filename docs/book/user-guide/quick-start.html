@@ -159,10 +159,10 @@
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
-                        <a href="https://github.com/Andromeda-Tech/talaria" title="Git repository" aria-label="Git repository">
+                        <a href="https://github.com/bfowle/talaria" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/Andromeda-Tech/talaria/edit/main/docs/src/user-guide/quick-start.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/bfowle/talaria/edit/main/docs/src/user-guide/quick-start.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -209,7 +209,7 @@ cargo install talaria
 </code></pre>
 <h2 id="dive-right-in-25-minutes"><a class="header" href="#dive-right-in-25-minutes">Dive Right In (2.5 minutes)</a></h2>
 <pre><code class="language-bash"># 1. One-time setup (5 seconds)
-talaria sequoia init
+talaria herald init
 
 # 2. Download SwissProt database (small, ~200MB, perfect for testing)
 talaria database download uniprot -d swissprot
@@ -222,7 +222,7 @@ lambda3 mkindexp -d reduced.fasta
 </code></pre>
 <h2 id="what-just-happened"><a class="header" href="#what-just-happened">What Just Happened?</a></h2>
 <ul>
-<li><strong>SEQUOIA initialized</strong>: Smart storage system that only downloads changes in the future</li>
+<li><strong>HERALD initialized</strong>: Smart storage system that only downloads changes in the future</li>
 <li><strong>Downloaded SwissProt</strong>: In chunks, ready for instant updates</li>
 <li><strong>Intelligently reduced</strong>: Auto-detected optimal representatives using alignment analysis</li>
 <li><strong>Ready to use</strong>: Works with LAMBDA, BLAST, Diamond, MMseqs2, etc.</li>
@@ -257,8 +257,8 @@ talaria database list
 # View database info
 talaria database info uniprot/swissprot
 
-# Check SEQUOIA storage
-talaria sequoia stats
+# Check HERALD storage
+talaria herald stats
 
 # List sequences
 talaria database list-sequences uniprot/swissprot --limit 10
@@ -290,13 +290,13 @@ ${TALARIA_HOME}/databases/
 
 # Change it using environment variables
 export TALARIA_DATABASES_DIR=/fast/ssd/talaria-databases
-talaria sequoia init
+talaria herald init
 </code></pre>
 <h3 id="use-more-cores"><a class="header" href="#use-more-cores">Use More Cores</a></h3>
 <pre><code class="language-bash"># Use 16 threads
 talaria -j 16 reduce ncbi/nr -o output.fasta  # Auto-detection with 16 threads
 </code></pre>
-<h2 id="why-sequoia-the-update-problem-solved"><a class="header" href="#why-sequoia-the-update-problem-solved">Why SEQUOIA? The Update Problem Solved</a></h2>
+<h2 id="why-herald-the-update-problem-solved"><a class="header" href="#why-herald-the-update-problem-solved">Why HERALD? The Update Problem Solved</a></h2>
 <p>Traditional approach downloads entire databases repeatedly:</p>
 <ul>
 <li><strong>Day 1</strong>: Download 100GB nr database</li>
@@ -316,7 +316,7 @@ talaria database download ncbi -d nr
 </code></pre>
 <h2 id="full-example-swissprot-to-lambda"><a class="header" href="#full-example-swissprot-to-lambda">Full Example: SwissProt to LAMBDA</a></h2>
 <pre><code class="language-bash"># Complete workflow in 5 commands
-talaria sequoia init
+talaria herald init
 talaria database download uniprot -d swissprot
 talaria reduce uniprot/swissprot -a lambda -o lambda_db.fasta  # Auto-detects optimal size
 lambda3 mkindexp -d lambda_db.fasta
@@ -329,7 +329,7 @@ talaria database download uniprot -d swissprot  # Only downloads changes!
 <ul>
 <li><a href="basic-usage.html">Basic Usage Guide</a> - Detailed explanations</li>
 <li><a href="../api/cli-reference.html">CLI Reference</a> - All commands and options</li>
-<li><a href="../sequoia/troubleshooting.html">Troubleshooting</a> - Common issues</li>
+<li><a href="../herald/troubleshooting.html">Troubleshooting</a> - Common issues</li>
 </ul>
 <h2 id="getting-help"><a class="header" href="#getting-help">Getting Help</a></h2>
 <pre><code class="language-bash"># View help for any command
@@ -373,22 +373,6 @@ talaria -vv reduce uniprot/swissprot --profile debug
 
         </div>
 
-        <!-- Livereload script (if served using the cli tool) -->
-        <script>
-            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
-            const socket = new WebSocket(wsAddress);
-            socket.onmessage = function (event) {
-                if (event.data === "reload") {
-                    socket.close();
-                    location.reload();
-                }
-            };
-
-            window.onbeforeunload = function() {
-                socket.close();
-            }
-        </script>
 
 
 

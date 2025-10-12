@@ -1,15 +1,15 @@
 # Existing Solutions Analysis: Biological Database Distribution
 
-> Research examining existing attempts by NCBI, UniProt, ENA, and others to address biological database distribution challenges, and how SEQUOIA compares.
+> Research examining existing attempts by NCBI, UniProt, ENA, and others to address biological database distribution challenges, and how HERALD compares.
 
 **Research Date**: October 2025
-**Context**: Analysis of whether SEQUOIA's approach (biologically-relevant + cryptographically-proven + computationally-scalable) represents a novel solution or builds upon existing partial solutions.
+**Context**: Analysis of whether HERALD's approach (biologically-relevant + cryptographically-proven + computationally-scalable) represents a novel solution or builds upon existing partial solutions.
 
 ---
 
 ## Executive Summary
 
-**Key Finding**: While individual components of SEQUOIA's approach exist in isolation across various systems, **no existing solution combines all three pillars** (biologically-relevant chunking, cryptographic verification, computational scalability with deduplication). SEQUOIA represents a **greenfield opportunity** to unify these concepts in a purpose-built system for biological databases.
+**Key Finding**: While individual components of HERALD's approach exist in isolation across various systems, **no existing solution combines all three pillars** (biologically-relevant chunking, cryptographic verification, computational scalability with deduplication). HERALD represents a **greenfield opportunity** to unify these concepts in a purpose-built system for biological databases.
 
 ### Existing Solutions Landscape
 
@@ -23,7 +23,7 @@
 | **Pan-Genome (GBZ)** | Local tools | N/A | Graph compression | None | **Yes** (evolutionary similarity) |
 | **IPFS Biology** | P2P content-addressed | Automatic | Content-addressing | Hash-based | No |
 | **SAMchain** | Blockchain | Immutable ledger | None | Merkle trees | No |
-| **SEQUOIA** | CAS + Merkle DAG | Automatic deltas | Domain-level CAS | Full Merkle verification | **Yes** (phylogenetic chunking) |
+| **HERALD** | CAS + Merkle DAG | Automatic deltas | Domain-level CAS | Full Merkle verification | **Yes** (phylogenetic chunking) |
 
 ### Gap Analysis
 
@@ -35,7 +35,7 @@
 - Content-addressed storage (IPFS)
 - Cryptographic verification in blockchain contexts (SAMchain)
 
-**What's Missing** (SEQUOIA's Opportunity):
+**What's Missing** (HERALD's Opportunity):
 
 - **Unified evolutionary compression**: No system integrates phylogenetic relationships into storage architecture
 - **Automatic deduplication across databases**: Current systems don't deduplicate at domain/sequence level across sources
@@ -302,9 +302,9 @@
 
 ---
 
-## 7. SEQUOIA's Novel Approach
+## 7. HERALD's Novel Approach
 
-### What SEQUOIA Does Differently
+### What HERALD Does Differently
 
 #### 1. Biologically-Relevant Architecture
 
@@ -392,7 +392,7 @@ Root_Hash (LUCA)
 
 ### Comparison to Existing Solutions
 
-| Feature | NCBI | UniProt | ENA | Pan-Genome | IPFS | SAMchain | **SEQUOIA** |
+| Feature | NCBI | UniProt | ENA | Pan-Genome | IPFS | SAMchain | **HERALD** |
 |---------|------|---------|-----|------------|------|----------|-------------|
 | **Biological Chunking** | Taxonomy | Proteome | Organism | Graph | None | None | **Phylogeny + Domain** |
 | **Deduplication** | None | Manual | None | Graph compression | File-level | None | **Domain + Sequence** |
@@ -417,31 +417,31 @@ Root_Hash (LUCA)
 - ✅ **Evolutionary compression concepts** (research literature)
 - ✅ **rsync delta transfer** (NCBI FTP)
 
-### SEQUOIA's Novel Integration
+### HERALD's Novel Integration
 
 - ❌ **Domain-level content-addressing** → Not in any production system
 - ❌ **Phylogenetic Merkle DAGs** → Research concept, not implemented
 - ❌ **Cross-database deduplication** → No system does this
-- ❌ **Bi/tri-temporal versioning** → Unique to SEQUOIA
+- ❌ **Bi/tri-temporal versioning** → Unique to HERALD
 - ❌ **Evolutionary delta chains** → Not in production databases
 - ❌ **Cryptographically-verified biological updates** → Novel combination
-- ❌ **Multi-dimensional evolutionary chunking** → Future SEQUOIA feature
+- ❌ **Multi-dimensional evolutionary chunking** → Future HERALD feature
 
 ### The "Greenfield Opportunity"
 
-SEQUOIA is addressing a **true gap** in the bioinformatics ecosystem:
+HERALD is addressing a **true gap** in the bioinformatics ecosystem:
 
 1. **Biologically-Relevant**:
    - Current: File-based or taxonomy-based chunking
-   - SEQUOIA: Phylogenetic distance + domain architecture + evolutionary relationships
+   - HERALD: Phylogenetic distance + domain architecture + evolutionary relationships
 
 2. **Cryptographically-Proven**:
    - Current: Simple checksums (md5) or no verification
-   - SEQUOIA: Full Merkle DAG with hierarchical verification
+   - HERALD: Full Merkle DAG with hierarchical verification
 
 3. **Computationally-Scalable**:
    - Current: Re-download entire files/databases for updates
-   - SEQUOIA: CAS ensures only new content transferred, domain-level deduplication across all databases
+   - HERALD: CAS ensures only new content transferred, domain-level deduplication across all databases
 
 **No existing system combines all three pillars.**
 
@@ -483,7 +483,7 @@ SEQUOIA is addressing a **true gap** in the bioinformatics ecosystem:
    - But production databases prioritize stability over innovation
    - Risk-averse culture in core bioinformatics infrastructure
 
-### Why SEQUOIA Can Succeed
+### Why HERALD Can Succeed
 
 1. **Ground-Up Design**:
    - Not constrained by legacy systems
@@ -507,7 +507,7 @@ SEQUOIA is addressing a **true gap** in the bioinformatics ecosystem:
 
 ---
 
-## 10. Recommendations for SEQUOIA Development
+## 10. Recommendations for HERALD Development
 
 ### Phase 1: Prove Core Value (Current)
 - ✅ Content-addressed storage working
@@ -550,14 +550,14 @@ SEQUOIA is addressing a **true gap** in the bioinformatics ecosystem:
 
 ### Phase 4: Ecosystem Integration (12-18 months)
 1. **Database Connectors**:
-   - NCBI FTP mirror → SEQUOIA import
-   - UniProt API → SEQUOIA import
-   - ENA → SEQUOIA import
+   - NCBI FTP mirror → HERALD import
+   - UniProt API → HERALD import
+   - ENA → HERALD import
    - Bidirectional sync with official sources
 
 2. **Community Tools**:
-   - BLAST database → SEQUOIA converter
-   - SEQUOIA → standard formats export
+   - BLAST database → HERALD converter
+   - HERALD → standard formats export
    - Integration with workflow managers (Nextflow, Snakemake)
 
 3. **Distributed Mirrors**:
@@ -574,7 +574,7 @@ SEQUOIA is addressing a **true gap** in the bioinformatics ecosystem:
 2. **Advanced Analytics**:
    - Conservation analysis across versions
    - HGT detection using unusual compression patterns
-   - Pan-genome construction from SEQUOIA chunks
+   - Pan-genome construction from HERALD chunks
 
 3. **AI/ML Integration**:
    - Use evolutionary structure for better embeddings
@@ -589,7 +589,7 @@ SEQUOIA is addressing a **true gap** in the bioinformatics ecosystem:
 
 1. **No Unified Solution Exists**: While components exist in isolation (pan-genome compression, IPFS content-addressing, Merkle verification), no system combines biological awareness, cryptographic proof, and computational scalability.
 
-2. **SEQUOIA is Greenfield**: The intersection of these three pillars is **unexplored territory** in production bioinformatics systems.
+2. **HERALD is Greenfield**: The intersection of these three pillars is **unexplored territory** in production bioinformatics systems.
 
 3. **High Impact Potential**:
    - **Bandwidth Reduction**: 10-100× through deduplication and delta encoding
@@ -598,7 +598,7 @@ SEQUOIA is addressing a **true gap** in the bioinformatics ecosystem:
    - **Trust**: Cryptographic verification eliminates integrity concerns
    - **Reproducibility**: Merkle-verified datasets for computational research
 
-4. **Technical Feasibility**: All required components exist (domain detection, phylogenetic trees, Merkle DAGs, LSM storage). SEQUOIA's innovation is the **architecture that unifies them**.
+4. **Technical Feasibility**: All required components exist (domain detection, phylogenetic trees, Merkle DAGs, LSM storage). HERALD's innovation is the **architecture that unifies them**.
 
 5. **Market Need**:
    - Genomic databases growing exponentially (NCBI: 5.6TB uncompressed)
@@ -606,7 +606,7 @@ SEQUOIA is addressing a **true gap** in the bioinformatics ecosystem:
    - Reproducibility crisis demands cryptographic verification
    - Researchers need efficient incremental updates
 
-### Why SEQUOIA Will Succeed
+### Why HERALD Will Succeed
 
 - **Solves Real Pain Points**: Bandwidth, storage, update speed, verification
 - **Complements Existing Systems**: Doesn't replace NCBI/UniProt, enhances distribution
@@ -616,14 +616,14 @@ SEQUOIA is addressing a **true gap** in the bioinformatics ecosystem:
 
 ### The Path Forward
 
-SEQUOIA should:
+HERALD should:
 1. **Validate Core**: Prove CAS + Merkle DAG works for real databases
 2. **Add Biology**: Integrate domain detection and phylogenetic chunking
 3. **Measure Impact**: Quantify bandwidth/storage savings vs. existing methods
 4. **Build Ecosystem**: Tools, connectors, mirrors
 5. **Publish Research**: Demonstrate novel compression via evolutionary structure
 
-**SEQUOIA is not just an incremental improvement—it's a paradigm shift in biological database distribution.**
+**HERALD is not just an incremental improvement—it's a paradigm shift in biological database distribution.**
 
 ---
 

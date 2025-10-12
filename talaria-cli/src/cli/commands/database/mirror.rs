@@ -1,4 +1,4 @@
-/// Database mirroring for SEQUOIA
+/// Database mirroring for HERALD
 ///
 /// Setup and manage database mirrors for:
 /// - Institutional deployments
@@ -11,7 +11,7 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::path::PathBuf;
 use std::sync::Arc;
 use talaria_core::system::paths::talaria_home;
-use talaria_sequoia::database::DatabaseManager;
+use talaria_herald::database::DatabaseManager;
 use tokio::sync::Semaphore;
 
 #[derive(Debug, Args)]
@@ -404,7 +404,7 @@ impl SyncCmd {
 
         // Generate report if requested
         if let Some(report_path) = &self.report_output {
-            use talaria_sequoia::operations::MirrorResult;
+            use talaria_herald::operations::MirrorResult;
 
             let result = MirrorResult {
                 success: failed == 0,
@@ -587,7 +587,7 @@ impl StatusCmd {
 impl ServeCmd {
     async fn run(&self) -> Result<()> {
         println!(
-            "🚀 Starting SEQUOIA mirror server on {}:{}",
+            "🚀 Starting HERALD mirror server on {}:{}",
             self.bind, self.port
         );
 

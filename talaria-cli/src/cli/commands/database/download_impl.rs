@@ -9,8 +9,8 @@ use anyhow::Result;
 use colored::Colorize;
 use indicatif::ProgressBar;
 use std::sync::{Arc, Mutex};
-use talaria_sequoia::database::{DatabaseManager, DownloadResult};
-use talaria_sequoia::download::{DatabaseSource, Stage};
+use talaria_herald::database::{DatabaseManager, DownloadResult};
+use talaria_herald::download::{DatabaseSource, Stage};
 // format_bytes moved to stats command only
 // use talaria_utils::display::format::format_bytes;
 
@@ -80,7 +80,7 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
 
     // Check for resumable operations BEFORE creating the task list UI
     // Declare workspace_state outside the blocks so it can be used later
-    use talaria_sequoia::download::find_existing_workspace_for_source;
+    use talaria_herald::download::find_existing_workspace_for_source;
     let workspace_state = if resume {
         find_existing_workspace_for_source(&database_source)?
     } else {
@@ -93,7 +93,7 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
 
         let found_workspace = workspace_state.is_some();
 
-        // Then check for SEQUOIA processing states
+        // Then check for HERALD processing states
         let resumable_ops = manager.list_resumable_operations()?;
         spinner.finish_and_clear();
 
@@ -120,13 +120,13 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
             }
         }
 
-        // Report SEQUOIA processing state
+        // Report HERALD processing state
         if !resumable_ops.is_empty() {
             if found_workspace {
                 println!();
             }
             println!(
-                "  {} Found {} SEQUOIA processing operation(s) to resume",
+                "  {} Found {} HERALD processing operation(s) to resume",
                 "●".cyan(),
                 resumable_ops.len()
             );
@@ -156,7 +156,7 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
     };
 
     // Add all tasks upfront
-    let init_task = task_list.add_task("Initialize SEQUOIA repository");
+    let init_task = task_list.add_task("Initialize HERALD repository");
     let check_task = task_list.add_task("Check for existing data");
     let download_task = task_list.add_task("Download database");
     let process_task = task_list.add_task("Process into chunks");
@@ -210,7 +210,7 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
         } else if msg.contains("Found download from") {
             // Show age of download
             println!("    {} {}", "├─".white(), msg);
-        } else if msg.contains("Download complete, resuming SEQUOIA") {
+        } else if msg.contains("Download complete, resuming HERALD") {
             // Show resuming processing
             println!("    {} {}", "└─".white(), msg);
         } else if msg.contains("Using existing downloaded file") {
@@ -266,7 +266,7 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
             if let Some(s) = spinner.take() {
                 s.finish_and_clear();
             }
-        } else if msg.contains("Database already processed into SEQUOIA format") {
+        } else if msg.contains("Database already processed into HERALD format") {
             // Database exists in RocksDB, skip all processing
             tl.update_task(check_task, TaskStatus::Complete);
             tl.update_task(download_task, TaskStatus::Complete);
@@ -285,7 +285,7 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
                 s.finish_and_clear();
             }
             println!("\n  {} {}", "✓".green().bold(), msg);
-        } else if msg.contains("Using existing download, processing into SEQUOIA format") {
+        } else if msg.contains("Using existing download, processing into HERALD format") {
             // Existing download needs processing
             tl.update_task(check_task, TaskStatus::Complete);
             tl.update_task(download_task, TaskStatus::Complete);
@@ -312,8 +312,8 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
                 s.finish_and_clear();
             }
             println!("  {} Download complete", "✓".green());
-        } else if msg.contains("SEQUOIA manifest already exists")
-            || msg.contains("SEQUOIA manifest was created")
+        } else if msg.contains("HERALD manifest already exists")
+            || msg.contains("HERALD manifest was created")
         {
             // Show manifest exists - no processing needed
             if let Some(s) = spinner.take() {
@@ -400,7 +400,7 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
             drop(tl);
 
             println!("\n  {} Store in repository", "●".yellow());
-            *spinner = Some(create_spinner("Storing chunks in SEQUOIA repository..."));
+            *spinner = Some(create_spinner("Storing chunks in HERALD repository..."));
         } else if msg.contains("All chunks stored") {
             if let Some(s) = spinner.take() {
                 s.finish_and_clear();
@@ -600,7 +600,7 @@ pub fn run_database_download(args: DownloadArgs, database_source: DatabaseSource
                 tree_item(
                     false,
                     "Storage",
-                    Some("Database chunked and stored in SEQUOIA"),
+                    Some("Database chunked and stored in HERALD"),
                 );
                 tree_item(true, "Updates", Some("Future updates will be incremental"));
                 println!();

@@ -101,22 +101,22 @@ mkdir -p "$RESULTS_DIR"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RESULT_FILE="$RESULTS_DIR/benchmark_${TIMESTAMP}.txt"
 
-# Run sequoia benchmarks
-echo -e "${YELLOW}Running SEQUOIA benchmarks...${NC}"
+# Run herald benchmarks
+echo -e "${YELLOW}Running HERALD benchmarks...${NC}"
 echo
-cargo bench -p talaria-sequoia --bench sequoia_benchmarks -- ${FILTER} --noplot | tee "$RESULT_FILE"
+cargo bench -p talaria-herald --bench herald_benchmarks -- ${FILTER} --noplot | tee "$RESULT_FILE"
 
 # Run download/chunking benchmarks
 echo
 echo -e "${YELLOW}Running download/chunking benchmarks...${NC}"
 echo
-cargo bench -p talaria-sequoia --bench download_chunking_bench -- ${FILTER} --noplot | tee -a "$RESULT_FILE"
+cargo bench -p talaria-herald --bench download_chunking_bench -- ${FILTER} --noplot | tee -a "$RESULT_FILE"
 
 # Run integration performance tests
 echo
 echo -e "${YELLOW}Running performance regression tests...${NC}"
 echo
-cargo test -p talaria-sequoia --test performance_test --release -- --nocapture | tee -a "$RESULT_FILE"
+cargo test -p talaria-herald --test performance_test --release -- --nocapture | tee -a "$RESULT_FILE"
 
 # Analyze results
 echo

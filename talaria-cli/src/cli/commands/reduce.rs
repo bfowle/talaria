@@ -8,16 +8,16 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use talaria_utils::display::format::format_bytes;
-use talaria_utils::workspace::SequoiaWorkspaceManager;
+use talaria_utils::workspace::HeraldWorkspaceManager;
 
 #[derive(Args, Debug)]
 pub struct ReduceArgs {
     /// Database to reduce (e.g., "uniprot/swissprot", "custom/taxids_9606")
-    /// Must be a database that exists in the SEQUOIA repository
+    /// Must be a database that exists in the HERALD repository
     #[arg(value_name = "DATABASE")]
     pub database: String,
 
-    /// Output reduced FASTA file (optional - stores in SEQUOIA by default)
+    /// Output reduced FASTA file (optional - stores in HERALD by default)
     #[arg(short = 'o', long = "output-fasta", value_name = "FILE")]
     pub output: Option<PathBuf>,
 
@@ -75,7 +75,7 @@ pub struct ReduceArgs {
     #[arg(long)]
     pub taxonomy_aware: bool,
 
-    /// Use taxonomy data to weight alignment scores (requires taxonomy data in FASTA or SEQUOIA)
+    /// Use taxonomy data to weight alignment scores (requires taxonomy data in FASTA or HERALD)
     #[arg(long)]
     pub use_taxonomy_weights: bool,
 
@@ -118,13 +118,13 @@ pub struct ReduceArgs {
     #[arg(long, value_name = "NAME")]
     pub profile: Option<String>,
 
-    /// Output to SEQUOIA repository instead of files
+    /// Output to HERALD repository instead of files
     #[arg(long)]
-    pub sequoia_output: bool,
+    pub herald_output: bool,
 
-    /// SEQUOIA repository path (default: ${TALARIA_HOME}/databases)
+    /// HERALD repository path (default: ${TALARIA_HOME}/databases)
     #[arg(long, value_name = "PATH")]
-    pub sequoia_path: Option<PathBuf>,
+    pub herald_path: Option<PathBuf>,
 
     /// Skip visualization charts in output
     #[arg(long)]
@@ -146,8 +146,8 @@ pub struct ReduceArgs {
 /// Parse the selection algorithm string into the enum
 fn parse_selection_algorithm(
     algorithm: &str,
-) -> anyhow::Result<talaria_sequoia::SelectionAlgorithm> {
-    use talaria_sequoia::SelectionAlgorithm;
+) -> anyhow::Result<talaria_herald::SelectionAlgorithm> {
+    use talaria_herald::SelectionAlgorithm;
 
     match algorithm.to_lowercase().as_str() {
         "single-pass" | "singlepass" | "single_pass" => Ok(SelectionAlgorithm::SinglePass),
@@ -161,7 +161,7 @@ fn parse_selection_algorithm(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use talaria_sequoia::SelectionAlgorithm;
+    use talaria_herald::SelectionAlgorithm;
 
     #[test]
     fn test_parse_selection_algorithm_valid() {
@@ -340,11 +340,11 @@ mod tests {
     #[test]
     fn test_output_format_validation() {
         // Test that output formats are correctly handled
-        let valid_formats = vec!["fasta", "sequoia", "json"];
+        let valid_formats = vec!["fasta", "herald", "json"];
 
         for format in valid_formats {
             assert!(
-                format == "fasta" || format == "sequoia" || format == "json",
+                format == "fasta" || format == "herald" || format == "json",
                 "Invalid output format: {}",
                 format
             );
@@ -418,12 +418,12 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     // Initialize formatter
     crate::cli::formatting::formatter::init();
 
-    // Initialize SEQUOIA workspace manager
-    let mut sequoia_manager = SequoiaWorkspaceManager::new()?;
+    // Initialize HERALD workspace manager
+    let mut herald_manager = HeraldWorkspaceManager::new()?;
 
     // Create workspace for this reduction operation
     let command = format!("reduce {:?}", &args);
-    let workspace = Arc::new(Mutex::new(sequoia_manager.create_workspace(&command)?));
+    let workspace = Arc::new(Mutex::new(herald_manager.create_workspace(&command)?));
 
     // Get threads from environment or default
     args.threads = std::env::var("TALARIA_THREADS")
@@ -439,7 +439,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     }
 
     // Validate database exists
-    use talaria_sequoia::database::DatabaseManager;
+    use talaria_herald::database::DatabaseManager;
     let db_manager = DatabaseManager::new(None)?;
 
     // Parse database reference
@@ -467,14 +467,14 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
             )
         })?;
     let db_version = db_info.version.clone();
-    // Assemble FASTA from SEQUOIA chunks
+    // Assemble FASTA from HERALD chunks
     let temp_file = workspace
         .lock()
         .unwrap()
         .get_file_path("input_fasta", "fasta");
 
     // Map database to internal source enum (for taxonomy mapping later)
-    use talaria_sequoia::download::{DatabaseSource, NCBIDatabase, UniProtDatabase};
+    use talaria_herald::download::{DatabaseSource, NCBIDatabase, UniProtDatabase};
     let database_source = match db_full_name.as_str() {
         "uniprot/swissprot" => Some(DatabaseSource::UniProt(UniProtDatabase::SwissProt)),
         "uniprot/trembl" => Some(DatabaseSource::UniProt(UniProtDatabase::TrEMBL)),
@@ -535,13 +535,13 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         )?
     } else {
         // Non-streaming mode: load full manifest and assemble
-        spinner.set_message("Loading database manifest from SEQUOIA...");
+        spinner.set_message("Loading database manifest from HERALD...");
         let manifest = db_manager.get_manifest(&db_full_name)?;
 
-        spinner.set_message("Assembling database from SEQUOIA chunks...");
+        spinner.set_message("Assembling database from HERALD chunks...");
 
         use std::io::Write;
-        use talaria_sequoia::operations::FastaAssembler;
+        use talaria_herald::operations::FastaAssembler;
 
         let assembler = FastaAssembler::new(db_manager.get_storage());
         let chunk_hashes: Vec<_> = manifest
@@ -573,7 +573,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     // Start database preparation section
     subsection_header("Database Preparation");
     success(&format!(
-        "Assembled {} sequences from SEQUOIA chunks",
+        "Assembled {} sequences from HERALD chunks",
         format_number(sequence_count)
     ));
 
@@ -836,7 +836,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
 
     // Apply processing pipeline if batch processing or filtering is enabled
     if args.batch || args.low_complexity_filter {
-        use talaria_sequoia::processing::{
+        use talaria_herald::processing::{
             create_reduction_pipeline, BatchProcessor, ProcessingPipeline,
         };
 
@@ -916,7 +916,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
 
     // Run reduction pipeline with workspace
     task_list.update_task(select_task, TaskStatus::InProgress);
-    let mut reducer = talaria_sequoia::Reducer::new(config)
+    let mut reducer = talaria_herald::Reducer::new(config)
         .with_selection_mode(
             args.similarity_threshold.is_some() || args.align_select,
             args.align_select,
@@ -932,14 +932,14 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         .with_workspace(workspace.clone()); // Pass workspace to reducer
 
     // Run reduction with better error handling
-    // Convert CLI TargetAligner to SEQUOIA TargetAligner
+    // Convert CLI TargetAligner to HERALD TargetAligner
     let target_aligner = match args.target_aligner {
-        crate::cli::TargetAligner::Lambda => talaria_sequoia::TargetAligner::Lambda,
-        crate::cli::TargetAligner::Blast => talaria_sequoia::TargetAligner::Blast,
-        crate::cli::TargetAligner::Kraken => talaria_sequoia::TargetAligner::Kraken,
-        crate::cli::TargetAligner::Diamond => talaria_sequoia::TargetAligner::Diamond,
-        crate::cli::TargetAligner::MMseqs2 => talaria_sequoia::TargetAligner::MMseqs2,
-        crate::cli::TargetAligner::Generic => talaria_sequoia::TargetAligner::Generic,
+        crate::cli::TargetAligner::Lambda => talaria_herald::TargetAligner::Lambda,
+        crate::cli::TargetAligner::Blast => talaria_herald::TargetAligner::Blast,
+        crate::cli::TargetAligner::Kraken => talaria_herald::TargetAligner::Kraken,
+        crate::cli::TargetAligner::Diamond => talaria_herald::TargetAligner::Diamond,
+        crate::cli::TargetAligner::MMseqs2 => talaria_herald::TargetAligner::MMseqs2,
+        crate::cli::TargetAligner::Generic => talaria_herald::TargetAligner::Generic,
     };
     let reduction_result = reducer.reduce(sequences, reduction_ratio, target_aligner);
 
@@ -1001,7 +1001,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     })?;
 
     // Determine output method
-    let use_sequoia_storage = args.output.is_none();
+    let use_herald_storage = args.output.is_none();
 
     // Generate output paths
     let (output_path, metadata_path) = if let Some(specified_output) = &args.output {
@@ -1023,22 +1023,22 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         };
         (specified_output.clone(), metadata_path)
     } else {
-        // SEQUOIA storage mode - these are placeholder paths as actual storage goes to SEQUOIA repository
+        // HERALD storage mode - these are placeholder paths as actual storage goes to HERALD repository
         (
-            PathBuf::from("sequoia_storage"),
-            PathBuf::from("sequoia_storage.deltas"),
+            PathBuf::from("herald_storage"),
+            PathBuf::from("herald_storage.deltas"),
         )
     };
 
-    // Choose output method: SEQUOIA storage (default) or traditional files
-    let output_size = if use_sequoia_storage || args.sequoia_output {
-        // Output to SEQUOIA repository
-        task_list.set_task_message(write_task, "Storing reduction in SEQUOIA repository...");
+    // Choose output method: HERALD storage (default) or traditional files
+    let output_size = if use_herald_storage || args.herald_output {
+        // Output to HERALD repository
+        task_list.set_task_message(write_task, "Storing reduction in HERALD repository...");
 
         // Use DatabaseManager to access unified repository
         // Note: db_manager was already created earlier to validate database exists
 
-        let size = store_reduction_in_sequoia(
+        let size = store_reduction_in_herald(
             &db_manager,
             &actual_input,
             &references,
@@ -1143,8 +1143,8 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     // Mark workspace as completed successfully
     workspace.lock().unwrap().mark_completed()?;
 
-    // Log operation to SEQUOIA
-    sequoia_manager.log_operation(
+    // Log operation to HERALD
+    herald_manager.log_operation(
         "reduce",
         &format!(
             "Completed: {} sequences -> {} references",
@@ -1156,9 +1156,9 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Store reduction results in SEQUOIA repository
-fn store_reduction_in_sequoia(
-    db_manager: &talaria_sequoia::database::DatabaseManager,
+/// Store reduction results in HERALD repository
+fn store_reduction_in_herald(
+    db_manager: &talaria_herald::database::DatabaseManager,
     input_path: &PathBuf,
     references: &[talaria_bio::sequence::Sequence],
     deltas: &[talaria_bio::compression::DeltaRecord],
@@ -1171,11 +1171,11 @@ fn store_reduction_in_sequoia(
     dataset: &str,
     version: &str,
 ) -> anyhow::Result<u64> {
-    // use talaria_sequoia::chunker::TaxonomicChunker; // Disabled until reduce is updated
+    // use talaria_herald::chunker::TaxonomicChunker; // Disabled until reduce is updated
     use std::collections::HashMap;
     use std::time::Instant;
-    use talaria_sequoia::SHA256Hash;
-    use talaria_sequoia::{
+    use talaria_herald::SHA256Hash;
+    use talaria_herald::{
         delta::DeltaGeneratorConfig,
         operations::reduction::{
             DeltaChunkRef, ReductionManifest, ReductionParameters, ReferenceChunk,
@@ -1185,8 +1185,8 @@ fn store_reduction_in_sequoia(
 
     let start = Instant::now();
 
-    // Access the unified SEQUOIA repository from DatabaseManager
-    let sequoia = db_manager.get_repository();
+    // Access the unified HERALD repository from DatabaseManager
+    let herald = db_manager.get_repository();
 
     // Storage optimization is handled by DatabaseManager
     // No need for separate optimization here since we're using the unified repository
@@ -1215,18 +1215,18 @@ fn store_reduction_in_sequoia(
     };
 
     // Create reduction parameters
-    // Convert CLI TargetAligner to SEQUOIA TargetAligner
-    let target_aligner_sequoia = match args.target_aligner {
-        crate::cli::TargetAligner::Lambda => talaria_sequoia::TargetAligner::Lambda,
-        crate::cli::TargetAligner::Blast => talaria_sequoia::TargetAligner::Blast,
-        crate::cli::TargetAligner::Kraken => talaria_sequoia::TargetAligner::Kraken,
-        crate::cli::TargetAligner::Diamond => talaria_sequoia::TargetAligner::Diamond,
-        crate::cli::TargetAligner::MMseqs2 => talaria_sequoia::TargetAligner::MMseqs2,
-        crate::cli::TargetAligner::Generic => talaria_sequoia::TargetAligner::Generic,
+    // Convert CLI TargetAligner to HERALD TargetAligner
+    let target_aligner_herald = match args.target_aligner {
+        crate::cli::TargetAligner::Lambda => talaria_herald::TargetAligner::Lambda,
+        crate::cli::TargetAligner::Blast => talaria_herald::TargetAligner::Blast,
+        crate::cli::TargetAligner::Kraken => talaria_herald::TargetAligner::Kraken,
+        crate::cli::TargetAligner::Diamond => talaria_herald::TargetAligner::Diamond,
+        crate::cli::TargetAligner::MMseqs2 => talaria_herald::TargetAligner::MMseqs2,
+        crate::cli::TargetAligner::Generic => talaria_herald::TargetAligner::Generic,
     };
     let parameters = ReductionParameters {
         reduction_ratio,
-        target_aligner: Some(target_aligner_sequoia),
+        target_aligner: Some(target_aligner_herald),
         min_length: args.min_length,
         similarity_threshold: args.similarity_threshold.unwrap_or(0.9),
         taxonomy_aware: args.taxonomy_aware,
@@ -1235,11 +1235,11 @@ fn store_reduction_in_sequoia(
         no_deltas: args.no_deltas,
     };
 
-    // Get actual source manifest if input was from SEQUOIA
+    // Get actual source manifest if input was from HERALD
     // Check if the path is within a Talaria databases directory
     let databases_dir = talaria_core::system::paths::talaria_databases_dir();
     let source_manifest_hash = if input_path.starts_with(&databases_dir) {
-        // Try to find manifest.json in the SEQUOIA structure
+        // Try to find manifest.json in the HERALD structure
         let mut current = input_path.clone();
         loop {
             let manifest_path = current.join("manifest.json");
@@ -1270,12 +1270,12 @@ fn store_reduction_in_sequoia(
     action("Chunking reference sequences...");
 
     use std::sync::Arc;
-    use talaria_sequoia::chunker::TaxonomicChunker;
-    use talaria_sequoia::ChunkingStrategy;
+    use talaria_herald::chunker::TaxonomicChunker;
+    use talaria_herald::ChunkingStrategy;
 
-    // Reuse the existing SequenceStorage from SEQUOIA repository
+    // Reuse the existing SequenceStorage from HERALD repository
     // This avoids double-initialization of RocksDB
-    let sequence_storage = Arc::clone(&sequoia.storage.sequence_storage);
+    let sequence_storage = Arc::clone(&herald.storage.sequence_storage);
 
     // Create database source for chunker
     let db_source = match source {
@@ -1354,7 +1354,7 @@ fn store_reduction_in_sequoia(
         .par_iter()
         .map(|manifest| {
             // Store the manifest (not the chunk with data!)
-            let chunk_hash = sequoia.storage.store_chunk_manifest(manifest)?;
+            let chunk_hash = herald.storage.store_chunk_manifest(manifest)?;
 
             // Get sequence IDs from the manifest's sequence_refs
             let mut sequence_ids = Vec::new();
@@ -1491,7 +1491,7 @@ fn store_reduction_in_sequoia(
             let delta_results: Vec<_> = delta_chunks
                 .par_iter()
                 .map(|delta_chunk| {
-                    let delta_hash = sequoia.storage.store_delta_chunk(delta_chunk)?;
+                    let delta_hash = herald.storage.store_delta_chunk(delta_chunk)?;
 
                     let delta_ref = DeltaChunkRef {
                         chunk_hash: delta_hash,
@@ -1536,8 +1536,8 @@ fn store_reduction_in_sequoia(
     manifest.calculate_statistics(original_count, input_size, elapsed);
 
     // Store the reduction manifest as a profile in the database version directory
-    action("Storing manifest in SEQUOIA repository...");
-    let manifest_hash = sequoia
+    action("Storing manifest in HERALD repository...");
+    let manifest_hash = herald
         .storage
         .store_database_reduction_manifest(&manifest, source, dataset, version)?;
 
@@ -1551,7 +1551,7 @@ fn store_reduction_in_sequoia(
     // Calculate total size
     let total_size = manifest.statistics.total_size_with_deltas;
 
-    success("Reduction stored in SEQUOIA repository");
+    success("Reduction stored in HERALD repository");
 
     let mut details = vec![
         ("Database", source_database.clone()),
@@ -1579,7 +1579,7 @@ fn store_reduction_in_sequoia(
     // Generate report if requested
     if let Some(report_path) = args.report_output.clone().or(args.html_report.clone()) {
         use std::time::Duration;
-        use talaria_sequoia::operations::ReductionResult;
+        use talaria_herald::operations::ReductionResult;
 
         let result = ReductionResult {
             statistics: manifest.statistics.clone(),
@@ -1722,14 +1722,14 @@ fn reduce_in_chunks(
     let mut all_deltas: Vec<talaria_bio::compression::DeltaRecord> = Vec::new();
     let mut reference_ids: HashSet<String> = HashSet::new();
 
-    // Convert CLI TargetAligner to SEQUOIA TargetAligner once
+    // Convert CLI TargetAligner to HERALD TargetAligner once
     let target_aligner = match args.target_aligner {
-        crate::cli::TargetAligner::Lambda => talaria_sequoia::TargetAligner::Lambda,
-        crate::cli::TargetAligner::Blast => talaria_sequoia::TargetAligner::Blast,
-        crate::cli::TargetAligner::Kraken => talaria_sequoia::TargetAligner::Kraken,
-        crate::cli::TargetAligner::Diamond => talaria_sequoia::TargetAligner::Diamond,
-        crate::cli::TargetAligner::MMseqs2 => talaria_sequoia::TargetAligner::MMseqs2,
-        crate::cli::TargetAligner::Generic => talaria_sequoia::TargetAligner::Generic,
+        crate::cli::TargetAligner::Lambda => talaria_herald::TargetAligner::Lambda,
+        crate::cli::TargetAligner::Blast => talaria_herald::TargetAligner::Blast,
+        crate::cli::TargetAligner::Kraken => talaria_herald::TargetAligner::Kraken,
+        crate::cli::TargetAligner::Diamond => talaria_herald::TargetAligner::Diamond,
+        crate::cli::TargetAligner::MMseqs2 => talaria_herald::TargetAligner::MMseqs2,
+        crate::cli::TargetAligner::Generic => talaria_herald::TargetAligner::Generic,
     };
 
     // Stream and process chunks one at a time (memory efficient!)
@@ -1743,7 +1743,7 @@ fn reduce_in_chunks(
         );
 
         // Create reducer for this chunk
-        let mut reducer = talaria_sequoia::Reducer::new(config.clone())
+        let mut reducer = talaria_herald::Reducer::new(config.clone())
             .with_selection_mode(
                 args.similarity_threshold.is_some() || args.align_select,
                 args.align_select,
@@ -1817,9 +1817,9 @@ fn reduce_in_chunks(
         s.final_output_sequences = all_references.len() + all_deltas.len();
     })?;
 
-    // Store results in SEQUOIA
+    // Store results in HERALD
     task_list.update_task(write_task, TaskStatus::InProgress);
-    task_list.set_task_message(write_task, "Storing reduction in SEQUOIA repository...");
+    task_list.set_task_message(write_task, "Storing reduction in HERALD repository...");
 
     // Get input file size
     let input_size = std::fs::metadata(input_path)?.len();
@@ -1833,7 +1833,7 @@ fn reduce_in_chunks(
     };
 
     // Get database version
-    use talaria_sequoia::database::DatabaseManager;
+    use talaria_herald::database::DatabaseManager;
     let db_manager = DatabaseManager::new(None)?;
     let databases = db_manager.list_databases()?;
     let db_full_name = format!("{}/{}", source, dataset);
@@ -1843,7 +1843,7 @@ fn reduce_in_chunks(
         .ok_or_else(|| anyhow::anyhow!("Database '{}' not found", db_full_name))?;
     let db_version = db_info.version.clone();
 
-    let output_size = store_reduction_in_sequoia(
+    let output_size = store_reduction_in_herald(
         &db_manager,
         input_path,
         &all_references,

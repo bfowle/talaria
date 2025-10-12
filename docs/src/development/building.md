@@ -127,7 +127,7 @@ talaria/
 │   ├── Cargo.toml
 │   └── src/
 │
-├── talaria-sequoia/           # SEQUOIA system
+├── talaria-herald/           # HERALD system
 │   ├── Cargo.toml
 │   └── src/
 │
@@ -175,11 +175,11 @@ cargo doc --workspace --no-deps --open
 # Build only the CLI
 cd talaria-cli && cargo build --release
 
-# Build only the SEQUOIA library
-cd talaria-sequoia && cargo build --release
+# Build only the HERALD library
+cd talaria-herald && cargo build --release
 
 # Build as library (no CLI)
-cargo build -p talaria-sequoia -p talaria-bio -p talaria-storage
+cargo build -p talaria-herald -p talaria-bio -p talaria-storage
 ```
 
 ### Build Profiles
@@ -234,10 +234,10 @@ Each crate has its own features. Key features:
 | `interactive` | Terminal UI | ✓ |
 | `html-report` | HTML report generation | ✓ |
 
-#### talaria-sequoia Features
+#### talaria-herald Features
 | Feature | Description | Default |
 |---------|-------------|---------|
-| `default` | Core SEQUOIA features | ✓ |
+| `default` | Core HERALD features | ✓ |
 | `cloud` | Cloud storage support | ✗ |
 | `distributed` | Distributed processing | ✗ |
 
@@ -288,11 +288,11 @@ Add to your project's `Cargo.toml`:
 ```toml
 [dependencies]
 talaria-bio = { git = "https://github.com/yourusername/talaria" }
-talaria-sequoia = { git = "https://github.com/yourusername/talaria" }
+talaria-herald = { git = "https://github.com/yourusername/talaria" }
 
 # Or from local path
 talaria-bio = { path = "../talaria/talaria-bio" }
-talaria-sequoia = { path = "../talaria/talaria-sequoia" }
+talaria-herald = { path = "../talaria/talaria-herald" }
 ```
 
 ## Testing
@@ -304,7 +304,7 @@ talaria-sequoia = { path = "../talaria/talaria-sequoia" }
 cargo test --workspace
 
 # Run tests for specific crate
-cargo test -p talaria-sequoia
+cargo test -p talaria-herald
 
 # Run integration tests only
 cargo test --test '*'

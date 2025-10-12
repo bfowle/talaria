@@ -39,7 +39,7 @@ pub struct UpdateArgs {
 
 pub fn run(args: UpdateArgs) -> Result<()> {
     use crate::cli::formatting::output::format_number;
-    use talaria_sequoia::database::DatabaseManager;
+    use talaria_herald::database::DatabaseManager;
 
     // Header based on mode
     if args.dry_run {
@@ -180,7 +180,7 @@ pub fn run(args: UpdateArgs) -> Result<()> {
 
     // Generate report if requested
     if let Some(report_path) = &args.report_output {
-        use talaria_sequoia::operations::{
+        use talaria_herald::operations::{
             ChunkAnalysis, DatabaseComparison, SequenceAnalysis, StorageMetrics, TaxonomyAnalysis,
             UpdateResult,
         };
@@ -255,11 +255,11 @@ enum UpdateStatus {
 }
 
 fn check_database_update(
-    manager: &mut talaria_sequoia::database::DatabaseManager,
+    manager: &mut talaria_herald::database::DatabaseManager,
     database: &str,
     force: bool,
 ) -> Result<UpdateStatus> {
-    use talaria_sequoia::download::{DatabaseSource, NCBIDatabase, UniProtDatabase};
+    use talaria_herald::download::{DatabaseSource, NCBIDatabase, UniProtDatabase};
     use talaria_utils::database::database_ref::parse_database_ref;
 
     // Parse database reference to get source
@@ -294,7 +294,7 @@ fn check_database_update(
             // Check for actual updates
             let progress = |_msg: &str| {};
             match manager.check_for_updates(&source, progress).await {
-                Ok(talaria_sequoia::database::DownloadResult::UpToDate) => {
+                Ok(talaria_herald::database::DownloadResult::UpToDate) => {
                     Ok(UpdateStatus::UpToDate {
                         version: manager
                             .get_current_version_info(&source)
@@ -302,22 +302,22 @@ fn check_database_update(
                             .unwrap_or_else(|_| "unknown".to_string()),
                     })
                 }
-                Ok(talaria_sequoia::database::DownloadResult::Updated { .. }) => {
+                Ok(talaria_herald::database::DownloadResult::Updated { .. }) => {
                     Ok(UpdateStatus::UpdateAvailable {
                         current: "current".to_string(),
                         latest: "new version available".to_string(),
                     })
                 }
-                Ok(talaria_sequoia::database::DownloadResult::InitialDownload { .. }) => {
+                Ok(talaria_herald::database::DownloadResult::InitialDownload { .. }) => {
                     Ok(UpdateStatus::NotFound)
                 }
-                Ok(talaria_sequoia::database::DownloadResult::Downloaded { .. }) => {
+                Ok(talaria_herald::database::DownloadResult::Downloaded { .. }) => {
                     Ok(UpdateStatus::UpdateAvailable {
                         current: "none".to_string(),
                         latest: "downloaded".to_string(),
                     })
                 }
-                Ok(talaria_sequoia::database::DownloadResult::AlreadyExists { .. }) => {
+                Ok(talaria_herald::database::DownloadResult::AlreadyExists { .. }) => {
                     Ok(UpdateStatus::UpToDate {
                         version: manager
                             .get_current_version_info(&source)
@@ -334,7 +334,7 @@ fn check_database_update(
 }
 
 fn check_taxonomy_update(
-    manager: &mut talaria_sequoia::database::DatabaseManager,
+    manager: &mut talaria_herald::database::DatabaseManager,
     force: bool,
 ) -> Result<UpdateStatus> {
     // Get current taxonomy version

@@ -10,7 +10,7 @@
 
 **Conclusions:** By treating biological sequences as content-addressed objects with evolutionary relationships, HERALD solves three fundamental problems: inefficient distribution through repeated full downloads, storage explosion from version duplication, and computational bottlenecks from oversized indices. This unified approach transforms biological database infrastructure, enabling daily snapshots, perfect reproducibility through cryptographic verification, and democratized access to large-scale sequence analysis.
 
-**Availability:** Reference implementation available at [GitHub](https://github.com/Andromeda-Tech/talaria).
+**Availability:** Reference implementation available at [GitHub](https://github.com/bfowle/talaria).
 
 ## Introduction
 
@@ -791,4 +791,4 @@ We thank the RocksDB team for their high-performance storage engine and the bioi
 
 ## Supplementary Materials
 
-Supplementary materials, including detailed algorithms, proof details, and benchmark scripts, are available at [GitHub](https://github.com/Andromeda-Tech/herald-supplement).
+Supplementary materials, including detailed algorithms, proof details, and benchmark scripts, are available at [GitHub](https://github.com/bfowle/herald-supplement).

@@ -2,8 +2,8 @@ use anyhow::Result;
 use clap::{Args, Subcommand};
 use colored::Colorize;
 
-use talaria_sequoia::backup::BackupManager;
-use talaria_sequoia::database::DatabaseManager;
+use talaria_herald::backup::BackupManager;
+use talaria_herald::database::DatabaseManager;
 
 #[derive(Debug, Args)]
 pub struct BackupCommand {

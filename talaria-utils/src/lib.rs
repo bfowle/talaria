@@ -53,8 +53,8 @@ pub use parallel::{
 
 // Workspace utilities
 pub use workspace::{
-    find_workspace, list_workspaces, SequoiaStatistics, SequoiaTransaction,
-    SequoiaWorkspaceManager, TempWorkspace, WorkspaceConfig, WorkspaceMetadata, WorkspaceStats,
+    find_workspace, list_workspaces, HeraldStatistics, HeraldTransaction,
+    HeraldWorkspaceManager, TempWorkspace, WorkspaceConfig, WorkspaceMetadata, WorkspaceStats,
     WorkspaceStatus,
 };
 

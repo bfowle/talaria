@@ -1,10 +1,10 @@
-/// Scale tests for cross-database deduplication in SEQUOIA
+/// Scale tests for cross-database deduplication in HERALD
 ///
 /// These tests verify that identical sequences across different databases
 /// (UniProt, NCBI, RefSeq) are stored only once, achieving true deduplication
 
-use talaria_sequoia::{
-    storage::{SequoiaStorage, SequenceStorage},
+use talaria_herald::{
+    storage::{HeraldStorage, SequenceStorage},
     chunker::{ChunkingStrategy, TaxonomicChunker, HierarchicalTaxonomicChunker},
     types::{DatabaseSource, ChunkManifest},
 };
@@ -59,7 +59,7 @@ fn generate_test_sequences(
 #[test]
 fn test_cross_database_deduplication_small() {
     let temp_dir = TempDir::new().unwrap();
-    let storage = SequoiaStorage::new(temp_dir.path()).unwrap();
+    let storage = HeraldStorage::new(temp_dir.path()).unwrap();
     let sequence_storage = SequenceStorage::new(temp_dir.path()).unwrap();
 
     // Test with small dataset
@@ -110,7 +110,7 @@ fn test_cross_database_deduplication_small() {
 #[test]
 fn test_cross_database_deduplication_medium() {
     let temp_dir = TempDir::new().unwrap();
-    let storage = SequoiaStorage::new(temp_dir.path()).unwrap();
+    let storage = HeraldStorage::new(temp_dir.path()).unwrap();
     let sequence_storage = SequenceStorage::new(temp_dir.path()).unwrap();
 
     // Test with medium dataset
@@ -174,7 +174,7 @@ fn test_cross_database_deduplication_medium() {
 #[ignore] // Run with --ignored for large scale test
 fn test_cross_database_deduplication_large() {
     let temp_dir = TempDir::new().unwrap();
-    let storage = SequoiaStorage::new(temp_dir.path()).unwrap();
+    let storage = HeraldStorage::new(temp_dir.path()).unwrap();
     let sequence_storage = SequenceStorage::new(temp_dir.path()).unwrap();
 
     println!("Starting large scale cross-database deduplication test...");
@@ -366,7 +366,7 @@ fn test_cross_database_manifest_sharing() {
         chunk_hash: SHA256Hash::compute(b"test_manifest"),
         sequence_refs: vec![uniprot_hash.clone(), ncbi_hash.clone()],
         taxon_ids: vec![TaxonId(9606), TaxonId(10090)],
-        chunk_type: talaria_sequoia::types::ChunkClassification::Full,
+        chunk_type: talaria_herald::types::ChunkClassification::Full,
         total_size: 1000,
         sequence_count: 2,
         created_at: chrono::Utc::now(),

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Implemented a three-tier bloom filter architecture for optimal deduplication performance in SEQUOIA storage. This dramatically reduces disk I/O during sequence ingestion by filtering out duplicate checks before they hit RocksDB.
+Implemented a three-tier bloom filter architecture for optimal deduplication performance in HERALD storage. This dramatically reduces disk I/O during sequence ingestion by filtering out duplicate checks before they hit RocksDB.
 
 ## Architecture
 
@@ -25,7 +25,7 @@ Implemented a three-tier bloom filter architecture for optimal deduplication per
 
 ## Key Changes
 
-### 1. Store Chunk Optimization (`talaria-sequoia/src/storage/core.rs:196`)
+### 1. Store Chunk Optimization (`talaria-herald/src/storage/core.rs:196`)
 
 ```rust
 pub fn store_chunk(&self, data: &[u8], compress: bool) -> Result<SHA256Hash> {
@@ -45,7 +45,7 @@ pub fn store_chunk(&self, data: &[u8], compress: bool) -> Result<SHA256Hash> {
 
 **Impact**: Eliminates ~99% of RocksDB lookups for duplicate sequences
 
-### 2. Batch Operations (`talaria-sequoia/src/storage/core.rs:239`)
+### 2. Batch Operations (`talaria-herald/src/storage/core.rs:239`)
 
 Implemented 4-phase optimized batch processing:
 
@@ -56,7 +56,7 @@ Implemented 4-phase optimized batch processing:
 
 **Impact**: 10x speedup for batch operations (50k sequences: 5 minutes → 30-60 seconds)
 
-### 3. Unified Existence Check (`talaria-sequoia/src/storage/core.rs:363`)
+### 3. Unified Existence Check (`talaria-herald/src/storage/core.rs:363`)
 
 ```rust
 pub fn chunk_exists_fast(&self, hash: &SHA256Hash) -> Result<bool> {
@@ -88,7 +88,7 @@ cf_names::MANIFESTS => {
 }
 ```
 
-### 5. Configuration System (`talaria-sequoia/src/config.rs`)
+### 5. Configuration System (`talaria-herald/src/config.rs`)
 
 Added `BloomFilterConfig` for tuning:
 
@@ -130,7 +130,7 @@ export TALARIA_ROCKSDB_BLOOM_BITS=15.0  # Increased precision
 export TALARIA_ROCKSDB_CACHE_MB=8192    # Larger cache for filters
 ```
 
-### Configuration File (`~/.talaria/sequoia.toml`)
+### Configuration File (`~/.talaria/herald.toml`)
 
 ```toml
 [storage.bloom_filter]
@@ -167,10 +167,10 @@ The bloom filter is automatically maintained during normal operations. No code c
 
 ### Manual Control
 ```rust
-use talaria_sequoia::config::SequoiaConfig;
+use talaria_herald::config::HeraldConfig;
 
-let config = SequoiaConfig::load()?;
-let storage = SequoiaStorage::with_config(&path, config)?;
+let config = HeraldConfig::load()?;
+let storage = HeraldStorage::with_config(&path, config)?;
 
 // Fast existence check
 if storage.chunk_exists_fast(&hash)? {
@@ -184,14 +184,14 @@ if storage.chunk_exists_fast(&hash)? {
 
 Run performance benchmarks:
 ```bash
-cargo bench -p talaria-sequoia -- bloom_filter
-cargo bench -p talaria-sequoia -- batch_50000
+cargo bench -p talaria-herald -- bloom_filter
+cargo bench -p talaria-herald -- batch_50000
 ```
 
 ### Integration Tests
 
 ```bash
-cargo test -p talaria-sequoia -- --test-threads=1
+cargo test -p talaria-herald -- --test-threads=1
 ```
 
 ## Migration

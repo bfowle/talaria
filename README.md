@@ -16,7 +16,7 @@
 
 ## Overview
 
-Talaria is a cutting-edge bioinformatics tool that intelligently reduces biological sequence databases (FASTA files) to optimize them for indexing with various aligners. By leveraging content-addressed storage, Merkle DAGs, and bi-temporal versioning through the SEQUOIA architecture, Talaria achieves 60-70% size reduction while maintaining biological coverage.
+Talaria is a cutting-edge bioinformatics tool that intelligently reduces biological sequence databases (FASTA files) to optimize them for indexing with various aligners. By leveraging content-addressed storage, Merkle DAGs, and bi-temporal versioning through the HERALD architecture, Talaria achieves 60-70% size reduction while maintaining biological coverage.
 
 ### Key Features
 
@@ -26,12 +26,12 @@ Talaria is a cutting-edge bioinformatics tool that intelligently reduces biologi
 - **Multi-Aligner Support**: Optimized for LAMBDA, BLAST, DIAMOND, MMseqs2, Kraken
 - **Memory Efficient**: Streaming architecture handles databases of any size
 - **Quality Validation**: Built-in metrics and coverage analysis
-- **Temporal Versioning**: Bi-temporal database tracking with SEQUOIA
+- **Temporal Versioning**: Bi-temporal database tracking with HERALD
 - **Cloud Ready**: S3, GCS, and Azure Blob Storage support
 
 ### Revolutionary Performance with Unified Packed Storage
 
-Talaria's SEQUOIA architecture achieves unprecedented performance through unified packed storage:
+Talaria's HERALD architecture achieves unprecedented performance through unified packed storage:
 
 - **5,500× Fewer Files**: Store 2.2M items in just 400 pack files instead of 2.2M individual files
 - **<1 Second Startup**: Instant startup compared to 10+ seconds with traditional storage
@@ -124,22 +124,22 @@ talaria reduce -i bacteria.fasta -o kraken_optimized.fasta \
   --kmer-size 31
 ```
 
-### Database Management with SEQUOIA
+### Database Management with HERALD
 
 ```bash
-# Initialize SEQUOIA repository
-talaria sequoia init --path /data/sequoia
+# Initialize HERALD repository
+talaria herald init --path /data/herald
 
 # Add sequences to repository
-talaria sequoia add --path /data/sequoia --input sequences.fasta
+talaria herald add --path /data/herald --input sequences.fasta
 
 # Query at specific time point
-talaria sequoia query --path /data/sequoia \
+talaria herald query --path /data/herald \
   --time "2024-01-15T10:00:00Z" \
   --taxids "9606,10090"
 
 # Export reduced version
-talaria sequoia export --path /data/sequoia \
+talaria herald export --path /data/herald \
   --output reduced.fasta \
   --ratio 0.3
 ```
@@ -150,11 +150,11 @@ Talaria is built as a modular Rust workspace with specialized crates:
 
 ```mermaid
 graph TD
-    CLI[talaria-cli] --> SEQUOIA[talaria-sequoia]
+    CLI[talaria-cli] --> HERALD[talaria-herald]
     CLI --> TOOLS[talaria-tools]
-    SEQUOIA --> STORAGE[talaria-storage]
-    SEQUOIA --> BIO[talaria-bio]
-    SEQUOIA --> UTILS[talaria-utils]
+    HERALD --> STORAGE[talaria-storage]
+    HERALD --> BIO[talaria-bio]
+    HERALD --> UTILS[talaria-utils]
     TOOLS --> BIO
     TOOLS --> UTILS
     STORAGE --> BIO
@@ -172,7 +172,7 @@ graph TD
 | **talaria-storage** | core, bio | Storage backends, caching, indices |
 | **talaria-utils** | core | Display, formatting, workspace management |
 | **talaria-tools** | core, bio, utils | External tool integration (aligners) |
-| **talaria-sequoia** | core, bio, storage, utils | Content-addressed storage, Merkle DAG |
+| **talaria-herald** | core, bio, storage, utils | Content-addressed storage, Merkle DAG |
 | **talaria-cli** | ALL | Command-line interface |
 
 **No circular dependencies** - The architecture follows a clean layered design.
@@ -292,7 +292,7 @@ export TALARIA_CHUNK_SERVER="gs://my-bucket/talaria/chunks"
 export TALARIA_CHUNK_SERVER="https://myaccount.blob.core.windows.net/talaria"
 
 # Use cloud storage transparently
-talaria sequoia add --input s3://data/sequences.fasta
+talaria herald add --input s3://data/sequences.fasta
 ```
 
 ## Documentation
@@ -300,7 +300,7 @@ talaria sequoia add --input s3://data/sequences.fasta
 - **[User Guide](docs/src/user-guide/)** - Getting started and basic usage
 - **[API Reference](docs/src/api/)** - Detailed API documentation
 - **[Architecture](docs/src/architecture/)** - System design and internals
-- **[SEQUOIA Whitepaper](docs/src/whitepapers/sequoia-architecture.md)** - Content-addressed storage design
+- **[HERALD Whitepaper](docs/src/whitepapers/herald-architecture.md)** - Content-addressed storage design
 - **[Benchmarks](docs/src/benchmarks/)** - Performance comparisons
 - **[Workflows](docs/src/workflows/)** - Aligner-specific workflows
 

@@ -1,17 +1,17 @@
 //! Storage test helpers
 //!
-//! Utilities for testing SEQUOIA storage operations.
+//! Utilities for testing HERALD storage operations.
 
 use crate::fixtures::test_database_source;
 use crate::TestEnvironment;
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use talaria_core::types::SHA256Hash;
-use talaria_sequoia::storage::{SequenceStorage, SequoiaStorage};
+use talaria_herald::storage::{SequenceStorage, HeraldStorage};
 
 /// Test storage wrapper with helpers
 pub struct TestStorage {
-    sequoia_storage: SequoiaStorage,
+    herald_storage: HeraldStorage,
     sequence_storage: SequenceStorage,
     path: PathBuf,
 }
@@ -20,13 +20,13 @@ impl TestStorage {
     /// Create a new test storage in the given environment
     pub fn new(env: &TestEnvironment) -> Result<Self> {
         let path = env.sequences_dir();
-        let sequoia_storage =
-            SequoiaStorage::new(&path).context("Failed to create SEQUOIA storage")?;
+        let herald_storage =
+            HeraldStorage::new(&path).context("Failed to create HERALD storage")?;
         let sequence_storage =
             SequenceStorage::new(&path).context("Failed to create sequence storage")?;
 
         Ok(Self {
-            sequoia_storage,
+            herald_storage,
             sequence_storage,
             path,
         })
@@ -37,26 +37,26 @@ impl TestStorage {
         let path = path.as_ref().to_path_buf();
         std::fs::create_dir_all(&path)?;
 
-        let sequoia_storage =
-            SequoiaStorage::new(&path).context("Failed to create SEQUOIA storage")?;
+        let herald_storage =
+            HeraldStorage::new(&path).context("Failed to create HERALD storage")?;
         let sequence_storage =
             SequenceStorage::new(&path).context("Failed to create sequence storage")?;
 
         Ok(Self {
-            sequoia_storage,
+            herald_storage,
             sequence_storage,
             path,
         })
     }
 
-    /// Get the SEQUOIA storage
-    pub fn sequoia(&self) -> &SequoiaStorage {
-        &self.sequoia_storage
+    /// Get the HERALD storage
+    pub fn herald(&self) -> &HeraldStorage {
+        &self.herald_storage
     }
 
-    /// Get mutable SEQUOIA storage
-    pub fn sequoia_mut(&mut self) -> &mut SequoiaStorage {
-        &mut self.sequoia_storage
+    /// Get mutable HERALD storage
+    pub fn herald_mut(&mut self) -> &mut HeraldStorage {
+        &mut self.herald_storage
     }
 
     /// Store a test sequence

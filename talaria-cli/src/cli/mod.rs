@@ -90,8 +90,8 @@ pub enum Commands {
         command: commands::chunk::ChunkCommands,
     },
 
-    /// Manage SEQUOIA repository
-    Sequoia(commands::sequoia::SequoiaArgs),
+    /// Manage HERALD repository
+    Herald(commands::herald::HeraldArgs),
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]

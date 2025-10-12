@@ -207,9 +207,9 @@ Resume state is stored as JSON:
 - **Progress Updates**: Updates state every 10MB
 - **Timeout**: 2-hour timeout for very large files
 
-## Integration with SEQUOIA
+## Integration with HERALD
 
-Resume functionality integrates with SEQUOIA's processing state:
+Resume functionality integrates with HERALD's processing state:
 - Tracks download as an operation type
 - Allows resume across application restarts
 - Maintains data integrity through content-addressing
@@ -232,5 +232,5 @@ export TALARIA_DOWNLOAD_RATE_LIMIT=5000
 ## See Also
 
 - [Database Downloads](../databases/downloading.md)
-- [SEQUOIA Storage](../sequoia/overview.md)
-- [Troubleshooting](../sequoia/troubleshooting.md)
+- [HERALD Storage](../herald/overview.md)
+- [Troubleshooting](../herald/troubleshooting.md)

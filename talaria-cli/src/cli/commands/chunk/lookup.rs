@@ -2,7 +2,7 @@ use crate::cli::formatting::output::*;
 use anyhow::{Context, Result};
 use clap::Args;
 use std::path::PathBuf;
-use talaria_sequoia::SHA256Hash;
+use talaria_herald::SHA256Hash;
 
 /// Trait for different lookup strategies
 pub trait ChunkLookupStrategy {
@@ -464,7 +464,7 @@ fn build_chunk_index_for_version(
     database: Option<&str>,
     version: Option<&str>,
 ) -> Result<ChunkIndex> {
-    use talaria_sequoia::database::DatabaseManager;
+    use talaria_herald::database::DatabaseManager;
 
     action(&format!(
         "Building chunk index for {}@{}...",
@@ -496,7 +496,7 @@ fn build_chunk_index_for_version(
 
     if let Some(manifest_bytes) = rocksdb.get_manifest(&manifest_key)? {
         // Deserialize manifest
-        let temporal_manifest: talaria_sequoia::TemporalManifest =
+        let temporal_manifest: talaria_herald::TemporalManifest =
             bincode::deserialize(&manifest_bytes)?;
 
         // Process chunks from manifest
@@ -550,7 +550,7 @@ fn build_chunk_index_for_version(
 }
 
 fn build_chunk_index() -> Result<ChunkIndex> {
-    use talaria_sequoia::database::DatabaseManager;
+    use talaria_herald::database::DatabaseManager;
 
     action("Building chunk index from RocksDB...");
 
@@ -578,7 +578,7 @@ fn build_chunk_index() -> Result<ChunkIndex> {
 
             if let Some(manifest_bytes) = rocksdb.get_manifest(&manifest_key)? {
                 // Deserialize manifest
-                let temporal_manifest: talaria_sequoia::TemporalManifest =
+                let temporal_manifest: talaria_herald::TemporalManifest =
                     bincode::deserialize(&manifest_bytes)?;
 
                 // Process chunks from manifest
@@ -637,7 +637,7 @@ fn build_chunk_index() -> Result<ChunkIndex> {
 
 // Removed: extract_database_name() - no longer needed as we query RocksDB directly
 
-fn extract_taxonomy_info(chunk_meta: &talaria_sequoia::ManifestMetadata) -> Vec<TaxonomyInfo> {
+fn extract_taxonomy_info(chunk_meta: &talaria_herald::ManifestMetadata) -> Vec<TaxonomyInfo> {
     let mut taxonomy = Vec::new();
 
     // Extract unique taxon IDs from chunk

@@ -3,7 +3,7 @@ pub mod database;
 pub mod interactive;
 pub mod reconstruct;
 pub mod reduce;
-pub mod sequoia;
+pub mod herald;
 pub mod stats;
 pub mod temporal;
 pub mod tools;

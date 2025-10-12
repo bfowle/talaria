@@ -12,11 +12,11 @@ talaria/
 ├── talaria-core/        # Shared utilities and types
 ├── talaria-bio/         # Bioinformatics library
 ├── talaria-storage/     # Storage backend abstractions
-├── talaria-sequoia/        # Content-addressed sequence graph
+├── talaria-herald/        # Content-addressed sequence graph
 ├── talaria-tools/       # External tool integrations
 ├── talaria-cli/         # Command-line interface
 └── tests/               # Integration tests
-    ├── sequoia_integration/
+    ├── herald_integration/
     ├── reduction_pipeline/
     ├── database_operations/
     ├── tool_integration/
@@ -27,11 +27,11 @@ talaria/
 
 ```mermaid
 graph TD
-    CLI[talaria-cli] --> SEQUOIA[talaria-sequoia]
+    CLI[talaria-cli] --> HERALD[talaria-herald]
     CLI --> Tools[talaria-tools]
     CLI --> Bio[talaria-bio]
-    SEQUOIA --> Storage[talaria-storage]
-    SEQUOIA --> Bio
+    HERALD --> Storage[talaria-storage]
+    HERALD --> Bio
     Storage --> Core[talaria-core]
     Bio --> Core
     Tools --> Bio
@@ -103,14 +103,14 @@ talaria-storage/
 - Multi-level caching with various eviction policies
 - Storage optimization strategies
 
-### talaria-sequoia
+### talaria-herald
 Content-addressed sequence graph system:
 
 ```
-talaria-sequoia/
+talaria-herald/
 ├── src/
 │   ├── lib.rs           # Public API
-│   ├── storage.rs       # SEQUOIA storage
+│   ├── storage.rs       # HERALD storage
 │   ├── manifest.rs      # Manifest management
 │   ├── chunker/         # Chunking strategies
 │   │   ├── mod.rs
@@ -185,7 +185,7 @@ graph TB
 
     subgraph "Core Libraries"
         B1[talaria-bio]
-        B2[talaria-sequoia]
+        B2[talaria-herald]
         B3[talaria-tools]
         B4[talaria-storage]
     end
@@ -275,14 +275,14 @@ impl ChunkingStrategyBuilder {
 ### 3. Repository Pattern for Data Access
 
 ```rust
-pub struct SEQUOIARepository {
-    storage: SEQUOIAStorage,
+pub struct HERALDRepository {
+    storage: HERALDStorage,
     manifest: Manifest,
     taxonomy: TaxonomyManager,
     temporal: TemporalIndex,
 }
 
-impl SEQUOIARepository {
+impl HERALDRepository {
     pub fn store_sequences(&mut self, sequences: Vec<Sequence>) -> Result<Vec<ChunkMetadata>>;
     pub fn extract_taxon(&self, taxon: &str) -> Result<Vec<Sequence>>;
     pub fn verify(&self) -> Result<VerificationResult>;
@@ -299,13 +299,13 @@ flowchart TD
     B --> C[Taxonomy Mapping]
     C --> D[Chunking Strategy]
     D --> E[Reference Selection]
-    E --> F{SEQUOIA Storage?}
+    E --> F{HERALD Storage?}
     F -->|Yes| G[Content Addressing]
     F -->|No| H[Delta Encoding]
     G --> I[Merkle DAG]
     H --> I
     I --> J[Write Output]
-    J --> K[Reduced FASTA/SEQUOIA]
+    J --> K[Reduced FASTA/HERALD]
 
     style A stroke:#1976d2,stroke-width:2px,fill:#bbdefb
     style K stroke:#388e3c,stroke-width:3px,fill:#a5d6a7
@@ -317,13 +317,13 @@ flowchart TD
 
 ```
 tests/
-├── sequoia_integration/        # SEQUOIA system tests
+├── herald_integration/        # HERALD system tests
 │   ├── basic_operations.rs
 │   ├── manifest_operations.rs
 │   └── temporal_operations.rs
 ├── reduction_pipeline/      # Reduction workflow tests
 │   ├── basic_reduction.rs
-│   ├── sequoia_reduction.rs
+│   ├── herald_reduction.rs
 │   └── reference_selection.rs
 ├── database_operations/     # Database management tests
 │   ├── fetch_tests.rs
@@ -434,7 +434,7 @@ pub enum TalariaError {
 
 ### Planned Enhancements
 
-1. **Distributed SEQUOIA**: Multi-node storage
+1. **Distributed HERALD**: Multi-node storage
 2. **Cloud-Native**: Kubernetes operators
 3. **GPU Acceleration**: CUDA/ROCm support
 4. **WebAssembly**: Browser-based tools
@@ -454,4 +454,4 @@ pub enum TalariaError {
 - [Contributing](contributing.md) - Development guidelines
 - [API Reference](../api/cli-reference.md) - CLI documentation
 - [Performance](../advanced/performance.md) - Optimization guide
-- [SEQUOIA Architecture](../sequoia/architecture.md) - SEQUOIA deep dive
+- [HERALD Architecture](../herald/architecture.md) - HERALD deep dive

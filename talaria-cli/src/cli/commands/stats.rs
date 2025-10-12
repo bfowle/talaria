@@ -83,7 +83,7 @@ pub fn run(args: StatsArgs) -> anyhow::Result<()> {
     // Generate report if requested
     if let Some(report_path) = &args.report_output {
         use std::time::Duration;
-        use talaria_sequoia::operations::{CompositionStats, StatsResult};
+        use talaria_herald::operations::{CompositionStats, StatsResult};
 
         // Calculate composition counts from frequencies and total length
         let total_bases = stats.total_length;

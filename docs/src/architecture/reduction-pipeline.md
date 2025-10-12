@@ -16,7 +16,7 @@ graph TB
 
     subgraph "Workspace Management"
         W1[TempWorkspace]
-        W2[SEQUOIA Integration]
+        W2[HERALD Integration]
         W3[Path Resolution]
     end
 
@@ -36,7 +36,7 @@ graph TB
     end
 
     subgraph "Storage Layer"
-        S1[SEQUOIA Storage]
+        S1[HERALD Storage]
         S2[Manifest Manager]
         S3[Chunk Store]
     end
@@ -73,7 +73,7 @@ The workspace system provides isolated, tracked environments for each reduction 
 ```rust
 pub struct TempWorkspace {
     pub id: String,                  // Unique workspace identifier
-    pub root: PathBuf,               // Root path: ${TALARIA_HOME}/sequoia/temporal/{id}
+    pub root: PathBuf,               // Root path: ${TALARIA_HOME}/herald/temporal/{id}
     config: WorkspaceConfig,         // Configuration options
     had_error: bool,                 // Error tracking for preservation
     metadata: WorkspaceMetadata,     // Operation metadata
@@ -82,7 +82,7 @@ pub struct TempWorkspace {
 impl TempWorkspace {
     pub fn new(command: &str) -> Result<Self> {
         let talaria_home = crate::core::paths::talaria_home();
-        let sequoia_root = talaria_home.join("sequoia");
+        let herald_root = talaria_home.join("herald");
         // Creates structured directory hierarchy
         // Initializes metadata tracking
         // Returns workspace handle
@@ -264,7 +264,7 @@ impl LambdaAligner {
 }
 ```
 
-### 5. Delta Generation (`src/sequoia/delta/generator.rs`)
+### 5. Delta Generation (`src/herald/delta/generator.rs`)
 
 Efficient encoding of non-reference sequences:
 
@@ -350,18 +350,18 @@ impl DeltaGenerator {
 }
 ```
 
-### 6. SEQUOIA Storage (`src/sequoia/storage.rs`)
+### 6. HERALD Storage (`src/herald/storage.rs`)
 
 Content-addressed storage with deduplication:
 
 ```rust
-pub struct SEQUOIAStorage {
+pub struct HERALDStorage {
     root: PathBuf,  // ${TALARIA_HOME}/databases
     chunks_dir: PathBuf,
     manifests_dir: PathBuf,
 }
 
-impl SEQUOIAStorage {
+impl HERALDStorage {
     pub fn store_chunk(&self, data: &[u8], compress: bool) -> Result<SHA256Hash> {
         // Calculate content hash
         let hash = sha256(data);
@@ -453,7 +453,7 @@ Delta file generation → Statistics calculation → Cleanup
 | Reference Selection | O(n²) worst case | Quadratic for similarity matrix |
 | LAMBDA Alignment | O(n·m) | n queries × m references |
 | Delta Generation | O(n·k) | n sequences × k operations |
-| SEQUOIA Storage | O(c) | Linear with unique chunks |
+| HERALD Storage | O(c) | Linear with unique chunks |
 
 ### Time Complexity
 
@@ -496,7 +496,7 @@ impl Drop for TempWorkspace {
 
         if should_preserve {
             // Move to preserved directory
-            let preserved_dir = self.config.sequoia_root.join("preserved");
+            let preserved_dir = self.config.herald_root.join("preserved");
             fs::rename(&self.root, preserved_dir.join(&self.id)).ok();
             eprintln!("Workspace preserved at: {:?}", preserved_dir);
         } else {
@@ -639,6 +639,6 @@ pub struct PipelineMetrics {
 ## See Also
 
 - [Reduction Workflow](../workflows/reduction-workflow.md) - User guide
-- [SEQUOIA Architecture](../sequoia/architecture.md) - Storage details
+- [HERALD Architecture](../herald/architecture.md) - Storage details
 - [Trait Architecture](../ARCHITECTURE.md) - System design
 - [Performance Guide](../advanced/performance.md) - Optimization

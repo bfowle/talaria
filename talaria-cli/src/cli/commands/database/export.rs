@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
 use anyhow::{Context, Result};
-/// Export command for converting SEQUOIA-stored databases to standard FASTA format
+/// Export command for converting HERALD-stored databases to standard FASTA format
 ///
-/// This bridges the gap between our efficient SEQUOIA storage and traditional
+/// This bridges the gap between our efficient HERALD storage and traditional
 /// bioinformatics tools that expect FASTA files
 use clap::Args;
 use std::io::{BufWriter, Write};
@@ -13,9 +13,9 @@ use crate::cli::formatting::output::{info as print_info, success as print_succes
 use crate::cli::progress::create_spinner;
 use talaria_bio::taxonomy::{StandardTaxonomyFormatter, TaxonomyFormatter};
 use talaria_core::system::paths;
-use talaria_sequoia::database::DatabaseManager;
-use talaria_sequoia::manifest::Manifest;
-use talaria_sequoia::operations::FastaAssembler;
+use talaria_herald::database::DatabaseManager;
+use talaria_herald::manifest::Manifest;
+use talaria_herald::operations::FastaAssembler;
 use talaria_utils::database::database_ref::{parse_database_reference, DatabaseReference};
 
 #[derive(Args)]
@@ -233,7 +233,7 @@ fn perform_export(
         }
 
         // Load the reduction manifest (handles both .tal and .json)
-        use talaria_sequoia::ReductionManifest;
+        use talaria_herald::ReductionManifest;
         let reduction_manifest = if profile_path.extension().and_then(|s| s.to_str()) == Some("tal")
         {
             // Load .tal format
@@ -250,7 +250,7 @@ fn perform_export(
 
         // Convert reduction manifest to temporal manifest for assembly
         // The reduction manifest contains the chunks we need
-        temporal_manifest_owned = talaria_sequoia::TemporalManifest {
+        temporal_manifest_owned = talaria_herald::TemporalManifest {
             version: manifest_data.version.clone(),
             created_at: reduction_manifest.created_at,
             sequence_version: manifest_data.sequence_version.clone(),
@@ -266,7 +266,7 @@ fn perform_export(
                 let mut chunks = Vec::new();
                 // Add reference chunks
                 for chunk in &reduction_manifest.reference_chunks {
-                    chunks.push(talaria_sequoia::ManifestMetadata {
+                    chunks.push(talaria_herald::ManifestMetadata {
                         hash: chunk.chunk_hash.clone(),
                         sequence_count: chunk.sequence_count,
                         size: chunk.size,
@@ -288,9 +288,9 @@ fn perform_export(
         manifest_data
     };
 
-    // Create assembler using the SEQUOIA storage (use open to rebuild index)
-    let sequoia_storage = talaria_sequoia::SequoiaStorage::open(&base_path)?;
-    let assembler = FastaAssembler::new(&sequoia_storage);
+    // Create assembler using the HERALD storage (use open to rebuild index)
+    let herald_storage = talaria_herald::HeraldStorage::open(&base_path)?;
+    let assembler = FastaAssembler::new(&herald_storage);
 
     // Export based on format and streaming preference
     let sequence_count = if args.stream {
@@ -420,7 +420,7 @@ fn find_profile_manifest(
 
 fn export_streamed(
     assembler: &FastaAssembler,
-    manifest: &talaria_sequoia::TemporalManifest,
+    manifest: &talaria_herald::TemporalManifest,
     output_path: &Path,
     format: &ExportFormat,
     compress: bool,
@@ -461,7 +461,7 @@ fn export_streamed(
 
 fn export_full(
     assembler: &FastaAssembler,
-    manifest: &talaria_sequoia::TemporalManifest,
+    manifest: &talaria_herald::TemporalManifest,
     output_path: &Path,
     format: &ExportFormat,
     compress: bool,
@@ -579,7 +579,7 @@ fn perform_bitemporal_export(
 ) -> Result<ExportStats> {
     use chrono::Utc;
     use std::sync::Arc;
-    use talaria_sequoia::{BiTemporalDatabase, SequoiaStorage};
+    use talaria_herald::{BiTemporalDatabase, HeraldStorage};
 
     // Parse times
     let sequence_time = if let Some(date_str) = &args.sequence_date {
@@ -615,8 +615,8 @@ fn perform_bitemporal_export(
         );
     }
 
-    // Open SEQUOIA storage and bi-temporal database
-    let storage = Arc::new(SequoiaStorage::open(&db_path)?);
+    // Open HERALD storage and bi-temporal database
+    let storage = Arc::new(HeraldStorage::open(&db_path)?);
     let mut bi_temporal_db = BiTemporalDatabase::new(storage.clone())?;
 
     // Query at the specified times
@@ -655,7 +655,7 @@ fn perform_bitemporal_export(
     // Write header with bi-temporal information
     match args.format {
         ExportFormat::Fasta => {
-            writeln!(writer, "; SEQUOIA Bi-temporal Export")?;
+            writeln!(writer, "; HERALD Bi-temporal Export")?;
             writeln!(
                 writer,
                 "; Sequence Date: {}",
@@ -697,7 +697,7 @@ fn perform_bitemporal_export(
             Ok(chunk_data) => {
                 // Try to parse as ChunkManifest first
                 if let Ok(manifest) =
-                    rmp_serde::from_slice::<talaria_sequoia::ChunkManifest>(&chunk_data)
+                    rmp_serde::from_slice::<talaria_herald::ChunkManifest>(&chunk_data)
                 {
                     // Load actual sequences from canonical storage
                     for seq_hash in &manifest.sequence_refs {
@@ -823,11 +823,11 @@ fn parse_time_input(input: &str) -> Result<chrono::DateTime<chrono::Utc>> {
 }
 
 fn matches_taxonomy_filter(
-    chunk: &talaria_sequoia::ManifestMetadata,
+    chunk: &talaria_herald::ManifestMetadata,
     filter: &str,
 ) -> Result<bool> {
     // Use the new taxonomy filter with boolean expression support
-    use talaria_sequoia::taxonomy::filter::TaxonomyFilter;
+    use talaria_herald::taxonomy::filter::TaxonomyFilter;
 
     let filter = TaxonomyFilter::parse(filter)?;
     Ok(filter.matches(&chunk.taxon_ids))

@@ -1,7 +1,7 @@
-/// Integration tests for LAMBDA aligner with SEQUOIA workspace
+/// Integration tests for LAMBDA aligner with HERALD workspace
 ///
 /// These tests verify that the LAMBDA aligner properly integrates with
-/// the SEQUOIA workspace system and uses the correct temporary directories.
+/// the HERALD workspace system and uses the correct temporary directories.
 use std::fs;
 
 mod common;

@@ -17,7 +17,7 @@ flame = ["tracing-flame"]
 talaria-core = { path = "../talaria-core", features = ["cli"] }
 talaria-bio = { path = "../talaria-bio" }
 talaria-storage = { path = "../talaria-storage" }
-talaria-sequoia = { path = "../talaria-sequoia" }
+talaria-herald = { path = "../talaria-herald" }
 talaria-tools = { path = "../talaria-tools" }
 talaria-utils = { path = "../talaria-utils" }
 anyhow = { workspace = true }

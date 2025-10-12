@@ -278,7 +278,7 @@ fn test_missing_required_arguments() -> Result<()> {
         .failure()
         .stderr(predicate::str::contains("required"));
 
-    // Since output is now optional (uses SEQUOIA by default), this test is no longer valid
+    // Since output is now optional (uses HERALD by default), this test is no longer valid
     // Remove this test case - reduce with database but no output is now valid
 
     // Test reconstruct without reference

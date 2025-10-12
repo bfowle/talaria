@@ -1,5 +1,5 @@
-/// Comprehensive temp workspace management for SEQUOIA-based reduction pipeline
-/// All temporary operations go through SEQUOIA - this is NOT optional
+/// Comprehensive temp workspace management for HERALD-based reduction pipeline
+/// All temporary operations go through HERALD - this is NOT optional
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -10,8 +10,8 @@ use uuid::Uuid;
 /// Configuration for workspace behavior
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceConfig {
-    /// Root directory for all SEQUOIA operations (${TALARIA_HOME}/sequoia)
-    pub sequoia_root: PathBuf,
+    /// Root directory for all HERALD operations (${TALARIA_HOME}/herald)
+    pub herald_root: PathBuf,
     /// Whether to preserve workspace on failure (for debugging)
     pub preserve_on_failure: bool,
     /// Whether to preserve workspace always (for inspection)
@@ -24,7 +24,7 @@ impl Default for WorkspaceConfig {
     fn default() -> Self {
         // Use talaria_workspace_dir() from paths module for temporal workspaces
         Self {
-            sequoia_root: talaria_core::talaria_workspace_dir(),
+            herald_root: talaria_core::talaria_workspace_dir(),
             preserve_on_failure: std::env::var("TALARIA_PRESERVE_ON_FAILURE").is_ok()
                 || std::env::var("TALARIA_PRESERVE_LAMBDA_ON_FAILURE").is_ok(),
             preserve_always: std::env::var("TALARIA_PRESERVE_ALWAYS").is_ok(),
@@ -89,8 +89,8 @@ impl TempWorkspace {
     /// Create a new workspace with custom configuration
     pub fn with_config(command: &str, config: WorkspaceConfig) -> Result<Self> {
         // Ensure workspace root exists
-        fs::create_dir_all(&config.sequoia_root).with_context(|| {
-            format!("Failed to create workspace root: {:?}", config.sequoia_root)
+        fs::create_dir_all(&config.herald_root).with_context(|| {
+            format!("Failed to create workspace root: {:?}", config.herald_root)
         })?;
 
         // Generate unique ID
@@ -102,7 +102,7 @@ impl TempWorkspace {
         let id = format!("{}_{}", timestamp, uuid);
 
         // Create workspace root directly under the workspace directory
-        let root = config.sequoia_root.join(&id);
+        let root = config.herald_root.join(&id);
         fs::create_dir_all(&root)
             .with_context(|| format!("Failed to create workspace: {:?}", root))?;
 
@@ -256,7 +256,7 @@ impl TempWorkspace {
 
         if should_preserve {
             // Move to preserved directory
-            let preserved_dir = self.config.sequoia_root.join("preserved");
+            let preserved_dir = self.config.herald_root.join("preserved");
             fs::create_dir_all(&preserved_dir)?;
 
             let preserved_path = preserved_dir.join(&self.id);
@@ -278,7 +278,7 @@ impl TempWorkspace {
 
     /// Clean old workspaces
     pub fn cleanup_old_workspaces(config: &WorkspaceConfig) -> Result<()> {
-        let temporal_dir = config.sequoia_root.join("temporal");
+        let temporal_dir = config.herald_root.join("temporal");
         if !temporal_dir.exists() {
             return Ok(());
         }
@@ -338,8 +338,8 @@ pub fn list_workspaces(config: &WorkspaceConfig) -> Result<Vec<WorkspaceMetadata
     let mut workspaces = Vec::new();
 
     // Check workspace root directory (workspaces are created directly here)
-    if config.sequoia_root.exists() {
-        collect_workspaces_from_dir(&config.sequoia_root, &mut workspaces)?;
+    if config.herald_root.exists() {
+        collect_workspaces_from_dir(&config.herald_root, &mut workspaces)?;
     }
 
     // Check preserved directory in databases (for preserved workspaces)
@@ -377,7 +377,7 @@ fn collect_workspaces_from_dir(dir: &Path, workspaces: &mut Vec<WorkspaceMetadat
 /// Find a workspace by ID
 pub fn find_workspace(id: &str, config: &WorkspaceConfig) -> Result<Option<PathBuf>> {
     // Check workspace root directory
-    let workspace_path = config.sequoia_root.join(id);
+    let workspace_path = config.herald_root.join(id);
     if workspace_path.exists() {
         return Ok(Some(workspace_path));
     }
@@ -402,7 +402,7 @@ mod tests {
         // Create a test-specific config that doesn't rely on global state
         let test_home = env::temp_dir().join(format!("talaria_test_{}", std::process::id()));
         WorkspaceConfig {
-            sequoia_root: test_home.join("sequoia"),
+            herald_root: test_home.join("herald"),
             preserve_on_failure: false,
             preserve_always: false,
             max_age_seconds: 86400,

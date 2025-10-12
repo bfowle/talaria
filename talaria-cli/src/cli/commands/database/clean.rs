@@ -1,4 +1,4 @@
-/// Clean SEQUOIA databases by removing unreferenced data
+/// Clean HERALD databases by removing unreferenced data
 ///
 /// Removes unreferenced data:
 /// - Orphaned chunks
@@ -10,8 +10,8 @@
 use anyhow::{anyhow, Result};
 use clap::Args;
 use std::collections::HashSet;
-use talaria_sequoia::database::DatabaseManager;
-use talaria_sequoia::SequoiaRepository;
+use talaria_herald::database::DatabaseManager;
+use talaria_herald::HeraldRepository;
 
 /// Results from cleaning operations by category
 #[derive(Debug, Default)]
@@ -86,7 +86,7 @@ impl CleanCmd {
             return Err(anyhow!(
                 "Per-database cleaning is not supported.\n\
                  \n\
-                 SEQUOIA uses unified storage where chunks and sequences are shared across\n\
+                 HERALD uses unified storage where chunks and sequences are shared across\n\
                  all databases. To safely remove unreferenced data, use:\n\
                  \n\
                  \x1b[1m    talaria database clean all\x1b[0m\n\
@@ -155,7 +155,7 @@ impl CleanCmd {
 
         // Generate report if requested
         if let Some(report_path) = &self.report_output {
-            use talaria_sequoia::operations::GarbageCollectionResult;
+            use talaria_herald::operations::GarbageCollectionResult;
 
             let total_removed = results.orphaned_chunks.0
                 + results.unreferenced_seqs.0
@@ -185,7 +185,7 @@ impl CleanCmd {
     async fn clean_all_databases(&self) -> Result<()> {
         use crate::cli::formatting::output::*;
         use std::time::Instant;
-        use talaria_sequoia::database::DatabaseManager;
+        use talaria_herald::database::DatabaseManager;
 
         section_header_with_line("Database Cleaning: All Databases");
 
@@ -249,7 +249,7 @@ impl CleanCmd {
 
         // Generate report if requested
         if let Some(report_path) = &self.report_output {
-            use talaria_sequoia::operations::GarbageCollectionResult;
+            use talaria_herald::operations::GarbageCollectionResult;
 
             let total_removed = results.orphaned_chunks.0
                 + results.unreferenced_seqs.0
@@ -276,7 +276,7 @@ impl CleanCmd {
         Ok(())
     }
 
-    fn remove_orphaned_chunks(&self, repository: &mut SequoiaRepository) -> Result<(usize, usize)> {
+    fn remove_orphaned_chunks(&self, repository: &mut HeraldRepository) -> Result<(usize, usize)> {
         use crate::cli::formatting::output::*;
         use indicatif::{ProgressBar, ProgressStyle};
         use std::time::Instant;
@@ -357,7 +357,7 @@ impl CleanCmd {
 
     fn remove_unreferenced_sequences(
         &self,
-        repository: &mut SequoiaRepository,
+        repository: &mut HeraldRepository,
     ) -> Result<(usize, usize)> {
         use crate::cli::formatting::output::*;
         use std::time::Instant;
@@ -418,7 +418,7 @@ impl CleanCmd {
         Ok((count, total_removed))
     }
 
-    fn clean_expired_cache(&self, repository: &SequoiaRepository) -> Result<(usize, usize)> {
+    fn clean_expired_cache(&self, repository: &HeraldRepository) -> Result<(usize, usize)> {
         use crate::cli::formatting::output::*;
         use std::time::Instant;
 
@@ -470,7 +470,7 @@ impl CleanCmd {
         Ok((count, total_removed))
     }
 
-    fn clean_incomplete_downloads(&self, repository: &SequoiaRepository) -> Result<(usize, usize)> {
+    fn clean_incomplete_downloads(&self, repository: &HeraldRepository) -> Result<(usize, usize)> {
         use crate::cli::formatting::output::*;
         use std::time::Instant;
 
@@ -526,8 +526,8 @@ impl CleanCmd {
 
     fn remove_orphaned_chunks_all_databases(
         &self,
-        repository: &mut SequoiaRepository,
-        databases: &[talaria_sequoia::database::manager::DatabaseInfo],
+        repository: &mut HeraldRepository,
+        databases: &[talaria_herald::database::manager::DatabaseInfo],
     ) -> Result<(usize, usize)> {
         use crate::cli::formatting::output::*;
         use indicatif::{ProgressBar, ProgressStyle};
@@ -617,8 +617,8 @@ impl CleanCmd {
 
     fn remove_unreferenced_sequences_all_databases(
         &self,
-        repository: &mut SequoiaRepository,
-        databases: &[talaria_sequoia::database::manager::DatabaseInfo],
+        repository: &mut HeraldRepository,
+        databases: &[talaria_herald::database::manager::DatabaseInfo],
     ) -> Result<(usize, usize)> {
         use crate::cli::formatting::output::*;
         use std::time::Instant;
@@ -684,7 +684,7 @@ impl CleanCmd {
         Ok((count, total_removed))
     }
 
-    fn get_total_size(&self, repository: &SequoiaRepository) -> Result<usize> {
+    fn get_total_size(&self, repository: &HeraldRepository) -> Result<usize> {
         let stats = repository.storage.get_statistics()?;
         Ok(stats.total_size)
     }

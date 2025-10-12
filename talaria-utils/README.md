@@ -15,7 +15,7 @@ This module is designed with the following principles:
 
 1. **Database Management**: Reference parsing, version detection, and aliasing
 2. **Display & UI**: Terminal formatting, progress bars, tree visualization, and tables
-3. **Workspace Management**: Temporary file orchestration with Sequoia integration
+3. **Workspace Management**: Temporary file orchestration with Herald integration
 4. **Parallel Processing**: Thread pool management and parallelization utilities
 5. **Performance Monitoring**: Memory estimation and resource tracking
 6. **Report Generation**: Multi-format report generation (HTML, JSON, text)
@@ -60,7 +60,7 @@ talaria-utils/
 │   ├── workspace/                # Workspace management
 │   │   ├── mod.rs                # Module exports
 │   │   ├── temp.rs               # Temporary workspace lifecycle (4 tests)
-│   │   └── sequoia.rs            # Sequoia-specific workspace operations (5 tests)
+│   │   └── herald.rs            # Herald-specific workspace operations (5 tests)
 │   │
 │   ├── parallel.rs               # Parallel processing utilities (11 tests)
 │   └── lib.rs                    # Public API exports
@@ -343,7 +343,7 @@ let pb2 = manager.add_progress_bar(200, "Task 2");
 
 ## Workspace Module
 
-The workspace module manages temporary file operations with automatic cleanup and Sequoia integration.
+The workspace module manages temporary file operations with automatic cleanup and Herald integration.
 
 ### Temporary Workspace
 
@@ -362,7 +362,7 @@ let output_dir = workspace.create_subdir("output")?;
 
 // Custom configuration
 let config = WorkspaceConfig {
-    sequoia_root: PathBuf::from("/custom/path"),
+    herald_root: PathBuf::from("/custom/path"),
     preserve_on_failure: true, // Keep on error
     preserve_always: false,    // Auto-cleanup
     max_age_seconds: 86400,    // 24 hours
@@ -417,23 +417,23 @@ let mut metadata = WorkspaceMetadata {
 workspace.update_metadata(metadata)?;
 ```
 
-### Sequoia Workspace Manager
+### Herald Workspace Manager
 
 Content-addressed storage integration for workspace files:
 
 ```rust
-use talaria_utils::workspace::{SequoiaWorkspaceManager, SequoiaTransaction};
+use talaria_utils::workspace::{HeraldWorkspaceManager, HeraldTransaction};
 
-let mut manager = SequoiaWorkspaceManager::new()?;
+let mut manager = HeraldWorkspaceManager::new()?;
 
-// Create Sequoia-managed workspace
+// Create Herald-managed workspace
 let workspace = manager.create_workspace("reduce")?;
 
 // Content-addressed file storage
 let content_hash = manager.add_file(&workspace, file_path)?;
 
 // Start a transaction for atomic operations
-let transaction = SequoiaTransaction::new(&workspace);
+let transaction = HeraldTransaction::new(&workspace);
 transaction.add_file("sequences.fasta", content)?;
 transaction.add_metadata("stats.json", stats)?;
 transaction.commit()?; // Atomic commit
@@ -515,8 +515,8 @@ println!("Available CPU cores: {}", cores);
    - Workspace management for temp files
    - Formatted output for results
 
-2. **talaria-sequoia**: Workspace and formatting utilities
-   - Sequoia workspace management
+2. **talaria-herald**: Workspace and formatting utilities
+   - Herald workspace management
    - Version detection for manifest creation
    - Progress tracking for large operations
 
@@ -550,15 +550,15 @@ pb.finish();
 success(&format!("Processed {} sequences", total_sequences));
 ```
 
-#### Sequoia Integration
+#### Herald Integration
 ```rust
-// In talaria-sequoia
+// In talaria-herald
 use talaria_utils::{
-    workspace::SequoiaWorkspaceManager,
+    workspace::HeraldWorkspaceManager,
     database::VersionDetector,
 };
 
-let manager = SequoiaWorkspaceManager::new()?;
+let manager = HeraldWorkspaceManager::new()?;
 let detector = VersionDetector::new();
 
 // Detect version for manifest
@@ -585,7 +585,7 @@ manifest.version = version.upstream_version;
 ```rust
 // Workspace configuration
 let config = WorkspaceConfig {
-    sequoia_root: custom_path,
+    herald_root: custom_path,
     preserve_on_failure: true,
     preserve_always: false,
     max_age_seconds: 3600,
@@ -656,8 +656,8 @@ pub struct WorkspaceConfig { /* fields */ }
 pub struct WorkspaceMetadata { /* fields */ }
 pub enum WorkspaceStatus { Active, Completed, Failed, Preserved }
 pub struct WorkspaceStats { /* fields */ }
-pub struct SequoiaWorkspaceManager { /* fields */ }
-pub struct SequoiaTransaction { /* fields */ }
+pub struct HeraldWorkspaceManager { /* fields */ }
+pub struct HeraldTransaction { /* fields */ }
 
 // Functions
 pub fn list_workspaces() -> Result<Vec<WorkspaceMetadata>>;

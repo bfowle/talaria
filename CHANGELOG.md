@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cloud storage backends (S3, GCS, Azure Blob)
 - Interactive TUI mode for database exploration
 - HTML report generation with D3.js visualizations
-- Bi-temporal versioning in SEQUOIA
+- Bi-temporal versioning in HERALD
 - Cross-database deduplication
 - Canonical delta encoding for better compression
 
@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial release of Talaria
 - Core reduction engine with reference selection
-- SEQUOIA content-addressed storage system
+- HERALD content-addressed storage system
 - Support for LAMBDA, DIAMOND, MMseqs2, and Kraken aligners
 - Taxonomy-aware clustering algorithms
 - Delta encoding for non-reference sequences
@@ -51,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Features
 - **Reduction Pipeline**: Intelligent sequence selection using graph algorithms
-- **SEQUOIA Storage**: Content-addressed storage with SHA256 hashing
+- **HERALD Storage**: Content-addressed storage with SHA256 hashing
 - **Aligner Support**: Optimized output for multiple alignment tools
 - **Database Management**: Download, update, and manage biological databases
 - **Performance**: 3-5x faster than traditional approaches
@@ -62,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `talaria-core`: Core types and configuration management
 - `talaria-bio`: Bioinformatics algorithms and FASTA handling
 - `talaria-storage`: Storage backend abstractions
-- `talaria-sequoia`: Content-addressed storage implementation
+- `talaria-herald`: Content-addressed storage implementation
 - `talaria-tools`: External tool integration
 - `talaria-utils`: Display and workspace utilities
 - `talaria-cli`: Command-line interface

@@ -53,7 +53,7 @@ pub fn run(args: InfoArgs) -> anyhow::Result<()> {
     use colored::*;
     use humansize::{format_size, BINARY};
     use talaria_core::system::paths;
-    use talaria_sequoia::database::DatabaseManager;
+    use talaria_herald::database::DatabaseManager;
     use talaria_utils::database::database_ref::parse_database_reference;
     use talaria_utils::display::output::format_number;
 
@@ -340,7 +340,7 @@ pub fn run(args: InfoArgs) -> anyhow::Result<()> {
 
     // Generate report if requested
     if let Some(report_path) = &args.report_output {
-        use talaria_sequoia::operations::DatabaseInfoResult;
+        use talaria_herald::operations::DatabaseInfoResult;
 
         // Parse database name to get source and dataset
         let parts: Vec<&str> = db_info.name.split('/').collect();
@@ -382,7 +382,7 @@ fn run_bitemporal_info(args: InfoArgs) -> anyhow::Result<()> {
     use chrono::{NaiveDate, Utc};
     use std::sync::Arc;
     use talaria_core::system::paths;
-    use talaria_sequoia::{BiTemporalDatabase, SequoiaStorage};
+    use talaria_herald::{BiTemporalDatabase, HeraldStorage};
 
     // Parse the database reference
     let db_ref = talaria_utils::database::database_ref::parse_database_reference(&args.database)?;
@@ -412,7 +412,7 @@ fn run_bitemporal_info(args: InfoArgs) -> anyhow::Result<()> {
     };
 
     // Create bi-temporal database
-    let storage = Arc::new(SequoiaStorage::new(&db_path)?);
+    let storage = Arc::new(HeraldStorage::new(&db_path)?);
     let mut bitemporal_db = BiTemporalDatabase::new(storage)?;
 
     // Query at specified dates
@@ -488,10 +488,10 @@ fn run_bitemporal_info(args: InfoArgs) -> anyhow::Result<()> {
 }
 
 fn show_profile_info(
-    manager: &talaria_sequoia::database::DatabaseManager,
+    manager: &talaria_herald::database::DatabaseManager,
     db_ref: &talaria_utils::database::database_ref::DatabaseReference,
     profile: &str,
-    databases: &[talaria_sequoia::database::DatabaseInfo],
+    databases: &[talaria_herald::database::DatabaseInfo],
 ) -> anyhow::Result<()> {
     use crate::cli::formatting::output::*;
     use humansize::{format_size, BINARY};

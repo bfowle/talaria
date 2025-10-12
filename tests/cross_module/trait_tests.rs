@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use talaria_bio::sequence::Sequence;
-use talaria_sequoia::types::{ChunkStrategy, SHA256Hash, SpecialTaxon, TaxonId};
-use talaria_sequoia::{ChunkingStrategy, TaxonomicChunker};
-use talaria_sequoia::storage::ChunkStorage;
+use talaria_herald::types::{ChunkStrategy, SHA256Hash, SpecialTaxon, TaxonId};
+use talaria_herald::{ChunkingStrategy, TaxonomicChunker};
+use talaria_herald::storage::ChunkStorage;
 /// Integration tests for trait implementations
 ///
 /// These tests verify that all trait implementations work correctly
@@ -156,7 +156,7 @@ mod storage_tests {
             self.chunks.contains_key(hash)
         }
 
-        fn enumerate_chunks(&self) -> Vec<talaria::sequoia::types::ChunkInfo> {
+        fn enumerate_chunks(&self) -> Vec<talaria::herald::types::ChunkInfo> {
             Vec::new()
         }
 
@@ -202,7 +202,7 @@ mod chunker_tests {
 
     #[test]
     fn test_chunker_trait() {
-        use talaria_sequoia::Chunker;
+        use talaria_herald::Chunker;
         let strategy = ChunkingStrategy {
             target_chunk_size: 1024 * 1024,
             max_chunk_size: 10 * 1024 * 1024,
@@ -239,7 +239,7 @@ mod chunker_tests {
 
     #[test]
     fn test_taxonomy_aware_chunker() {
-        use talaria_sequoia::Chunker;
+        use talaria_herald::Chunker;
         let mut chunker = TaxonomicChunker::new(ChunkingStrategy::default());
 
         // Load taxonomy mapping
@@ -270,12 +270,12 @@ mod chunker_tests {
 #[cfg(test)]
 mod delta_generator_tests {
     use super::*;
-    use talaria_sequoia::delta::DeltaGenerator as DeltaGeneratorTrait;
-    use talaria_sequoia::delta_generator::DeltaGenerator;
+    use talaria_herald::delta::DeltaGenerator as DeltaGeneratorTrait;
+    use talaria_herald::delta_generator::DeltaGenerator;
 
     #[test]
     fn test_delta_generator_trait() {
-        let config = talaria::sequoia::delta::DeltaGeneratorConfig::default();
+        let config = talaria::herald::delta::DeltaGeneratorConfig::default();
         let mut generator = DeltaGenerator::new(config.clone());
 
         // Test through trait

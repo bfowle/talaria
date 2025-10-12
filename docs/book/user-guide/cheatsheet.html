@@ -159,10 +159,10 @@
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
-                        <a href="https://github.com/Andromeda-Tech/talaria" title="Git repository" aria-label="Git repository">
+                        <a href="https://github.com/bfowle/talaria" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/Andromeda-Tech/talaria/edit/main/docs/src/user-guide/cheatsheet.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/bfowle/talaria/edit/main/docs/src/user-guide/cheatsheet.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -200,7 +200,7 @@
 <h1 id="talaria-cheat-sheet"><a class="header" href="#talaria-cheat-sheet">Talaria Cheat Sheet</a></h1>
 <h2 id="essential-commands-copy--paste-ready"><a class="header" href="#essential-commands-copy--paste-ready">Essential Commands (Copy &amp; Paste Ready)</a></h2>
 <h3 id="first-time-setup"><a class="header" href="#first-time-setup">First Time Setup</a></h3>
-<pre><code class="language-bash">talaria sequoia init
+<pre><code class="language-bash">talaria herald init
 talaria database download uniprot -d swissprot
 </code></pre>
 <h3 id="daily-use"><a class="header" href="#daily-use">Daily Use</a></h3>
@@ -212,7 +212,7 @@ talaria reduce uniprot/swissprot -r 0.3 -o output.fasta
 
 # View what you have
 talaria database list
-talaria sequoia stats
+talaria herald stats
 </code></pre>
 <h2 id="database-download-commands"><a class="header" href="#database-download-commands">Database Download Commands</a></h2>
 <pre><code class="language-bash"># UniProt databases
@@ -252,8 +252,8 @@ talaria database info uniprot/swissprot
 talaria database list-sequences uniprot/swissprot --limit 100
 talaria database list-sequences uniprot/swissprot --ids-only
 
-# SEQUOIA statistics
-talaria sequoia stats
+# HERALD statistics
+talaria herald stats
 </code></pre>
 <h2 id="validation--reconstruction"><a class="header" href="#validation--reconstruction">Validation &amp; Reconstruction</a></h2>
 <pre><code class="language-bash"># Validate reduction quality
@@ -291,7 +291,7 @@ diamond blastp -q queries.fasta -d swiss_diamond -o results.m8
 <li><strong>30% reduction</strong> (<code>-r 0.3</code>) is a good starting point</li>
 <li><strong>Same download command</strong> checks for updates automatically</li>
 <li><strong>Use <code>-a &lt;aligner&gt;</code></strong> to optimize for your specific tool</li>
-<li><strong>SEQUOIA only downloads changes</strong> after initial download</li>
+<li><strong>HERALD only downloads changes</strong> after initial download</li>
 </ul>
 <h2 id="getting-help"><a class="header" href="#getting-help">Getting Help</a></h2>
 <pre><code class="language-bash">talaria --help
@@ -329,22 +329,6 @@ talaria database download --help
 
         </div>
 
-        <!-- Livereload script (if served using the cli tool) -->
-        <script>
-            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
-            const socket = new WebSocket(wsAddress);
-            socket.onmessage = function (event) {
-                if (event.data === "reload") {
-                    socket.close();
-                    location.reload();
-                }
-            };
-
-            window.onbeforeunload = function() {
-                socket.close();
-            }
-        </script>
 
 
 

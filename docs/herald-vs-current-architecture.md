@@ -494,7 +494,7 @@ fn compare_sequences_properly(
 
 2. **Implement similarity detection**:
    ```rust
-   // talaria-sequoia/src/storage/similarity.rs
+   // talaria-herald/src/storage/similarity.rs
 
    pub struct SimilarityIndex {
        kmer_index: HashMap<Kmer, Vec<SHA256Hash>>,
@@ -516,7 +516,7 @@ fn compare_sequences_properly(
 
 3. **Update store_sequence**:
    ```rust
-   // talaria-sequoia/src/storage/sequence.rs
+   // talaria-herald/src/storage/sequence.rs
 
    pub fn store_sequence(
        &self,

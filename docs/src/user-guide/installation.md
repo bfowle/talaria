@@ -22,7 +22,7 @@ Talaria can be installed through multiple methods depending on your needs and pl
 #### Linux/macOS
 ```bash
 # Download the latest release
-curl -L https://github.com/Andromeda-Tech/talaria/releases/latest/download/talaria-$(uname -s)-$(uname -m) -o talaria
+curl -L https://github.com/bfowle/talaria/releases/latest/download/talaria-$(uname -s)-$(uname -m) -o talaria
 chmod +x talaria
 sudo mv talaria /usr/local/bin/
 
@@ -33,7 +33,7 @@ talaria --version
 #### Windows (WSL2)
 ```bash
 # Inside WSL2 terminal
-curl -L https://github.com/Andromeda-Tech/talaria/releases/latest/download/talaria-Linux-x86_64 -o talaria
+curl -L https://github.com/bfowle/talaria/releases/latest/download/talaria-Linux-x86_64 -o talaria
 chmod +x talaria
 sudo mv talaria /usr/local/bin/
 ```
@@ -61,7 +61,7 @@ conda install -c bioconda talaria
 #### Clone and Build
 ```bash
 # Clone the repository
-git clone https://github.com/Andromeda-Tech/talaria.git
+git clone https://github.com/bfowle/talaria.git
 cd talaria
 
 # Build in release mode
@@ -77,7 +77,7 @@ cargo install --path .
 #### Development Build
 ```bash
 # Clone with full history
-git clone --recursive https://github.com/Andromeda-Tech/talaria.git
+git clone --recursive https://github.com/bfowle/talaria.git
 cd talaria
 
 # Install development dependencies
@@ -169,7 +169,7 @@ talaria --version
 talaria --help
 
 # Quick test with sample data
-curl -L https://github.com/Andromeda-Tech/talaria/raw/main/tests/data/sample.fasta -o sample.fasta
+curl -L https://github.com/bfowle/talaria/raw/main/tests/data/sample.fasta -o sample.fasta
 talaria reduce -i sample.fasta -o reduced.fasta
 talaria stats reduced.fasta
 ```
@@ -220,7 +220,7 @@ talaria reduce --optimize-memory ...
 ```
 
 ### Getting Help
-- GitHub Issues: https://github.com/Andromeda-Tech/talaria/issues
+- GitHub Issues: https://github.com/bfowle/talaria/issues
 - Documentation: https://andromeda-tech.github.io/talaria/
 - Discord: https://discord.gg/talaria
 

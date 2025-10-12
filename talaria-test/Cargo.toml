@@ -15,7 +15,7 @@ rand = "0.8"
 
 # Workspace dependencies for test helpers
 talaria-core = { path = "../talaria-core" }
-talaria-sequoia = { path = "../talaria-sequoia" }
+talaria-herald = { path = "../talaria-herald" }
 talaria-storage = { path = "../talaria-storage" }
 
 # Common test dependencies

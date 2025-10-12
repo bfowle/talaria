@@ -6,9 +6,9 @@ use std::collections::HashMap;
 
 use crate::cli::global_config;
 use crate::cli::progress::create_spinner;
-use talaria_sequoia::database::DatabaseManager;
-use talaria_sequoia::taxonomy::discrepancy::DiscrepancyDetector;
-use talaria_sequoia::{DiscrepancyType, TaxonId, TaxonomicDiscrepancy};
+use talaria_herald::database::DatabaseManager;
+use talaria_herald::taxonomy::discrepancy::DiscrepancyDetector;
+use talaria_herald::{DiscrepancyType, TaxonId, TaxonomicDiscrepancy};
 
 #[derive(Args)]
 pub struct CheckDiscrepanciesArgs {
@@ -69,13 +69,13 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
             content = content[4..].to_vec();
         }
 
-        let reduction_manifest: talaria_sequoia::ReductionManifest =
+        let reduction_manifest: talaria_herald::ReductionManifest =
             rmp_serde::from_slice(&content)?;
 
         // Convert reference chunks to chunk metadata format
         let mut chunk_metadata = Vec::new();
         for ref_chunk in &reduction_manifest.reference_chunks {
-            chunk_metadata.push(talaria_sequoia::ManifestMetadata {
+            chunk_metadata.push(talaria_herald::ManifestMetadata {
                 hash: ref_chunk.chunk_hash.clone(),
                 taxon_ids: ref_chunk.taxon_ids.clone(),
                 sequence_count: ref_chunk.sequence_count,
@@ -118,7 +118,7 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
     let spinner = create_spinner("Loading taxonomy mappings...");
     let mapping_count = {
         // Parse database source to determine mapping type
-        use talaria_sequoia::download::parse_database_source;
+        use talaria_herald::download::parse_database_source;
 
         match parse_database_source(&args.database) {
             Ok(source) => match manager.get_taxonomy_mappings_for_source(&source) {
@@ -288,7 +288,7 @@ pub fn run(args: CheckDiscrepanciesArgs) -> anyhow::Result<()> {
     if let Some(report_path) = &args.report_output {
         use std::time::Duration;
         use talaria_bio::taxonomy::{TaxonomyDiscrepancy, TaxonomySource};
-        use talaria_sequoia::operations::DiscrepancyResult;
+        use talaria_herald::operations::DiscrepancyResult;
 
         let discrepancies: Vec<TaxonomyDiscrepancy> = filtered_discrepancies
             .iter()

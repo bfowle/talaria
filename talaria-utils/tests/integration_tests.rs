@@ -38,15 +38,15 @@ fn test_workspace_preservation_on_error() {
     {
         let mut workspace = TempWorkspace::new("error_test").unwrap();
         let workspace_id = workspace.id.clone();
-        // The workspace root's parent is the sequoia_root (TALARIA_WORKSPACE_DIR)
-        let sequoia_root = workspace.root.parent().unwrap().to_path_buf();
+        // The workspace root's parent is the herald_root (TALARIA_WORKSPACE_DIR)
+        let herald_root = workspace.root.parent().unwrap().to_path_buf();
         workspace.mark_error("Test error").ok();
 
         // Workspace should be preserved after drop when marked as failed
         drop(workspace);
 
-        // Check if workspace was moved to preserved directory within sequoia_root
-        let preserved_path = sequoia_root.join("preserved").join(&workspace_id);
+        // Check if workspace was moved to preserved directory within herald_root
+        let preserved_path = herald_root.join("preserved").join(&workspace_id);
         assert!(
             preserved_path.exists(),
             "Workspace should be preserved at {:?}",

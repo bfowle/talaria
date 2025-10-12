@@ -26,8 +26,8 @@ pub struct VerifyArgs {
 
 pub fn run(args: VerifyArgs) -> Result<()> {
     use crate::cli::formatting::output::*;
-    use talaria_sequoia::database::DatabaseManager;
-    use talaria_sequoia::SHA256Hash;
+    use talaria_herald::database::DatabaseManager;
+    use talaria_herald::SHA256Hash;
 
     // Initialize database manager
     let manager = DatabaseManager::new(None)?;
@@ -105,14 +105,14 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     // Generate report if requested
     if let Some(report_path) = &args.report_output {
         use std::time::Duration;
-        use talaria_sequoia::operations::VerificationResult;
+        use talaria_herald::operations::VerificationResult;
 
         // This is a simple verification, create basic result
         let result = VerificationResult {
             valid: true, // Would track actual verification status
             issues: Vec::new(),
             merkle_valid: args.chunk.is_some(),
-            statistics: talaria_sequoia::operations::results::VerificationStatistics {
+            statistics: talaria_herald::operations::results::VerificationStatistics {
                 total_chunks: if args.chunk.is_some() { 1 } else { 0 },
                 verified_chunks: if args.chunk.is_some() { 1 } else { 0 },
                 corrupted_chunks: 0,

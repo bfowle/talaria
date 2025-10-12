@@ -4,7 +4,7 @@
 
 ### 1. Comparing Chunks Instead of Sequences
 
-**Current code** (`talaria-sequoia/src/operations/database_diff.rs:546-577`):
+**Current code** (`talaria-herald/src/operations/database_diff.rs:546-577`):
 ```rust
 fn compare_sequences_from_manifests(
     manifest_a: &TemporalManifest,
@@ -139,7 +139,7 @@ Why Low Sharing?
 ### Phase 1: Load Actual Sequence Hashes
 
 ```rust
-// talaria-sequoia/src/operations/database_diff.rs
+// talaria-herald/src/operations/database_diff.rs
 
 use std::collections::HashSet;
 use talaria_core::SHA256Hash;

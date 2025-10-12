@@ -4,11 +4,11 @@ use clap::Args;
 use colored::*;
 use std::path::{Path, PathBuf};
 use talaria_core::system::paths;
-use talaria_sequoia::operations::{
+use talaria_herald::operations::{
     format_bytes, ChangeType, DatabaseDiffer, DiffOptions, StandardTemporalManifestDiffer,
     TemporalManifestDiffer,
 };
-use talaria_sequoia::{DiffResult, SequoiaRepository};
+use talaria_herald::{DiffResult, HeraldRepository};
 
 #[derive(Args)]
 pub struct DiffArgs {
@@ -100,8 +100,8 @@ pub fn run(args: DiffArgs) -> anyhow::Result<()> {
     );
 
     // Load repositories
-    let from_repo = SequoiaRepository::open(&from_path)?;
-    let to_repo = SequoiaRepository::open(&to_path)?;
+    let from_repo = HeraldRepository::open(&from_path)?;
+    let to_repo = HeraldRepository::open(&to_path)?;
 
     // Get manifests at specified versions
     let from_manifest = if let Some(version) = from_version {
@@ -329,7 +329,7 @@ fn display_detailed(diff: &DiffResult) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn display_taxonomy_diff(_from: &SequoiaRepository, _to: &SequoiaRepository) -> anyhow::Result<()> {
+fn display_taxonomy_diff(_from: &HeraldRepository, _to: &HeraldRepository) -> anyhow::Result<()> {
     println!("\n{}", "─".repeat(60));
     println!("{:^60}", "TAXONOMY DIFFERENCES");
     println!("{}", "─".repeat(60));
@@ -346,7 +346,7 @@ fn display_taxonomy_diff(_from: &SequoiaRepository, _to: &SequoiaRepository) -> 
 fn run_bitemporal_diff(args: DiffArgs) -> anyhow::Result<()> {
     use chrono::Utc;
     use std::sync::Arc;
-    use talaria_sequoia::{BiTemporalDatabase, SequoiaStorage};
+    use talaria_herald::{BiTemporalDatabase, HeraldStorage};
 
     println!("{} Computing bi-temporal differences...", "►".cyan().bold());
 
@@ -390,17 +390,17 @@ fn run_bitemporal_diff(args: DiffArgs) -> anyhow::Result<()> {
         taxonomy_time2.format("%Y-%m-%d")
     );
 
-    // Open SEQUOIA storage and bi-temporal database
-    let storage = Arc::new(SequoiaStorage::open(&db_path)?);
+    // Open HERALD storage and bi-temporal database
+    let storage = Arc::new(HeraldStorage::open(&db_path)?);
     let mut bi_temporal_db = BiTemporalDatabase::new(storage)?;
 
     // Create coordinates
-    let coord1 = talaria_sequoia::BiTemporalCoordinate {
+    let coord1 = talaria_herald::BiTemporalCoordinate {
         sequence_time: sequence_time1,
         taxonomy_time: taxonomy_time1,
     };
 
-    let coord2 = talaria_sequoia::BiTemporalCoordinate {
+    let coord2 = talaria_herald::BiTemporalCoordinate {
         sequence_time: sequence_time2,
         taxonomy_time: taxonomy_time2,
     };
@@ -429,7 +429,7 @@ fn run_bitemporal_diff(args: DiffArgs) -> anyhow::Result<()> {
         println!("\n{}", "Taxonomy Changes:".bold());
         for change in diff.taxonomic_changes.iter().take(10) {
             match change.change_type {
-                talaria_sequoia::TaxonomicChangeType::Reclassified => {
+                talaria_herald::TaxonomicChangeType::Reclassified => {
                     println!(
                         "  {} TaxID {} reclassified from {:?} to {:?}",
                         "↻".yellow(),
@@ -438,10 +438,10 @@ fn run_bitemporal_diff(args: DiffArgs) -> anyhow::Result<()> {
                         change.new_parent.map(|t| t.0)
                     );
                 }
-                talaria_sequoia::TaxonomicChangeType::New => {
+                talaria_herald::TaxonomicChangeType::New => {
                     println!("  {} TaxID {} newly added", "+".green(), change.taxon_id.0);
                 }
-                talaria_sequoia::TaxonomicChangeType::Deprecated => {
+                talaria_herald::TaxonomicChangeType::Deprecated => {
                     println!("  {} TaxID {} deprecated", "✗".red(), change.taxon_id.0);
                 }
                 _ => {}
@@ -497,8 +497,8 @@ fn run_comprehensive_diff(
 
     let (comparison, is_reduction_comparison) = if is_from_dbname && is_to_dbname {
         // Both are database names - use DatabaseManager to load manifests
-        use talaria_sequoia::database::DatabaseManager;
-        use talaria_sequoia::taxonomy::TaxonomyManager;
+        use talaria_herald::database::DatabaseManager;
+        use talaria_herald::taxonomy::TaxonomyManager;
         use talaria_utils::database::database_ref::parse_database_reference;
 
         let manager = DatabaseManager::new(None)?;
@@ -564,7 +564,7 @@ fn run_comprehensive_diff(
 
         println!();
         info("ℹ️  Storage Analysis (Advanced)");
-        info("   Both databases share the same underlying SEQUOIA storage.");
+        info("   Both databases share the same underlying HERALD storage.");
         info("   The reduction profile is a metadata layer that selects which sequences to include.");
         println!();
     }
@@ -599,7 +599,7 @@ fn run_comprehensive_diff(
 
 /// Generate a report from DatabaseComparison
 fn generate_report(
-    comparison: &talaria_sequoia::DatabaseComparison,
+    comparison: &talaria_herald::DatabaseComparison,
     format: &str,
     output_path: &Path,
 ) -> anyhow::Result<()> {
@@ -740,7 +740,7 @@ fn generate_report(
     Ok(())
 }
 
-fn display_chunk_analysis(analysis: &talaria_sequoia::ChunkAnalysis) -> anyhow::Result<()> {
+fn display_chunk_analysis(analysis: &talaria_herald::ChunkAnalysis) -> anyhow::Result<()> {
     println!();
     subsection_header("Chunk-Level Analysis");
 
@@ -789,7 +789,7 @@ fn display_chunk_analysis(analysis: &talaria_sequoia::ChunkAnalysis) -> anyhow::
     Ok(())
 }
 
-fn display_sequence_analysis(analysis: &talaria_sequoia::SequenceAnalysis) -> anyhow::Result<()> {
+fn display_sequence_analysis(analysis: &talaria_herald::SequenceAnalysis) -> anyhow::Result<()> {
     println!();
     subsection_header("Sequence-Level Analysis");
 
@@ -869,7 +869,7 @@ fn display_sequence_analysis(analysis: &talaria_sequoia::SequenceAnalysis) -> an
     Ok(())
 }
 
-fn display_taxonomy_analysis(analysis: &talaria_sequoia::TaxonomyAnalysis) -> anyhow::Result<()> {
+fn display_taxonomy_analysis(analysis: &talaria_herald::TaxonomyAnalysis) -> anyhow::Result<()> {
     println!();
     subsection_header("Taxonomy Distribution");
 
@@ -932,7 +932,7 @@ fn display_taxonomy_analysis(analysis: &talaria_sequoia::TaxonomyAnalysis) -> an
     Ok(())
 }
 
-fn display_storage_metrics(metrics: &talaria_sequoia::StorageMetrics) -> anyhow::Result<()> {
+fn display_storage_metrics(metrics: &talaria_herald::StorageMetrics) -> anyhow::Result<()> {
     println!();
     subsection_header("Storage Metrics");
 
@@ -973,9 +973,9 @@ fn display_storage_metrics(metrics: &talaria_sequoia::StorageMetrics) -> anyhow:
 fn display_reduction_analysis(
     from_name: &str,
     to_name: &str,
-    _comparison: &talaria_sequoia::DatabaseComparison,
+    _comparison: &talaria_herald::DatabaseComparison,
 ) -> anyhow::Result<()> {
-    use talaria_sequoia::database::DatabaseManager;
+    use talaria_herald::database::DatabaseManager;
 
     println!();
     section_header("Reduction Analysis");
@@ -1021,7 +1021,7 @@ fn display_reduction_analysis(
     // Display reduction parameters
     tree_item(false, "Profile", Some(profile));
     tree_item(false, "Source Database", Some(original_db));
-    tree_item(false, "Target Aligner", Some(&format!("{:?}", manifest.parameters.target_aligner.unwrap_or(talaria_sequoia::TargetAligner::Lambda))));
+    tree_item(false, "Target Aligner", Some(&format!("{:?}", manifest.parameters.target_aligner.unwrap_or(talaria_herald::TargetAligner::Lambda))));
     tree_item(false, "Similarity Threshold", Some(&format!("{:.1}%", manifest.parameters.similarity_threshold * 100.0)));
     tree_item(true, "Taxonomy Aware", Some(&format!("{}", manifest.parameters.taxonomy_aware)));
 
@@ -1129,17 +1129,17 @@ fn display_reduction_analysis(
 }
 
 /// Apply reduction filters - for reduction profiles, leave manifests as-is
-/// The reduction creates separate chunks not in SEQUOIA storage, so we can't filter
+/// The reduction creates separate chunks not in HERALD storage, so we can't filter
 /// Instead, the reduction analysis section shows the meaningful comparison
 fn apply_reduction_filters(
-    _manager: &talaria_sequoia::database::DatabaseManager,
+    _manager: &talaria_herald::database::DatabaseManager,
     _db_ref_a: &talaria_core::types::DatabaseReference,
     _db_ref_b: &talaria_core::types::DatabaseReference,
-    manifest_a: talaria_sequoia::TemporalManifest,
-    manifest_b: talaria_sequoia::TemporalManifest,
-    _storage: &talaria_sequoia::storage::SequoiaStorage,
-) -> anyhow::Result<(talaria_sequoia::TemporalManifest, talaria_sequoia::TemporalManifest)> {
-    // Don't filter - reduction chunks aren't in SEQUOIA storage
+    manifest_a: talaria_herald::TemporalManifest,
+    manifest_b: talaria_herald::TemporalManifest,
+    _storage: &talaria_herald::storage::HeraldStorage,
+) -> anyhow::Result<(talaria_herald::TemporalManifest, talaria_herald::TemporalManifest)> {
+    // Don't filter - reduction chunks aren't in HERALD storage
     // The meaningful comparison is in the Reduction Analysis section
     Ok((manifest_a, manifest_b))
 }
@@ -1159,10 +1159,10 @@ fn parse_db_with_profile(spec: &str) -> (&str, Option<&str>) {
 
 /// Load a reduction manifest for a database and profile
 fn load_reduction_manifest(
-    manager: &talaria_sequoia::database::DatabaseManager,
+    manager: &talaria_herald::database::DatabaseManager,
     db_name: &str,
     profile: &str,
-) -> anyhow::Result<Option<talaria_sequoia::operations::ReductionManifest>> {
+) -> anyhow::Result<Option<talaria_herald::operations::ReductionManifest>> {
     // Parse database name (format: source/dataset)
     let parts: Vec<&str> = db_name.split('/').collect();
     if parts.len() != 2 {

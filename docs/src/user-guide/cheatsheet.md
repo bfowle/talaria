@@ -4,7 +4,7 @@
 
 ### First Time Setup
 ```bash
-talaria sequoia init
+talaria herald init
 talaria database download uniprot -d swissprot
 ```
 
@@ -18,7 +18,7 @@ talaria reduce uniprot/swissprot -r 0.3 -o output.fasta
 
 # View what you have
 talaria database list
-talaria sequoia stats
+talaria herald stats
 ```
 
 ## Database Download Commands
@@ -67,8 +67,8 @@ talaria database info uniprot/swissprot
 talaria database list-sequences uniprot/swissprot --limit 100
 talaria database list-sequences uniprot/swissprot --ids-only
 
-# SEQUOIA statistics
-talaria sequoia stats
+# HERALD statistics
+talaria herald stats
 ```
 
 ## Validation & Reconstruction
@@ -120,7 +120,7 @@ diamond blastp -q queries.fasta -d swiss_diamond -o results.m8
 - **30% reduction** (`-r 0.3`) is a good starting point
 - **Same download command** checks for updates automatically
 - **Use `-a <aligner>`** to optimize for your specific tool
-- **SEQUOIA only downloads changes** after initial download
+- **HERALD only downloads changes** after initial download
 
 ## Getting Help
 

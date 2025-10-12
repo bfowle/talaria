@@ -8,7 +8,7 @@
 - **Files**: 310 Rust files across 8 crates
 - **Architecture**: Bottom-up dependencies (Foundation → Domain → Application)
 - **Complexity Distribution**:
-  - **talaria-sequoia**: 42k lines (largest, most complex)
+  - **talaria-herald**: 42k lines (largest, most complex)
   - **talaria-cli**: 15k lines
   - **talaria-storage**: 12k lines
   - **talaria-utils**: 8k lines
@@ -270,9 +270,9 @@
 
 ---
 
-## Phase 3: The Heart - SEQUOIA (Days 6-14)
+## Phase 3: The Heart - HERALD (Days 6-14)
 
-### Week 2: SEQUOIA Core Storage
+### Week 2: HERALD Core Storage
 
 **The largest crate** (~42,000 lines) - Take your time!
 
@@ -280,7 +280,7 @@
 
 **Start with the index system - it's the gateway to everything else**
 
-1. **`storage/indices.rs`** * **START HERE FOR SEQUOIA**
+1. **`storage/indices.rs`** * **START HERE FOR HERALD**
    ```rust
    pub struct SequenceIndices {
        backend: Arc<RocksDBBackend>,
@@ -320,9 +320,9 @@
 
    **Goal**: Understand canonical storage and multi-representation support
 
-3. **`storage/core.rs`** - Main SEQUOIA storage * **THE ORCHESTRATOR**
+3. **`storage/core.rs`** - Main HERALD storage * **THE ORCHESTRATOR**
    ```rust
-   pub struct SequoiaStorage {
+   pub struct HeraldStorage {
        base_path: PathBuf,
        sequence_storage: Arc<SequenceStorage>,
        indices: Arc<SequenceIndices>,
@@ -631,16 +631,16 @@ cargo run --example sequence_storage
 
 ```bash
 # Browse documentation
-cargo doc --open --package talaria-sequoia
+cargo doc --open --package talaria-herald
 
 # Understand dependencies
-cargo tree --package talaria-sequoia
+cargo tree --package talaria-herald
 
 # Find definitions
 rg "pub struct SequenceIndices" --type rust
 
 # Check complexity
-tokei talaria-sequoia/src
+tokei talaria-herald/src
 ```
 
 ---
@@ -657,7 +657,7 @@ tokei talaria-sequoia/src
        |
        v
 +-----------------+
-| talaria-sequoia | <-- The Heart
+| talaria-herald | <-- The Heart
 +-------+---------+
         |
         v
@@ -678,7 +678,7 @@ tokei talaria-sequoia/src
 
 #### Storage Architecture
 ```
-SequoiaStorage
+HeraldStorage
 |-- SequenceStorage (Canonical sequences in RocksDB)
 |-- SequenceIndices (Bloom filter + RocksDB indices)
 |-- ChunkStorage (Manifests in RocksDB)
@@ -727,9 +727,9 @@ Query (accession)
 
 Document the public API for each crate:
 ```rust
-// talaria-sequoia public API
-pub struct SequoiaStorage { ... }
-impl SequoiaStorage {
+// talaria-herald public API
+pub struct HeraldStorage { ... }
+impl HeraldStorage {
     pub fn new(path: &Path) -> Result<Self>;
     pub fn store_chunk(&self, data: &[u8], compress: bool) -> Result<SHA256Hash>;
     pub fn chunk_exists_fast(&self, hash: &SHA256Hash) -> Result<bool>;
@@ -777,7 +777,7 @@ impl SequoiaStorage {
 - [ ] Know taxonomy tree operations
 - [ ] Understand RocksDB column families
 
-### After Phase 3 (SEQUOIA) [x]
+### After Phase 3 (HERALD) [x]
 - [ ] Can trace chunk storage end-to-end
 - [ ] Understand bloom filter optimization
 - [ ] Know how delta encoding works
@@ -803,7 +803,7 @@ impl SequoiaStorage {
 ### Fast Track (Full-Time Study)
 - **Foundation**: 2 days
 - **Domain**: 3 days
-- **SEQUOIA**: 9 days
+- **HERALD**: 9 days
 - **Tools**: 1 day
 - **CLI**: 2 days
 - **Testing**: 1 day
@@ -812,7 +812,7 @@ impl SequoiaStorage {
 ### Moderate Pace (Part-Time)
 - **Foundation**: 1 week
 - **Domain**: 1 week
-- **SEQUOIA**: 3 weeks
+- **HERALD**: 3 weeks
 - **Tools**: 3 days
 - **CLI**: 1 week
 - **Testing**: 2 days
@@ -821,7 +821,7 @@ impl SequoiaStorage {
 ### Thorough (Deep Research)
 - **Foundation**: 2 weeks
 - **Domain**: 3 weeks
-- **SEQUOIA**: 6 weeks
+- **HERALD**: 6 weeks
 - **Tools**: 1 week
 - **CLI**: 2 weeks
 - **Testing**: 1 week

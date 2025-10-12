@@ -217,7 +217,7 @@ pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
         use talaria_utils::database::database_ref::parse_database_ref;
         let (source, dataset) = parse_database_ref(args.database.as_ref().unwrap())?;
 
-        // Print header and SEQUOIA info (unless quiet mode)
+        // Print header and HERALD info (unless quiet mode)
         if !args.quiet {
             use crate::cli::formatting::info_box;
             use crate::cli::formatting::output::section_header;
@@ -255,7 +255,7 @@ pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
             println!();
 
             info_box(
-                "Content-Addressed Storage (SEQUOIA)",
+                "Content-Addressed Storage (HERALD)",
                 &[
                     "Automatic deduplication",
                     "Incremental updates",
@@ -270,10 +270,10 @@ pub fn run(args: DownloadArgs) -> anyhow::Result<()> {
         if source == "custom" {
             run_custom_download(args, dataset)
         } else {
-            // Use SEQUOIA for regular database downloads
+            // Use HERALD for regular database downloads
             use super::download_impl::run_database_download;
 
-            let database_source = talaria_sequoia::download::parse_database_source(&format!(
+            let database_source = talaria_herald::download::parse_database_source(&format!(
                 "{}/{}",
                 source, dataset
             ))?;
@@ -312,7 +312,7 @@ fn run_complete_taxonomy_download(args: DownloadArgs) -> anyhow::Result<()> {
     for (source_str, name) in components {
         println!("{}  Downloading {}...", "►".cyan().bold(), name);
 
-        match talaria_sequoia::download::parse_database_source(source_str) {
+        match talaria_herald::download::parse_database_source(source_str) {
             Ok(database_source) => {
                 // Clone args for each component
                 let component_args = DownloadArgs {
@@ -458,7 +458,7 @@ fn run_complete_taxonomy_download(args: DownloadArgs) -> anyhow::Result<()> {
 
 fn list_resumable_downloads() -> anyhow::Result<()> {
     use colored::Colorize;
-    use talaria_sequoia::download::{find_resumable_downloads, DatabaseSourceExt};
+    use talaria_herald::download::{find_resumable_downloads, DatabaseSourceExt};
 
     let resumable = find_resumable_downloads()?;
 
@@ -493,7 +493,7 @@ fn list_resumable_downloads() -> anyhow::Result<()> {
 
 fn resume_download_by_id(resume_id: &str, skip_verify: bool) -> anyhow::Result<()> {
     use colored::Colorize;
-    use talaria_sequoia::download::{
+    use talaria_herald::download::{
         manager::{DownloadManager, DownloadOptions},
         progress::DownloadProgress,
         workspace::{get_workspace_by_id, DownloadState},
@@ -705,8 +705,8 @@ fn run_custom_download(args: DownloadArgs, db_name: String) -> anyhow::Result<()
     use crate::cli::formatting::output::{info, section_header, success};
     use talaria_bio::providers::uniprot::CustomDatabaseProvider;
     use talaria_bio::taxonomy::SequenceProvider;
-    use talaria_sequoia::database::DatabaseManager;
-    use talaria_sequoia::download::DatabaseSource;
+    use talaria_herald::database::DatabaseManager;
+    use talaria_herald::download::DatabaseSource;
 
     // Parse TaxIDs
     let taxids = if let Some(taxid_list_path) = &args.taxid_list {
@@ -752,7 +752,7 @@ fn run_custom_download(args: DownloadArgs, db_name: String) -> anyhow::Result<()
     info(&format!("Total sequences fetched: {}", sequences.len()));
 
     // Use the unified pipeline - chunk sequences directly
-    info("Processing into SEQUOIA chunks...");
+    info("Processing into HERALD chunks...");
     manager.chunk_sequences_direct(sequences, &database_source)?;
 
     success(&format!(
@@ -840,7 +840,7 @@ fn download_uniprot_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
     args.output = output_dir.clone();
     args.taxonomy = download_taxonomy;
 
-    // Print header and SEQUOIA info
+    // Print header and HERALD info
     use crate::cli::formatting::info_box;
     use crate::cli::formatting::output::section_header;
     use colored::Colorize;
@@ -851,7 +851,7 @@ fn download_uniprot_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
     println!();
 
     info_box(
-        "Content-Addressed Storage (SEQUOIA)",
+        "Content-Addressed Storage (HERALD)",
         &[
             "Automatic deduplication",
             "Incremental updates",
@@ -861,11 +861,11 @@ fn download_uniprot_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
     );
     println!();
 
-    // Use the unified SEQUOIA download
+    // Use the unified HERALD download
     use super::download_impl::run_database_download;
 
     let database_source =
-        talaria_sequoia::download::parse_database_source(&format!("uniprot/{}", dataset_id))?;
+        talaria_herald::download::parse_database_source(&format!("uniprot/{}", dataset_id))?;
     run_database_download(args, database_source)?;
 
     show_success(&format!("{} download complete!", name));
@@ -925,7 +925,7 @@ fn download_ncbi_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
     let mut args = DownloadArgs::default_with_database(database_ref.clone());
     args.output = output_dir.clone();
 
-    // Print header and SEQUOIA info
+    // Print header and HERALD info
     use crate::cli::formatting::info_box;
     use crate::cli::formatting::output::section_header;
     use colored::Colorize;
@@ -936,7 +936,7 @@ fn download_ncbi_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
     println!();
 
     info_box(
-        "Content-Addressed Storage (SEQUOIA)",
+        "Content-Addressed Storage (HERALD)",
         &[
             "Automatic deduplication",
             "Incremental updates",
@@ -946,11 +946,11 @@ fn download_ncbi_interactive(output_dir: &PathBuf) -> anyhow::Result<()> {
     );
     println!();
 
-    // Use the unified SEQUOIA download
+    // Use the unified HERALD download
     use super::download_impl::run_database_download;
 
     let database_source =
-        talaria_sequoia::download::parse_database_source(&format!("ncbi/{}", dataset_id))?;
+        talaria_herald::download::parse_database_source(&format!("ncbi/{}", dataset_id))?;
     run_database_download(args, database_source)?;
 
     show_success(&format!("{} download complete!", name));
@@ -963,7 +963,7 @@ fn check_database_updates(database: &str, _force: bool) -> anyhow::Result<()> {
     use crate::cli::formatting::output::format_number;
     use colored::*;
     use humansize::{format_size, BINARY};
-    use talaria_sequoia::database::DatabaseManager;
+    use talaria_herald::database::DatabaseManager;
     use talaria_utils::database::database_ref::parse_database_reference;
 
     println!(
@@ -1045,7 +1045,7 @@ fn check_database_updates(database: &str, _force: bool) -> anyhow::Result<()> {
 fn fetch_remote_manifest(
     db_ref: &talaria_utils::database::database_ref::DatabaseReference,
     server: &str,
-) -> anyhow::Result<talaria_sequoia::TemporalManifest> {
+) -> anyhow::Result<talaria_herald::TemporalManifest> {
     let manifest_url = format!(
         "{}/{}/{}/current/manifest.json",
         server.trim_end_matches('/'),
@@ -1063,14 +1063,14 @@ fn fetch_remote_manifest(
         anyhow::bail!("Remote manifest not found: {}", response.status());
     }
 
-    let manifest: talaria_sequoia::TemporalManifest = response.json()?;
+    let manifest: talaria_herald::TemporalManifest = response.json()?;
     Ok(manifest)
 }
 
 /// Check if two manifests are identical by comparing chunk hashes
 fn manifests_identical(
-    a: &talaria_sequoia::TemporalManifest,
-    b: &talaria_sequoia::TemporalManifest,
+    a: &talaria_herald::TemporalManifest,
+    b: &talaria_herald::TemporalManifest,
 ) -> bool {
     use std::collections::HashSet;
 

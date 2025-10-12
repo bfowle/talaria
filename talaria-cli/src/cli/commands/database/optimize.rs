@@ -1,4 +1,4 @@
-/// Database optimization command for SEQUOIA
+/// Database optimization command for HERALD
 ///
 /// Optimizes storage by:
 /// - Repacking chunks for better compression
@@ -10,7 +10,7 @@ use clap::Args;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::path::PathBuf;
 use talaria_core::system::paths::talaria_databases_dir;
-use talaria_sequoia::SequoiaRepository;
+use talaria_herald::HeraldRepository;
 
 #[derive(Debug, Args)]
 pub struct OptimizeCmd {
@@ -65,11 +65,11 @@ impl OptimizeCmd {
         // Verify database exists
         let _db_path = self.get_database_path()?;
 
-        println!("🔧 Optimizing SEQUOIA database: {}", self.database);
+        println!("🔧 Optimizing HERALD database: {}", self.database);
 
         // Open repository at the unified RocksDB path
         let base_path = talaria_databases_dir();
-        let mut repository = SequoiaRepository::open(&base_path)?;
+        let mut repository = HeraldRepository::open(&base_path)?;
 
         // Get current statistics
         if self.stats {
@@ -136,7 +136,7 @@ impl OptimizeCmd {
         // Generate report if requested
         if let Some(report_path) = &self.report_output {
             use std::time::Duration;
-            use talaria_sequoia::operations::OptimizationResult;
+            use talaria_herald::operations::OptimizationResult;
 
             // Get storage stats for space calculations
             let storage_stats = repository.storage.get_statistics()?;
@@ -165,10 +165,10 @@ impl OptimizeCmd {
     }
 
     async fn run_all(&self) -> Result<()> {
-        use talaria_sequoia::database::DatabaseManager;
+        use talaria_herald::database::DatabaseManager;
         
 
-        println!("🔧 Optimizing ALL SEQUOIA databases");
+        println!("🔧 Optimizing ALL HERALD databases");
         println!();
 
         // Get list of all databases (this opens RocksDB)
@@ -309,7 +309,7 @@ impl OptimizeCmd {
 
     fn get_database_path(&self) -> Result<PathBuf> {
         // Use DatabaseManager to verify database exists
-        use talaria_sequoia::database::DatabaseManager;
+        use talaria_herald::database::DatabaseManager;
 
         let manager = DatabaseManager::new(None)?;
         manager
@@ -322,7 +322,7 @@ impl OptimizeCmd {
         Ok(talaria_databases_dir())
     }
 
-    fn print_current_stats(&self, repository: &SequoiaRepository) -> Result<()> {
+    fn print_current_stats(&self, repository: &HeraldRepository) -> Result<()> {
         println!("\n📊 Current Database Statistics:");
 
         // Get storage stats
@@ -342,7 +342,7 @@ impl OptimizeCmd {
         Ok(())
     }
 
-    fn repack_chunks(&self, repository: &mut SequoiaRepository, dry_run: bool) -> Result<usize> {
+    fn repack_chunks(&self, repository: &mut HeraldRepository, dry_run: bool) -> Result<usize> {
         println!("\n📦 Repacking chunks for better compression...");
 
         // Get all chunks
@@ -377,7 +377,7 @@ impl OptimizeCmd {
         Ok(space_saved)
     }
 
-    fn compact_database(&self, repository: &SequoiaRepository, dry_run: bool) -> Result<()> {
+    fn compact_database(&self, repository: &HeraldRepository, dry_run: bool) -> Result<()> {
         println!("\n🗜️  Compacting RocksDB to compress uncompressed data...");
 
         if !dry_run {
@@ -396,12 +396,12 @@ impl OptimizeCmd {
         Ok(())
     }
 
-    fn rebuild_indices(&self, repository: &mut SequoiaRepository, dry_run: bool) -> Result<()> {
+    fn rebuild_indices(&self, repository: &mut HeraldRepository, dry_run: bool) -> Result<()> {
         println!("\n🔍 Rebuilding indices for faster queries...");
 
         if !dry_run {
             // Rebuild database metadata (fixes missing db_meta:* entries)
-            use talaria_sequoia::database::DatabaseManager;
+            use talaria_herald::database::DatabaseManager;
             let mut manager = DatabaseManager::new(None)?;
             let rebuilt_count = manager.rebuild_database_metadata()?;
             if rebuilt_count > 0 {
@@ -427,7 +427,7 @@ impl OptimizeCmd {
 
     fn prune_temporal(
         &self,
-        repository: &mut SequoiaRepository,
+        repository: &mut HeraldRepository,
         days: u32,
         dry_run: bool,
     ) -> Result<usize> {

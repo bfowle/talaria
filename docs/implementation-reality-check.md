@@ -1,9 +1,9 @@
-# SEQUOIA Implementation Reality Check
+# HERALD Implementation Reality Check
 
 > **Critical Analysis**: What's actually implemented vs what's documented in whitepapers and analysis docs
 
 **Date**: October 2025
-**Purpose**: Verify claims in `existing-solutions-analysis.md` Section 7 "SEQUOIA's Novel Approach" against actual code
+**Purpose**: Verify claims in `existing-solutions-analysis.md` Section 7 "HERALD's Novel Approach" against actual code
 
 ---
 
@@ -26,7 +26,7 @@
 | **Phylogenetic Merkle Trees** | ✅ "Novel Approach" | ❌ **NOT IMPLEMENTED** | N/A |
 | **Multi-Dimensional Chunking** | ✅ "Novel Approach" | ❌ **NOT IMPLEMENTED** | N/A |
 
-**Key Finding**: **60% of "SEQUOIA's Novel Approach" is NOT implemented.** It's architectural vision, not working code.
+**Key Finding**: **60% of "HERALD's Novel Approach" is NOT implemented.** It's architectural vision, not working code.
 
 ---
 
@@ -44,7 +44,7 @@ Cross-Sequence Deduplication: Shared domains stored once
 
 **Reality**: Only SEQUENCE-level CAS, NOT domain-level.
 
-**Actual Code** (`talaria-sequoia/src/storage/sequence.rs:411-503`):
+**Actual Code** (`talaria-herald/src/storage/sequence.rs:411-503`):
 ```rust
 /// Store a sequence with its database-specific representation
 pub fn store_sequence(
@@ -103,7 +103,7 @@ pub fn store_sequence(
 
 ### ✅ 2. Cross-Database Deduplication (PROVEN BY TESTS)
 
-**Test Evidence** (`talaria-sequoia/src/storage/sequence.rs:1010-1033`):
+**Test Evidence** (`talaria-herald/src/storage/sequence.rs:1010-1033`):
 ```rust
 #[test]
 fn test_cross_database_deduplication() {
@@ -135,7 +135,7 @@ fn test_cross_database_deduplication() {
 
 ### ⚠️ 3. Merkle DAG (BASIC IMPLEMENTATION)
 
-**Claim** (from `sequoia-architecture.md#2.2`):
+**Claim** (from `herald-architecture.md#2.2`):
 ```
 Merkle DAG Structure:
                     Root (Manifest)
@@ -147,7 +147,7 @@ Merkle DAG Structure:
 
 **Reality**: Basic Merkle tree exists, but NOT full DAG with branch structure.
 
-**Actual Code** (`talaria-sequoia/src/verification/merkle.rs:38-84`):
+**Actual Code** (`talaria-herald/src/verification/merkle.rs:38-84`):
 ```rust
 /// Build a Merkle tree from verifiable items
 pub fn build_from_items<T: MerkleVerifiable>(items: Vec<T>) -> Result<Self> {
@@ -213,7 +213,7 @@ pub fn build_from_items<T: MerkleVerifiable>(items: Vec<T>) -> Result<Self> {
 
 ### ✅ 4. Bi-Temporal Versioning (IMPLEMENTED)
 
-**Claim** (from `sequoia-architecture.md#2.3`):
+**Claim** (from `herald-architecture.md#2.3`):
 ```
 TemporalCoordinate = (T_seq, T_tax)
 T_seq: When sequence added/modified
@@ -222,12 +222,12 @@ T_tax: When taxonomic classification was asserted
 
 **Reality**: Fully implemented with query support.
 
-**Actual Code** (`talaria-sequoia/src/temporal/bi_temporal.rs:19-85`):
+**Actual Code** (`talaria-herald/src/temporal/bi_temporal.rs:19-85`):
 ```rust
 /// A bi-temporal database view allowing time-travel queries
 pub struct BiTemporalDatabase {
     /// Storage backend
-    storage: Arc<SequoiaStorage>,
+    storage: Arc<HeraldStorage>,
 
     /// Temporal index for version tracking
     temporal_index: TemporalIndex,
@@ -284,7 +284,7 @@ impl BiTemporalDatabase {
 - ✅ Caches results for efficiency
 - ✅ Creates synthetic manifests for historical states
 
-**Data Structure** (`talaria-sequoia/src/types.rs:78-82`):
+**Data Structure** (`talaria-herald/src/types.rs:78-82`):
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BiTemporalCoordinate {
@@ -293,7 +293,7 @@ pub struct BiTemporalCoordinate {
 }
 ```
 
-**Manifest Support** (`talaria-sequoia/src/types.rs:139-171`):
+**Manifest Support** (`talaria-herald/src/types.rs:139-171`):
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemporalManifest {
@@ -320,7 +320,7 @@ Delta: A → B (works across ALL databases containing A and B)
 
 **Reality**: Delta encoding exists, but limited implementation.
 
-**Actual Code** (`talaria-sequoia/src/delta/canonical.rs:8-67`):
+**Actual Code** (`talaria-herald/src/delta/canonical.rs:8-67`):
 ```rust
 /// Trait for delta compression algorithms
 pub trait DeltaCompressor: Send + Sync {
@@ -388,7 +388,7 @@ pub struct CanonicalDelta {
 **Usage Check**:
 ```bash
 # Search for actual delta encoding usage in main workflow
-$ grep -r "DeltaCompressor\|compute_delta" talaria-sequoia/src/database/
+$ grep -r "DeltaCompressor\|compute_delta" talaria-herald/src/database/
 # Result: NO MATCHES in database manager!
 ```
 
@@ -396,7 +396,7 @@ $ grep -r "DeltaCompressor\|compute_delta" talaria-sequoia/src/database/
 
 ### ✅ 6. Taxonomic Chunking (IMPLEMENTED)
 
-**Actual Code** (`talaria-sequoia/src/chunker/canonical_taxonomic.rs:98-187`):
+**Actual Code** (`talaria-herald/src/chunker/canonical_taxonomic.rs:98-187`):
 ```rust
 /// Internal implementation of chunk_sequences_canonical
 fn chunk_sequences_canonical_internal(
@@ -476,7 +476,7 @@ Protein_2: [hash_K, hash_S2] + linkers  # Missing SH3, shares Kinase
 
 **Search Results**:
 ```bash
-$ grep -r "domain.*hash\|DomainHash\|protein.*domain\|Pfam\|InterPro" talaria-sequoia/src/
+$ grep -r "domain.*hash\|DomainHash\|protein.*domain\|Pfam\|InterPro" talaria-herald/src/
 # NO MATCHES for domain-level storage
 ```
 
@@ -505,16 +505,16 @@ struct PhylogeneticChunk {
 
 **Search Results**:
 ```bash
-$ grep -r "phylogenetic\|PhylogeneticChunk\|PhylogeneticDelta" talaria-sequoia/src/
+$ grep -r "phylogenetic\|PhylogeneticChunk\|PhylogeneticDelta" talaria-herald/src/
 
 # Only 2 hits, both in COMMENTS:
-talaria-sequoia/src/chunker/canonical_taxonomic.rs:1:/// Taxonomic chunker...
-talaria-sequoia/src/storage/chunk_index.rs:15:// Future: phylogenetic chunking
+talaria-herald/src/chunker/canonical_taxonomic.rs:1:/// Taxonomic chunker...
+talaria-herald/src/storage/chunk_index.rs:15:// Future: phylogenetic chunking
 ```
 
-**File Evidence** (`talaria-sequoia/src/chunker/mod.rs`):
+**File Evidence** (`talaria-herald/src/chunker/mod.rs`):
 ```bash
-$ ls talaria-sequoia/src/chunker/
+$ ls talaria-herald/src/chunker/
 canonical_taxonomic.rs  # ✅ Exists
 hierarchical_taxonomic.rs  # ✅ Exists
 mod.rs
@@ -540,7 +540,7 @@ Mirrors Evolutionary Tree: Hash structure follows phylogeny
 
 **Reality**: Standard Merkle tree only, NOT phylogenetic.
 
-**Merkle Implementation** (`talaria-sequoia/src/verification/merkle.rs`):
+**Merkle Implementation** (`talaria-herald/src/verification/merkle.rs`):
 - Simple binary tree (pair nodes left-right)
 - NO phylogenetic structure
 - NO evolutionary relationships
@@ -569,13 +569,13 @@ struct MultiIndexedStorage {
 
 **Reality**: Only taxonomy index exists.
 
-**Index Implementation** (`talaria-sequoia/src/storage/indices.rs`):
+**Index Implementation** (`talaria-herald/src/storage/indices.rs`):
 ```bash
-$ grep -r "index.*domain\|index.*function\|index.*phylo\|GOTerm\|Architecture" talaria-sequoia/src/
+$ grep -r "index.*domain\|index.*function\|index.*phylo\|GOTerm\|Architecture" talaria-herald/src/
 # NO MATCHES
 ```
 
-**Manifest Structure** (`talaria-sequoia/src/types.rs:165`):
+**Manifest Structure** (`talaria-herald/src/types.rs:165`):
 ```rust
 pub chunk_index: Vec<ManifestMetadata>,  // Single flat index
 
@@ -596,7 +596,7 @@ pub struct ManifestMetadata {
 
 ### What ACTUALLY Happens When You Run `talaria database download uniprot/swissprot`
 
-**Step 1: Download Manager** (`talaria-sequoia/src/database/manager.rs:290`)
+**Step 1: Download Manager** (`talaria-herald/src/database/manager.rs:290`)
 ```rust
 pub async fn download(
     &mut self,
@@ -609,7 +609,7 @@ pub async fn download(
 }
 ```
 
-**Step 2: Chunk Database** (`talaria-sequoia/src/database/manager.rs:1969`)
+**Step 2: Chunk Database** (`talaria-herald/src/database/manager.rs:1969`)
 ```rust
 pub fn chunk_database(
     &mut self,
@@ -631,7 +631,7 @@ pub fn chunk_database(
 }
 ```
 
-**Step 3: Stream and Chunk** (`talaria-sequoia/src/database/manager.rs:3156`)
+**Step 3: Stream and Chunk** (`talaria-herald/src/database/manager.rs:3156`)
 ```rust
 fn chunk_database_streaming(
     &mut self,
@@ -663,7 +663,7 @@ fn chunk_database_streaming(
 }
 ```
 
-**Step 4: Taxonomic Chunking** (`talaria-sequoia/src/chunker/canonical_taxonomic.rs:98`)
+**Step 4: Taxonomic Chunking** (`talaria-herald/src/chunker/canonical_taxonomic.rs:98`)
 ```rust
 fn chunk_sequences_canonical_internal(...) -> Result<Vec<ChunkManifest>> {
     // 1. Group by taxonomy
@@ -690,7 +690,7 @@ fn chunk_sequences_canonical_internal(...) -> Result<Vec<ChunkManifest>> {
 }
 ```
 
-**Step 5: Canonical Storage** (`talaria-sequoia/src/storage/sequence.rs:411`)
+**Step 5: Canonical Storage** (`talaria-herald/src/storage/sequence.rs:411`)
 ```rust
 pub fn store_sequence(
     &self,
@@ -731,7 +731,7 @@ pub fn store_sequence(
 }
 ```
 
-**Step 6: Manifest Creation** (`talaria-sequoia/src/manifest/core.rs:500+`)
+**Step 6: Manifest Creation** (`talaria-herald/src/manifest/core.rs:500+`)
 ```rust
 pub fn update_with_chunks(&mut self, chunks: Vec<ChunkManifest>) -> Result<()> {
     let mut manifest = self.data.as_mut().ok_or(...)?;
@@ -753,7 +753,7 @@ pub fn update_with_chunks(&mut self, chunks: Vec<ChunkManifest>) -> Result<()> {
 }
 ```
 
-**Step 7: Verification** (`talaria-sequoia/src/verification/verifier.rs:77`)
+**Step 7: Verification** (`talaria-herald/src/verification/verifier.rs:77`)
 ```rust
 fn verify_merkle_roots(&self) -> Result<bool> {
     // Build Merkle tree from chunks
@@ -812,7 +812,7 @@ fn verify_merkle_roots(&self) -> Result<bool> {
 
 ## Part 4: Detailed File-by-File Reality Check
 
-### File: `talaria-sequoia/src/storage/sequence.rs`
+### File: `talaria-herald/src/storage/sequence.rs`
 
 **Lines 1-10: Header**
 ```rust
@@ -878,7 +878,7 @@ pub fn store_sequence(
 
 **Verdict**: Sequence-level CAS works. Domain-level CAS doesn't exist.
 
-### File: `talaria-sequoia/src/chunker/canonical_taxonomic.rs`
+### File: `talaria-herald/src/chunker/canonical_taxonomic.rs`
 
 **Lines 98-187: Chunking Implementation**
 ```rust
@@ -933,7 +933,7 @@ fn chunk_sequences_canonical_internal(
 
 **Verdict**: Taxonomic chunking only. No multi-dimensional indexing.
 
-### File: `talaria-sequoia/src/delta/canonical.rs`
+### File: `talaria-herald/src/delta/canonical.rs`
 
 **Lines 8-70: Delta Definitions**
 ```rust
@@ -976,21 +976,21 @@ impl DeltaCompressor for MyersDeltaCompressor {
 
 **But Where Is It USED?**
 ```bash
-$ grep -r "MyersDeltaCompressor\|DeltaCompressor" talaria-sequoia/src/database/
+$ grep -r "MyersDeltaCompressor\|DeltaCompressor" talaria-herald/src/database/
 # NO MATCHES in database manager!
 
-$ grep -r "compute_delta\|apply_delta" talaria-sequoia/src/database/
+$ grep -r "compute_delta\|apply_delta" talaria-herald/src/database/
 # NO MATCHES in database manager!
 ```
 
 **Verdict**: Delta encoding is DEFINED and IMPLEMENTED but NOT USED in main workflow. Dead code?
 
-### File: `talaria-sequoia/src/temporal/bi_temporal.rs`
+### File: `talaria-herald/src/temporal/bi_temporal.rs`
 
 **Lines 19-85: Bi-Temporal Implementation**
 ```rust
 pub struct BiTemporalDatabase {
-    storage: Arc<SequoiaStorage>,
+    storage: Arc<HeraldStorage>,
     temporal_index: TemporalIndex,
     manifest_cache: HashMap<String, Manifest>,
 }
@@ -1015,7 +1015,7 @@ impl BiTemporalDatabase {
 }
 ```
 
-**Manifest Support** (`talaria-sequoia/src/types.rs:139-171`):
+**Manifest Support** (`talaria-herald/src/types.rs:139-171`):
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemporalManifest {
@@ -1030,7 +1030,7 @@ pub struct TemporalManifest {
 
 **Verdict**: ✅ Bi-temporal versioning is FULLY IMPLEMENTED.
 
-### File: `talaria-sequoia/src/verification/merkle.rs`
+### File: `talaria-herald/src/verification/merkle.rs`
 
 **Lines 38-84: Merkle Tree Construction**
 ```rust
@@ -1153,7 +1153,7 @@ pub fn build_from_items<T: MerkleVerifiable>(items: Vec<T>) -> Result<Self> {
 
 **Claimed** (Section 7.1):
 ```
-SEQUOIA Does Differently:
+HERALD Does Differently:
 
 Domain-Level CAS:
 Protein_1: [hash_K, hash_S3, hash_S2] + linkers
@@ -1174,11 +1174,11 @@ struct PhylogeneticChunk {
 - Phylogenetic chunking: **Does NOT exist**
 - Only sequence-level CAS with taxonomic chunking
 
-**Impact**: The "novel approach" comparison table (Section 7.1) is **misleading**. SEQUOIA does NOT do most of the claimed novel features.
+**Impact**: The "novel approach" comparison table (Section 7.1) is **misleading**. HERALD does NOT do most of the claimed novel features.
 
 ### Gap 2: Architecture Whitepaper Claims
 
-**Claimed** (`sequoia-architecture.md` Section 2.2):
+**Claimed** (`herald-architecture.md` Section 2.2):
 ```
 Merkle DAG Structure:
 
@@ -1206,7 +1206,7 @@ DAG Properties:
 
 **Claimed** (`compression-vs-deduplication-analysis.md` Part 2):
 ```
-Current SEQUOIA (Layers 1-4):
+Current HERALD (Layers 1-4):
 1. Content-Addressed Storage (sequence-level) ✅
 2. Merkle DAG verification ✅
 3. Bi-temporal versioning ✅
@@ -1308,7 +1308,7 @@ Current SEQUOIA (Layers 1-4):
 **2. Honest Comparison Table**
 Update `existing-solutions-analysis.md` Section 7 table to reflect reality:
 
-| Feature | NCBI | UniProt | ENA | Pan-Genome | IPFS | SAMchain | **SEQUOIA (ACTUAL)** |
+| Feature | NCBI | UniProt | ENA | Pan-Genome | IPFS | SAMchain | **HERALD (ACTUAL)** |
 |---------|------|---------|-----|------------|------|----------|---------------------|
 | **Biological Chunking** | Taxonomy | Proteome | Organism | Graph | None | None | **Taxonomy only** |
 | **Deduplication** | None | Manual | None | Graph | File-level | None | **Sequence-level** |
@@ -1369,7 +1369,7 @@ If domain/phylogenetic features are critical:
 
 ### The Bottom Line
 
-**SEQUOIA is a solid bioinformatics database distribution system**, but:
+**HERALD is a solid bioinformatics database distribution system**, but:
 - It's NOT doing the "novel" domain/phylogenetic features claimed in docs
 - It IS doing efficient canonical deduplication and bi-temporal versioning well
 - The core architecture works, but advanced features are vaporware
@@ -1383,43 +1383,43 @@ If domain/phylogenetic features are critical:
 ### Files That Prove Features Work
 
 **Content-Addressed Storage**:
-- `talaria-sequoia/src/storage/sequence.rs:411` - `store_sequence()` with SHA256
-- `talaria-sequoia/src/storage/sequence.rs:1010` - Test proving cross-DB dedup
+- `talaria-herald/src/storage/sequence.rs:411` - `store_sequence()` with SHA256
+- `talaria-herald/src/storage/sequence.rs:1010` - Test proving cross-DB dedup
 
 **Taxonomic Chunking**:
-- `talaria-sequoia/src/chunker/canonical_taxonomic.rs:98` - Groups by TaxID
+- `talaria-herald/src/chunker/canonical_taxonomic.rs:98` - Groups by TaxID
 
 **Merkle Verification**:
-- `talaria-sequoia/src/verification/merkle.rs:38` - Binary tree construction
-- `talaria-sequoia/src/verification/verifier.rs:77` - Root verification
+- `talaria-herald/src/verification/merkle.rs:38` - Binary tree construction
+- `talaria-herald/src/verification/verifier.rs:77` - Root verification
 
 **Bi-Temporal**:
-- `talaria-sequoia/src/temporal/bi_temporal.rs:44` - `query_at()` with (T_seq, T_tax)
-- `talaria-sequoia/src/types.rs:78` - `BiTemporalCoordinate` struct
+- `talaria-herald/src/temporal/bi_temporal.rs:44` - `query_at()` with (T_seq, T_tax)
+- `talaria-herald/src/types.rs:78` - `BiTemporalCoordinate` struct
 
 ### Files That Prove Features DON'T Work
 
 **Domain-Level CAS**:
 ```bash
-$ grep -r "DomainHash\|protein.*domains\|Pfam" talaria-sequoia/src/
+$ grep -r "DomainHash\|protein.*domains\|Pfam" talaria-herald/src/
 # NO MATCHES
 ```
 
 **Phylogenetic Chunking**:
 ```bash
-$ grep -r "PhylogeneticChunk\|phylo.*chunk" talaria-sequoia/src/
+$ grep -r "PhylogeneticChunk\|phylo.*chunk" talaria-herald/src/
 # Only in comments, no implementation
 ```
 
 **Delta Encoding Usage**:
 ```bash
-$ grep -r "DeltaCompressor\|compute_delta" talaria-sequoia/src/database/
+$ grep -r "DeltaCompressor\|compute_delta" talaria-herald/src/database/
 # NO MATCHES - not used in main workflow
 ```
 
 ### The Smoking Gun
 
-**Database Manager** (`talaria-sequoia/src/database/manager.rs`):
+**Database Manager** (`talaria-herald/src/database/manager.rs`):
 - Line 1969: `chunk_database()` - calls taxonomic chunker only
 - Line 3156: `chunk_database_streaming()` - no delta encoding
 - NO calls to `DeltaCompressor`

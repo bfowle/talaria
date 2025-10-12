@@ -42,25 +42,25 @@ pub struct ValidateArgs {
     pub report_format: String,
 }
 
-/// Validate database reduction from SEQUOIA system
-fn validate_from_sequoia(db_ref_str: &str, profile: String) -> Result<()> {
+/// Validate database reduction from HERALD system
+fn validate_from_herald(db_ref_str: &str, profile: String) -> Result<()> {
     use crate::cli::formatting::output::*;
     use crate::cli::progress::create_spinner;
-    use talaria_sequoia::SequoiaStorage;
-    use talaria_sequoia::{
+    use talaria_herald::HeraldStorage;
+    use talaria_herald::{
         verification::validator::{TemporalManifestValidator, ValidationOptions},
         Validator,
     };
     use talaria_utils::display::format::format_bytes;
 
-    let pb = create_spinner("Initializing SEQUOIA storage...");
+    let pb = create_spinner("Initializing HERALD storage...");
 
-    // Initialize SEQUOIA storage and database manager
-    let sequoia_path = talaria_core::system::paths::talaria_databases_dir();
-    let storage = SequoiaStorage::open(&sequoia_path)?;
+    // Initialize HERALD storage and database manager
+    let herald_path = talaria_core::system::paths::talaria_databases_dir();
+    let storage = HeraldStorage::open(&herald_path)?;
 
-    use talaria_sequoia::database::DatabaseManager;
-    let manager = DatabaseManager::new(Some(sequoia_path.to_string_lossy().to_string()))?;
+    use talaria_herald::database::DatabaseManager;
+    let manager = DatabaseManager::new(Some(herald_path.to_string_lossy().to_string()))?;
 
     pb.set_message("Loading reduction manifest...");
 
@@ -94,8 +94,8 @@ fn validate_from_sequoia(db_ref_str: &str, profile: String) -> Result<()> {
         })?;
 
     // Get the temporal manifest from the manifest file
-    let manifest_path = sequoia_path.join("manifest.json");
-    let temporal_manifest: talaria_sequoia::TemporalManifest = if manifest_path.exists() {
+    let manifest_path = herald_path.join("manifest.json");
+    let temporal_manifest: talaria_herald::TemporalManifest = if manifest_path.exists() {
         let data = std::fs::read_to_string(&manifest_path)?;
         serde_json::from_str(&data)?
     } else {
@@ -105,7 +105,7 @@ fn validate_from_sequoia(db_ref_str: &str, profile: String) -> Result<()> {
     pb.set_message("Validating manifest integrity...");
 
     // Create validator and validation options
-    let chunks_dir = sequoia_path.join("chunks");
+    let chunks_dir = herald_path.join("chunks");
     let validator = Validator::new(chunks_dir);
     let options = ValidationOptions {
         verify_hashes: true,
@@ -238,8 +238,8 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<()> {
             "Reduction profile required for validation. Use format: 'database:profile' (e.g., 'uniprot/swissprot:blast-30')"
         ))?;
 
-        // Implement database validation for SEQUOIA
-        validate_from_sequoia(db_ref_str, _profile.to_string())?;
+        // Implement database validation for HERALD
+        validate_from_herald(db_ref_str, _profile.to_string())?;
         return Ok(());
     } else {
         // Traditional file-based usage
@@ -293,7 +293,7 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<()> {
 
     // Calculate coverage metrics
     pb.set_message("Calculating validation metrics...");
-    let validator = talaria_sequoia::operations::validator::ValidatorImpl::new();
+    let validator = talaria_herald::operations::validator::ValidatorImpl::new();
     let metrics = validator.calculate_metrics(
         &original_seqs,
         &reduced_seqs,

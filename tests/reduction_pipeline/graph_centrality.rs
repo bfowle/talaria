@@ -1,5 +1,5 @@
 /// Integration test for graph centrality-based reference selection
-/// Verifies SEQUOIA architecture 5-dimensional approach
+/// Verifies HERALD architecture 5-dimensional approach
 use talaria_bio::sequence::Sequence;
 use talaria_core::reference_selector::{ReferenceSelectorImpl, SelectionAlgorithm};
 use talaria_core::selection::traits::AlignmentScore;
@@ -233,7 +233,7 @@ fn test_graph_centrality_formula_weights() {
 
     let selector = OptimizedReferenceSelector::new();
 
-    // Verify default weights match SEQUOIA architecture specification
+    // Verify default weights match HERALD architecture specification
     assert_eq!(selector.alpha, 0.5, "Degree weight should be 0.5");
     assert_eq!(selector.beta, 0.3, "Betweenness weight should be 0.3");
     assert_eq!(selector.gamma, 0.2, "Coverage weight should be 0.2");

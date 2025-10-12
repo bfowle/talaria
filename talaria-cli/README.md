@@ -2,13 +2,13 @@
 
 ## Overview
 
-Talaria CLI is the primary command-line interface for the Talaria sequence reduction system, providing comprehensive tools for managing, reducing, and optimizing biological sequence databases. It serves as the main entry point for users to interact with the Talaria ecosystem, orchestrating operations across multiple subsystems including SEQUOIA storage, bioinformatics tools, and cloud services.
+Talaria CLI is the primary command-line interface for the Talaria sequence reduction system, providing comprehensive tools for managing, reducing, and optimizing biological sequence databases. It serves as the main entry point for users to interact with the Talaria ecosystem, orchestrating operations across multiple subsystems including HERALD storage, bioinformatics tools, and cloud services.
 
 ### Key Capabilities
 
 - **Intelligent FASTA Reduction**: Reduces sequence databases by 30-70% while maintaining search sensitivity
 - **Database Management**: Download, update, and manage biological databases from UniProt, NCBI, and custom sources
-- **Content-Addressed Storage**: SEQUOIA-based storage with deduplication and verification
+- **Content-Addressed Storage**: HERALD-based storage with deduplication and verification
 - **Multi-Aligner Optimization**: Tailored reduction strategies for LAMBDA, BLAST, DIAMOND, Kraken, and MMseqs2
 - **Bi-Temporal Querying**: Query databases at specific points in sequence and taxonomy time
 - **Interactive Terminal UI**: Rich TUI for visual database exploration and management
@@ -35,7 +35,7 @@ This isn't a minor optimization - it's a fundamental architectural breakthrough 
 - **Automatic Workspace Discovery**: The `--resume` flag now automatically finds existing downloads
 - **Smart Resume Logic**: Detects the most recent matching download for any database source
 - **Clear Progress Messages**: Shows exactly what's being resumed and from what stage
-- **Complete Download Handling**: Resumes SEQUOIA processing even if download finished but processing didn't
+- **Complete Download Handling**: Resumes HERALD processing even if download finished but processing didn't
 - **Multi-Stage Resume Support**: Can resume from downloading, decompressing, or processing stages
 
 #### Resume Examples
@@ -51,7 +51,7 @@ talaria database download uniprot/uniref50 --resume
 # ● Searching for existing downloads of UniProt/UniRef50...
 # ✓ Found existing download at: ~/.talaria/downloads/uniprot_uniref50_20250927_c7c5c593
 # ├─ Found download from 2 hours ago
-# └─ Download complete, resuming SEQUOIA processing...
+# └─ Download complete, resuming HERALD processing...
 # ✓ Using existing downloaded file
 
 # For debugging, preserve download workspace:
@@ -109,9 +109,9 @@ talaria-cli/
 │   ├── main.rs                       # Entry point and initialization
 │   ├── cli/                          # CLI interface layer
 │   │   ├── commands/                 # Command implementations
-│   │   │   ├── chunk/                # SEQUOIA chunk operations
+│   │   │   ├── chunk/                # HERALD chunk operations
 │   │   │   ├── database/             # Database management (20+ subcommands)
-│   │   │   ├── sequoia/              # SEQUOIA repository management
+│   │   │   ├── herald/              # HERALD repository management
 │   │   │   └── tools/                # Tool installation and management
 │   │   ├── formatting/               # Output formatting
 │   │   │   ├── formatter.rs          # Terminal formatting utilities
@@ -373,13 +373,13 @@ Size second:                  45.2 GB
 Deduplication savings:        12.3 GB (shared content)
 ```
 
-#### `sequoia` - SEQUOIA Repository Management
+#### `herald` - HERALD Repository Management
 
 ```bash
-talaria sequoia <SUBCOMMAND>
+talaria herald <SUBCOMMAND>
 
 SUBCOMMANDS:
-    init <PATH>           Initialize SEQUOIA repository
+    init <PATH>           Initialize HERALD repository
     stats [PATH]          Show repository statistics
     sync <REMOTE>         Synchronize with remote repository
     history               Show operation history
@@ -411,7 +411,7 @@ OPTIONS:
     -i, --input <FILE>        Reduced FASTA file
     -m, --metadata <FILE>     Delta metadata file
     -o, --output <FILE>       Output reconstructed FASTA
-    --from-sequoia            Reconstruct from SEQUOIA storage
+    --from-herald            Reconstruct from HERALD storage
     --verify                  Verify reconstruction accuracy
 ```
 
@@ -504,7 +504,7 @@ The database management system (`core/database/`) provides:
 - **TaxonomyPrerequisites**: Automatic dependency resolution for taxonomy data
 
 Key features:
-- Content-addressed storage through SEQUOIA
+- Content-addressed storage through HERALD
 - Automatic deduplication across databases
 - Incremental updates with delta downloads
 - Multi-source support (UniProt, NCBI, custom)
@@ -548,7 +548,7 @@ Implementations:
 Workspace management (`core/workspace/`) handles:
 
 - **TempWorkspace**: Automatic cleanup temporary workspaces
-- **SequoiaWorkspace**: SEQUOIA-specific workspace with preservation
+- **HeraldWorkspace**: HERALD-specific workspace with preservation
 - **Workspace preservation**: Debug mode for failure analysis
 - **Atomic operations**: Safe concurrent access
 
@@ -603,9 +603,9 @@ Uses talaria-bio for:
 - Taxonomy operations
 - Alignment scoring
 
-### Talaria-Sequoia Integration
+### Talaria-Herald Integration
 
-Integrates talaria-sequoia for:
+Integrates talaria-herald for:
 - Content-addressed storage
 - Merkle DAG verification
 - Bi-temporal versioning
@@ -650,8 +650,8 @@ TALARIA_SESSION              # Override session ID for downloads (testing)
 TALARIA_TAXONOMY_DIR         # Taxonomy data (default: $TALARIA_HOME/taxonomy)
 TALARIA_CACHE_DIR            # Cache directory (default: $TALARIA_HOME/cache)
 
-# SEQUOIA Configuration
-TALARIA_SEQUOIA_DIR          # SEQUOIA storage (default: $TALARIA_HOME/sequoia)
+# HERALD Configuration
+TALARIA_HERALD_DIR          # HERALD storage (default: $TALARIA_HOME/herald)
 TALARIA_CHUNK_SIZE           # Target chunk size (default: 5MB)
 TALARIA_COMPRESSION_LEVEL    # Zstd level 1-22 (default: 19)
 
@@ -715,7 +715,7 @@ uniprot = "https://ftp.uniprot.org/pub/databases/uniprot"
 ncbi = "https://ftp.ncbi.nlm.nih.gov"
 ebi = "https://ftp.ebi.ac.uk"
 
-[sequoia]
+[herald]
 chunk_size = 5242880  # 5MB
 compression_level = 19
 enable_deduplication = true
@@ -773,7 +773,7 @@ Input FASTA
     ↓
 [Delta Encoder]
     ↓
-[Chunk Generator] ←── [SEQUOIA Storage]
+[Chunk Generator] ←── [HERALD Storage]
     ↓
 [Index Builder] ←── [Tool Manager]
     ↓
@@ -797,7 +797,7 @@ Remote Source (UniProt/NCBI)
     ↓
 [Chunk Generator]
     ↓
-[SEQUOIA Storage] ←── [Deduplication Engine]
+[HERALD Storage] ←── [Deduplication Engine]
     ↓
 [Manifest Generator]
     ↓
@@ -843,7 +843,7 @@ $TALARIA_HOME/
 │       ├── nr/
 │       ├── nt/
 │       └── taxonomy/
-├── sequoia/                # SEQUOIA storage
+├── herald/                # HERALD storage
 │   ├── chunks/             # Content-addressed chunks
 │   │   ├── 00/
 │   │   ├── 01/
@@ -886,7 +886,7 @@ $TALARIA_HOME/
       "nucleotide": 0
     }
   },
-  "sequoia": {
+  "herald": {
     "manifest_hash": "abc123...",
     "chunk_count": 1234,
     "total_chunks_size": 125678901,
@@ -1211,7 +1211,7 @@ let reader = BufReader::with_capacity(8 * 1024 * 1024, file);
 
 1. **Alignment Cache**: Reuse alignment results
 2. **Index Cache**: Keep frequently used indices in memory
-3. **Chunk Cache**: LRU cache for SEQUOIA chunks
+3. **Chunk Cache**: LRU cache for HERALD chunks
 4. **Metadata Cache**: Database metadata caching
 
 ## Advanced Features
@@ -1257,12 +1257,12 @@ S3/GCS/Azure backend support:
 
 ```bash
 # Configure S3 backend
-export TALARIA_SEQUOIA_BACKEND=s3
+export TALARIA_HERALD_BACKEND=s3
 export TALARIA_S3_BUCKET=my-talaria-bucket
 export TALARIA_S3_REGION=us-east-1
 
 # Sync to cloud
-talaria sequoia sync s3://my-bucket/talaria
+talaria herald sync s3://my-bucket/talaria
 
 # Use cloud-backed storage
 talaria reduce uniprot/swissprot \
@@ -1803,6 +1803,6 @@ Licensed under MIT License. See LICENSE file for details.
 ## References
 
 - [Talaria Paper](https://example.com/talaria-paper)
-- [SEQUOIA Documentation](../talaria-sequoia/README.md)
+- [HERALD Documentation](../talaria-herald/README.md)
 - [Bioinformatics Tools](../talaria-tools/README.md)
 - [API Documentation](https://docs.rs/talaria-cli)

@@ -52,7 +52,7 @@ pub fn run(args: ListArgs) -> anyhow::Result<()> {
 
     use crate::cli::progress::create_spinner;
     use humansize::{format_size, BINARY};
-    use talaria_sequoia::database::DatabaseManager;
+    use talaria_herald::database::DatabaseManager;
 
     // Check if we need bi-temporal listing
     if args.sequence_date.is_some() || args.taxonomy_date.is_some() {
@@ -173,7 +173,7 @@ pub fn run(args: ListArgs) -> anyhow::Result<()> {
 }
 
 fn run_all_versions_list(
-    manager: &talaria_sequoia::database::DatabaseManager,
+    manager: &talaria_herald::database::DatabaseManager,
 ) -> anyhow::Result<()> {
     let _span = tracing::debug_span!("database_list_all_versions").entered();
 
@@ -271,7 +271,7 @@ fn run_bitemporal_list(args: ListArgs) -> anyhow::Result<()> {
     use chrono::{NaiveDate, Utc};
     use std::sync::Arc;
     use talaria_core::system::paths;
-    use talaria_sequoia::{BiTemporalDatabase, SequoiaStorage};
+    use talaria_herald::{BiTemporalDatabase, HeraldStorage};
 
     // Parse the dates
     let sequence_date = if let Some(date_str) = &args.sequence_date {
@@ -335,7 +335,7 @@ fn run_bitemporal_list(args: ListArgs) -> anyhow::Result<()> {
                         let db_name = format!("{}/{}", source_str, dataset_str);
 
                         // Try to create bi-temporal database
-                        if let Ok(storage) = SequoiaStorage::new(&db_path) {
+                        if let Ok(storage) = HeraldStorage::new(&db_path) {
                             let storage = Arc::new(storage);
                             if let Ok(mut bitemporal_db) = BiTemporalDatabase::new(storage.clone())
                             {

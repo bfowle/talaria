@@ -10,13 +10,13 @@ The `database diff` command was comparing chunk hashes instead of actual sequenc
 
 ### Changes Made
 
-#### 1. **talaria-sequoia/src/operations/database_diff.rs**
+#### 1. **talaria-herald/src/operations/database_diff.rs**
 
 **Added `extract_sequence_hashes()` (lines 454-493)**:
 ```rust
 fn extract_sequence_hashes(
     manifest: &crate::TemporalManifest,
-    storage: &crate::storage::SequoiaStorage,
+    storage: &crate::storage::HeraldStorage,
 ) -> Result<HashSet<SHA256Hash>>
 ```
 - Loads actual `ChunkManifest` objects from storage
@@ -29,10 +29,10 @@ fn extract_sequence_hashes(
 fn compare_sequences_from_manifests(
     manifest_a: &crate::TemporalManifest,
     manifest_b: &crate::TemporalManifest,
-    storage: Option<&crate::storage::SequoiaStorage>, // NEW PARAMETER
+    storage: Option<&crate::storage::HeraldStorage>, // NEW PARAMETER
 ) -> SequenceAnalysis
 ```
-- Now accepts `Option<&SequoiaStorage>` parameter
+- Now accepts `Option<&HeraldStorage>` parameter
 - If storage provided: loads actual sequence hashes and compares them
 - If storage not provided: falls back to legacy chunk-based comparison
 - Computes proper set operations (intersection, difference)
@@ -48,7 +48,7 @@ fn compare_sequences_from_manifests(
 pub fn compare_manifests(
     manifest_a: &crate::TemporalManifest,
     manifest_b: &crate::TemporalManifest,
-    storage: Option<&crate::storage::SequoiaStorage>, // NEW PARAMETER
+    storage: Option<&crate::storage::HeraldStorage>, // NEW PARAMETER
     taxonomy_manager: Option<&crate::taxonomy::TaxonomyManager>,
 ) -> Result<DatabaseComparison>
 ```
@@ -195,7 +195,7 @@ cargo build --release
 
 ## Files Modified
 
-1. `talaria-sequoia/src/operations/database_diff.rs` - Core comparison logic
+1. `talaria-herald/src/operations/database_diff.rs` - Core comparison logic
 2. `talaria-cli/src/cli/commands/database/diff.rs` - CLI interface and visualization
 
 ---

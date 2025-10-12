@@ -8,7 +8,7 @@
 
 `talaria-core` provides primitive types and utilities used by both:
 - **`talaria-storage`**: Uses core types like `SHA256Hash`, `StorageStats`, `VerificationError`
-- **`talaria-sequoia`**: Uses the same core types plus additional ones like `ChunkMetadata`, `TaxonId`
+- **`talaria-herald`**: Uses the same core types plus additional ones like `ChunkMetadata`, `TaxonId`
 
 This shared foundation prevents duplication and ensures type consistency across the storage and business logic layers.
 
@@ -252,7 +252,7 @@ pub struct DatabaseVersionInfo {
     pub chunk_count: usize,
 }
 
-// Temporal version information for SEQUOIA
+// Temporal version information for HERALD
 pub struct TemporalVersionInfo {
     pub version: String,
     pub timestamp: DateTime<Utc>,
@@ -611,7 +611,7 @@ pub fn parse_fasta(path: &Path) -> TalariaResult<Vec<Sequence>> {
 }
 ```
 
-#### talaria-sequoia
+#### talaria-herald
 ```rust
 use talaria_core::{storage_path, SHA256Hash};
 

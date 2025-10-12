@@ -2,7 +2,7 @@
 ///
 /// These tests focus on the low-level storage operations provided by talaria-storage,
 /// including RocksDB backend, compression, and caching. Business logic traits are
-/// tested in talaria-sequoia.
+/// tested in talaria-herald.
 use std::path::PathBuf;
 use talaria_core::types::SHA256Hash;
 

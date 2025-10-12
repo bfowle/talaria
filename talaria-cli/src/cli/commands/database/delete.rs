@@ -4,7 +4,7 @@ use colored::Colorize;
 use dialoguer::Confirm;
 use humansize::{format_size, BINARY};
 
-use talaria_sequoia::database::DatabaseManager;
+use talaria_herald::database::DatabaseManager;
 use talaria_utils::database::database_ref::parse_database_reference;
 
 #[derive(Args)]

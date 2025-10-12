@@ -12,8 +12,8 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
 use talaria_bio::sequence::Sequence;
-use talaria_sequoia::chunker::TaxonomicChunker;
-use talaria_sequoia::types::{ChunkingStrategy, TaxonId};
+use talaria_herald::chunker::TaxonomicChunker;
+use talaria_herald::types::{ChunkingStrategy, TaxonId};
 use tempfile::TempDir;
 
 /// Create a test environment with taxonomy files

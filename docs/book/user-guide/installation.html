@@ -159,10 +159,10 @@
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
-                        <a href="https://github.com/Andromeda-Tech/talaria" title="Git repository" aria-label="Git repository">
+                        <a href="https://github.com/bfowle/talaria" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/Andromeda-Tech/talaria/edit/main/docs/src/user-guide/installation.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/bfowle/talaria/edit/main/docs/src/user-guide/installation.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -217,7 +217,7 @@
 <h3 id="binary-installation-recommended"><a class="header" href="#binary-installation-recommended">Binary Installation (Recommended)</a></h3>
 <h4 id="linuxmacos"><a class="header" href="#linuxmacos">Linux/macOS</a></h4>
 <pre><code class="language-bash"># Download the latest release
-curl -L https://github.com/Andromeda-Tech/talaria/releases/latest/download/talaria-$(uname -s)-$(uname -m) -o talaria
+curl -L https://github.com/bfowle/talaria/releases/latest/download/talaria-$(uname -s)-$(uname -m) -o talaria
 chmod +x talaria
 sudo mv talaria /usr/local/bin/
 
@@ -226,7 +226,7 @@ talaria --version
 </code></pre>
 <h4 id="windows-wsl2"><a class="header" href="#windows-wsl2">Windows (WSL2)</a></h4>
 <pre><code class="language-bash"># Inside WSL2 terminal
-curl -L https://github.com/Andromeda-Tech/talaria/releases/latest/download/talaria-Linux-x86_64 -o talaria
+curl -L https://github.com/bfowle/talaria/releases/latest/download/talaria-Linux-x86_64 -o talaria
 chmod +x talaria
 sudo mv talaria /usr/local/bin/
 </code></pre>
@@ -244,7 +244,7 @@ brew install talaria
 <h3 id="building-from-source"><a class="header" href="#building-from-source">Building from Source</a></h3>
 <h4 id="clone-and-build"><a class="header" href="#clone-and-build">Clone and Build</a></h4>
 <pre><code class="language-bash"># Clone the repository
-git clone https://github.com/Andromeda-Tech/talaria.git
+git clone https://github.com/bfowle/talaria.git
 cd talaria
 
 # Build in release mode
@@ -258,7 +258,7 @@ cargo install --path .
 </code></pre>
 <h4 id="development-build"><a class="header" href="#development-build">Development Build</a></h4>
 <pre><code class="language-bash"># Clone with full history
-git clone --recursive https://github.com/Andromeda-Tech/talaria.git
+git clone --recursive https://github.com/bfowle/talaria.git
 cd talaria
 
 # Install development dependencies
@@ -339,7 +339,7 @@ talaria --version
 talaria --help
 
 # Quick test with sample data
-curl -L https://github.com/Andromeda-Tech/talaria/raw/main/tests/data/sample.fasta -o sample.fasta
+curl -L https://github.com/bfowle/talaria/raw/main/tests/data/sample.fasta -o sample.fasta
 talaria reduce -i sample.fasta -o reduced.fasta
 talaria stats reduced.fasta
 </code></pre>
@@ -380,7 +380,7 @@ talaria reduce --optimize-memory ...
 </code></pre>
 <h3 id="getting-help"><a class="header" href="#getting-help">Getting Help</a></h3>
 <ul>
-<li>GitHub Issues: https://github.com/Andromeda-Tech/talaria/issues</li>
+<li>GitHub Issues: https://github.com/bfowle/talaria/issues</li>
 <li>Documentation: https://andromeda-tech.github.io/talaria/</li>
 <li>Discord: https://discord.gg/talaria</li>
 </ul>
@@ -420,22 +420,6 @@ talaria reduce --optimize-memory ...
 
         </div>
 
-        <!-- Livereload script (if served using the cli tool) -->
-        <script>
-            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
-            const socket = new WebSocket(wsAddress);
-            socket.onmessage = function (event) {
-                if (event.data === "reload") {
-                    socket.close();
-                    location.reload();
-                }
-            };
-
-            window.onbeforeunload = function() {
-                socket.close();
-            }
-        </script>
 
 
 

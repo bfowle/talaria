@@ -97,7 +97,7 @@ pub fn run(args: TaxaCoverageArgs) -> Result<()> {
     if args.report_output.is_some() {
         // Use new generic framework
         use std::time::Duration;
-        use talaria_sequoia::operations::{TaxonomyComparison, TaxonomyCoverageResult};
+        use talaria_herald::operations::{TaxonomyComparison, TaxonomyCoverageResult};
 
         // Build coverage by rank - use rank_coverage which has this info already
         let coverage_by_rank: Vec<(String, usize)> = primary_coverage

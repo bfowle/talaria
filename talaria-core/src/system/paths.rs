@@ -188,7 +188,7 @@ pub fn storage_path() -> PathBuf {
 
 /// Get the canonical sequence storage directory
 /// This is the SINGLE shared location for all unique sequences across all databases
-/// SEQUOIA Principle #1: Canonical Sequence Storage - Each unique sequence stored exactly once
+/// HERALD Principle #1: Canonical Sequence Storage - Each unique sequence stored exactly once
 /// Returns: TALARIA_DATABASES_DIR/sequences
 pub fn canonical_sequence_storage_dir() -> PathBuf {
     talaria_databases_dir().join("sequences")

@@ -177,7 +177,7 @@ impl LambdaAligner {
     /// Initialize or get the temp directory path
     fn initialize_temp_dir(&mut self) {
         if let Some(ref workspace) = self.workspace {
-            // Use SEQUOIA workspace for LAMBDA operations
+            // Use HERALD workspace for LAMBDA operations
             let ws = workspace.lock().unwrap();
             self.temp_dir = ws.root.join("lambda");
             // Ensure directory exists

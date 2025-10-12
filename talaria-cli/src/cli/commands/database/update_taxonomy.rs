@@ -20,7 +20,7 @@ pub struct UpdateTaxonomyArgs {
 }
 
 pub fn run(args: UpdateTaxonomyArgs) -> Result<()> {
-    use talaria_sequoia::database::{DatabaseManager, TaxonomyUpdateResult};
+    use talaria_herald::database::{DatabaseManager, TaxonomyUpdateResult};
 
     println!("{} Checking for taxonomy updates...", "►".cyan().bold());
 

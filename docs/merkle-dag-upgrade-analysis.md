@@ -25,7 +25,7 @@
 
 ### Current Implementation: Binary Merkle Tree
 
-**Code** (`talaria-sequoia/src/verification/merkle.rs:38-84`):
+**Code** (`talaria-herald/src/verification/merkle.rs:38-84`):
 ```rust
 pub fn build_from_items<T: MerkleVerifiable>(items: Vec<T>) -> Result<Self> {
     // Create leaf nodes from verifiable items
@@ -90,7 +90,7 @@ Properties:
 
 ### Promised Implementation: Multi-Level Merkle DAG
 
-**Docs Claim** (`sequoia-architecture.md#2.2.2`):
+**Docs Claim** (`herald-architecture.md#2.2.2`):
 ```
 Merkle DAG Structure:
 
@@ -133,7 +133,7 @@ DAG Properties:
 2. No cycles (can't follow edges back to same node)
 3. **Nodes can have multiple parents** ← KEY DIFFERENCE
 
-**Why This Matters for SEQUOIA**:
+**Why This Matters for HERALD**:
 ```
 Tree (current):
   Each chunk appears in exactly one place
@@ -495,7 +495,7 @@ impl TemporalManifest {
 #### Option B: Clean Break (Not Recommended)
 
 ```rust
-// New version of SEQUOIA
+// New version of HERALD
 pub struct TemporalManifest {
     version: String,  // "2.0" (breaking change)
     merkle_dag: MerkleDAG, // Only DAG supported
@@ -504,7 +504,7 @@ pub struct TemporalManifest {
 ```
 
 **Migration Path**:
-1. Release SEQUOIA v2.0
+1. Release HERALD v2.0
 2. **All old manifests invalid**
 3. Users must re-download/re-import ALL databases
 4. High friction, data loss risk
@@ -876,7 +876,7 @@ WARNING: Old clients cannot read this manifest
 
 **Announce Deprecation**:
 ```
-SEQUOIA v2.5 Release Notes:
+HERALD v2.5 Release Notes:
 
 DEPRECATION WARNING:
 - Tree format (v1) manifests are deprecated

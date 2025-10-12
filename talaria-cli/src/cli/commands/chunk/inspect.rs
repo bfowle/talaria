@@ -1,4 +1,4 @@
-/// Inspect SEQUOIA chunk distribution and taxonomic organization
+/// Inspect HERALD chunk distribution and taxonomic organization
 use anyhow::Result;
 use clap::Args;
 use colored::*;
@@ -9,9 +9,9 @@ use crate::cli::formatting::format_number;
 use crate::cli::progress::create_spinner;
 use crate::cli::visualize::{ascii_histogram_categorized, sparkline, CategoryCounts};
 use talaria_bio::taxonomy::{ncbi, TaxonomyDB};
-use talaria_sequoia::database::DatabaseManager;
-use talaria_sequoia::manifest::Manifest;
-use talaria_sequoia::{ManifestMetadata, TaxonId, TemporalManifest};
+use talaria_herald::database::DatabaseManager;
+use talaria_herald::manifest::Manifest;
+use talaria_herald::{ManifestMetadata, TaxonId, TemporalManifest};
 
 /// Trait for inspecting manifest contents
 pub trait ManifestInspector {
@@ -523,7 +523,7 @@ impl ManifestInspector for TemporalManifest {
     }
 }
 
-impl ManifestInspector for talaria_sequoia::ReductionManifest {
+impl ManifestInspector for talaria_herald::ReductionManifest {
     fn inspect_taxonomy(&self, max_depth: usize) -> Result<String> {
         let mut output = String::new();
         output.push_str(&format!("{}\n", "Taxonomic Organization:".bold().green()));
@@ -532,7 +532,7 @@ impl ManifestInspector for talaria_sequoia::ReductionManifest {
         // Group reference chunks by taxonomy
         let mut taxonomy_groups: BTreeMap<
             (String, TaxonId),
-            Vec<&talaria_sequoia::operations::ReferenceChunk>,
+            Vec<&talaria_herald::operations::ReferenceChunk>,
         > = BTreeMap::new();
 
         // Try to load taxonomy database for better display
@@ -590,7 +590,7 @@ impl ManifestInspector for talaria_sequoia::ReductionManifest {
         // Helper to format entries
         let format_entry = |name: &str,
                             taxon_id: &TaxonId,
-                            chunks: &[&talaria_sequoia::operations::ReferenceChunk],
+                            chunks: &[&talaria_herald::operations::ReferenceChunk],
                             total_sequences: usize,
                             total_size: usize|
          -> String {
@@ -962,7 +962,7 @@ pub fn run(args: InspectArgs) -> Result<()> {
 
     println!(
         "{}",
-        format!("SEQUOIA Chunk Inspection: {}", args.database)
+        format!("HERALD Chunk Inspection: {}", args.database)
             .bold()
             .cyan()
     );
@@ -1108,7 +1108,7 @@ fn handle_profile_manifest(
     args: &InspectArgs,
 ) -> Result<()> {
     use anyhow::Context;
-    use talaria_sequoia::ReductionManifest;
+    use talaria_herald::ReductionManifest;
 
     // Load the reduction manifest
     let profile_path = db_path.join("profiles").join(format!("{}.tal", profile));
@@ -1322,7 +1322,7 @@ fn display_summary(
     println!("  Path: {}", db_path.display());
     println!();
 
-    println!("SEQUOIA Structure:");
+    println!("HERALD Structure:");
     if manifest_path.exists() {
         println!("  {} Manifest found", "✓".green());
         let size = std::fs::metadata(&manifest_path)?.len();
@@ -1700,7 +1700,7 @@ fn get_taxonomy_name(taxon_id: TaxonId, taxonomy_db: &Option<TaxonomyDB>) -> Str
 #[cfg(test)]
 mod tests {
     use super::*;
-    use talaria_sequoia::TaxonId;
+    use talaria_herald::TaxonId;
 
     #[test]
     fn test_is_model_organism() {

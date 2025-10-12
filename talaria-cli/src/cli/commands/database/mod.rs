@@ -65,7 +65,7 @@ pub enum DatabaseCommands {
     Backup(backup::BackupCommand),
 
     // === Export & Integration ===
-    /// Export database from SEQUOIA to FASTA format
+    /// Export database from HERALD to FASTA format
     Export(export::ExportArgs),
 
     /// Setup and manage database mirrors
@@ -135,7 +135,7 @@ pub fn run(args: DatabaseArgs) -> anyhow::Result<()> {
 fn run_init() -> anyhow::Result<()> {
     use colored::*;
     use talaria_core::system::paths;
-    use talaria_sequoia::SequoiaRepository;
+    use talaria_herald::HeraldRepository;
 
     let path = paths::talaria_databases_dir();
 
@@ -151,7 +151,7 @@ fn run_init() -> anyhow::Result<()> {
     }
 
     std::fs::create_dir_all(&path)?;
-    SequoiaRepository::init(&path)?;
+    HeraldRepository::init(&path)?;
 
     println!(
         "{} Database repository initialized successfully!",
@@ -167,7 +167,7 @@ fn run_stats() -> anyhow::Result<()> {
     use crate::cli::progress::create_spinner;
     use colored::*;
     use humansize::{format_size, BINARY};
-    use talaria_sequoia::database::DatabaseManager;
+    use talaria_herald::database::DatabaseManager;
 
     let spinner = create_spinner("Loading repository statistics...");
     let mut manager = DatabaseManager::new(None)?;

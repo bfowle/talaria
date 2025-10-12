@@ -1,8 +1,8 @@
-// This module previously contained storage traits that have been moved to talaria-sequoia
+// This module previously contained storage traits that have been moved to talaria-herald
 // to avoid circular dependencies. talaria-storage now focuses on providing low-level
-// storage backends and utilities, while business logic traits live in talaria-sequoia.
+// storage backends and utilities, while business logic traits live in talaria-herald.
 
-// The following traits have been moved to talaria-sequoia/src/storage/traits.rs:
+// The following traits have been moved to talaria-herald/src/storage/traits.rs:
 // - ChunkStorage
 // - DeltaStorage
 // - ReductionStorage

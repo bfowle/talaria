@@ -159,10 +159,10 @@
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
-                        <a href="https://github.com/Andromeda-Tech/talaria" title="Git repository" aria-label="Git repository">
+                        <a href="https://github.com/bfowle/talaria" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/Andromeda-Tech/talaria/edit/main/docs/src/development/building.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/bfowle/talaria/edit/main/docs/src/development/building.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -302,7 +302,7 @@ cd talaria
 │   ├── Cargo.toml
 │   └── src/
 │
-├── talaria-sequoia/           # SEQUOIA system
+├── talaria-herald/           # HERALD system
 │   ├── Cargo.toml
 │   └── src/
 │
@@ -343,11 +343,11 @@ cargo doc --workspace --no-deps --open
 <pre><code class="language-bash"># Build only the CLI
 cd talaria-cli &amp;&amp; cargo build --release
 
-# Build only the SEQUOIA library
-cd talaria-sequoia &amp;&amp; cargo build --release
+# Build only the HERALD library
+cd talaria-herald &amp;&amp; cargo build --release
 
 # Build as library (no CLI)
-cargo build -p talaria-sequoia -p talaria-bio -p talaria-storage
+cargo build -p talaria-herald -p talaria-bio -p talaria-storage
 </code></pre>
 <h3 id="build-profiles"><a class="header" href="#build-profiles">Build Profiles</a></h3>
 <h4 id="development-profile"><a class="header" href="#development-profile">Development Profile</a></h4>
@@ -389,9 +389,9 @@ debug = true
 <tr><td><code>html-report</code></td><td>HTML report generation</td><td>✓</td></tr>
 </tbody></table>
 </div>
-<h4 id="talaria-sequoia-features"><a class="header" href="#talaria-sequoia-features">talaria-sequoia Features</a></h4>
+<h4 id="talaria-herald-features"><a class="header" href="#talaria-herald-features">talaria-herald Features</a></h4>
 <div class="table-wrapper"><table><thead><tr><th>Feature</th><th>Description</th><th>Default</th></tr></thead><tbody>
-<tr><td><code>default</code></td><td>Core SEQUOIA features</td><td>✓</td></tr>
+<tr><td><code>default</code></td><td>Core HERALD features</td><td>✓</td></tr>
 <tr><td><code>cloud</code></td><td>Cloud storage support</td><td>✗</td></tr>
 <tr><td><code>distributed</code></td><td>Distributed processing</td><td>✗</td></tr>
 </tbody></table>
@@ -431,11 +431,11 @@ sudo ln -s $(pwd)/target/release/talaria /usr/local/bin/talaria
 <p>Add to your project’s <code>Cargo.toml</code>:</p>
 <pre><code class="language-toml">[dependencies]
 talaria-bio = { git = "https://github.com/yourusername/talaria" }
-talaria-sequoia = { git = "https://github.com/yourusername/talaria" }
+talaria-herald = { git = "https://github.com/yourusername/talaria" }
 
 # Or from local path
 talaria-bio = { path = "../talaria/talaria-bio" }
-talaria-sequoia = { path = "../talaria/talaria-sequoia" }
+talaria-herald = { path = "../talaria/talaria-herald" }
 </code></pre>
 <h2 id="testing"><a class="header" href="#testing">Testing</a></h2>
 <h3 id="running-tests"><a class="header" href="#running-tests">Running Tests</a></h3>
@@ -443,7 +443,7 @@ talaria-sequoia = { path = "../talaria/talaria-sequoia" }
 cargo test --workspace
 
 # Run tests for specific crate
-cargo test -p talaria-sequoia
+cargo test -p talaria-herald
 
 # Run integration tests only
 cargo test --test '*'
@@ -641,22 +641,6 @@ jobs:
 
         </div>
 
-        <!-- Livereload script (if served using the cli tool) -->
-        <script>
-            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
-            const socket = new WebSocket(wsAddress);
-            socket.onmessage = function (event) {
-                if (event.data === "reload") {
-                    socket.close();
-                    location.reload();
-                }
-            };
-
-            window.onbeforeunload = function() {
-                socket.close();
-            }
-        </script>
 
 
 

@@ -6,12 +6,12 @@ use chrono::{DateTime, NaiveDate, Utc};
 /// Enables retroactive analysis, historical reproduction, and temporal joins
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
-use talaria_sequoia::traits::renderable::{
+use talaria_herald::traits::renderable::{
     DiffRenderable, EvolutionRenderable, TemporalRenderable,
 };
-use talaria_sequoia::traits::temporal::*;
-use talaria_sequoia::RetroactiveAnalyzer;
-use talaria_sequoia::{BiTemporalCoordinate, TaxonId};
+use talaria_herald::traits::temporal::*;
+use talaria_herald::RetroactiveAnalyzer;
+use talaria_herald::{BiTemporalCoordinate, TaxonId};
 
 #[derive(Args)]
 pub struct TemporalArgs {
@@ -436,7 +436,7 @@ fn run_diff(args: DiffArgs) -> Result<()> {
 
 fn create_analyzer(database: &Option<String>) -> Result<RetroactiveAnalyzer> {
     use talaria_core::system::paths::talaria_home;
-    use talaria_sequoia::SequoiaRepository;
+    use talaria_herald::HeraldRepository;
 
     let base_path = if let Some(db) = database {
         talaria_home().join("databases").join("data").join(db)
@@ -444,7 +444,7 @@ fn create_analyzer(database: &Option<String>) -> Result<RetroactiveAnalyzer> {
         talaria_home().join("databases").join("data")
     };
 
-    let repository = SequoiaRepository::open(&base_path)?;
+    let repository = HeraldRepository::open(&base_path)?;
     Ok(RetroactiveAnalyzer::from_repository(repository))
 }
 

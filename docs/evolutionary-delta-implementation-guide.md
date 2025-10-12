@@ -10,7 +10,7 @@
 
 ### What Currently Exists ✅
 
-**1. Delta Encoding Infrastructure** (`talaria-sequoia/src/delta/canonical.rs`)
+**1. Delta Encoding Infrastructure** (`talaria-herald/src/delta/canonical.rs`)
 ```rust
 // Myers diff algorithm - FULLY IMPLEMENTED
 pub struct MyersDeltaCompressor {
@@ -50,10 +50,10 @@ pub fn create_clusters(&self, sequences: Vec<Sequence>) -> Vec<TaxonomicCluster>
 
 ```bash
 # Proof - search for usage in main workflows:
-$ grep -r "MyersDeltaCompressor\|compute_delta" talaria-sequoia/src/database/
+$ grep -r "MyersDeltaCompressor\|compute_delta" talaria-herald/src/database/
 # NO MATCHES
 
-$ grep -r "PhylogeneticClusterer" talaria-cli/src/ talaria-sequoia/src/operations/
+$ grep -r "PhylogeneticClusterer" talaria-cli/src/ talaria-herald/src/operations/
 # NO MATCHES
 ```
 
@@ -125,7 +125,7 @@ Otherwise: Store full sequence (some sequences don't compress well)
 
 #### Step 1.1: Add Delta Storage to SequenceStorage
 
-**File**: `talaria-sequoia/src/storage/sequence.rs`
+**File**: `talaria-herald/src/storage/sequence.rs`
 
 **Changes**:
 ```rust
@@ -219,7 +219,7 @@ pub fn get_delta(&self, target_hash: &SHA256Hash) -> Result<Option<Delta>> {
 
 #### Step 1.3: Integrate with Reducer
 
-**File**: `talaria-sequoia/src/operations/reducer.rs`
+**File**: `talaria-herald/src/operations/reducer.rs`
 
 **Changes**:
 ```rust
@@ -321,7 +321,7 @@ impl SequenceReducer {
 
 #### Step 1.4: Add Reconstruction Support
 
-**File**: `talaria-sequoia/src/storage/sequence.rs`
+**File**: `talaria-herald/src/storage/sequence.rs`
 
 **Changes**:
 ```rust
@@ -472,7 +472,7 @@ Enhanced (Phase 2): Hierarchical structure
 
 #### Step 2.1: Hierarchical Clustering
 
-**File**: `talaria-sequoia/src/operations/hierarchical_clustering.rs` (NEW)
+**File**: `talaria-herald/src/operations/hierarchical_clustering.rs` (NEW)
 
 ```rust
 pub struct HierarchicalCluster {
@@ -618,7 +618,7 @@ struct Mutation {
 
 ### Implementation: Tree Builder
 
-**File**: `talaria-sequoia/src/phylo/tree_builder.rs` (NEW)
+**File**: `talaria-herald/src/phylo/tree_builder.rs` (NEW)
 
 ```rust
 pub struct PhylogeneticTreeBuilder {
@@ -843,7 +843,7 @@ talaria phylo reconstruct --node internal_node_123 --time 100MYA
 **Comparison**:
 - Raw FASTA: **165 GB** (100%)
 - gzip: **48 GB** (29%)
-- Current SEQUOIA: **4.2 GB** (2.5%)
+- Current HERALD: **4.2 GB** (2.5%)
 - Phase 1: **6.0 GB** (3.6%) - 27.5x better than raw
 - Phase 2: **9.0 GB** (5.5%) - 18.3x better than raw
 - Phase 3: **19.0 GB** (11.5%) - 8.7x better than raw + evolutionary queries
@@ -984,7 +984,7 @@ $ talaria database optimize uniprot/swissprot --add-deltas
    ```
 
 2. **Start with Phase 1, Step 1.1**:
-   - Modify `talaria-sequoia/src/storage/sequence.rs`
+   - Modify `talaria-herald/src/storage/sequence.rs`
    - Add `enable_delta_compression()` method
    - Add `store_sequence_with_delta()` method
 

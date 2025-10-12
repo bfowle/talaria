@@ -88,7 +88,7 @@ fn main() {
                 let flame_filter = EnvFilter::new("warn")
                     .add_directive(format!("talaria={}", trace_level).parse().unwrap())
                     .add_directive(format!("talaria_cli={}", trace_level).parse().unwrap())
-                    .add_directive(format!("talaria_sequoia={}", trace_level).parse().unwrap())
+                    .add_directive(format!("talaria_herald={}", trace_level).parse().unwrap())
                     .add_directive(format!("talaria_core={}", trace_level).parse().unwrap())
                     .add_directive(format!("talaria_bio={}", trace_level).parse().unwrap())
                     .add_directive(format!("talaria_storage={}", trace_level).parse().unwrap())
@@ -216,6 +216,6 @@ fn run(cli: Cli) -> anyhow::Result<()> {
         Commands::Verify(args) => crate::cli::commands::verify::run(args),
         Commands::Temporal(args) => crate::cli::commands::temporal::run(args),
         Commands::Chunk { command } => crate::cli::commands::chunk::run(command),
-        Commands::Sequoia(args) => crate::cli::commands::sequoia::run(args),
+        Commands::Herald(args) => crate::cli::commands::herald::run(args),
     }
 }

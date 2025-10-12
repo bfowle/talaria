@@ -39,8 +39,8 @@ use talaria_core::OutputFormat;
 pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
     use crate::cli::progress::create_spinner;
     use std::io::Write;
-    use talaria_sequoia::database::DatabaseManager;
-    use talaria_sequoia::ReductionManifest;
+    use talaria_herald::database::DatabaseManager;
+    use talaria_herald::ReductionManifest;
 
     // Show loading spinner while initializing
     let spinner = create_spinner("Loading database information...");
@@ -86,7 +86,7 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
         // Convert reference chunks to chunk metadata format
         let mut chunk_metadata = Vec::new();
         for ref_chunk in &reduction_manifest.reference_chunks {
-            chunk_metadata.push(talaria_sequoia::ManifestMetadata {
+            chunk_metadata.push(talaria_herald::ManifestMetadata {
                 hash: ref_chunk.chunk_hash.clone(),
                 taxon_ids: ref_chunk.taxon_ids.clone(),
                 sequence_count: ref_chunk.sequence_count,
@@ -121,7 +121,7 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
     for chunk_info in &chunk_metadata {
         pb.inc(1);
 
-        // Load using manifest-based approach (SEQUOIA way)
+        // Load using manifest-based approach (HERALD way)
         match manager.load_manifest(&chunk_info.hash) {
             Ok(manifest) => {
                 // Load sequences from canonical storage
@@ -133,7 +133,7 @@ pub fn run(args: ListSequencesArgs) -> anyhow::Result<()> {
                 ) {
                     Ok(sequences) => {
                         for (seq_id, _fasta_data) in sequences {
-                            all_sequences.push(talaria_sequoia::SequenceRef {
+                            all_sequences.push(talaria_herald::SequenceRef {
                                 sequence_id: seq_id.clone(),
                                 chunk_hash: chunk_info.hash.clone(),
                                 offset: 0, // Not used in new format

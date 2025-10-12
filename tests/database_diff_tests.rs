@@ -3,7 +3,7 @@ use std::process::Command;
 use tempfile::TempDir;
 use std::fs;
 use std::path::PathBuf;
-use talaria_sequoia::{SequoiaRepository, ChunkManifest, TaxonId, SHA256Hash, SHA256HashExt, ChunkClassification};
+use talaria_herald::{HeraldRepository, ChunkManifest, TaxonId, SHA256Hash, SHA256HashExt, ChunkClassification};
 
 /// Helper to run talaria CLI commands
 fn run_talaria_command(args: &[&str]) -> Result<String, String> {
@@ -25,7 +25,7 @@ fn create_test_database(path: &str, db_name: &str, num_chunks: usize) -> anyhow:
     let db_path = PathBuf::from(path).join("data").join(db_name);
     fs::create_dir_all(&db_path)?;
 
-    let repo = SequoiaRepository::init(&db_path)?;
+    let repo = HeraldRepository::init(&db_path)?;
 
     // Create test chunks
     for i in 0..num_chunks {

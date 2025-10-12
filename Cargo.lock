@@ -4747,7 +4747,7 @@ dependencies = [
  "sysinfo 0.29.11",
  "talaria-bio",
  "talaria-core",
- "talaria-sequoia",
+ "talaria-herald",
  "talaria-storage",
  "talaria-tools",
  "talaria-utils",
@@ -4796,7 +4796,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "talaria-sequoia"
+name = "talaria-herald"
 version = "0.1.0"
 dependencies = [
  "ahash",
@@ -4923,7 +4923,7 @@ dependencies = [
  "rand 0.8.5",
  "serial_test 3.2.0",
  "talaria-core",
- "talaria-sequoia",
+ "talaria-herald",
  "talaria-storage",
  "tempfile",
  "thiserror 2.0.16",

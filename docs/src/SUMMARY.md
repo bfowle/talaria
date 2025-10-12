@@ -15,39 +15,39 @@
 
 - [Downloading Databases](./databases/downloading.md)
 
-# SEQUOIA Storage System
+# HERALD Storage System
 
-## Understanding SEQUOIA
+## Understanding HERALD
 
-- [What is SEQUOIA?](./sequoia/introduction.md)
-- [Core Concepts](./sequoia/concepts.md)
-- [How SEQUOIA Works](./sequoia/how-it-works.md)
+- [What is HERALD?](./herald/introduction.md)
+- [Core Concepts](./herald/concepts.md)
+- [How HERALD Works](./herald/how-it-works.md)
 
-## Using SEQUOIA
+## Using HERALD
 
-- [Getting Started](./sequoia/getting-started.md)
-- [Common Workflows](./sequoia/workflows.md)
-- [Example Workflow](./sequoia/example-workflow.md)
-- [Best Practices](./sequoia/best-practices.md)
-- [Performance Metrics](./sequoia/performance.md)
+- [Getting Started](./herald/getting-started.md)
+- [Common Workflows](./herald/workflows.md)
+- [Example Workflow](./herald/example-workflow.md)
+- [Best Practices](./herald/best-practices.md)
+- [Performance Metrics](./herald/performance.md)
 
-## SEQUOIA Internals
+## HERALD Internals
 
-- [Storage Overview](./sequoia/overview.md)
-- [Packed Storage Backend](./sequoia/packed-storage.md)
-- [Smart Chunking](./sequoia/chunking.md)
-- [Manifest Format](./sequoia/manifest.md)
-- [Merkle DAG & Proofs](./sequoia/merkle.md)
+- [Storage Overview](./herald/overview.md)
+- [Packed Storage Backend](./herald/packed-storage.md)
+- [Smart Chunking](./herald/chunking.md)
+- [Manifest Format](./herald/manifest.md)
+- [Merkle DAG & Proofs](./herald/merkle.md)
 
 ## Reference & Troubleshooting
 
-- [API Reference](./sequoia/api-reference.md)
-- [Troubleshooting Guide](./sequoia/troubleshooting.md)
-- [Real-World Case Studies](./sequoia/case-studies.md)
+- [API Reference](./herald/api-reference.md)
+- [Troubleshooting Guide](./herald/troubleshooting.md)
+- [Real-World Case Studies](./herald/case-studies.md)
 
 ## Research
 
-- [Academic Whitepaper](./whitepapers/sequoia-architecture.md)
+- [Academic Whitepaper](./whitepapers/herald-architecture.md)
 
 # Workflows
 

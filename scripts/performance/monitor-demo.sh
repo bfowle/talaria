@@ -3,7 +3,7 @@
 # Demo script showing how to use throughput monitoring with Talaria
 
 cat << 'EOF' > /tmp/monitor_demo.rs
-use talaria_sequoia::performance::{ThroughputMonitor, Bottleneck};
+use talaria_herald::performance::{ThroughputMonitor, Bottleneck};
 use std::thread;
 use std::time::Duration;
 
@@ -68,7 +68,7 @@ EOF
 echo "Compiling monitor demo..."
 rustc /tmp/monitor_demo.rs \
     -L target/release/deps \
-    --extern talaria_sequoia=target/release/libtalaria_sequoia.rlib \
+    --extern talaria_herald=target/release/libtalaria_herald.rlib \
     --extern anyhow=target/release/deps/libanyhow*.rlib \
     -o /tmp/monitor_demo 2>/dev/null
 
