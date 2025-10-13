@@ -89,7 +89,7 @@ impl DiamondOptimizer {
 
     /// Sort sequences by complexity (entropy) for better Diamond performance
     #[allow(dead_code)]
-    fn sort_by_complexity(&self, sequences: &mut Vec<Sequence>) {
+    fn sort_by_complexity(&self, sequences: &mut [Sequence]) {
         sequences.sort_by_cached_key(|seq| {
             let complexity = self.calculate_sequence_complexity(&seq.sequence);
             std::cmp::Reverse((complexity * 1000.0) as u64)

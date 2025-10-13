@@ -2,6 +2,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
 
 /// Standard taxonomic ranks from kingdom to species
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -19,10 +20,11 @@ pub enum TaxonomicRank {
     NoRank,
 }
 
-impl TaxonomicRank {
-    /// Parse rank from NCBI taxonomy string
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
+impl FromStr for TaxonomicRank {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
             "superkingdom" => Self::Superkingdom,
             "kingdom" => Self::Kingdom,
             "phylum" => Self::Phylum,
@@ -34,9 +36,11 @@ impl TaxonomicRank {
             "subspecies" => Self::Subspecies,
             "strain" | "varietas" | "forma" => Self::Strain,
             _ => Self::NoRank,
-        }
+        })
     }
+}
 
+impl TaxonomicRank {
     /// Get rank depth for distance calculations (lower = higher in hierarchy)
     pub fn depth(&self) -> u32 {
         match self {
@@ -139,7 +143,7 @@ impl TaxonomyDB {
     pub fn get_rank(&self, taxon_id: u32) -> Option<TaxonomicRank> {
         self.taxa
             .get(&taxon_id)
-            .map(|info| TaxonomicRank::from_str(&info.rank))
+            .map(|info| TaxonomicRank::from_str(&info.rank).unwrap())
     }
 
     /// Find the ancestor of a taxon at a specific rank
@@ -193,7 +197,7 @@ impl TaxonomyDB {
     pub fn get_taxa_at_rank(&self, rank: TaxonomicRank) -> Vec<u32> {
         self.taxa
             .iter()
-            .filter(|(_, info)| TaxonomicRank::from_str(&info.rank) == rank)
+            .filter(|(_, info)| TaxonomicRank::from_str(&info.rank).unwrap() == rank)
             .map(|(id, _)| *id)
             .collect()
     }

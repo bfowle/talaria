@@ -98,8 +98,8 @@ impl<S: ScoringMatrix> NeedlemanWunsch<S> {
 
     fn initialize_matrices(
         &self,
-        score_matrix: &mut Vec<Vec<i32>>,
-        traceback_matrix: &mut Vec<Vec<Traceback>>,
+        score_matrix: &mut [Vec<i32>],
+        traceback_matrix: &mut [Vec<Traceback>],
         ref_len: usize,
         query_len: usize,
     ) {
@@ -124,8 +124,8 @@ impl<S: ScoringMatrix> NeedlemanWunsch<S> {
 
     fn fill_matrices(
         &self,
-        score_matrix: &mut Vec<Vec<i32>>,
-        traceback_matrix: &mut Vec<Vec<Traceback>>,
+        score_matrix: &mut [Vec<i32>],
+        traceback_matrix: &mut [Vec<Traceback>],
         ref_seq: &[u8],
         query_seq: &[u8],
     ) {
@@ -193,9 +193,9 @@ impl<S: ScoringMatrix> NeedlemanWunsch<S> {
         }
 
         // Check last column (reference fully aligned)
-        for i in 0..=query_len {
-            if score_matrix[i][ref_len] > max_score {
-                max_score = score_matrix[i][ref_len];
+        for (i, row) in score_matrix.iter().enumerate().take(query_len + 1) {
+            if row[ref_len] > max_score {
+                max_score = row[ref_len];
                 best_i = i;
                 best_j = ref_len;
             }

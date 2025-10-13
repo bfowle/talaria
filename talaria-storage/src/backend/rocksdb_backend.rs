@@ -227,7 +227,7 @@ impl RocksDBBackend {
 
         // Add hash if not already present
         if !hashes.contains(hash) {
-            hashes.push(hash.clone());
+            hashes.push(*hash);
             let data = bincode::serialize(&hashes)?;
             self.db
                 .put_cf_opt(&cf, key.as_bytes(), &data, &self.write_opts)?;
@@ -464,7 +464,7 @@ impl RocksDBBackend {
         std::fs::create_dir_all(&path)?;
 
         // Configure column families
-        let column_families = vec![
+        let column_families = [
             cf_names::DEFAULT,
             cf_names::SEQUENCES,
             cf_names::REPRESENTATIONS,
@@ -528,7 +528,7 @@ impl RocksDBBackend {
         opts.set_max_bytes_for_level_multiplier(10.0);
 
         // Write buffer configuration
-        opts.set_write_buffer_size((config.write_buffer_size_mb * 1024 * 1024) as usize);
+        opts.set_write_buffer_size(config.write_buffer_size_mb * 1024 * 1024);
         opts.set_max_write_buffer_number(config.max_write_buffer_number as i32);
 
         // Enable statistics if requested
@@ -568,7 +568,7 @@ impl RocksDBBackend {
         let mut opts = Options::default();
 
         // Basic options
-        opts.set_write_buffer_size((config.write_buffer_size_mb * 1024 * 1024) as usize);
+        opts.set_write_buffer_size(config.write_buffer_size_mb * 1024 * 1024);
         opts.set_max_write_buffer_number(config.max_write_buffer_number as i32);
         opts.set_target_file_size_base((config.target_file_size_mb * 1024 * 1024) as u64);
 
@@ -1080,7 +1080,7 @@ impl SequenceStorageBackend for RocksDBBackend {
         } else {
             // Return empty representations if none exist
             Ok(SequenceRepresentations {
-                canonical_hash: hash.clone(),
+                canonical_hash: *hash,
                 representations: Vec::new(),
             })
         }

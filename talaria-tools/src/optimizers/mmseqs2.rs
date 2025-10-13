@@ -251,7 +251,7 @@ impl MMseqs2Optimizer {
 
     /// Sort sequences for optimal memory access in MMseqs2
     #[allow(dead_code)]
-    fn sort_for_memory_efficiency(&self, sequences: &mut Vec<Sequence>) {
+    fn sort_for_memory_efficiency(&self, sequences: &mut [Sequence]) {
         // MMseqs2 benefits from sequences sorted by length within taxonomic groups
         sequences.sort_by_key(|seq| (seq.taxon_id.unwrap_or(0), seq.len()));
     }

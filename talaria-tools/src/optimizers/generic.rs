@@ -4,14 +4,20 @@ use talaria_bio::sequence::Sequence;
 #[allow(dead_code)]
 pub struct GenericOptimizer;
 
+impl Default for GenericOptimizer {
+    fn default() -> Self {
+        Self
+    }
+}
+
 impl GenericOptimizer {
     #[allow(dead_code)]
     pub fn new() -> Self {
-        Self
+        Self::default()
     }
 
     #[allow(dead_code)]
-    pub fn optimize(&self, sequences: &mut Vec<Sequence>) {
+    pub fn optimize(&self, sequences: &mut [Sequence]) {
         // Generic optimization: sort by length for better cache locality
         sequences.sort_by_key(|s| std::cmp::Reverse(s.len()));
     }

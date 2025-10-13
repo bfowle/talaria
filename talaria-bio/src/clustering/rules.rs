@@ -74,14 +74,8 @@ impl Default for ClusteringRules {
 impl ClusteringRules {
     /// Create rules optimized for SwissProt/UniProt databases
     pub fn for_swissprot() -> Self {
-        let mut rules = Self::default();
-
-        // SwissProt has high-quality curated sequences
-        rules.min_sequences_per_cluster = 50;
-        rules.max_sequences_per_cluster = 30000;
-
-        // Add common lab organisms as priority
-        rules.priority_taxa.extend([
+        let mut priority_taxa = Self::default().priority_taxa;
+        priority_taxa.extend([
             10116, // Rattus norvegicus
             9031,  // Gallus gallus
             7955,  // Danio rerio
@@ -89,43 +83,43 @@ impl ClusteringRules {
             9823,  // Sus scrofa
         ]);
 
-        rules
+        Self {
+            min_sequences_per_cluster: 50,
+            max_sequences_per_cluster: 30000,
+            priority_taxa,
+            ..Self::default()
+        }
     }
 
     /// Create rules optimized for TrEMBL databases
     pub fn for_trembl() -> Self {
-        let mut rules = Self::default();
-
-        // TrEMBL is much larger and less curated
-        rules.min_sequences_per_cluster = 200;
-        rules.max_sequences_per_cluster = 100000;
-        rules.max_phylogenetic_distance = 0.25; // Stricter for larger database
-
-        rules
+        Self {
+            min_sequences_per_cluster: 200,
+            max_sequences_per_cluster: 100000,
+            max_phylogenetic_distance: 0.25, // Stricter for larger database
+            ..Self::default()
+        }
     }
 
     /// Create rules optimized for bacterial databases
     pub fn for_bacteria() -> Self {
-        let mut rules = Self::default();
-
-        rules.min_sequences_per_cluster = 100;
-        rules.max_sequences_per_cluster = 50000;
-        rules.separation_rank = TaxonomicRank::Genus;
-        rules.aggregation_rank = TaxonomicRank::Species;
-
-        // Important bacterial species
-        rules.isolation_taxa = [
-            562,    // E. coli
-            511145, // E. coli K12
-            1280,   // Staphylococcus aureus
-            1773,   // Mycobacterium tuberculosis
-            632,    // Yersinia pestis
-            470,    // Acinetobacter baumannii
-        ]
-        .into_iter()
-        .collect();
-
-        rules
+        Self {
+            min_sequences_per_cluster: 100,
+            max_sequences_per_cluster: 50000,
+            separation_rank: TaxonomicRank::Genus,
+            aggregation_rank: TaxonomicRank::Species,
+            isolation_taxa: [
+                562,    // E. coli
+                511145, // E. coli K12
+                1280,   // Staphylococcus aureus
+                1773,   // Mycobacterium tuberculosis
+                632,    // Yersinia pestis
+                470,    // Acinetobacter baumannii
+            ]
+            .into_iter()
+            .collect(),
+            ..Self::default()
+        }
     }
 
     /// Check if two taxa can be clustered together

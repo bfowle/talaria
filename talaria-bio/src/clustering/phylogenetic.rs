@@ -10,6 +10,9 @@ use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use tracing::info;
 
+/// Type alias for taxon groups: (taxon_id, sequences)
+type TaxonGroup = Vec<(u32, Vec<Sequence>)>;
+
 /// A cluster of taxonomically related sequences
 #[derive(Debug, Clone)]
 pub struct TaxonomicCluster {
@@ -107,19 +110,21 @@ impl Default for ClusteringConfig {
 impl ClusteringConfig {
     /// Create configuration optimized for SwissProt database
     pub fn for_swissprot() -> Self {
-        let mut config = Self::default();
-        config.min_cluster_size = 500;
-        config.max_cluster_size = 30000;
-        config
+        Self {
+            min_cluster_size: 500,
+            max_cluster_size: 30000,
+            ..Self::default()
+        }
     }
 
     /// Create configuration optimized for TrEMBL database
     pub fn for_trembl() -> Self {
-        let mut config = Self::default();
-        config.min_cluster_size = 2000;
-        config.max_cluster_size = 100000;
-        config.memory_limit_mb = 16000;
-        config
+        Self {
+            min_cluster_size: 2000,
+            max_cluster_size: 100000,
+            memory_limit_mb: 16000,
+            ..Self::default()
+        }
     }
 }
 
@@ -209,7 +214,7 @@ impl PhylogeneticClusterer {
     fn identify_anchors(
         &self,
         taxon_groups: &HashMap<u32, Vec<Sequence>>,
-    ) -> (Vec<(u32, Vec<Sequence>)>, Vec<(u32, Vec<Sequence>)>) {
+    ) -> (TaxonGroup, TaxonGroup) {
         let mut anchors = Vec::new();
         let mut small_taxa = Vec::new();
 

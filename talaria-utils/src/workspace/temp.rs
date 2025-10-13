@@ -292,18 +292,29 @@ impl TempWorkspace {
             let entry = entry?;
             let path = entry.path();
 
-            if path.is_dir() {
-                // Try to parse timestamp from directory name
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if let Some(timestamp_str) = name.split('_').next() {
-                        if let Ok(timestamp) = timestamp_str.parse::<u64>() {
-                            let age = now - timestamp;
-                            if age > config.max_age_seconds {
-                                fs::remove_dir_all(&path).ok();
-                            }
-                        }
-                    }
-                }
+            if !path.is_dir() {
+                continue;
+            }
+
+            // Try to parse timestamp from directory name
+            let name = match path.file_name().and_then(|n| n.to_str()) {
+                Some(n) => n,
+                None => continue,
+            };
+
+            let timestamp_str = match name.split('_').next() {
+                Some(s) => s,
+                None => continue,
+            };
+
+            let timestamp = match timestamp_str.parse::<u64>() {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+
+            let age = now - timestamp;
+            if age > config.max_age_seconds {
+                fs::remove_dir_all(&path).ok();
             }
         }
 

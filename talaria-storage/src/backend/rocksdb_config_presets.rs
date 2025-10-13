@@ -97,10 +97,10 @@ impl RocksDBConfig {
         let cpus = num_cpus::get();
         let mut sys = System::new_all();
         sys.refresh_memory();
-        let total_memory_mb = (sys.total_memory() / 1024 / 1024) as u64;
+        let total_memory_mb = sys.total_memory() / 1024 / 1024;
 
         // Adjust based on CPU cores
-        self.max_background_jobs = (cpus / 2).max(2).min(32) as i32;
+        self.max_background_jobs = (cpus / 2).clamp(2, 32) as i32;
 
         // Adjust cache based on available memory
         // Use ~25% of system memory for block cache, max 8GB
@@ -144,7 +144,7 @@ impl RocksDBConfig {
             WorkloadPattern::PointLookups => {
                 // Optimize for individual sequence lookups
                 self.bloom_filter_bits = 15.0; // Stronger bloom filter
-                self.block_cache_size_mb = self.block_cache_size_mb * 2;
+                self.block_cache_size_mb *= 2;
             }
             WorkloadPattern::RangeScans => {
                 // Optimize for scanning many sequences

@@ -442,8 +442,8 @@ pub fn parse_deltas_dat(line: &str) -> Result<DeltaRecord, talaria_core::Talaria
     // Parse deltas and taxon_id starting from the determined index
     for part in &parts[delta_start_idx..] {
         // Check for taxon ID
-        if part.starts_with("taxon:") {
-            if let Ok(taxon) = part[6..].parse::<u32>() {
+        if let Some(taxon_str) = part.strip_prefix("taxon:") {
+            if let Ok(taxon) = taxon_str.parse::<u32>() {
                 taxon_id = Some(taxon);
             }
             continue;

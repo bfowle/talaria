@@ -76,11 +76,12 @@ fn parse_sequence(input: &[u8]) -> IResult<&[u8], (Vec<u8>, Option<String>)> {
 
                         // The rest is sequence data
                         if version_end < line.len() {
-                            for &c in &line[version_end..] {
-                                if !c.is_ascii_whitespace() && c != b'=' {
-                                    sequence.push(c.to_ascii_uppercase());
-                                }
-                            }
+                            sequence.extend(
+                                line[version_end..]
+                                    .iter()
+                                    .filter(|&&c| !c.is_ascii_whitespace() && c != b'=')
+                                    .map(|&c| c.to_ascii_uppercase()),
+                            );
                         }
                     }
                 } else {

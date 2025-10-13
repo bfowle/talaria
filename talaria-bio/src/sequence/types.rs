@@ -4,6 +4,7 @@ use crate::taxonomy::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Sequence {
@@ -59,10 +60,6 @@ impl Sequence {
         } else {
             SequenceType::Nucleotide
         }
-    }
-
-    pub fn to_string(&self) -> String {
-        String::from_utf8_lossy(&self.sequence).to_string()
     }
 
     pub fn header(&self) -> String {
@@ -136,6 +133,12 @@ impl Sequence {
             )
         });
         original_len - self.sequence.len()
+    }
+}
+
+impl fmt::Display for Sequence {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", String::from_utf8_lossy(&self.sequence))
     }
 }
 

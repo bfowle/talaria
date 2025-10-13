@@ -210,7 +210,9 @@ fn bench_cache_operations(c: &mut Criterion) {
                 b.iter(|| {
                     let cache = Arc::clone(&cache_clone);
                     let key = *key;
-                    std::thread::spawn(move || cache.get(&key)).join().unwrap()
+                    std::thread::spawn(move || cache.get(&key).map(|v| v.clone()))
+                        .join()
+                        .unwrap()
                 });
             },
         );

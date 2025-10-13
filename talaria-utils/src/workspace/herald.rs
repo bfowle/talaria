@@ -162,20 +162,31 @@ impl HeraldWorkspaceManager {
                 let entry = entry?;
                 let path = entry.path();
 
-                if let Ok(metadata) = fs::metadata(&path) {
-                    if let Ok(modified) = metadata.modified() {
-                        if let Ok(age) = now.duration_since(modified) {
-                            if age > max_age {
-                                if path.is_file() {
-                                    fs::remove_file(&path)?;
-                                } else {
-                                    fs::remove_dir_all(&path)?;
-                                }
-                                removed += 1;
-                            }
-                        }
-                    }
+                let metadata = match fs::metadata(&path) {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+
+                let modified = match metadata.modified() {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+
+                let age = match now.duration_since(modified) {
+                    Ok(a) => a,
+                    Err(_) => continue,
+                };
+
+                if age <= max_age {
+                    continue;
                 }
+
+                if path.is_file() {
+                    fs::remove_file(&path)?;
+                } else {
+                    fs::remove_dir_all(&path)?;
+                }
+                removed += 1;
             }
         }
 
