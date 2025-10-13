@@ -13,7 +13,7 @@ use talaria_bio::sequence::Sequence;
 use talaria_core::{SHA256Hash, TaxonId};
 use talaria_herald::{
     chunker::{ChunkingStrategy, HierarchicalTaxonomicChunker, TaxonomicChunker},
-    storage::{SequenceStorage, HeraldStorage},
+    storage::{HeraldStorage, SequenceStorage},
     temporal::bi_temporal::BiTemporalDatabase,
     types::{DatabaseSource, ManifestMetadata},
     verification::merkle::MerkleDAG,

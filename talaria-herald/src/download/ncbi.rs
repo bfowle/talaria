@@ -279,7 +279,10 @@ impl NCBIDownloader {
             ));
         }
 
-        tracing::info!("Download complete ({} bytes), moving to final location", downloaded);
+        tracing::info!(
+            "Download complete ({} bytes), moving to final location",
+            downloaded
+        );
 
         // Move to final location
         std::fs::rename(&temp_path, output_path)
@@ -399,7 +402,10 @@ impl NCBIDownloader {
             ));
         }
 
-        tracing::info!("Download complete ({} bytes), starting decompression", downloaded);
+        tracing::info!(
+            "Download complete ({} bytes), starting decompression",
+            downloaded
+        );
 
         progress.set_message("Decompressing file...");
 
@@ -469,8 +475,7 @@ impl NCBIDownloader {
     /// Quick validation that a .gz file has valid gzip headers and structure
     /// This doesn't decompress the entire file, just validates the headers
     pub fn validate_gzip_file(file_path: &Path) -> Result<()> {
-        let file = File::open(file_path)
-            .context("Failed to open file for gzip validation")?;
+        let file = File::open(file_path).context("Failed to open file for gzip validation")?;
 
         // Try to read just the gzip header
         let mut decoder = GzDecoder::new(BufReader::new(file));

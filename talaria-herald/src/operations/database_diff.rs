@@ -1,5 +1,5 @@
 /// Comprehensive database comparison functionality
-use crate::{ChunkManifest, SHA256Hash, HeraldRepository, TaxonId};
+use crate::{ChunkManifest, HeraldRepository, SHA256Hash, TaxonId};
 use anyhow::Result;
 use dashmap::DashSet;
 use rayon::prelude::*;
@@ -134,10 +134,16 @@ impl DatabaseDiffer {
         taxonomy_manager: Option<&crate::taxonomy::TaxonomyManager>,
     ) -> Result<DatabaseComparison> {
         let chunk_analysis = Self::compare_chunks_from_manifests(manifest_a, manifest_b, storage);
-        let sequence_analysis = Self::compare_sequences_from_manifests(manifest_a, manifest_b, storage);
-        let taxonomy_analysis =
-            Self::compare_taxonomies_from_manifests(manifest_a, manifest_b, taxonomy_manager, storage);
-        let storage_metrics = Self::calculate_storage_from_manifests(manifest_a, manifest_b, storage);
+        let sequence_analysis =
+            Self::compare_sequences_from_manifests(manifest_a, manifest_b, storage);
+        let taxonomy_analysis = Self::compare_taxonomies_from_manifests(
+            manifest_a,
+            manifest_b,
+            taxonomy_manager,
+            storage,
+        );
+        let storage_metrics =
+            Self::calculate_storage_from_manifests(manifest_a, manifest_b, storage);
 
         Ok(DatabaseComparison {
             chunk_analysis,
@@ -418,7 +424,10 @@ impl DatabaseDiffer {
         storage: &crate::storage::HeraldStorage,
     ) -> Result<usize> {
         let rocksdb = storage.sequence_storage.get_rocksdb();
-        let count_key = format!("manifest_count:{}:{}:{}", source_name, dataset_name, version);
+        let count_key = format!(
+            "manifest_count:{}:{}:{}",
+            source_name, dataset_name, version
+        );
 
         if let Some(data) = rocksdb.get_manifest(&count_key)? {
             if data.len() == 8 {
@@ -448,7 +457,8 @@ impl DatabaseDiffer {
                         parts[1],
                         &manifest_a.version,
                         storage.unwrap(),
-                    ).unwrap_or(0)
+                    )
+                    .unwrap_or(0)
                 } else {
                     0
                 }
@@ -469,7 +479,8 @@ impl DatabaseDiffer {
                         parts[1],
                         &manifest_b.version,
                         storage.unwrap(),
-                    ).unwrap_or(0)
+                    )
+                    .unwrap_or(0)
                 } else {
                     0
                 }
@@ -857,7 +868,8 @@ impl DatabaseDiffer {
 
         // Load smaller database into memory
         tracing::info!("Loading smaller database (A) into memory for comparison...");
-        let seqs_a = Self::extract_sequence_hashes_from_partials(source_a, dataset_a, version_a, storage)?;
+        let seqs_a =
+            Self::extract_sequence_hashes_from_partials(source_a, dataset_a, version_a, storage)?;
         let total_a = seqs_a.len();
 
         // Stream through larger database, comparing in parallel
@@ -940,7 +952,13 @@ impl DatabaseDiffer {
             shared_count_final
         );
 
-        Ok((total_a, total_b_final, shared_count_final, unique_a_count, sample_shared_ids))
+        Ok((
+            total_a,
+            total_b_final,
+            shared_count_final,
+            unique_a_count,
+            sample_shared_ids,
+        ))
     }
 
     /// Compare sequences from manifests using actual sequence hashes
@@ -1175,7 +1193,9 @@ impl DatabaseDiffer {
 
         // For streaming manifests, skip taxonomy analysis (would require loading all partials)
         if (is_streaming_a || is_streaming_b) && storage.is_some() {
-            tracing::debug!("Skipping taxonomy analysis for streaming manifests (requires full chunk index)");
+            tracing::debug!(
+                "Skipping taxonomy analysis for streaming manifests (requires full chunk index)"
+            );
             return TaxonomyAnalysis {
                 total_taxa_a: 0,
                 total_taxa_b: 0,
@@ -1275,7 +1295,10 @@ impl DatabaseDiffer {
         storage: &crate::storage::HeraldStorage,
     ) -> Result<usize> {
         let rocksdb = storage.sequence_storage.get_rocksdb();
-        let seq_count_key = format!("sequence_count:{}:{}:{}", source_name, dataset_name, version);
+        let seq_count_key = format!(
+            "sequence_count:{}:{}:{}",
+            source_name, dataset_name, version
+        );
 
         let sequence_count = if let Some(data) = rocksdb.get_manifest(&seq_count_key)? {
             if data.len() == 8 {
@@ -1311,7 +1334,8 @@ impl DatabaseDiffer {
                         parts[1],
                         &manifest_a.version,
                         storage.unwrap(),
-                    ).unwrap_or(0)
+                    )
+                    .unwrap_or(0)
                 } else {
                     0
                 }
@@ -1332,7 +1356,8 @@ impl DatabaseDiffer {
                         parts[1],
                         &manifest_b.version,
                         storage.unwrap(),
-                    ).unwrap_or(0)
+                    )
+                    .unwrap_or(0)
                 } else {
                     0
                 }

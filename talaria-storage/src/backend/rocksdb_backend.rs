@@ -287,7 +287,7 @@ impl RocksDBBackend {
     /// Compact all column families to compress uncompressed L0/L1 data
     /// This is critical after bulk writes to ensure data is properly compressed
     pub fn compact(&self) -> Result<()> {
-        use rocksdb::{CompactOptions, BottommostLevelCompaction};
+        use rocksdb::{BottommostLevelCompaction, CompactOptions};
 
         let cfs = vec![
             cf_names::SEQUENCES,
@@ -309,7 +309,8 @@ impl RocksDBBackend {
             eprintln!("  Compacting column family: {}", cf_name);
             // Compact the entire key range for this column family
             // ForceOptimized ensures bottommost level is compacted without double-compacting
-            self.db.compact_range_cf_opt(&cf, None::<&[u8]>, None::<&[u8]>, &compact_opts);
+            self.db
+                .compact_range_cf_opt(&cf, None::<&[u8]>, None::<&[u8]>, &compact_opts);
         }
         Ok(())
     }
@@ -486,11 +487,14 @@ impl RocksDBBackend {
         let db_opts = Self::create_db_options(&config)?;
 
         // Open or create database
-        let db = DB::open_cf_descriptors(&db_opts, &path, cf_descriptors)
-            .map_err(|e| {
-                eprintln!("RocksDB open error details: {:?}", e);
-                anyhow::anyhow!("Failed to open RocksDB at path: {}. Error: {}", path.display(), e)
-            })?;
+        let db = DB::open_cf_descriptors(&db_opts, &path, cf_descriptors).map_err(|e| {
+            eprintln!("RocksDB open error details: {:?}", e);
+            anyhow::anyhow!(
+                "Failed to open RocksDB at path: {}. Error: {}",
+                path.display(),
+                e
+            )
+        })?;
 
         // Configure write options
         let mut write_opts = WriteOptions::default();

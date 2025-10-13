@@ -80,7 +80,8 @@ impl DownloadManager {
             source = %source,
             resume = options.resume,
             force = options.force
-        ).entered();
+        )
+        .entered();
 
         tracing::info!("Starting download with state management for {}", source);
         // Try to find existing workspace if resuming

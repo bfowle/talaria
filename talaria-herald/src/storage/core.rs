@@ -128,11 +128,9 @@ impl HeraldStorage {
 
     /// Store a chunk in content-addressed storage
     pub fn store_chunk(&self, data: &[u8], compress: bool) -> Result<SHA256Hash> {
-        let _span = tracing::debug_span!(
-            "store_chunk",
-            data_size = data.len(),
-            compress = compress
-        ).entered();
+        let _span =
+            tracing::debug_span!("store_chunk", data_size = data.len(), compress = compress)
+                .entered();
 
         tracing::debug!("Storing chunk, size: {} bytes", data.len());
         let hash = SHA256Hash::compute(data);
@@ -1885,7 +1883,9 @@ mod tests {
 
         tracing::info!(
             "Stats: total_chunks={}, total_size={}, compressed_chunks={}",
-            stats.total_chunks, stats.total_size, stats.compressed_chunks
+            stats.total_chunks,
+            stats.total_size,
+            stats.compressed_chunks
         );
 
         // RocksDB-based storage may return zero stats if not properly implemented

@@ -150,7 +150,8 @@ impl DiscrepancyDetector {
                             Err(e) => {
                                 tracing::info!(
                                     "Error detecting discrepancies in chunk {}: {}",
-                                    chunk_info.hash, e
+                                    chunk_info.hash,
+                                    e
                                 );
                             }
                         }

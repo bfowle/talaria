@@ -1,9 +1,9 @@
 pub mod chunk;
 pub mod database;
+pub mod herald;
 pub mod interactive;
 pub mod reconstruct;
 pub mod reduce;
-pub mod herald;
 pub mod stats;
 pub mod temporal;
 pub mod tools;

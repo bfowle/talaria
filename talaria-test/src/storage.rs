@@ -7,7 +7,7 @@ use crate::TestEnvironment;
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use talaria_core::types::SHA256Hash;
-use talaria_herald::storage::{SequenceStorage, HeraldStorage};
+use talaria_herald::storage::{HeraldStorage, SequenceStorage};
 
 /// Test storage wrapper with helpers
 pub struct TestStorage {

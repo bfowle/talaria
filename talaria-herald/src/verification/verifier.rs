@@ -83,7 +83,8 @@ impl<'a> HeraldVerifier<'a> {
             if computed_root != self.manifest.sequence_root {
                 tracing::info!(
                     "Sequence root mismatch: expected {}, got {}",
-                    self.manifest.sequence_root, computed_root
+                    self.manifest.sequence_root,
+                    computed_root
                 );
                 return Ok(false);
             }
@@ -102,7 +103,8 @@ impl<'a> HeraldVerifier<'a> {
                 if computed_tax_root != self.manifest.taxonomy_root {
                     tracing::info!(
                         "Taxonomy root mismatch: expected {}, got {}",
-                        self.manifest.taxonomy_root, computed_tax_root
+                        self.manifest.taxonomy_root,
+                        computed_tax_root
                     );
                     return Ok(false);
                 }

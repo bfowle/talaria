@@ -489,7 +489,11 @@ fn build_chunk_index_for_version(
 
     // Open DatabaseManager to access RocksDB manifests
     let manager = DatabaseManager::new(None)?;
-    let rocksdb = manager.get_repository().storage.sequence_storage.get_rocksdb();
+    let rocksdb = manager
+        .get_repository()
+        .storage
+        .sequence_storage
+        .get_rocksdb();
 
     // Query specific version from RocksDB
     let manifest_key = format!("manifest:{}:{}", db, ver);
@@ -509,10 +513,7 @@ fn build_chunk_index_for_version(
                 taxonomy: extract_taxonomy_info(chunk_meta),
                 sequence_count: chunk_meta.sequence_count,
                 size: chunk_meta.size as u64,
-                compressed_size: chunk_meta
-                    .compressed_size
-                    .unwrap_or(chunk_meta.size)
-                    as u64,
+                compressed_size: chunk_meta.compressed_size.unwrap_or(chunk_meta.size) as u64,
                 compression_ratio: if let Some(compressed) = chunk_meta.compressed_size {
                     chunk_meta.size as f32 / compressed as f32
                 } else {
@@ -568,7 +569,11 @@ fn build_chunk_index() -> Result<ChunkIndex> {
     // Process each database's manifest from RocksDB
     for db_info in databases {
         // Get the manifest for this database from RocksDB
-        let rocksdb = manager.get_repository().storage.sequence_storage.get_rocksdb();
+        let rocksdb = manager
+            .get_repository()
+            .storage
+            .sequence_storage
+            .get_rocksdb();
 
         // Try to get current version manifest
         let alias_key = format!("alias:{}:current", db_info.name);
@@ -591,13 +596,9 @@ fn build_chunk_index() -> Result<ChunkIndex> {
                         taxonomy: extract_taxonomy_info(chunk_meta),
                         sequence_count: chunk_meta.sequence_count,
                         size: chunk_meta.size as u64,
-                        compressed_size: chunk_meta
-                            .compressed_size
-                            .unwrap_or(chunk_meta.size)
+                        compressed_size: chunk_meta.compressed_size.unwrap_or(chunk_meta.size)
                             as u64,
-                        compression_ratio: if let Some(compressed) =
-                            chunk_meta.compressed_size
-                        {
+                        compression_ratio: if let Some(compressed) = chunk_meta.compressed_size {
                             chunk_meta.size as f32 / compressed as f32
                         } else {
                             1.0

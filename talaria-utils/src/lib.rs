@@ -53,9 +53,8 @@ pub use parallel::{
 
 // Workspace utilities
 pub use workspace::{
-    find_workspace, list_workspaces, HeraldStatistics, HeraldTransaction,
-    HeraldWorkspaceManager, TempWorkspace, WorkspaceConfig, WorkspaceMetadata, WorkspaceStats,
-    WorkspaceStatus,
+    find_workspace, list_workspaces, HeraldStatistics, HeraldTransaction, HeraldWorkspaceManager,
+    TempWorkspace, WorkspaceConfig, WorkspaceMetadata, WorkspaceStats, WorkspaceStatus,
 };
 
 // Performance utilities

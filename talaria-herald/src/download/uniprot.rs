@@ -60,7 +60,8 @@ impl UniProtDownloader {
             "download_swissprot",
             output = %output_path.display(),
             skip_verify = skip_verify
-        ).entered();
+        )
+        .entered();
 
         info!(
             "Downloading SwissProt database to {}",
@@ -247,7 +248,8 @@ impl UniProtDownloader {
                     // Try to continue with next chunk
                     tracing::info!(
                         "Attempting to continue download (error {}/{})",
-                        consecutive_errors, MAX_CONSECUTIVE_ERRORS
+                        consecutive_errors,
+                        MAX_CONSECUTIVE_ERRORS
                     );
                     continue;
                 }
@@ -358,7 +360,8 @@ impl UniProtDownloader {
             output = %output_path.display(),
             skip_verify = skip_verify,
             resume = resume
-        ).entered();
+        )
+        .entered();
         info!("Downloading and extracting from {}", url);
         progress.set_message(&format!("Downloading from {}", url));
 
@@ -446,7 +449,8 @@ impl UniProtDownloader {
                     // Try to continue with next chunk
                     tracing::info!(
                         "Attempting to continue download (error {}/{})",
-                        consecutive_errors, MAX_CONSECUTIVE_ERRORS
+                        consecutive_errors,
+                        MAX_CONSECUTIVE_ERRORS
                     );
                     continue;
                 }
@@ -486,7 +490,10 @@ impl UniProtDownloader {
             ));
         }
 
-        tracing::info!("Download complete ({} bytes), starting decompression", downloaded);
+        tracing::info!(
+            "Download complete ({} bytes), starting decompression",
+            downloaded
+        );
 
         progress.set_message("Decompressing file...");
 
@@ -557,8 +564,7 @@ impl UniProtDownloader {
     /// Quick validation that a .gz file has valid gzip headers and structure
     /// This doesn't decompress the entire file, just validates the headers
     pub fn validate_gzip_file(file_path: &Path) -> Result<()> {
-        let file = File::open(file_path)
-            .context("Failed to open file for gzip validation")?;
+        let file = File::open(file_path).context("Failed to open file for gzip validation")?;
 
         // Try to read just the gzip header
         let mut decoder = GzDecoder::new(BufReader::new(file));

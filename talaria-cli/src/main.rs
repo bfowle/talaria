@@ -80,8 +80,12 @@ fn main() {
             Ok((flame_layer, guard)) => {
                 eprintln!("Flame tracing enabled to: {}", flame_file);
 
-                let trace_level = std::env::var("TALARIA_FLAME_LEVEL").unwrap_or_else(|_| "debug".to_string());
-                eprintln!("Tracing all talaria crates at {} level", trace_level.to_uppercase());
+                let trace_level =
+                    std::env::var("TALARIA_FLAME_LEVEL").unwrap_or_else(|_| "debug".to_string());
+                eprintln!(
+                    "Tracing all talaria crates at {} level",
+                    trace_level.to_uppercase()
+                );
                 eprintln!("Tip: Set TALARIA_FLAME_LEVEL=trace for more detailed traces");
 
                 // Build comprehensive env filter for flame tracing

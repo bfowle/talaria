@@ -166,7 +166,6 @@ impl OptimizeCmd {
 
     async fn run_all(&self) -> Result<()> {
         use talaria_herald::database::DatabaseManager;
-        
 
         println!("🔧 Optimizing ALL HERALD databases");
         println!();
@@ -199,7 +198,11 @@ impl OptimizeCmd {
                 println!();
 
                 // Compact sequences storage
-                let sequence_rocksdb = manager.get_repository().storage.sequence_storage.get_rocksdb();
+                let sequence_rocksdb = manager
+                    .get_repository()
+                    .storage
+                    .sequence_storage
+                    .get_rocksdb();
                 sequence_rocksdb.compact()?;
 
                 println!();
@@ -271,7 +274,11 @@ impl OptimizeCmd {
                 // This would iterate through each database's chunk manifests
             }
 
-            println!("  Repacked {} chunks across {} databases", repacked_count, databases.len());
+            println!(
+                "  Repacked {} chunks across {} databases",
+                repacked_count,
+                databases.len()
+            );
             if !self.dry_run {
                 println!("  Space saved: {} MB", total_saved / 1_048_576);
             }
@@ -296,7 +303,10 @@ impl OptimizeCmd {
         }
 
         println!();
-        if self.repack || (self.rebuild_indices && databases.len() > 0) || self.prune_temporal.is_some() {
+        if self.repack
+            || (self.rebuild_indices && databases.len() > 0)
+            || self.prune_temporal.is_some()
+        {
             println!("Note: --repack and --prune-temporal only apply to completed databases");
             println!("      --rebuild-indices applies globally to all sequences including incomplete databases");
             println!();

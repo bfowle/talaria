@@ -822,10 +822,7 @@ fn parse_time_input(input: &str) -> Result<chrono::DateTime<chrono::Utc>> {
     ))
 }
 
-fn matches_taxonomy_filter(
-    chunk: &talaria_herald::ManifestMetadata,
-    filter: &str,
-) -> Result<bool> {
+fn matches_taxonomy_filter(chunk: &talaria_herald::ManifestMetadata, filter: &str) -> Result<bool> {
     // Use the new taxonomy filter with boolean expression support
     use talaria_herald::taxonomy::filter::TaxonomyFilter;
 

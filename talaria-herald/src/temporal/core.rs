@@ -424,19 +424,23 @@ impl TemporalIndex {
     pub fn save(&self) -> Result<()> {
         // Save sequence timeline to RocksDB
         let data = bincode::serialize(&self.sequence_timeline)?;
-        self.rocksdb.put_manifest("temporal:sequence_timeline", &data)?;
+        self.rocksdb
+            .put_manifest("temporal:sequence_timeline", &data)?;
 
         // Save taxonomy timeline
         let data = bincode::serialize(&self.taxonomy_timeline)?;
-        self.rocksdb.put_manifest("temporal:taxonomy_timeline", &data)?;
+        self.rocksdb
+            .put_manifest("temporal:taxonomy_timeline", &data)?;
 
         // Save cross-references
         let data = bincode::serialize(&self.cross_references)?;
-        self.rocksdb.put_manifest("temporal:cross_references", &data)?;
+        self.rocksdb
+            .put_manifest("temporal:cross_references", &data)?;
 
         // Save header history
         let data = bincode::serialize(&self.header_history)?;
-        self.rocksdb.put_manifest("temporal:header_history", &data)?;
+        self.rocksdb
+            .put_manifest("temporal:header_history", &data)?;
 
         // Flush to ensure persistence
         self.rocksdb.flush()?;

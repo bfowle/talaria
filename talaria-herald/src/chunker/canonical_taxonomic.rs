@@ -251,7 +251,10 @@ impl TaxonomicChunker {
         }
 
         // Step 3: Create chunk manifests
-        tracing::debug!("Creating chunk manifests for {} taxonomic groups", taxon_groups.len());
+        tracing::debug!(
+            "Creating chunk manifests for {} taxonomic groups",
+            taxon_groups.len()
+        );
 
         // Compute versions ONCE before parallel processing to avoid file system contention
         let taxonomy_version = self.get_taxonomy_version();
@@ -282,7 +285,8 @@ impl TaxonomicChunker {
         if !self.quiet_mode && num_taxa > 1000 {
             tracing::info!(
                 "Processing {} taxonomic groups in chunks of {} (large dataset mode)",
-                num_taxa, parallel_chunk_size
+                num_taxa,
+                parallel_chunk_size
             );
         }
 
@@ -342,8 +346,7 @@ impl TaxonomicChunker {
 
         // Step 4: Apply special taxa rules
         tracing::debug!("Applying special taxa rules");
-        manifests =
-            self.apply_special_taxa_rules(manifests, taxonomy_version, sequence_version)?;
+        manifests = self.apply_special_taxa_rules(manifests, taxonomy_version, sequence_version)?;
 
         Ok(manifests)
     }

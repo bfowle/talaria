@@ -162,10 +162,14 @@ impl OptimizedReferenceSelector {
         target_ratio: f64,
         aligner: &mut dyn Aligner,
     ) -> Result<SelectionResult> {
-        tracing::info!("🔬 Graph centrality-based reference selection (HERALD 5-dimensional approach)");
+        tracing::info!(
+            "🔬 Graph centrality-based reference selection (HERALD 5-dimensional approach)"
+        );
         tracing::info!(
             "  Formula: Score = {:.1}·Degree + {:.1}·Betweenness + {:.1}·Coverage",
-            self.alpha, self.beta, self.gamma
+            self.alpha,
+            self.beta,
+            self.gamma
         );
 
         // Build similarity graph first

@@ -531,7 +531,7 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
                     format_number(sequences)
                 ));
                 spinner_clone.tick();
-            }))
+            })),
         )?
     } else {
         // Non-streaming mode: load full manifest and assemble
@@ -565,7 +565,10 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     spinner.finish_and_clear();
 
     // Log completion of assembly stage
-    tracing::info!("✓ Assembly complete: {} sequences assembled", sequence_count);
+    tracing::info!(
+        "✓ Assembly complete: {} sequences assembled",
+        sequence_count
+    );
     if std::env::var("TALARIA_LOG").unwrap_or_default() == "debug" {
         tracing::debug!("Memory checkpoint: Post-assembly");
     }
@@ -586,7 +589,11 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         tree_item(
             false,
             "File size",
-            Some(&format!("{} ({} bytes)", formatted_size, format_number(file_size as usize)))
+            Some(&format!(
+                "{} ({} bytes)",
+                formatted_size,
+                format_number(file_size as usize)
+            )),
         );
 
         // Read and display first few lines for verification (debug mode only)
@@ -794,14 +801,21 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
             "🔄 Large database detected: {} sequences",
             format_number(sequence_count)
         ));
-        info(&format!("   Estimated memory for full load: ~{} GB",
-            (sequence_count as u64 * 200) / (1024 * 1024 * 1024)));
-        info(&format!("   Using chunked processing mode ({} sequences per chunk)",
-            format_number(CHUNK_SIZE)));
+        info(&format!(
+            "   Estimated memory for full load: ~{} GB",
+            (sequence_count as u64 * 200) / (1024 * 1024 * 1024)
+        ));
+        info(&format!(
+            "   Using chunked processing mode ({} sequences per chunk)",
+            format_number(CHUNK_SIZE)
+        ));
         println!();
 
-        tracing::info!("Entering chunked reduction mode: {} sequences -> {} chunks",
-            sequence_count, (sequence_count + CHUNK_SIZE - 1) / CHUNK_SIZE);
+        tracing::info!(
+            "Entering chunked reduction mode: {} sequences -> {} chunks",
+            sequence_count,
+            (sequence_count + CHUNK_SIZE - 1) / CHUNK_SIZE
+        );
         tracing::info!("Memory checkpoint: Before chunked processing");
 
         // Use chunked reduction for massive databases
@@ -824,11 +838,17 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     }
 
     // Regular mode for smaller databases (< 20M sequences)
-    task_list.set_task_message(load_task, &format!("Loading {} sequences...", format_number(sequence_count)));
+    task_list.set_task_message(
+        load_task,
+        &format!("Loading {} sequences...", format_number(sequence_count)),
+    );
 
     // Use parallel parser for files > 50MB, chunk size of 10MB
     let mut sequences = if file_size > 50 * 1024 * 1024 {
-        tracing::info!("Using parallel FASTA parser for large file ({} bytes)", file_size);
+        tracing::info!(
+            "Using parallel FASTA parser for large file ({} bytes)",
+            file_size
+        );
         talaria_bio::parse_fasta_parallel(&actual_input, 10 * 1024 * 1024)?
     } else {
         talaria_bio::parse_fasta(&actual_input)?
@@ -947,7 +967,10 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
         Ok(result) => {
             task_list.set_task_message(
                 select_task,
-                &format!("Selected {} reference sequences", format_number(result.0.len())),
+                &format!(
+                    "Selected {} reference sequences",
+                    format_number(result.0.len())
+                ),
             );
             task_list.update_task(select_task, TaskStatus::Complete);
             result
@@ -987,7 +1010,10 @@ pub fn run(mut args: ReduceArgs) -> anyhow::Result<()> {
     } else if !deltas.is_empty() {
         task_list.set_task_message(
             encode_task,
-            &format!("Encoded {} child sequences as deltas", format_number(deltas.len())),
+            &format!(
+                "Encoded {} child sequences as deltas",
+                format_number(deltas.len())
+            ),
         );
         task_list.update_task(encode_task, TaskStatus::Complete);
     } else {
@@ -1321,10 +1347,8 @@ fn store_reduction_in_herald(
     });
 
     // Process references and get chunk manifests with progress tracking
-    let chunk_manifests = chunker.chunk_sequences_canonical_with_progress(
-        references.to_vec(),
-        Some(progress_callback)
-    )?;
+    let chunk_manifests = chunker
+        .chunk_sequences_canonical_with_progress(references.to_vec(), Some(progress_callback))?;
 
     pb.finish_and_clear();
 
@@ -1407,7 +1431,10 @@ fn store_reduction_in_herald(
         // Group deltas by reference sequence (parallel grouping with DashMap)
         use dashmap::DashMap;
 
-        info(&format!("Grouping {} deltas by reference...", format_number(deltas.len())));
+        info(&format!(
+            "Grouping {} deltas by reference...",
+            format_number(deltas.len())
+        ));
 
         let deltas_by_ref_concurrent = DashMap::new();
         deltas.par_iter().for_each(|delta| {
@@ -1646,7 +1673,10 @@ where
             // Parse header
             let header = line[1..].trim();
             let (id, description) = if let Some(space_pos) = header.find(' ') {
-                (header[..space_pos].to_string(), Some(header[space_pos + 1..].to_string()))
+                (
+                    header[..space_pos].to_string(),
+                    Some(header[space_pos + 1..].to_string()),
+                )
             } else {
                 (header.to_string(), None)
             };
@@ -1704,18 +1734,22 @@ fn reduce_in_chunks(
     // Calculate number of chunks
     let num_chunks = (total_sequences + chunk_size - 1) / chunk_size;
 
-    info(&format!("📦 Processing in {} chunks of {} sequences each",
+    info(&format!(
+        "📦 Processing in {} chunks of {} sequences each",
         format_number(num_chunks),
-        format_number(chunk_size)));
+        format_number(chunk_size)
+    ));
     println!();
 
     // Start processing task
     task_list.update_task(load_task, TaskStatus::InProgress);
     task_list.update_task(select_task, TaskStatus::InProgress);
 
-    info(&format!("Streaming {} sequences in {} chunks...",
+    info(&format!(
+        "Streaming {} sequences in {} chunks...",
         format_number(total_sequences),
-        format_number(num_chunks)));
+        format_number(num_chunks)
+    ));
 
     // Shared state for accumulating results across chunks
     let mut all_references: Vec<Sequence> = Vec::new();
@@ -1737,9 +1771,11 @@ fn reduce_in_chunks(
         // Update progress
         task_list.set_task_message(
             select_task,
-            &format!("Processing chunk {} ({} sequences)...",
+            &format!(
+                "Processing chunk {} ({} sequences)...",
                 chunk_idx + 1,
-                format_number(chunk.len()))
+                format_number(chunk.len())
+            ),
         );
 
         // Create reducer for this chunk
@@ -1773,10 +1809,12 @@ fn reduce_in_chunks(
                 // Accumulate deltas
                 all_deltas.extend(chunk_deltas);
 
-                info(&format!("  ✓ Chunk {}: {} references selected (total: {})",
+                info(&format!(
+                    "  ✓ Chunk {}: {} references selected (total: {})",
                     chunk_idx + 1,
                     format_number(chunk_refs_count),
-                    format_number(all_references.len())));
+                    format_number(all_references.len())
+                ));
 
                 Ok(())
             }
@@ -1791,9 +1829,11 @@ fn reduce_in_chunks(
     task_list.update_task(load_task, TaskStatus::Complete);
     task_list.set_task_message(
         select_task,
-        &format!("Selected {} total references from {} chunks",
+        &format!(
+            "Selected {} total references from {} chunks",
             format_number(all_references.len()),
-            format_number(total_chunks))
+            format_number(total_chunks)
+        ),
     );
     task_list.update_task(select_task, TaskStatus::Complete);
 
@@ -1803,7 +1843,10 @@ fn reduce_in_chunks(
     } else if !all_deltas.is_empty() {
         task_list.set_task_message(
             encode_task,
-            &format!("Encoded {} child sequences as deltas", format_number(all_deltas.len())),
+            &format!(
+                "Encoded {} child sequences as deltas",
+                format_number(all_deltas.len())
+            ),
         );
         task_list.update_task(encode_task, TaskStatus::Complete);
     } else {
@@ -1883,7 +1926,8 @@ fn reduce_in_chunks(
 
     // Show visualization charts
     if !args.no_visualize {
-        let coverage = (all_references.len() + all_deltas.len()) as f64 / total_sequences as f64 * 100.0;
+        let coverage =
+            (all_references.len() + all_deltas.len()) as f64 / total_sequences as f64 * 100.0;
         let summary_chart = create_reduction_summary_chart(
             total_sequences,
             all_references.len(),

@@ -6,9 +6,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 /// Enables retroactive analysis, historical reproduction, and temporal joins
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
-use talaria_herald::traits::renderable::{
-    DiffRenderable, EvolutionRenderable, TemporalRenderable,
-};
+use talaria_herald::traits::renderable::{DiffRenderable, EvolutionRenderable, TemporalRenderable};
 use talaria_herald::traits::temporal::*;
 use talaria_herald::RetroactiveAnalyzer;
 use talaria_herald::{BiTemporalCoordinate, TaxonId};

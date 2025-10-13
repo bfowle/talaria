@@ -4,14 +4,14 @@ on:
   push:
     branches: [ main, develop ]
     paths:
-      - 'talaria-sequoia/src/**'
-      - 'talaria-sequoia/tests/**'
+      - 'talaria-herald/src/**'
+      - 'talaria-herald/tests/**'
       - '.github/workflows/deadlock-check.yml'
   pull_request:
     branches: [ main ]
     paths:
-      - 'talaria-sequoia/src/**'
-      - 'talaria-sequoia/tests/**'
+      - 'talaria-herald/src/**'
+      - 'talaria-herald/tests/**'
   schedule:
     # Run nightly at 2 AM UTC
     - cron: '0 2 * * *'
@@ -40,17 +40,17 @@ jobs:
 
       - name: Build with deadlock detection
         run: |
-          cd talaria-sequoia
+          cd talaria-herald
           cargo build --features deadlock_detection --release
 
       - name: Run deadlock regression tests
         run: |
-          cd talaria-sequoia
+          cd talaria-herald
           cargo test --features deadlock_detection deadlock_regression_test -- --nocapture
 
       - name: Run stress tests with monitoring
         run: |
-          cd talaria-sequoia
+          cd talaria-herald
           # Run stress tests with aggressive monitoring
           TALARIA_MONITOR=1 TALARIA_MONITOR_INTERVAL=1 \
             cargo test --features deadlock_detection --release -- --ignored lock_contention
@@ -58,12 +58,12 @@ jobs:
 
       - name: Run concurrent download tests
         run: |
-          cd talaria-sequoia
+          cd talaria-herald
           cargo test --features deadlock_detection download_concurrency_test
 
       - name: Run performance tests under load
         run: |
-          cd talaria-sequoia
+          cd talaria-herald
           cargo test --features deadlock_detection performance_test
 
       - name: Check for thread sanitizer (if available)
@@ -73,7 +73,7 @@ jobs:
             rustup component add rust-src
             export RUSTFLAGS="-Z sanitizer=thread"
             export TSAN_OPTIONS="halt_on_error=1"
-            cd talaria-sequoia
+            cd talaria-herald
             cargo test -Z build-std --target x86_64-unknown-linux-gnu \
               --features deadlock_detection deadlock_regression_test
           else
@@ -93,12 +93,12 @@ jobs:
 
       - name: Run lock-free vs mutex comparison
         run: |
-          cd talaria-sequoia
+          cd talaria-herald
           cargo test --release --features deadlock_detection -- --ignored lock_free_comparison
 
       - name: Run contention scaling benchmark
         run: |
-          cd talaria-sequoia
+          cd talaria-herald
           cargo test --release --features deadlock_detection -- --ignored contention_scaling
 
   monitoring-integration:
@@ -117,7 +117,7 @@ jobs:
 
       - name: Test with monitoring interval ${{ matrix.monitor_interval }}
         run: |
-          cd talaria-sequoia
+          cd talaria-herald
           TALARIA_MONITOR=1 TALARIA_MONITOR_INTERVAL=${{ matrix.monitor_interval }} \
             cargo test --features deadlock_detection monitoring_under_load
         timeout-minutes: 5

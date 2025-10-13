@@ -139,7 +139,10 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
             "uniref90" => DatabaseSource::UniProt(UniProtDatabase::UniRef90),
             "uniref100" => DatabaseSource::UniProt(UniProtDatabase::UniRef100),
             _ => {
-                eprintln!("Warning: Unknown UniProt database '{}', defaulting to SwissProt", db_type);
+                eprintln!(
+                    "Warning: Unknown UniProt database '{}', defaulting to SwissProt",
+                    db_type
+                );
                 DatabaseSource::UniProt(UniProtDatabase::SwissProt)
             }
         }
@@ -180,14 +183,14 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
         // 2. Automatic deduplication
         // 3. Manifest storage
         let mut manager_mut = manager;
-        manager_mut.chunk_database(
-            &args.input,
-            &database_source_enum,
-            Some(&progress_callback)
-        )?;
+        manager_mut.chunk_database(&args.input, &database_source_enum, Some(&progress_callback))?;
 
         // Flush storage
-        manager_mut.get_repository().storage.sequence_storage.flush()?;
+        manager_mut
+            .get_repository()
+            .storage
+            .sequence_storage
+            .flush()?;
 
         println!();
         success(&format!(
@@ -236,10 +239,8 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     });
 
     // Process sequences with automatic deduplication and progress tracking
-    let chunk_manifests = chunker.chunk_sequences_canonical_with_progress(
-        sequences,
-        Some(progress_callback)
-    )?;
+    let chunk_manifests =
+        chunker.chunk_sequences_canonical_with_progress(sequences, Some(progress_callback))?;
 
     pb.finish_and_clear();
 
@@ -368,7 +369,11 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
 
     // Save manifest to RocksDB using shared function (NO filesystem writes)
     let chunk_count = temporal_manifest.chunk_index.len();
-    let sequence_count = temporal_manifest.chunk_index.iter().map(|c| c.sequence_count).sum();
+    let sequence_count = temporal_manifest
+        .chunk_index
+        .iter()
+        .map(|c| c.sequence_count)
+        .sum();
     let total_size = temporal_manifest.chunk_index.iter().map(|c| c.size).sum();
 
     manager.save_manifest_to_repository(
@@ -382,7 +387,12 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
     )?;
 
     // Flush RocksDB to ensure data is persisted
-    manager.get_repository().storage.sequence_storage.get_rocksdb().flush()?;
+    manager
+        .get_repository()
+        .storage
+        .sequence_storage
+        .get_rocksdb()
+        .flush()?;
 
     // Create symlink for "current" version (legacy filesystem)
     let current_link = db_base.join("current");
@@ -461,9 +471,7 @@ pub fn run(args: AddArgs) -> anyhow::Result<()> {
 
 // Helper function to load taxonomy mappings using unified TaxonomyProvider
 fn load_taxonomy_mappings() -> anyhow::Result<HashMap<String, talaria_herald::TaxonId>> {
-    use talaria_utils::taxonomy::{
-        load_taxonomy_mappings_with_fallback, TaxonomyMappingSource,
-    };
+    use talaria_utils::taxonomy::{load_taxonomy_mappings_with_fallback, TaxonomyMappingSource};
 
     // Prefer NCBI mappings for the add command, but fallback to UniProt if needed
     let mappings: HashMap<String, u32> =

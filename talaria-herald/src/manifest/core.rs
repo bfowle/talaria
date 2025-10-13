@@ -489,14 +489,12 @@ impl Manifest {
 
         let chunk_index: Vec<ManifestMetadata> = chunks
             .iter()
-            .map(|chunk| {
-                ManifestMetadata {
-                    hash: chunk.chunk_hash.clone(),
-                    taxon_ids: chunk.taxon_ids.clone(),
-                    sequence_count: chunk.sequence_refs.len(),
-                    size: chunk.total_size,
-                    compressed_size: None,
-                }
+            .map(|chunk| ManifestMetadata {
+                hash: chunk.chunk_hash.clone(),
+                taxon_ids: chunk.taxon_ids.clone(),
+                sequence_count: chunk.sequence_refs.len(),
+                size: chunk.total_size,
+                compressed_size: None,
             })
             .collect();
 

@@ -437,7 +437,10 @@ impl Reducer {
 
         // Show progress message if filtering many sequences
         if !self.silent && total_children > 10000 {
-            action(&format!("Filtering {} sequences by length...", format_number(total_children)));
+            action(&format!(
+                "Filtering {} sequences by length...",
+                format_number(total_children)
+            ));
         }
 
         let seq_map: HashMap<String, &Sequence> =

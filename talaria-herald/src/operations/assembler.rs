@@ -133,7 +133,8 @@ impl<'a> FastaAssembler<'a> {
             if batch_idx % 10 == 0 && batch_idx > 0 {
                 log::info!(
                     "Progress: {}/{} chunks processed, {} sequences assembled",
-                    (batch_idx + 1) * ASSEMBLY_CHUNK_BATCH.min(total_chunks - batch_idx * ASSEMBLY_CHUNK_BATCH),
+                    (batch_idx + 1)
+                        * ASSEMBLY_CHUNK_BATCH.min(total_chunks - batch_idx * ASSEMBLY_CHUNK_BATCH),
                     total_chunks,
                     total_sequences
                 );
@@ -143,7 +144,11 @@ impl<'a> FastaAssembler<'a> {
         // Ensure all data is written
         writer.flush()?;
 
-        log::info!("Parallel assembly completed: {} sequences from {} chunks", total_sequences, total_chunks);
+        log::info!(
+            "Parallel assembly completed: {} sequences from {} chunks",
+            total_sequences,
+            total_chunks
+        );
 
         Ok(total_sequences)
     }
@@ -177,7 +182,8 @@ impl<'a> FastaAssembler<'a> {
                     Err(e) => {
                         tracing::error!(
                             "WARNING: Failed to load canonical sequence {}: {}",
-                            seq_hash, e
+                            seq_hash,
+                            e
                         );
                         tracing::error!("  This might indicate the sequence storage is not properly initialized.");
                         return Err(anyhow::anyhow!(
@@ -248,7 +254,9 @@ impl<'a> FastaAssembler<'a> {
                         Err(e) => {
                             tracing::error!(
                                 "WARNING: Failed to load canonical sequence {} (index {}): {}",
-                                seq_hash, idx, e
+                                seq_hash,
+                                idx,
+                                e
                             );
                             tracing::error!("  This might indicate the sequence storage is not properly initialized.");
                             return Err(anyhow::anyhow!(

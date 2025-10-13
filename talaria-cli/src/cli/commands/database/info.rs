@@ -152,7 +152,6 @@ pub fn run(args: InfoArgs) -> anyhow::Result<()> {
     if matches!(args.format, OutputFormat::Detailed) {
         // Add more storage details
         if let Ok(manifest) = manager.get_manifest(&db_info.name) {
-
             // Show chunk distribution
             let min_chunk_size = manifest
                 .chunk_index
@@ -255,9 +254,12 @@ pub fn run(args: InfoArgs) -> anyhow::Result<()> {
                 if parts.len() == 2 {
                     let source = parts[0];
                     let dataset = parts[1];
-                    if let Ok(Some(manifest)) =
-                        storage.get_database_reduction_by_profile(source, dataset, &db_info.version, profile)
-                    {
+                    if let Ok(Some(manifest)) = storage.get_database_reduction_by_profile(
+                        source,
+                        dataset,
+                        &db_info.version,
+                        profile,
+                    ) {
                         let is_last_profile = idx == db_info.reduction_profiles.len() - 1;
                         let reduction_items = vec![
                             (

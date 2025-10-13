@@ -7,7 +7,10 @@ use crate::taxonomy::{TaxonomyManager, VersionDecision};
 ///
 /// Instead of downloading entire databases and creating dated directories,
 /// this uses content-addressed storage with manifests for efficient updates.
-use crate::{ChunkingStrategy, SHA256Hash, SHA256HashExt, HeraldRepository, TaxonomicChunker, TemporalManifest};
+use crate::{
+    ChunkingStrategy, HeraldRepository, SHA256Hash, SHA256HashExt, TaxonomicChunker,
+    TemporalManifest,
+};
 use talaria_bio::sequence::Sequence;
 use talaria_core::system::paths;
 use talaria_core::{DatabaseSource, NCBIDatabase, UniProtDatabase};
@@ -368,7 +371,8 @@ impl DatabaseManager {
                                 progress_callback("Cleaning up workspace...");
 
                                 // Clean up the workspace since we're done with it
-                                if let Err(e) = DownloadManager::cleanup_download_workspace(source) {
+                                if let Err(e) = DownloadManager::cleanup_download_workspace(source)
+                                {
                                     tracing::warn!("Failed to cleanup workspace: {}", e);
                                 }
 
@@ -850,7 +854,10 @@ impl DatabaseManager {
         // Save manifest to RocksDB (single source of truth)
         manifest.save_as_current(&rocksdb)?;
 
-        tracing::info!("Updated taxonomy manifest component '{}' in RocksDB", component_name);
+        tracing::info!(
+            "Updated taxonomy manifest component '{}' in RocksDB",
+            component_name
+        );
         tracing::info!("Version: {}", version);
         Ok(())
     }
@@ -1016,7 +1023,9 @@ impl DatabaseManager {
                 let current = talaria_core::system::paths::talaria_taxonomy_current_dir();
                 if !current.exists() {
                     // First file - create initial version
-                    tracing::info!("No current taxonomy version found, creating initial version...");
+                    tracing::info!(
+                        "No current taxonomy version found, creating initial version..."
+                    );
                     let new_dir = self.create_new_taxonomy_version()?;
                     let version = new_dir
                         .file_name()
@@ -1153,9 +1162,7 @@ impl DatabaseManager {
                     ));
                     // Continue with download - don't return UpToDate
                 } else {
-                    progress_callback(
-                        "HERALD manifest and taxonomy component files already exist",
-                    );
+                    progress_callback("HERALD manifest and taxonomy component files already exist");
                     return Ok(DownloadResult::UpToDate);
                 }
             } else {
@@ -1376,7 +1383,8 @@ impl DatabaseManager {
             "chunk_sequences_direct",
             source = %source,
             sequence_count = sequences.len()
-        ).entered();
+        )
+        .entered();
 
         // Since this is called for non-streaming mode, it's the final (and only) batch
         self.chunk_sequences_direct_with_progress_final(sequences, source, None, true)
@@ -1446,18 +1454,23 @@ impl DatabaseManager {
 
         // Process sequences - for now run quietly since the callback type conversion is complex
         // TODO: Thread progress callbacks through properly
-        let chunk_manifests = chunker.chunk_sequences_canonical_quiet_final(sequences, is_final_batch)?;
+        let chunk_manifests =
+            chunker.chunk_sequences_canonical_quiet_final(sequences, is_final_batch)?;
 
         // Store the manifests quietly as well
-        let manifests_with_hashes = self.store_chunk_manifests_internal(
-            chunk_manifests,
-            source,
-            None
-        )?;
+        let manifests_with_hashes =
+            self.store_chunk_manifests_internal(chunk_manifests, source, None)?;
 
         // Report progress if callback exists
         if let Some(cb) = progress_callback {
-            cb(batch_num, &format!("Processed batch {} with {} manifests", batch_num, manifests_with_hashes.len()));
+            cb(
+                batch_num,
+                &format!(
+                    "Processed batch {} with {} manifests",
+                    batch_num,
+                    manifests_with_hashes.len()
+                ),
+            );
         }
 
         // Get or create version for this operation
@@ -1485,7 +1498,12 @@ impl DatabaseManager {
                 let verbose = !std::env::var("TALARIA_LOG")
                     .map(|v| v == "error")
                     .unwrap_or(false);
-                self.save_database_manifest_internal_with_version(all_manifests, source, &version, verbose)?;
+                self.save_database_manifest_internal_with_version(
+                    all_manifests,
+                    source,
+                    &version,
+                    verbose,
+                )?;
 
                 // Flush RocksDB to ensure manifest is persisted to disk
                 // This ensures the database is immediately visible in database list
@@ -1695,7 +1713,7 @@ impl DatabaseManager {
 
                 processed += 1;
                 consecutive_misses = 0; // Reset on successful read
-                // Progress tracking removed to prevent terminal interference
+                                        // Progress tracking removed to prevent terminal interference
             } else {
                 // Track consecutive misses to allow gaps in batch numbering
                 // (batch 0 might be empty and not saved, for example)
@@ -1834,7 +1852,7 @@ impl DatabaseManager {
         version: &str,
         progress_callback: Option<&dyn Fn(&str)>,
     ) -> Result<usize> {
-        use crate::{BiTemporalCoordinate, TemporalManifest, SHA256Hash, MerkleHash};
+        use crate::{BiTemporalCoordinate, MerkleHash, SHA256Hash, TemporalManifest};
         use chrono::Utc;
 
         let (source_name, dataset_name) = match source {
@@ -1871,9 +1889,7 @@ impl DatabaseManager {
                     if let Some(cb) = progress_callback {
                         cb(&format!(
                             "Counting: {} batches, {} chunks, {} sequences...",
-                            processed_partials,
-                            total_manifests,
-                            total_sequences
+                            processed_partials, total_manifests, total_sequences
                         ));
                     }
                 }
@@ -1889,7 +1905,11 @@ impl DatabaseManager {
             return Ok(0);
         }
 
-        tracing::info!("Counted {} total manifests from {} partial batches", total_manifests, processed_partials);
+        tracing::info!(
+            "Counted {} total manifests from {} partial batches",
+            total_manifests,
+            processed_partials
+        );
 
         // For very large manifest counts, create a lightweight manifest that references partials
         // instead of loading everything into memory
@@ -1922,11 +1942,17 @@ impl DatabaseManager {
         rocksdb.put_manifest(&manifest_key, &manifest_json)?;
 
         // Store manifest count separately for queries
-        let count_key = format!("manifest_count:{}:{}:{}", source_name, dataset_name, version);
+        let count_key = format!(
+            "manifest_count:{}:{}:{}",
+            source_name, dataset_name, version
+        );
         rocksdb.put_manifest(&count_key, &total_manifests.to_le_bytes())?;
 
         // Store sequence count separately for queries
-        let seq_count_key = format!("sequence_count:{}:{}:{}", source_name, dataset_name, version);
+        let seq_count_key = format!(
+            "sequence_count:{}:{}:{}",
+            source_name, dataset_name, version
+        );
         rocksdb.put_manifest(&seq_count_key, &total_sequences.to_le_bytes())?;
 
         // Use shared manifest saving function
@@ -1945,10 +1971,16 @@ impl DatabaseManager {
         // Partials will be cleaned up when the database is deleted
 
         if let Some(cb) = progress_callback {
-            cb(&format!("✓ Manifest created ({} chunks stored in {} partials)", total_manifests, processed_partials));
+            cb(&format!(
+                "✓ Manifest created ({} chunks stored in {} partials)",
+                total_manifests, processed_partials
+            ));
         }
 
-        tracing::info!("Streaming manifest build complete: {} manifests", total_manifests);
+        tracing::info!(
+            "Streaming manifest build complete: {} manifests",
+            total_manifests
+        );
 
         Ok(total_manifests)
     }
@@ -2166,11 +2198,22 @@ impl DatabaseManager {
             total_size,
         )?;
 
-        tracing::info!("✓ Successfully saved manifest for {}/{} version {}", source_name, dataset_name, final_version);
+        tracing::info!(
+            "✓ Successfully saved manifest for {}/{} version {}",
+            source_name,
+            dataset_name,
+            final_version
+        );
 
         // Verify the alias was actually set
         let current_alias_key = format!("alias:{}:{}:current", source_name, dataset_name);
-        if let Ok(Some(stored)) = self.get_repository().storage.sequence_storage.get_rocksdb().get_manifest(&current_alias_key) {
+        if let Ok(Some(stored)) = self
+            .get_repository()
+            .storage
+            .sequence_storage
+            .get_rocksdb()
+            .get_manifest(&current_alias_key)
+        {
             let stored_version = String::from_utf8_lossy(&stored);
             tracing::debug!("Verified current alias points to: {}", stored_version);
         } else {
@@ -2188,7 +2231,9 @@ impl DatabaseManager {
         if verbose {
             tracing::info!(
                 "✓ Database manifest saved to RocksDB ({}:{}:{})",
-                source_name, dataset_name, final_version
+                source_name,
+                dataset_name,
+                final_version
             );
         }
 
@@ -2294,7 +2339,8 @@ impl DatabaseManager {
             source = %source,
             file_path = %file_path.display(),
             workspace_path = ?workspace_path.as_ref().map(|p| p.display().to_string())
-        ).entered();
+        )
+        .entered();
 
         // Load or create download state for tracking progress
         let mut download_state = if let Some(workspace) = workspace_path {
@@ -2325,8 +2371,7 @@ impl DatabaseManager {
             if let Some(callback) = progress_callback {
                 callback(&format!(
                     "Resuming processing from sequence {} (offset: {})",
-                    download_state.sequences_processed,
-                    download_state.file_offset
+                    download_state.sequences_processed, download_state.file_offset
                 ));
             }
 
@@ -2341,7 +2386,9 @@ impl DatabaseManager {
             // Try to find existing version from partial manifests
             let rocksdb = self.get_repository().storage.sequence_storage.get_rocksdb();
             let prefix = format!("partial:{}:{}:", source_name, dataset_name);
-            let existing_keys = rocksdb.list_manifest_keys_with_prefix(&prefix).unwrap_or_default();
+            let existing_keys = rocksdb
+                .list_manifest_keys_with_prefix(&prefix)
+                .unwrap_or_default();
 
             if !existing_keys.is_empty() {
                 // Extract version from first key
@@ -2414,7 +2461,10 @@ impl DatabaseManager {
                             download_state.file_offset = 0;
 
                             // Clean up unusable partials
-                            tracing::info!("Cleaning up {} unusable partial manifests", existing_keys.len());
+                            tracing::info!(
+                                "Cleaning up {} unusable partial manifests",
+                                existing_keys.len()
+                            );
                             for key in &existing_keys {
                                 if let Err(e) = rocksdb.delete_manifest(key) {
                                     tracing::warn!("Failed to delete partial {}: {}", key, e);
@@ -2449,13 +2499,22 @@ impl DatabaseManager {
                         // This ensures we start with a fresh version instead of mixing old/new partials
                         let rocksdb = self.get_repository().storage.sequence_storage.get_rocksdb();
                         let prefix = format!("partial:{}:{}:", source_name, dataset_name);
-                        let orphaned_keys = rocksdb.list_manifest_keys_with_prefix(&prefix).unwrap_or_default();
+                        let orphaned_keys = rocksdb
+                            .list_manifest_keys_with_prefix(&prefix)
+                            .unwrap_or_default();
 
                         if !orphaned_keys.is_empty() {
-                            tracing::info!("Cleaning up {} orphaned partial manifests from failed run", orphaned_keys.len());
+                            tracing::info!(
+                                "Cleaning up {} orphaned partial manifests from failed run",
+                                orphaned_keys.len()
+                            );
                             for key in &orphaned_keys {
                                 if let Err(e) = rocksdb.delete_manifest(key) {
-                                    tracing::warn!("Failed to delete orphaned partial {}: {}", key, e);
+                                    tracing::warn!(
+                                        "Failed to delete orphaned partial {}: {}",
+                                        key,
+                                        e
+                                    );
                                 }
                             }
                         }
@@ -2505,7 +2564,8 @@ impl DatabaseManager {
             source = %source,
             file_path = %file_path.display(),
             workspace_path = ?workspace_path.as_ref().map(|p| p.display().to_string())
-        ).entered();
+        )
+        .entered();
 
         // Check if this is a taxonomy mapping file (not a FASTA file)
         if Self::is_taxonomy_database(source) {
@@ -2747,7 +2807,9 @@ impl DatabaseManager {
         let manifest: crate::types::TemporalManifest = rmp_serde::from_slice(&manifest_bytes)?;
 
         // Count sequences and chunks
-        let sequence_count = manifest.chunk_index.iter()
+        let sequence_count = manifest
+            .chunk_index
+            .iter()
             .map(|chunk| chunk.sequence_count)
             .sum();
 
@@ -2904,7 +2966,7 @@ impl DatabaseManager {
                 &source_name,
                 &dataset_name,
                 &manifest_lightweight.version,
-                progress_callback
+                progress_callback,
             );
         }
 
@@ -2984,8 +3046,8 @@ impl DatabaseManager {
         version: &str,
         progress_callback: Option<&dyn Fn(&str)>,
     ) -> Result<std::collections::HashMap<String, crate::TaxonId>> {
-        use std::collections::HashMap;
         use rayon::prelude::*;
+        use std::collections::HashMap;
 
         let rocksdb = self.get_repository().storage.sequence_storage.get_rocksdb();
         let prefix = format!("partial:{}:{}:{}:", source_name, dataset_name, version);
@@ -2997,7 +3059,12 @@ impl DatabaseManager {
         const MAX_CONSECUTIVE_MISSES: usize = 10;
         const BATCH_WINDOW: usize = 50;
 
-        tracing::info!("Starting streaming taxonomy mapping extraction for {}/{} v{}", source_name, dataset_name, version);
+        tracing::info!(
+            "Starting streaming taxonomy mapping extraction for {}/{} v{}",
+            source_name,
+            dataset_name,
+            version
+        );
 
         let mut current_batch = 0;
 
@@ -3042,14 +3109,18 @@ impl DatabaseManager {
 
                         // Load chunk and extract accessions
                         if let Ok(chunk_data) = self.repository.storage.get_chunk(chunk_hash) {
-                            if let Ok(sequences) = talaria_bio::parse_fasta_from_bytes(&chunk_data) {
+                            if let Ok(sequences) = talaria_bio::parse_fasta_from_bytes(&chunk_data)
+                            {
                                 for seq in sequences {
-                                    if let Some(accession) = Self::extract_accession_from_header(&seq.id) {
+                                    if let Some(accession) =
+                                        Self::extract_accession_from_header(&seq.id)
+                                    {
                                         chunk_mapping.insert(accession.clone(), *taxid);
 
                                         // Also store without version suffix
                                         if let Some(dot_pos) = accession.rfind('.') {
-                                            chunk_mapping.insert(accession[..dot_pos].to_string(), *taxid);
+                                            chunk_mapping
+                                                .insert(accession[..dot_pos].to_string(), *taxid);
                                         }
                                     }
                                 }
@@ -3303,7 +3374,11 @@ impl DatabaseManager {
     }
 
     /// Get reduction profiles for a specific database
-    pub fn get_reduction_profiles_for_database(&self, db_name: &str, version: &str) -> Result<Vec<String>> {
+    pub fn get_reduction_profiles_for_database(
+        &self,
+        db_name: &str,
+        version: &str,
+    ) -> Result<Vec<String>> {
         // Parse the database name
         let parts: Vec<&str> = db_name.split('/').collect();
         if parts.len() != 2 {
@@ -3333,7 +3408,11 @@ impl DatabaseManager {
                         // Recalculate size - use streaming-safe method to avoid OOM
                         let parts: Vec<&str> = db_info.name.split('/').collect();
                         if parts.len() == 2 {
-                            if let Ok(total_size) = self.get_total_size_from_partials(parts[0], parts[1], &db_info.version) {
+                            if let Ok(total_size) = self.get_total_size_from_partials(
+                                parts[0],
+                                parts[1],
+                                &db_info.version,
+                            ) {
                                 db_info.total_size = total_size;
                                 debug!("Fixed zero-size cached metadata for {}: {} bytes (from partials)", db_info.name, db_info.total_size);
                                 updated = true;
@@ -3381,14 +3460,22 @@ impl DatabaseManager {
                         let dataset_name = parts[1];
 
                         // Use get_total_size_from_partials which doesn't load full chunk_index
-                        if let Ok(total_size) = self.get_total_size_from_partials(source_name, dataset_name, &db_info.version) {
+                        if let Ok(total_size) = self.get_total_size_from_partials(
+                            source_name,
+                            dataset_name,
+                            &db_info.version,
+                        ) {
                             db_info.total_size = total_size;
-                            debug!("Fixed zero-size metadata for {}: {} bytes (from partials)", db_info.name, db_info.total_size);
+                            debug!(
+                                "Fixed zero-size metadata for {}: {} bytes (from partials)",
+                                db_info.name, db_info.total_size
+                            );
 
                             // Update the cached metadata with correct size
                             let metadata_serialized = bincode::serialize(&db_info).ok();
                             if let Some(data) = metadata_serialized {
-                                let _ = rocksdb.put_database_metadata(source_name, dataset_name, &data);
+                                let _ =
+                                    rocksdb.put_database_metadata(source_name, dataset_name, &data);
                             }
                         }
                     }
@@ -3431,7 +3518,10 @@ impl DatabaseManager {
                         bincode::deserialize::<crate::TemporalManifest>(&data)
                     {
                         missing_count += 1;
-                        debug!("Found database {} with manifest but no metadata - regenerating", db_name);
+                        debug!(
+                            "Found database {} with manifest but no metadata - regenerating",
+                            db_name
+                        );
 
                         // Get reduction profiles for this version
                         let reduction_profiles = self
@@ -3439,40 +3529,60 @@ impl DatabaseManager {
                             .unwrap_or_default();
 
                         // Calculate counts - check if manifest has chunk_index or if we need to load from stored keys
-                        let (chunk_count, sequence_count, total_size) = if !manifest_data.chunk_index.is_empty() {
+                        let (chunk_count, sequence_count, total_size) = if !manifest_data
+                            .chunk_index
+                            .is_empty()
+                        {
                             // Non-streaming: calculate from chunk_index
                             (
                                 manifest_data.chunk_index.len(),
-                                manifest_data.chunk_index.iter().map(|c| c.sequence_count).sum(),
+                                manifest_data
+                                    .chunk_index
+                                    .iter()
+                                    .map(|c| c.sequence_count)
+                                    .sum(),
                                 manifest_data.chunk_index.iter().map(|c| c.size).sum(),
                             )
                         } else {
                             // Streaming manifest: load from stored keys
-                            let count_key = format!("manifest_count:{}:{}:{}", source_name, dataset_name, &manifest_data.version);
-                            let chunk_count = if let Ok(Some(data)) = rocksdb.get_manifest(&count_key) {
-                                if data.len() == 8 {
-                                    usize::from_le_bytes(data.try_into().unwrap_or([0u8; 8]))
+                            let count_key = format!(
+                                "manifest_count:{}:{}:{}",
+                                source_name, dataset_name, &manifest_data.version
+                            );
+                            let chunk_count =
+                                if let Ok(Some(data)) = rocksdb.get_manifest(&count_key) {
+                                    if data.len() == 8 {
+                                        usize::from_le_bytes(data.try_into().unwrap_or([0u8; 8]))
+                                    } else {
+                                        0
+                                    }
                                 } else {
                                     0
-                                }
-                            } else {
-                                0
-                            };
+                                };
 
-                            let seq_count_key = format!("sequence_count:{}:{}:{}", source_name, dataset_name, &manifest_data.version);
-                            let sequence_count = if let Ok(Some(data)) = rocksdb.get_manifest(&seq_count_key) {
-                                if data.len() == 8 {
-                                    usize::from_le_bytes(data.try_into().unwrap_or([0u8; 8]))
+                            let seq_count_key = format!(
+                                "sequence_count:{}:{}:{}",
+                                source_name, dataset_name, &manifest_data.version
+                            );
+                            let sequence_count =
+                                if let Ok(Some(data)) = rocksdb.get_manifest(&seq_count_key) {
+                                    if data.len() == 8 {
+                                        usize::from_le_bytes(data.try_into().unwrap_or([0u8; 8]))
+                                    } else {
+                                        0
+                                    }
                                 } else {
                                     0
-                                }
-                            } else {
-                                0
-                            };
+                                };
 
                             // For streaming manifests, calculate total_size from partials
                             // Use optimized method that only sums sizes without loading full metadata
-                            let total_size = self.get_total_size_from_partials(&source_name, &dataset_name, &manifest_data.version)
+                            let total_size = self
+                                .get_total_size_from_partials(
+                                    &source_name,
+                                    &dataset_name,
+                                    &manifest_data.version,
+                                )
                                 .unwrap_or_else(|_| {
                                     // Fallback: use chunk count * average estimate
                                     // This happens if partials aren't available yet
@@ -3532,7 +3642,10 @@ impl DatabaseManager {
         let rocksdb = self.get_repository().storage.sequence_storage.get_rocksdb();
         let manifest_keys = rocksdb.list_manifest_keys_with_prefix("manifest:")?;
 
-        tracing::info!("Found {} manifest keys, rebuilding metadata...", manifest_keys.len());
+        tracing::info!(
+            "Found {} manifest keys, rebuilding metadata...",
+            manifest_keys.len()
+        );
 
         let mut seen_databases: HashSet<(String, String)> = HashSet::new();
         let mut rebuilt_count = 0;
@@ -3552,40 +3665,57 @@ impl DatabaseManager {
 
                 // Load manifest to get counts and metadata
                 if let Ok(Some(data)) = rocksdb.get_manifest(&key) {
-                    if let Ok(manifest_data) = bincode::deserialize::<crate::TemporalManifest>(&data) {
+                    if let Ok(manifest_data) =
+                        bincode::deserialize::<crate::TemporalManifest>(&data)
+                    {
                         let db_name = format!("{}/{}", source_name, dataset_name);
 
                         // Calculate counts from manifest
-                        let (chunk_count, sequence_count, total_size) = if !manifest_data.chunk_index.is_empty() {
+                        let (chunk_count, sequence_count, total_size) = if !manifest_data
+                            .chunk_index
+                            .is_empty()
+                        {
                             // Non-streaming: calculate from chunk_index
                             (
                                 manifest_data.chunk_index.len(),
-                                manifest_data.chunk_index.iter().map(|c| c.sequence_count).sum(),
+                                manifest_data
+                                    .chunk_index
+                                    .iter()
+                                    .map(|c| c.sequence_count)
+                                    .sum(),
                                 manifest_data.chunk_index.iter().map(|c| c.size).sum(),
                             )
                         } else {
                             // Streaming manifest: load from stored keys
-                            let count_key = format!("manifest_count:{}:{}:{}", source_name, dataset_name, &manifest_data.version);
-                            let chunk_count = if let Ok(Some(data)) = rocksdb.get_manifest(&count_key) {
-                                if data.len() == 8 {
-                                    usize::from_le_bytes(data.try_into().unwrap_or([0u8; 8]))
+                            let count_key = format!(
+                                "manifest_count:{}:{}:{}",
+                                source_name, dataset_name, &manifest_data.version
+                            );
+                            let chunk_count =
+                                if let Ok(Some(data)) = rocksdb.get_manifest(&count_key) {
+                                    if data.len() == 8 {
+                                        usize::from_le_bytes(data.try_into().unwrap_or([0u8; 8]))
+                                    } else {
+                                        0
+                                    }
                                 } else {
                                     0
-                                }
-                            } else {
-                                0
-                            };
+                                };
 
-                            let seq_count_key = format!("sequence_count:{}:{}:{}", source_name, dataset_name, &manifest_data.version);
-                            let sequence_count = if let Ok(Some(data)) = rocksdb.get_manifest(&seq_count_key) {
-                                if data.len() == 8 {
-                                    usize::from_le_bytes(data.try_into().unwrap_or([0u8; 8]))
+                            let seq_count_key = format!(
+                                "sequence_count:{}:{}:{}",
+                                source_name, dataset_name, &manifest_data.version
+                            );
+                            let sequence_count =
+                                if let Ok(Some(data)) = rocksdb.get_manifest(&seq_count_key) {
+                                    if data.len() == 8 {
+                                        usize::from_le_bytes(data.try_into().unwrap_or([0u8; 8]))
+                                    } else {
+                                        0
+                                    }
                                 } else {
                                     0
-                                }
-                            } else {
-                                0
-                            };
+                                };
 
                             (chunk_count, sequence_count, 0)
                         };
@@ -3602,7 +3732,11 @@ impl DatabaseManager {
                         };
 
                         let metadata_serialized = bincode::serialize(&db_metadata)?;
-                        rocksdb.put_database_metadata(&source_name, &dataset_name, &metadata_serialized)?;
+                        rocksdb.put_database_metadata(
+                            &source_name,
+                            &dataset_name,
+                            &metadata_serialized,
+                        )?;
 
                         tracing::debug!("Rebuilt metadata for {}/{}", source_name, dataset_name);
                         rebuilt_count += 1;
@@ -3647,7 +3781,10 @@ impl DatabaseManager {
         };
         let metadata_serialized = bincode::serialize(&db_metadata)?;
         rocksdb.put_database_metadata(source_name, dataset_name, &metadata_serialized)?;
-        debug!("Saved database metadata for fast listing: {}/{}", source_name, dataset_name);
+        debug!(
+            "Saved database metadata for fast listing: {}/{}",
+            source_name, dataset_name
+        );
 
         // Update 'current' alias
         let current_alias_key = format!("alias:{}:{}:current", source_name, dataset_name);
@@ -3672,7 +3809,10 @@ impl DatabaseManager {
             let mut db_info: DatabaseInfo = bincode::deserialize(&metadata_bytes)?;
 
             // Add profile if not already present
-            if !db_info.reduction_profiles.contains(&profile_name.to_string()) {
+            if !db_info
+                .reduction_profiles
+                .contains(&profile_name.to_string())
+            {
                 db_info.reduction_profiles.push(profile_name.to_string());
                 db_info.reduction_profiles.sort(); // Keep sorted for consistent output
 
@@ -4165,7 +4305,8 @@ impl DatabaseManager {
                 );
 
                 // Stream sequences from ALL chunks in this window in parallel
-                let window_sequences = assembler.stream_assembly(&window_chunk_hashes, &mut output_file)?;
+                let window_sequences =
+                    assembler.stream_assembly(&window_chunk_hashes, &mut output_file)?;
                 total_sequences += window_sequences;
                 processed_batches += batches_in_window;
 
@@ -4274,7 +4415,11 @@ impl DatabaseManager {
     }
 
     /// Read sequences from a FASTA file (uses shared parser with .gz support)
-    fn read_fasta_sequences(&self, path: &Path, progress_callback: Option<&dyn Fn(&str)>) -> Result<Vec<Sequence>> {
+    fn read_fasta_sequences(
+        &self,
+        path: &Path,
+        progress_callback: Option<&dyn Fn(&str)>,
+    ) -> Result<Vec<Sequence>> {
         // Use the shared FASTA parser from talaria-bio which handles .gz files automatically
         if let Some(cb) = progress_callback {
             let file_size = path.metadata()?.len();
@@ -4348,7 +4493,10 @@ impl DatabaseManager {
 
             // Look for any existing partial manifests to get the version
             let prefix = format!("partial:{}:{}:", source_name, dataset_name);
-            let existing_keys = sequence_storage.get_rocksdb().list_manifest_keys_with_prefix(&prefix).unwrap_or_default();
+            let existing_keys = sequence_storage
+                .get_rocksdb()
+                .list_manifest_keys_with_prefix(&prefix)
+                .unwrap_or_default();
 
             if !existing_keys.is_empty() {
                 // Extract version from first key: partial:uniprot:uniref90:VERSION:000000
@@ -4445,7 +4593,7 @@ impl DatabaseManager {
         // Atomic counters for thread-safe tracking
         // When resuming, start counters from saved position
         let resume_sequences = download_state.sequences_processed;
-        let resume_batches = resume_sequences / BATCH_SIZE;  // Calculate which batch we were on
+        let resume_batches = resume_sequences / BATCH_SIZE; // Calculate which batch we were on
 
         let total_sequences = Arc::new(AtomicUsize::new(resume_sequences));
         let batch_counter = Arc::new(AtomicUsize::new(resume_batches));
@@ -4515,10 +4663,16 @@ impl DatabaseManager {
                     }
 
                     // Process this batch with proper error handling
-                    let manifests = match chunker.chunk_sequences_canonical_quiet_final(batch, false) {
+                    let manifests = match chunker
+                        .chunk_sequences_canonical_quiet_final(batch, false)
+                    {
                         Ok(m) => m,
                         Err(e) => {
-                            tracing::error!(" in worker thread: Failed to chunk batch {}: {}", batch_num, e);
+                            tracing::error!(
+                                " in worker thread: Failed to chunk batch {}: {}",
+                                batch_num,
+                                e
+                            );
                             tracing::error!("Worker is exiting gracefully. This will cause the download to fail.");
                             return; // Exit worker thread gracefully
                         }
@@ -4532,16 +4686,18 @@ impl DatabaseManager {
                     // Store manifests with error handling
                     let manifests_with_hashes: Vec<_> = manifests
                         .into_iter()
-                        .filter_map(|manifest| {
-                            match rmp_serde::to_vec(&manifest) {
-                                Ok(manifest_data) => {
-                                    let hash = SHA256Hash::compute(&manifest_data);
-                                    Some((manifest, hash))
-                                },
-                                Err(e) => {
-                                    tracing::error!(": Failed to serialize manifest in batch {}: {}", batch_num, e);
-                                    None
-                                }
+                        .filter_map(|manifest| match rmp_serde::to_vec(&manifest) {
+                            Ok(manifest_data) => {
+                                let hash = SHA256Hash::compute(&manifest_data);
+                                Some((manifest, hash))
+                            }
+                            Err(e) => {
+                                tracing::error!(
+                                    ": Failed to serialize manifest in batch {}: {}",
+                                    batch_num,
+                                    e
+                                );
+                                None
                             }
                         })
                         .collect();
@@ -4549,7 +4705,11 @@ impl DatabaseManager {
                     // Send results back (with error logging if send fails)
                     if !manifests_with_hashes.is_empty() {
                         if let Err(e) = result_tx.send((batch_num, manifests_with_hashes)) {
-                            tracing::error!(": Failed to send results for batch {}: {}", batch_num, e);
+                            tracing::error!(
+                                ": Failed to send results for batch {}: {}",
+                                batch_num,
+                                e
+                            );
                             return; // Exit worker if we can't communicate
                         }
                     }
@@ -4650,8 +4810,10 @@ impl DatabaseManager {
                         // Just skip this sequence
                         if sequences_seen % 100000 == 0 {
                             if let Some(cb) = progress_callback {
-                                cb(&format!("Skipping already processed sequences... {}/{}",
-                                    sequences_seen, sequences_to_skip));
+                                cb(&format!(
+                                    "Skipping already processed sequences... {}/{}",
+                                    sequences_seen, sequences_to_skip
+                                ));
                             }
                         }
                     } else {
@@ -4668,8 +4830,10 @@ impl DatabaseManager {
                         // Send batch to workers when full
                         if sequences_batch.len() >= BATCH_SIZE {
                             batch_counter.fetch_add(1, Ordering::Relaxed);
-                            let batch_to_send =
-                                std::mem::replace(&mut sequences_batch, Vec::with_capacity(BATCH_SIZE));
+                            let batch_to_send = std::mem::replace(
+                                &mut sequences_batch,
+                                Vec::with_capacity(BATCH_SIZE),
+                            );
                             batch_sender.send(batch_to_send).unwrap();
 
                             let total = total_sequences.load(Ordering::Relaxed);
@@ -4781,7 +4945,10 @@ impl DatabaseManager {
                      2. Restart the download: talaria database download [source]",
                     format_number(final_total),
                     format_number(sequences_to_skip),
-                    workspace_path.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "workspace".to_string())
+                    workspace_path
+                        .as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "workspace".to_string())
                 );
             } else {
                 // Not a resume issue - chunking failed for some other reason
@@ -4842,10 +5009,14 @@ impl DatabaseManager {
             }
 
             // Use streaming version to avoid OOM with large manifest counts (e.g., 72M for UniRef90)
-            let manifest_count = self.build_and_save_manifest_streaming(source, &version, progress_callback)?;
+            let manifest_count =
+                self.build_and_save_manifest_streaming(source, &version, progress_callback)?;
 
             if let Some(cb) = progress_callback {
-                cb(&format!("Found {} manifests from partials", format_number(manifest_count)));
+                cb(&format!(
+                    "Found {} manifests from partials",
+                    format_number(manifest_count)
+                ));
             }
 
             // CRITICAL ERROR CHECK: Ensure manifests were created
@@ -4870,7 +5041,10 @@ impl DatabaseManager {
                      If this persists, please report this bug with full logs.",
                     format_number(final_total),
                     manifest_count,
-                    workspace_path.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "workspace".to_string())
+                    workspace_path
+                        .as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "workspace".to_string())
                 );
             }
 
@@ -4938,7 +5112,11 @@ impl DatabaseManager {
             DatabaseSource::Custom(name) => ("custom", name.clone()),
         };
         let _ = rocksdb.delete_database_metadata(&source_name, &dataset_name);
-        tracing::debug!("Invalidated cached metadata for {}/{} - will be regenerated with correct size", source_name, dataset_name);
+        tracing::debug!(
+            "Invalidated cached metadata for {}/{} - will be regenerated with correct size",
+            source_name,
+            dataset_name
+        );
 
         // CRITICAL: Invalidate in-memory cache to force regeneration on next list_databases() call
         // Without this, stale cache prevents the regeneration logic from running
@@ -5167,7 +5345,11 @@ impl DatabaseManager {
                     manifest = bincode::deserialize::<crate::TemporalManifest>(&data)
                         .map_err(|e| anyhow::anyhow!("Failed to deserialize manifest: {}", e))?;
                     // Extract version from key (format: manifest:source:dataset:version)
-                    version = latest_key.split(':').nth(3).unwrap_or("unknown").to_string();
+                    version = latest_key
+                        .split(':')
+                        .nth(3)
+                        .unwrap_or("unknown")
+                        .to_string();
                 } else {
                     anyhow::bail!("Manifest not found for database: {}", database_name);
                 }
@@ -5184,7 +5366,8 @@ impl DatabaseManager {
             );
 
             // Lazy-load chunk_index from partials
-            manifest.chunk_index = self.load_chunk_index_from_partials(&db_ref.source, &db_ref.dataset, &version)?;
+            manifest.chunk_index =
+                self.load_chunk_index_from_partials(&db_ref.source, &db_ref.dataset, &version)?;
 
             tracing::debug!(
                 "Loaded {} chunks from partials for {}/{}",
@@ -5493,7 +5676,8 @@ impl DatabaseManager {
 
         // Use the unified loading function with automatic fallback
         // This allows UniProt databases to use NCBI mappings when UniProt idmapping isn't available
-        let mappings: HashMap<String, u32> = load_taxonomy_mappings_with_fallback(preferred_source)?;
+        let mappings: HashMap<String, u32> =
+            load_taxonomy_mappings_with_fallback(preferred_source)?;
 
         // Convert to our TaxonId type
         Ok(mappings

@@ -523,12 +523,7 @@ fn run_comprehensive_diff(
 
         // Apply reduction filters if profiles are specified
         let (manifest_a_filtered, manifest_b_filtered) = apply_reduction_filters(
-            &manager,
-            &db_ref_a,
-            &db_ref_b,
-            manifest_a,
-            manifest_b,
-            &storage,
+            &manager, &db_ref_a, &db_ref_b, manifest_a, manifest_b, &storage,
         )?;
 
         // Load taxonomy manager for scientific name lookup using unified TaxonomyProvider
@@ -540,7 +535,12 @@ fn run_comprehensive_diff(
             None
         };
 
-        let comp = DatabaseDiffer::compare_manifests(&manifest_a_filtered, &manifest_b_filtered, Some(&storage), tax_mgr.as_ref())?;
+        let comp = DatabaseDiffer::compare_manifests(
+            &manifest_a_filtered,
+            &manifest_b_filtered,
+            Some(&storage),
+            tax_mgr.as_ref(),
+        )?;
         (comp, has_reduction)
     } else {
         // At least one is a path - use repository-based comparison
@@ -565,7 +565,9 @@ fn run_comprehensive_diff(
         println!();
         info("ℹ️  Storage Analysis (Advanced)");
         info("   Both databases share the same underlying HERALD storage.");
-        info("   The reduction profile is a metadata layer that selects which sequences to include.");
+        info(
+            "   The reduction profile is a metadata layer that selects which sequences to include.",
+        );
         println!();
     }
 
@@ -852,18 +854,46 @@ fn display_sequence_analysis(analysis: &talaria_herald::SequenceAnalysis) -> any
     // Interpretation note
     println!("\n{} Interpretation:", "ℹ".bright_blue().bold());
     if analysis.shared_percentage_a < 1.0 && analysis.shared_percentage_b < 1.0 {
-        println!("  {}", "Low sequence sharing is expected when comparing:".dimmed());
-        println!("    {}", "• Clustered databases (UniRef50/90) vs unclustered (SwissProt)".dimmed());
-        println!("    {}", "• Different database sources (UniProt vs NCBI)".dimmed());
-        println!("    {}", "• Databases with different sequence representations".dimmed());
-        println!("\n  {} {}", "→".bright_black(), "UniRef clustering picks longest sequences as representatives,".dimmed());
-        println!("    {}", "so even identical proteins may have different sequences stored.".dimmed());
+        println!(
+            "  {}",
+            "Low sequence sharing is expected when comparing:".dimmed()
+        );
+        println!(
+            "    {}",
+            "• Clustered databases (UniRef50/90) vs unclustered (SwissProt)".dimmed()
+        );
+        println!(
+            "    {}",
+            "• Different database sources (UniProt vs NCBI)".dimmed()
+        );
+        println!(
+            "    {}",
+            "• Databases with different sequence representations".dimmed()
+        );
+        println!(
+            "\n  {} {}",
+            "→".bright_black(),
+            "UniRef clustering picks longest sequences as representatives,".dimmed()
+        );
+        println!(
+            "    {}",
+            "so even identical proteins may have different sequences stored.".dimmed()
+        );
     } else if analysis.shared_percentage_a > 80.0 || analysis.shared_percentage_b > 80.0 {
         println!("  {}", "High sequence sharing detected!".bright_green());
-        println!("    {}", "Content-addressed storage is providing significant deduplication.".dimmed());
+        println!(
+            "    {}",
+            "Content-addressed storage is providing significant deduplication.".dimmed()
+        );
     } else if analysis.shared_percentage_a > 10.0 || analysis.shared_percentage_b > 10.0 {
-        println!("  {}", "Moderate sequence sharing detected.".bright_yellow());
-        println!("    {}", "Some deduplication is occurring across databases.".dimmed());
+        println!(
+            "  {}",
+            "Moderate sequence sharing detected.".bright_yellow()
+        );
+        println!(
+            "    {}",
+            "Some deduplication is occurring across databases.".dimmed()
+        );
     }
 
     Ok(())
@@ -1007,7 +1037,10 @@ fn display_reduction_analysis(
     let manifest = match load_reduction_manifest(&manager, original_db, profile) {
         Ok(Some(manifest)) => manifest,
         Ok(None) => {
-            warning(&format!("Reduction profile '{}' not found for database '{}'", profile, original_db));
+            warning(&format!(
+                "Reduction profile '{}' not found for database '{}'",
+                profile, original_db
+            ));
             return Ok(());
         }
         Err(e) => {
@@ -1021,9 +1054,30 @@ fn display_reduction_analysis(
     // Display reduction parameters
     tree_item(false, "Profile", Some(profile));
     tree_item(false, "Source Database", Some(original_db));
-    tree_item(false, "Target Aligner", Some(&format!("{:?}", manifest.parameters.target_aligner.unwrap_or(talaria_herald::TargetAligner::Lambda))));
-    tree_item(false, "Similarity Threshold", Some(&format!("{:.1}%", manifest.parameters.similarity_threshold * 100.0)));
-    tree_item(true, "Taxonomy Aware", Some(&format!("{}", manifest.parameters.taxonomy_aware)));
+    tree_item(
+        false,
+        "Target Aligner",
+        Some(&format!(
+            "{:?}",
+            manifest
+                .parameters
+                .target_aligner
+                .unwrap_or(talaria_herald::TargetAligner::Lambda)
+        )),
+    );
+    tree_item(
+        false,
+        "Similarity Threshold",
+        Some(&format!(
+            "{:.1}%",
+            manifest.parameters.similarity_threshold * 100.0
+        )),
+    );
+    tree_item(
+        true,
+        "Taxonomy Aware",
+        Some(&format!("{}", manifest.parameters.taxonomy_aware)),
+    );
 
     println!();
     subsection_header("Sequence Breakdown");
@@ -1083,7 +1137,9 @@ fn display_reduction_analysis(
     storage_table.add_row(vec![
         "References only",
         &format_bytes(stats.reduced_size as usize),
-        &format!("{:.1}% ({:.1}% saved)", reduced_pct, savings_pct).green().to_string(),
+        &format!("{:.1}% ({:.1}% saved)", reduced_pct, savings_pct)
+            .green()
+            .to_string(),
     ]);
 
     let total_pct = (stats.total_size_with_deltas as f64 / stats.original_size as f64) * 100.0;
@@ -1091,7 +1147,9 @@ fn display_reduction_analysis(
     storage_table.add_row(vec![
         "With delta encoding",
         &format_bytes(stats.total_size_with_deltas as usize),
-        &format!("{:.1}% ({:.1}% saved)", total_pct, total_savings_pct).cyan().to_string(),
+        &format!("{:.1}% ({:.1}% saved)", total_pct, total_savings_pct)
+            .cyan()
+            .to_string(),
     ]);
 
     println!("{}", storage_table);
@@ -1099,25 +1157,44 @@ fn display_reduction_analysis(
     println!();
     subsection_header("Reduction Metrics");
 
-    tree_item(false, "Achieved Reduction Ratio", Some(&format!("{:.2}x", stats.actual_reduction_ratio)));
-    tree_item(false, "Sequence Coverage", Some(&format!("{:.1}%", stats.sequence_coverage)));
-    tree_item(false, "Unique Taxa Covered", Some(&format_number(stats.unique_taxa)));
-    tree_item(true, "Deduplication Ratio", Some(&format!("{:.2}x", stats.deduplication_ratio)));
+    tree_item(
+        false,
+        "Achieved Reduction Ratio",
+        Some(&format!("{:.2}x", stats.actual_reduction_ratio)),
+    );
+    tree_item(
+        false,
+        "Sequence Coverage",
+        Some(&format!("{:.1}%", stats.sequence_coverage)),
+    );
+    tree_item(
+        false,
+        "Unique Taxa Covered",
+        Some(&format_number(stats.unique_taxa)),
+    );
+    tree_item(
+        true,
+        "Deduplication Ratio",
+        Some(&format!("{:.2}x", stats.deduplication_ratio)),
+    );
 
     // Add visual representation
     println!();
     subsection_header("Visual Breakdown");
 
     let bar_width = 60;
-    let ref_width = ((stats.reference_sequences as f64 / stats.original_sequences as f64) * bar_width as f64) as usize;
+    let ref_width = ((stats.reference_sequences as f64 / stats.original_sequences as f64)
+        * bar_width as f64) as usize;
     let delta_width = bar_width - ref_width;
 
-    println!("  References: {}{} {:.1}%",
+    println!(
+        "  References: {}{} {:.1}%",
         "█".repeat(ref_width).green(),
         "░".repeat(delta_width).dimmed(),
         ref_pct
     );
-    println!("  Deltas:     {}{} {:.1}%",
+    println!(
+        "  Deltas:     {}{} {:.1}%",
         "░".repeat(ref_width).dimmed(),
         "█".repeat(delta_width).blue(),
         child_pct
@@ -1138,7 +1215,10 @@ fn apply_reduction_filters(
     manifest_a: talaria_herald::TemporalManifest,
     manifest_b: talaria_herald::TemporalManifest,
     _storage: &talaria_herald::storage::HeraldStorage,
-) -> anyhow::Result<(talaria_herald::TemporalManifest, talaria_herald::TemporalManifest)> {
+) -> anyhow::Result<(
+    talaria_herald::TemporalManifest,
+    talaria_herald::TemporalManifest,
+)> {
     // Don't filter - reduction chunks aren't in HERALD storage
     // The meaningful comparison is in the Reduction Analysis section
     Ok((manifest_a, manifest_b))
@@ -1174,7 +1254,9 @@ fn load_reduction_manifest(
 
     // Get the current version for this database
     let databases = manager.list_databases()?;
-    let db_info = databases.iter().find(|db| db.name == db_name)
+    let db_info = databases
+        .iter()
+        .find(|db| db.name == db_name)
         .ok_or_else(|| anyhow::anyhow!("Database '{}' not found", db_name))?;
 
     // Load the reduction manifest

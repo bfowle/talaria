@@ -104,21 +104,20 @@ where
     use std::fs::File;
     use std::io::{BufRead, BufReader};
 
-    let mapping_file = get_taxonomy_mapping_path(source)
-        .ok_or_else(|| {
-            let mappings_dir = get_taxonomy_mappings_dir();
-            let filename = match source {
-                TaxonomyMappingSource::UniProt => "uniprot_idmapping.dat.gz",
-                TaxonomyMappingSource::NCBI => "prot.accession2taxid.gz",
-            };
-            anyhow::anyhow!(
-                "Taxonomy mapping file not found: {}\n\
+    let mapping_file = get_taxonomy_mapping_path(source).ok_or_else(|| {
+        let mappings_dir = get_taxonomy_mappings_dir();
+        let filename = match source {
+            TaxonomyMappingSource::UniProt => "uniprot_idmapping.dat.gz",
+            TaxonomyMappingSource::NCBI => "prot.accession2taxid.gz",
+        };
+        anyhow::anyhow!(
+            "Taxonomy mapping file not found: {}\n\
                  \n\
                  Download with:\n\
                  \x1b[1m  talaria database download ncbi/prot-accession2taxid\x1b[0m",
-                mappings_dir.join(filename).display()
-            )
-        })?;
+            mappings_dir.join(filename).display()
+        )
+    })?;
     let mut mappings = HashMap::new();
 
     let file = File::open(&mapping_file)
