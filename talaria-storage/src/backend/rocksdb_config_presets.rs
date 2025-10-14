@@ -264,7 +264,7 @@ mod tests {
         };
 
         let suggestions = monitor.suggest_optimizations(&config);
-        assert!(suggestions.len() > 0);
+        assert!(!suggestions.is_empty());
         assert!(suggestions
             .iter()
             .any(|s| s.contains("write amplification")));

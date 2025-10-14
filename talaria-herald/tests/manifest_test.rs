@@ -1,3 +1,5 @@
+#![allow(clippy::clone_on_copy)]
+
 use chrono::Utc;
 use std::collections::HashSet;
 use std::fs;

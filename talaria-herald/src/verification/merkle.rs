@@ -85,7 +85,7 @@ impl MerkleDAG {
 
     /// Get the root hash
     pub fn root_hash(&self) -> Option<MerkleHash> {
-        self.root.as_ref().map(|r| r.hash.clone())
+        self.root.as_ref().map(|r| r.hash)
     }
 
     /// Generate a proof of inclusion for a leaf
@@ -101,7 +101,7 @@ impl MerkleDAG {
         if self.find_path(root, &leaf_hash, &mut path) {
             Ok(MerkleProof {
                 leaf_hash,
-                root_hash: root.hash.clone(),
+                root_hash: root.hash,
                 path,
             })
         } else {
@@ -119,8 +119,8 @@ impl MerkleDAG {
         let mut path = Vec::new();
         if self.find_path(root, leaf_hash, &mut path) {
             Ok(MerkleProof {
-                leaf_hash: leaf_hash.clone(),
-                root_hash: root.hash.clone(),
+                leaf_hash: *leaf_hash,
+                root_hash: root.hash,
                 path,
             })
         } else {
@@ -141,7 +141,7 @@ impl MerkleDAG {
                 // Add right sibling to path if it exists
                 if let Some(ref right) = node.right {
                     path.push(ProofStep {
-                        hash: right.hash.clone(),
+                        hash: right.hash,
                         position: Position::Right,
                     });
                 }
@@ -155,7 +155,7 @@ impl MerkleDAG {
                 // Add left sibling to path
                 if let Some(ref left) = node.left {
                     path.push(ProofStep {
-                        hash: left.hash.clone(),
+                        hash: left.hash,
                         position: Position::Left,
                     });
                 }
@@ -169,7 +169,7 @@ impl MerkleDAG {
     /// Verify a Merkle proof
     pub fn verify_proof(proof: &MerkleProof, _data: &[u8]) -> bool {
         // Note: data parameter kept for future use when we might verify against actual data
-        let mut current_hash = proof.leaf_hash.clone();
+        let mut current_hash = proof.leaf_hash;
 
         for step in &proof.path {
             let mut hasher = Sha256::new();
@@ -292,7 +292,7 @@ impl ProofProvider for MerkleDAG {
         if self.find_path(root, target, &mut path) {
             Ok(MerkleProof {
                 leaf_hash: target.clone(),
-                root_hash: root.hash.clone(),
+                root_hash: root.hash,
                 path,
             })
         } else {
@@ -309,7 +309,7 @@ impl ProofProvider for MerkleDAG {
 impl MerkleVerifiable for ManifestMetadata {
     fn compute_hash(&self) -> SHA256Hash {
         // The chunk already has its hash computed
-        self.hash.clone()
+        self.hash
     }
 }
 

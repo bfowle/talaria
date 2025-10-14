@@ -287,7 +287,7 @@ impl DeltaReconstructor {
         };
 
         self.chain_depth_cache
-            .insert(delta_chunk.content_hash.clone(), depth);
+            .insert(delta_chunk.content_hash, depth);
         depth
     }
 
@@ -362,11 +362,11 @@ impl DeltaChainManager {
                 children: Vec::new(),
             };
 
-            self.chain_map.insert(chunk.content_hash.clone(), info);
+            self.chain_map.insert(chunk.content_hash, info);
 
             // Update parent's children list
             if let Some(parent) = self.chain_map.get_mut(reference_hash) {
-                parent.children.push(chunk.content_hash.clone());
+                parent.children.push(chunk.content_hash);
             }
         }
     }

@@ -285,6 +285,7 @@ impl AccessionParser for GenericParser {
         true // Can always try generic parsing
     }
 
+    #[allow(clippy::excessive_nesting)]
     fn parse_header(&self, header: &str) -> Vec<String> {
         let mut accessions = Vec::new();
 

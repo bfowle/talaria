@@ -22,7 +22,7 @@ pub fn render_csv(report: &Report) -> Result<String> {
     for (key, value) in &report.metadata {
         output.push_str(&format!("# {}: {}\n", key, value));
     }
-    output.push_str("\n");
+    output.push('\n');
 
     // Sections
     for section in &report.sections {
@@ -80,7 +80,7 @@ fn render_section(output: &mut String, section: &Section) -> Result<()> {
             for dataset in &chart.datasets {
                 output.push_str(&format!(",\"{}\"", escape_csv(&dataset.label)));
             }
-            output.push_str("\n");
+            output.push('\n');
 
             for (i, label) in chart.labels.iter().enumerate() {
                 output.push_str(&format!("\"{}\"", escape_csv(label)));
@@ -92,7 +92,7 @@ fn render_section(output: &mut String, section: &Section) -> Result<()> {
                         .unwrap_or_default();
                     output.push_str(&format!(",{}", value));
                 }
-                output.push_str("\n");
+                output.push('\n');
             }
         }
         SectionContent::Text(text) => {
@@ -103,7 +103,7 @@ fn render_section(output: &mut String, section: &Section) -> Result<()> {
         }
     }
 
-    output.push_str("\n");
+    output.push('\n');
     Ok(())
 }
 
@@ -115,7 +115,7 @@ fn render_table(output: &mut String, table: &Table) -> Result<()> {
         }
         output.push_str(&format!("\"{}\"", escape_csv(header)));
     }
-    output.push_str("\n");
+    output.push('\n');
 
     // Rows
     for row in &table.rows {
@@ -125,7 +125,7 @@ fn render_table(output: &mut String, table: &Table) -> Result<()> {
             }
             output.push_str(&format!("\"{}\"", escape_csv(&cell.value)));
         }
-        output.push_str("\n");
+        output.push('\n');
     }
 
     Ok(())

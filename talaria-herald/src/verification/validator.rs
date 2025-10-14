@@ -176,7 +176,7 @@ impl StandardTemporalManifestValidator {
         // Check for duplicate chunks
         let mut seen_hashes = HashMap::new();
         for chunk in &manifest.chunk_index {
-            *seen_hashes.entry(chunk.hash.clone()).or_insert(0) += 1;
+            *seen_hashes.entry(chunk.hash).or_insert(0) += 1;
         }
 
         for (hash, count) in seen_hashes {
@@ -192,7 +192,7 @@ impl StandardTemporalManifestValidator {
         for chunk in &manifest.chunk_index {
             if chunk.size == 0 {
                 errors.push(ValidationError::InvalidChunkBounds {
-                    chunk_hash: chunk.hash.clone(),
+                    chunk_hash: chunk.hash,
                     offset: 0, // ManifestMetadata doesn't have offset
                     length: chunk.size,
                 });
@@ -216,7 +216,7 @@ impl StandardTemporalManifestValidator {
             let compressed_path = chunk_path.with_extension("gz");
             if !compressed_path.exists() {
                 return Some(ValidationError::MissingChunk {
-                    chunk_hash: chunk.hash.clone(),
+                    chunk_hash: chunk.hash,
                 });
             }
         }
@@ -226,7 +226,7 @@ impl StandardTemporalManifestValidator {
             let file_size = metadata.len() as usize;
             if file_size != chunk.size {
                 return Some(ValidationError::SizeMismatch {
-                    chunk_hash: chunk.hash.clone(),
+                    chunk_hash: chunk.hash,
                     expected: chunk.size,
                     actual: file_size,
                 });
@@ -243,8 +243,8 @@ impl StandardTemporalManifestValidator {
             let actual_hash = SHA256Hash::compute(&content);
             if actual_hash != chunk.hash {
                 return Some(ValidationError::HashMismatch {
-                    chunk_hash: chunk.hash.clone(),
-                    expected: chunk.hash.clone(),
+                    chunk_hash: chunk.hash,
+                    expected: chunk.hash,
                     actual: actual_hash,
                 });
             }
@@ -387,8 +387,8 @@ impl TemporalManifestValidator for StandardTemporalManifestValidator {
         let actual_hash = SHA256Hash::compute(content);
         if actual_hash != chunk.hash {
             errors.push(ValidationError::HashMismatch {
-                chunk_hash: chunk.hash.clone(),
-                expected: chunk.hash.clone(),
+                chunk_hash: chunk.hash,
+                expected: chunk.hash,
                 actual: actual_hash,
             });
         }
@@ -396,7 +396,7 @@ impl TemporalManifestValidator for StandardTemporalManifestValidator {
         // Check size
         if content.len() != chunk.size {
             errors.push(ValidationError::SizeMismatch {
-                chunk_hash: chunk.hash.clone(),
+                chunk_hash: chunk.hash,
                 expected: chunk.size,
                 actual: content.len(),
             });

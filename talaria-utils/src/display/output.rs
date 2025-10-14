@@ -61,21 +61,19 @@ pub fn format_number<T: Display>(n: T) -> String {
     let s = n.to_string();
 
     // Handle negative numbers
-    let (is_negative, digits) = if s.starts_with('-') {
-        (true, &s[1..])
+    let (is_negative, digits) = if let Some(stripped) = s.strip_prefix('-') {
+        (true, stripped)
     } else {
         (false, s.as_str())
     };
 
     let mut result = String::new();
-    let mut count = 0;
 
-    for c in digits.chars().rev() {
-        if count > 0 && count % 3 == 0 {
+    for (i, c) in digits.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
             result.push(',');
         }
         result.push(c);
-        count += 1;
     }
 
     if is_negative {

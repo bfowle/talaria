@@ -214,6 +214,12 @@ struct PerformanceMetric {
     memory_used: u64,
 }
 
+impl Default for AdaptiveMemoryManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AdaptiveMemoryManager {
     pub fn new() -> Self {
         Self {

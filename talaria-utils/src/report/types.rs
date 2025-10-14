@@ -221,14 +221,14 @@ impl Reportable for ComparisonResult {
                 MetricSeverity::Normal
             }),
             Metric::new("Added Sequences", self.added.len()).with_severity(
-                if self.added.len() > 0 {
+                if !self.added.is_empty() {
                     MetricSeverity::Success
                 } else {
                     MetricSeverity::Normal
                 },
             ),
             Metric::new("Removed Sequences", self.removed.len()).with_severity(
-                if self.removed.len() > 0 {
+                if !self.removed.is_empty() {
                     MetricSeverity::Warning
                 } else {
                     MetricSeverity::Normal

@@ -327,7 +327,7 @@ impl HeraldStorage {
 
     /// Store a chunk manifest (lightweight reference list)
     pub fn store_chunk_manifest(&self, manifest: &ChunkManifest) -> Result<SHA256Hash> {
-        let chunk_hash = manifest.chunk_hash.clone();
+        let chunk_hash = manifest.chunk_hash;
 
         // Serialize the manifest (not the actual sequences!)
         let manifest_data = serde_json::to_vec(manifest)?;
@@ -497,11 +497,11 @@ impl HeraldStorage {
     pub fn store_delta_chunk(&self, chunk: &TemporalDeltaChunk) -> Result<SHA256Hash> {
         // Serialize the delta chunk
         let chunk_data = serde_json::to_vec(chunk)?;
-        let chunk_hash = chunk.content_hash.clone();
+        let chunk_hash = chunk.content_hash;
 
         // Store with chunk type metadata
         let metadata = ChunkMetadataExtended {
-            hash: chunk_hash.clone(),
+            hash: chunk_hash,
             chunk_type: chunk.chunk_type.clone(),
             reference_hash: Some(chunk.reference_hash.clone()),
             compression_ratio: Some(chunk.compression_ratio),
@@ -547,7 +547,7 @@ impl HeraldStorage {
         for seq_ref in &chunk.sequences {
             let entry = DeltaIndexEntryV2 {
                 sequence_id: seq_ref.sequence_id.clone(),
-                delta_chunk_hash: chunk.content_hash.clone(),
+                delta_chunk_hash: chunk.content_hash,
                 reference_hash: chunk.reference_hash.clone(),
                 chunk_type: chunk.chunk_type.clone(),
                 compression_ratio: chunk.compression_ratio,
@@ -592,7 +592,7 @@ impl HeraldStorage {
         let chunks: HashSet<SHA256Hash> = index
             .values()
             .filter(|entry| entry.reference_hash == *reference_hash)
-            .map(|entry| entry.delta_chunk_hash.clone())
+            .map(|entry| entry.delta_chunk_hash)
             .collect();
 
         Ok(chunks.into_iter().collect())
@@ -692,7 +692,7 @@ impl HeraldStorage {
         if let Some(manifest) = manifest {
             // Add all chunks referenced in manifest
             for chunk_meta in &manifest.chunk_index {
-                referenced.insert(chunk_meta.hash.clone());
+                referenced.insert(chunk_meta.hash);
             }
         }
 
@@ -703,7 +703,7 @@ impl HeraldStorage {
                 serde_json::from_str(&fs::read_to_string(&delta_index_path)?)?;
 
             for entry in index.values() {
-                referenced.insert(entry.delta_chunk_hash.clone());
+                referenced.insert(entry.delta_chunk_hash);
                 referenced.insert(entry.reference_hash.clone());
             }
         }
@@ -732,7 +732,7 @@ impl HeraldStorage {
         for entry in index.values() {
             // Simple depth calculation - in real implementation would traverse chain
             let depth = chain_depths.get(&entry.reference_hash).unwrap_or(&0) + 1;
-            chain_depths.insert(entry.delta_chunk_hash.clone(), depth);
+            chain_depths.insert(entry.delta_chunk_hash, depth);
         }
 
         // Identify chains that need compaction (depth > 3)
@@ -903,7 +903,7 @@ impl HeraldStorage {
                     let index_entry: DeltaIndexEntry = serde_json::from_slice(&index_data)?;
 
                     if index_entry.reference_chunk_hash == *reference_hash
-                        && seen.insert(index_entry.delta_chunk_hash.clone())
+                        && seen.insert(index_entry.delta_chunk_hash)
                     {
                         delta_hashes.push(index_entry.delta_chunk_hash);
                     }
@@ -1678,7 +1678,7 @@ impl HeraldStorage {
 
 impl crate::verification::merkle::MerkleVerifiable for ChunkMetadata {
     fn compute_hash(&self) -> SHA256Hash {
-        self.hash.clone()
+        self.hash
     }
 }
 

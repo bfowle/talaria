@@ -1,4 +1,4 @@
-mod cache;
+mod core;
 
 // Re-export commonly used types
-pub use cache::{AlignmentCache, CachedAlignment};
+pub use core::{AlignmentCache, CachedAlignment};

@@ -521,7 +521,7 @@ impl DatabaseDiffer {
                 manifest_a
                     .chunk_index
                     .iter()
-                    .map(|m| m.hash.clone())
+                    .map(|m| m.hash)
                     .collect()
             };
 
@@ -551,7 +551,7 @@ impl DatabaseDiffer {
                 manifest_b
                     .chunk_index
                     .iter()
-                    .map(|m| m.hash.clone())
+                    .map(|m| m.hash)
                     .collect()
             };
 
@@ -591,12 +591,12 @@ impl DatabaseDiffer {
         let chunks_a: Vec<_> = manifest_a
             .chunk_index
             .iter()
-            .map(|m| m.hash.clone())
+            .map(|m| m.hash)
             .collect();
         let chunks_b: Vec<_> = manifest_b
             .chunk_index
             .iter()
-            .map(|m| m.hash.clone())
+            .map(|m| m.hash)
             .collect();
 
         let set_a: HashSet<_> = chunks_a.iter().cloned().collect();
@@ -1135,12 +1135,12 @@ impl DatabaseDiffer {
         let chunks_a: HashSet<_> = manifest_a
             .chunk_index
             .iter()
-            .map(|m| m.hash.clone())
+            .map(|m| m.hash)
             .collect();
         let chunks_b: HashSet<_> = manifest_b
             .chunk_index
             .iter()
-            .map(|m| m.hash.clone())
+            .map(|m| m.hash)
             .collect();
         let shared_chunk_hashes: HashSet<_> = chunks_a.intersection(&chunks_b).cloned().collect();
 

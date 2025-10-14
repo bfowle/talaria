@@ -175,7 +175,7 @@ pub fn create_redundant_sequences(
     let base_sequences = generate_sequences(unique_count, 50);
     let mut all_sequences = Vec::new();
 
-    for (_i, seq) in base_sequences.iter().enumerate() {
+    for seq in base_sequences.iter() {
         for j in 0..copies_per_sequence {
             let mut copy = seq.clone();
             copy.id = format!("{}_{}", seq.id, j);

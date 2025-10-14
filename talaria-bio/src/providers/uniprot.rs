@@ -277,46 +277,6 @@ pub fn read_taxids_from_file(path: &std::path::Path) -> Result<Vec<u32>> {
     Ok(taxids)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_taxids() {
-        // Test comma-separated
-        let taxids = parse_taxids("9606, 10090, 7227").unwrap();
-        assert_eq!(taxids, vec![9606, 10090, 7227]);
-
-        // Test single value
-        let taxids = parse_taxids("9606").unwrap();
-        assert_eq!(taxids, vec![9606]);
-
-        // Test with extra spaces
-        let taxids = parse_taxids("  9606  ,  10090  ").unwrap();
-        assert_eq!(taxids, vec![9606, 10090]);
-    }
-
-    #[test]
-    fn test_parse_fasta() {
-        let client = UniProtClient::new("https://rest.uniprot.org").unwrap();
-
-        let fasta = ">sp|P12345|PROT_HUMAN Protein description\n\
-                     MKWVTFISLLFLFSSAYSRGVFRR\n\
-                     DTHKSEIAHRFKDLGEEHFKGLVL\n\
-                     >sp|Q67890|PROT_MOUSE Another protein\n\
-                     MKWVTFISLLFLFSSAYS";
-
-        let sequences = client.parse_fasta(fasta).unwrap();
-        assert_eq!(sequences.len(), 2);
-        assert_eq!(sequences[0].id, "sp|P12345|PROT_HUMAN");
-        assert_eq!(
-            sequences[0].description.as_ref().unwrap(),
-            "Protein description"
-        );
-        assert_eq!(sequences[1].id, "sp|Q67890|PROT_MOUSE");
-    }
-}
-
 /// Custom database provider that fetches by TaxID
 pub struct CustomDatabaseProvider {
     taxids: Vec<u32>,
@@ -374,5 +334,45 @@ impl SequenceProvider for CustomDatabaseProvider {
 
     fn source_type(&self) -> TaxonomySource {
         TaxonomySource::Api
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_taxids() {
+        // Test comma-separated
+        let taxids = parse_taxids("9606, 10090, 7227").unwrap();
+        assert_eq!(taxids, vec![9606, 10090, 7227]);
+
+        // Test single value
+        let taxids = parse_taxids("9606").unwrap();
+        assert_eq!(taxids, vec![9606]);
+
+        // Test with extra spaces
+        let taxids = parse_taxids("  9606  ,  10090  ").unwrap();
+        assert_eq!(taxids, vec![9606, 10090]);
+    }
+
+    #[test]
+    fn test_parse_fasta() {
+        let client = UniProtClient::new("https://rest.uniprot.org").unwrap();
+
+        let fasta = ">sp|P12345|PROT_HUMAN Protein description\n\
+                     MKWVTFISLLFLFSSAYSRGVFRR\n\
+                     DTHKSEIAHRFKDLGEEHFKGLVL\n\
+                     >sp|Q67890|PROT_MOUSE Another protein\n\
+                     MKWVTFISLLFLFSSAYS";
+
+        let sequences = client.parse_fasta(fasta).unwrap();
+        assert_eq!(sequences.len(), 2);
+        assert_eq!(sequences[0].id, "sp|P12345|PROT_HUMAN");
+        assert_eq!(
+            sequences[0].description.as_ref().unwrap(),
+            "Protein description"
+        );
+        assert_eq!(sequences[1].id, "sp|Q67890|PROT_MOUSE");
     }
 }

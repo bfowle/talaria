@@ -543,6 +543,29 @@ pub fn parse_fasta_parallel<P: AsRef<Path>>(
     Ok(sequences?.into_iter().flatten().collect())
 }
 
+/// Trait representing the capability to read FASTA files with automatic compression detection
+/// This is a capability trait (adjective: "Readable"), not a data structure
+pub trait FastaReadable {
+    /// Open a FASTA file for reading, automatically detecting compression
+    fn open_for_reading<P: AsRef<Path>>(path: P) -> Result<Box<dyn BufRead>> {
+        let path = path.as_ref();
+
+        if path.extension().and_then(|s| s.to_str()) == Some("gz") {
+            let file = File::open(path)?;
+            Ok(Box::new(BufReader::new(GzDecoder::new(file))))
+        } else {
+            let file = File::open(path)?;
+            Ok(Box::new(BufReader::new(file)))
+        }
+    }
+}
+
+/// Zero-sized type that implements FastaReadable
+/// This allows us to use the trait methods without needing an instance
+pub struct FastaFile;
+
+impl FastaReadable for FastaFile {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -665,26 +688,3 @@ mod tests {
         assert_eq!(result[2].taxon_id, None);
     }
 }
-
-/// Trait representing the capability to read FASTA files with automatic compression detection
-/// This is a capability trait (adjective: "Readable"), not a data structure
-pub trait FastaReadable {
-    /// Open a FASTA file for reading, automatically detecting compression
-    fn open_for_reading<P: AsRef<Path>>(path: P) -> Result<Box<dyn BufRead>> {
-        let path = path.as_ref();
-
-        if path.extension().and_then(|s| s.to_str()) == Some("gz") {
-            let file = File::open(path)?;
-            Ok(Box::new(BufReader::new(GzDecoder::new(file))))
-        } else {
-            let file = File::open(path)?;
-            Ok(Box::new(BufReader::new(file)))
-        }
-    }
-}
-
-/// Zero-sized type that implements FastaReadable
-/// This allows us to use the trait methods without needing an instance
-pub struct FastaFile;
-
-impl FastaReadable for FastaFile {}

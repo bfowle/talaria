@@ -319,9 +319,9 @@ impl Manifest {
         use std::collections::HashSet;
 
         let current_chunks: HashSet<_> =
-            current.chunk_index.iter().map(|c| c.hash.clone()).collect();
+            current.chunk_index.iter().map(|c| c.hash).collect();
 
-        let new_chunks: HashSet<_> = new.chunk_index.iter().map(|c| c.hash.clone()).collect();
+        let new_chunks: HashSet<_> = new.chunk_index.iter().map(|c| c.hash).collect();
 
         let added = new_chunks.difference(&current_chunks).cloned().collect();
         let removed = current_chunks.difference(&new_chunks).cloned().collect();
@@ -337,7 +337,7 @@ impl Manifest {
                 nc.sequence_count == chunk_info.sequence_count && nc.hash != chunk_info.hash
             }) {
                 // Add the new hash as a modified chunk
-                modified.push(new_chunk.hash.clone());
+                modified.push(new_chunk.hash);
             }
         }
 
@@ -490,7 +490,7 @@ impl Manifest {
         let chunk_index: Vec<ManifestMetadata> = chunks
             .iter()
             .map(|chunk| ManifestMetadata {
-                hash: chunk.chunk_hash.clone(),
+                hash: chunk.chunk_hash,
                 taxon_ids: chunk.taxon_ids.clone(),
                 sequence_count: chunk.sequence_refs.len(),
                 size: chunk.total_size,

@@ -1,4 +1,4 @@
-mod index;
+mod core;
 
 // Re-export commonly used types
-pub use index::{ChunkIndex, ChunkQuery, InMemoryChunkIndex, IndexStats};
+pub use core::{ChunkIndex, ChunkQuery, InMemoryChunkIndex, IndexStats};

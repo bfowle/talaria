@@ -153,7 +153,7 @@ mod tests {
                 let ref_id = format!("ref{}", i);
                 let query_id = format!("query{}", i);
                 let alignment = CachedAlignment {
-                    score: i as i32,
+                    score: i,
                     alignment: vec![i as u8],
                 };
                 cache_clone.insert(ref_id, query_id, alignment);
@@ -172,7 +172,7 @@ mod tests {
             let query_id = format!("query{}", i);
             let alignment = cache.get(&ref_id, &query_id);
             assert!(alignment.is_some());
-            assert_eq!(alignment.unwrap().score, i as i32);
+            assert_eq!(alignment.unwrap().score, i);
         }
     }
 

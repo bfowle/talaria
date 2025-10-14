@@ -227,7 +227,7 @@ impl StorageFixture {
 
     /// Get all hashes
     pub fn hashes(&self) -> Vec<SHA256Hash> {
-        self.sequences.iter().map(|(_, _, h)| h.clone()).collect()
+        self.sequences.iter().map(|(_, _, h)| *h).collect()
     }
 }
 

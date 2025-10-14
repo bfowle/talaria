@@ -13,7 +13,7 @@ impl Default for BlastOptimizer {
 impl BlastOptimizer {
     #[allow(dead_code)]
     pub fn new() -> Self {
-        Self::default()
+        Self
     }
 
     #[allow(dead_code)]

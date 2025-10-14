@@ -670,7 +670,7 @@ esac
         // We just verify the function doesn't panic
         if let Some(tax_dir) = tax_dump_dir {
             // If a directory is returned, it should exist
-            assert!(tax_dir.exists() || tax_dir.parent().map_or(false, |p| p.exists()));
+            assert!(tax_dir.exists() || tax_dir.parent().is_some_and(|p| p.exists()));
         }
 
         // acc_tax_map is currently always None in the implementation

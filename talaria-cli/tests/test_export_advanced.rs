@@ -1,5 +1,10 @@
+#![allow(clippy::manual_range_contains)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::empty_line_after_doc_comments)]
+
 /// Integration tests for advanced export features
 /// Tests taxonomy filtering, redundancy reduction, and sampling
+
 use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;

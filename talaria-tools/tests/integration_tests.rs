@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 use talaria_bio::sequence::Sequence;
 use talaria_tools::manager::ToolManager;
 use talaria_tools::optimizers::{
@@ -8,23 +10,20 @@ use tempfile::TempDir;
 
 /// Helper to create test sequences with various properties
 fn create_diverse_sequences() -> Vec<Sequence> {
-    let mut sequences = Vec::new();
-
-    // Add sequences with different taxons and lengths
-    sequences.push(Sequence::new("ecoli_1".to_string(), b"ATCGATCGATCG".to_vec()).with_taxon(562));
-    sequences.push(Sequence::new("ecoli_2".to_string(), b"GCTAGCTAGCTA".to_vec()).with_taxon(562));
-    sequences.push(Sequence::new("human_1".to_string(), b"TTAATTAATTAA".to_vec()).with_taxon(9606));
-    sequences.push(Sequence::new("human_2".to_string(), b"CCGGCCGGCCGG".to_vec()).with_taxon(9606));
-    sequences.push(Sequence::new(
-        "unknown_1".to_string(),
-        b"AAAATTTTGGGGCCCC".to_vec(),
-    ));
-    sequences.push(Sequence::new(
-        "unknown_2".to_string(),
-        b"TTTTAAAACCCCGGGG".to_vec(),
-    ));
-
-    sequences
+    vec![
+        Sequence::new("ecoli_1".to_string(), b"ATCGATCGATCG".to_vec()).with_taxon(562),
+        Sequence::new("ecoli_2".to_string(), b"GCTAGCTAGCTA".to_vec()).with_taxon(562),
+        Sequence::new("human_1".to_string(), b"TTAATTAATTAA".to_vec()).with_taxon(9606),
+        Sequence::new("human_2".to_string(), b"CCGGCCGGCCGG".to_vec()).with_taxon(9606),
+        Sequence::new(
+            "unknown_1".to_string(),
+            b"AAAATTTTGGGGCCCC".to_vec(),
+        ),
+        Sequence::new(
+            "unknown_2".to_string(),
+            b"TTTTAAAACCCCGGGG".to_vec(),
+        ),
+    ]
 }
 
 // ===== Tool Manager Integration Tests =====

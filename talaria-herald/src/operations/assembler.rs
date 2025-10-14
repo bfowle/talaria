@@ -487,7 +487,7 @@ impl<'a> FastaAssembler<'a> {
             .chunk_index
             .iter()
             .filter(|chunk| chunk.taxon_ids.iter().any(|tid| taxon_ids.contains(tid)))
-            .map(|chunk| chunk.hash.clone())
+            .map(|chunk| chunk.hash)
             .collect();
 
         // Assemble and filter

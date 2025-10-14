@@ -553,6 +553,7 @@ impl StorageOptimizer for StandardStorageOptimizer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
     use tempfile::TempDir;
     use tokio;
 
@@ -566,7 +567,7 @@ mod tests {
         (optimizer, temp_dir)
     }
 
-    async fn create_test_chunk(chunks_dir: &PathBuf, data: &[u8], compressed: bool) -> SHA256Hash {
+    async fn create_test_chunk(chunks_dir: &Path, data: &[u8], compressed: bool) -> SHA256Hash {
         let hash = SHA256Hash::compute(data);
         let filename = if compressed {
             format!("{}.gz", hash.to_hex())

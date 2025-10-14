@@ -427,7 +427,7 @@ impl TaxonomyManager {
             self.taxon_to_chunks
                 .entry(*taxon_id)
                 .or_default()
-                .push(chunk.chunk_hash.clone());
+                .push(chunk.chunk_hash);
         }
     }
 

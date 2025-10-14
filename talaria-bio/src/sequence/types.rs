@@ -354,7 +354,7 @@ mod tests {
                 seq.detect_type(),
                 SequenceType::Protein,
                 "Failed to detect protein for: {}",
-                seq.to_string()
+                seq
             );
         }
 
@@ -372,7 +372,7 @@ mod tests {
                 seq.detect_type(),
                 SequenceType::Nucleotide,
                 "Failed to detect nucleotide for: {}",
-                seq.to_string()
+                seq
             );
         }
     }
@@ -477,11 +477,11 @@ mod tests {
     #[test]
     fn test_sequence_to_string() {
         let seq = Sequence::new("test".to_string(), b"ATGC".to_vec());
-        assert_eq!(seq.to_string(), "ATGC");
+        assert_eq!(format!("{}", seq), "ATGC");
 
         // Test with non-ASCII (though this shouldn't happen in practice)
         let seq = Sequence::new("test".to_string(), vec![65, 84, 71, 67]); // "ATGC"
-        assert_eq!(seq.to_string(), "ATGC");
+        assert_eq!(format!("{}", seq), "ATGC");
     }
 
     #[test]

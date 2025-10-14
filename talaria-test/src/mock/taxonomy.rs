@@ -164,7 +164,7 @@ impl MockTaxonomyManager {
     pub fn get_descendants(&self, taxon_id: TaxonId) -> Vec<TaxonId> {
         let mut descendants = Vec::new();
 
-        for (id, _entry) in &self.entries {
+        for id in self.entries.keys() {
             if self.is_ancestor(taxon_id, *id) && *id != taxon_id {
                 descendants.push(*id);
             }

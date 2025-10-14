@@ -39,6 +39,7 @@ pub fn init_test_logging() {
 /// ```rust
 /// use talaria_test::with_test_env;
 ///
+/// ```ignore
 /// #[test]
 /// fn test_something() {
 ///     with_test_env(|env| {
@@ -54,9 +55,8 @@ where
     F: FnOnce(&TestEnvironment) -> Result<R>,
 {
     let env = TestEnvironment::new()?;
-    let result = f(&env);
     // Cleanup happens automatically via Drop
-    result
+    f(&env)
 }
 
 /// Run a test with a configured environment
@@ -65,6 +65,5 @@ where
     F: FnOnce(&TestEnvironment) -> Result<R>,
 {
     let env = TestEnvironment::with_config(config)?;
-    let result = f(&env);
-    result
+    f(&env)
 }

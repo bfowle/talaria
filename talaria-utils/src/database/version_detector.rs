@@ -142,6 +142,12 @@ pub struct VersionDetector {
     detectors: HashMap<String, Box<dyn VersionExtractor>>,
 }
 
+impl Default for VersionDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VersionDetector {
     /// Create a new version detector with built-in extractors
     pub fn new() -> Self {

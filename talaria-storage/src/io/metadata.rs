@@ -93,7 +93,7 @@ mod tests {
             header_change: None,
         };
 
-        write_metadata(&file_path, &[delta.clone()]).unwrap();
+        write_metadata(&file_path, std::slice::from_ref(&delta)).unwrap();
         let loaded = load_metadata(&file_path).unwrap();
 
         assert_eq!(loaded.len(), 1);
@@ -321,10 +321,10 @@ mod tests {
         let loaded = load_metadata(&file_path).unwrap();
 
         assert_eq!(loaded.len(), 1000);
-        for i in 0..1000 {
-            assert_eq!(loaded[i].child_id, format!("child_{}", i));
-            assert_eq!(loaded[i].reference_id, format!("ref_{}", i % 10));
-            assert_eq!(loaded[i].taxon_id, Some(i as u32));
+        for (i, delta) in loaded.iter().enumerate() {
+            assert_eq!(delta.child_id, format!("child_{}", i));
+            assert_eq!(delta.reference_id, format!("ref_{}", i % 10));
+            assert_eq!(delta.taxon_id, Some(i as u32));
         }
     }
 

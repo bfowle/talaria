@@ -640,7 +640,7 @@ impl DatabaseManager {
             let referenced_chunks: Vec<SHA256Hash> = manifest_data
                 .chunk_index
                 .iter()
-                .map(|c| c.hash.clone())
+                .map(|c| c.hash)
                 .collect();
 
             // Run garbage collection
@@ -3899,7 +3899,7 @@ impl DatabaseManager {
                 // Count chunk references from this manifest
                 for chunk_metadata in &manifest_data.chunk_index {
                     *chunk_reference_counts
-                        .entry(chunk_metadata.hash.clone())
+                        .entry(chunk_metadata.hash)
                         .or_insert(0) += 1;
                 }
             }
@@ -4203,7 +4203,7 @@ impl DatabaseManager {
         let chunk_hashes: Vec<_> = manifest
             .chunk_index
             .iter()
-            .map(|c| c.hash.clone())
+            .map(|c| c.hash)
             .collect();
 
         // Assemble to output file
@@ -5236,7 +5236,7 @@ impl DatabaseManager {
         };
 
         // Load sequences from chunks
-        let chunk_hashes: Vec<_> = chunks.iter().map(|c| c.hash.clone()).collect();
+        let chunk_hashes: Vec<_> = chunks.iter().map(|c| c.hash).collect();
         self.repository.load_sequences_from_chunks(&chunk_hashes)
     }
 
@@ -5280,7 +5280,7 @@ impl DatabaseManager {
                             sequence_time: manifest.created_at,
                             taxonomy_time: manifest.created_at,
                             taxon_id: seq.taxon_id,
-                            chunk_hash: chunk.hash.clone(),
+                            chunk_hash: chunk.hash,
                         });
                     }
                 }

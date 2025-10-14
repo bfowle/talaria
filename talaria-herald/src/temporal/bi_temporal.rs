@@ -206,7 +206,7 @@ impl BiTemporalDatabase {
         taxonomy_version: &TaxonomyVersion,
     ) -> Result<MerkleHash> {
         // The taxonomy root is already computed and stored in the version
-        Ok(taxonomy_version.root_hash.clone())
+        Ok(taxonomy_version.root_hash)
     }
 
     /// Generate ETag from dual roots
@@ -247,12 +247,12 @@ impl BiTemporalDatabase {
         let old_chunks: HashSet<_> = old_snapshot
             .manifest
             .chunk_index()
-            .map(|index| index.iter().map(|m| m.hash.clone()).collect())
+            .map(|index| index.iter().map(|m| m.hash).collect())
             .unwrap_or_else(HashSet::new);
         let new_chunks: HashSet<_> = new_snapshot
             .manifest
             .chunk_index()
-            .map(|index| index.iter().map(|m| m.hash.clone()).collect())
+            .map(|index| index.iter().map(|m| m.hash).collect())
             .unwrap_or_else(HashSet::new);
 
         let removed: Vec<_> = old_chunks.difference(&new_chunks).collect();
@@ -428,7 +428,7 @@ impl DatabaseSnapshot {
 
         // Use assembler to export sequences
         let assembler = FastaAssembler::new(&self.storage);
-        let chunk_hashes: Vec<_> = self.chunks().iter().map(|c| c.hash.clone()).collect();
+        let chunk_hashes: Vec<_> = self.chunks().iter().map(|c| c.hash).collect();
 
         let sequence_count = assembler.stream_assembly(&chunk_hashes, &mut file)?;
 

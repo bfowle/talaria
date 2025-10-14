@@ -272,7 +272,7 @@ impl<'a> HeraldVerifier<'a> {
             .manifest
             .chunk_index
             .iter()
-            .map(|meta| meta.hash.clone())
+            .map(|meta| meta.hash)
             .collect();
 
         // Check storage for chunks not in manifest (orphaned)
@@ -293,16 +293,16 @@ impl<'a> HeraldVerifier<'a> {
         // Check for missing chunks (in manifest but not in storage)
         for chunk_meta in &self.manifest.chunk_index {
             if !self.storage.has_chunk(&chunk_meta.hash) {
-                issues.push(ConsistencyIssue::MissingChunk(chunk_meta.hash.clone()));
+                issues.push(ConsistencyIssue::MissingChunk(chunk_meta.hash));
             }
         }
 
         // Check for duplicate references
         let mut seen = HashSet::new();
         for chunk_meta in &self.manifest.chunk_index {
-            if !seen.insert(chunk_meta.hash.clone()) {
+            if !seen.insert(chunk_meta.hash) {
                 issues.push(ConsistencyIssue::DuplicateReference(
-                    chunk_meta.hash.clone(),
+                    chunk_meta.hash,
                 ));
             }
         }
@@ -832,7 +832,7 @@ mod tests {
 
         // Generate proof for first chunk
         let chunk_hash = &manifest.chunk_index[0].hash;
-        let proof = verifier.generate_assembly_proof(&[chunk_hash.clone()]);
+        let proof = verifier.generate_assembly_proof(&[chunk_hash]);
 
         assert!(proof.is_ok());
         let proof = proof.unwrap();
@@ -849,7 +849,7 @@ mod tests {
         // Generate and validate proof
         let chunk_hash = &manifest.chunk_index[0].hash;
         let proof = verifier
-            .generate_assembly_proof(&[chunk_hash.clone()])
+            .generate_assembly_proof(&[chunk_hash])
             .unwrap();
 
         let is_valid = verifier.verify_proof(&proof);
@@ -865,7 +865,7 @@ mod tests {
         // Generate proof for one chunk but try to validate with different hash
         let chunk_hash = &manifest.chunk_index[0].hash;
         let proof = verifier
-            .generate_assembly_proof(&[chunk_hash.clone()])
+            .generate_assembly_proof(&[chunk_hash])
             .unwrap();
 
         // Note: Can't easily test with wrong hash without modifying proof
@@ -883,7 +883,7 @@ mod tests {
         let _chunk_hashes: Vec<SHA256Hash> = manifest
             .chunk_index
             .iter()
-            .map(|m| m.hash.clone())
+            .map(|m| m.hash)
             .collect();
 
         let result = verifier.verify_all().unwrap();
@@ -901,7 +901,7 @@ mod tests {
         let _chunk_hashes: Vec<SHA256Hash> = manifest
             .chunk_index
             .iter()
-            .map(|m| m.hash.clone())
+            .map(|m| m.hash)
             .collect();
 
         // verify_parallel method doesn't exist, use verify_all instead

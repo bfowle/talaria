@@ -35,7 +35,8 @@ pub fn assert_valid_fasta(content: &str) {
 
     for line in lines {
         if line.starts_with('>') {
-            assert!(!line[1..].trim().is_empty(), "Empty FASTA header found");
+            let header = line.strip_prefix('>').unwrap();
+            assert!(!header.trim().is_empty(), "Empty FASTA header found");
             has_header = true;
         } else if !line.is_empty() {
             assert!(

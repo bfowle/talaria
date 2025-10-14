@@ -18,9 +18,9 @@ mod helpers {
         let base_path = temp_dir.path().to_path_buf();
 
         // Create necessary directories
-        std::fs::create_dir_all(&base_path.join("chunks")).unwrap();
-        std::fs::create_dir_all(&base_path.join("manifests")).unwrap();
-        std::fs::create_dir_all(&base_path.join("indices")).unwrap();
+        std::fs::create_dir_all(base_path.join("chunks")).unwrap();
+        std::fs::create_dir_all(base_path.join("manifests")).unwrap();
+        std::fs::create_dir_all(base_path.join("indices")).unwrap();
 
         (base_path, temp_dir)
     }
@@ -216,7 +216,7 @@ mod cache_tests {
         // Insert entries up to the limit
         for i in 0..3 {
             let alignment = talaria_storage::cache::CachedAlignment {
-                score: i as i32,
+                score: i,
                 alignment: vec![i as u8],
             };
             cache.insert(format!("ref{}", i), format!("query{}", i), alignment);

@@ -91,7 +91,7 @@ impl DeltaGenerator {
                     || current_batch.len() >= self.config.target_sequences_per_chunk)
             {
                 // Create chunk from current batch
-                chunks.push(self.create_delta_chunk(current_batch, reference_chunk_hash.clone())?);
+                chunks.push(self.create_delta_chunk(current_batch, reference_chunk_hash)?);
                 current_batch = Vec::new();
                 current_size = 0;
             }
@@ -166,7 +166,7 @@ impl DeltaGenerator {
 
         // Create the delta chunk using the new HERALD types
         let chunk_type = ChunkClassification::Delta {
-            reference_hash: reference_chunk_hash.clone(),
+            reference_hash: reference_chunk_hash,
             compression_ratio,
         };
 
@@ -187,7 +187,7 @@ impl DeltaGenerator {
 
         // Use the HERALD TemporalDeltaChunk type that's defined in types.rs
         let delta_chunk = TemporalDeltaChunk {
-            content_hash: content_hash.clone(),
+            content_hash: content_hash,
             reference_hash: reference_chunk_hash,
             chunk_type,
             taxonomy_version: SHA256Hash::zero(), // Will be set by HERALD
@@ -291,7 +291,7 @@ impl DeltaGenerator {
         }
 
         // Create delta chunks for updates
-        let mut chunks = self.batch_into_chunks(delta_records, old_chunk_hash.clone())?;
+        let mut chunks = self.batch_into_chunks(delta_records, old_chunk_hash)?;
 
         // Add insertion operations
         if !new_inserts.is_empty() {
@@ -304,7 +304,7 @@ impl DeltaGenerator {
                 .collect();
 
             // Create insertion chunk
-            let insert_chunk = self.create_operation_chunk(insert_ops, old_chunk_hash.clone())?;
+            let insert_chunk = self.create_operation_chunk(insert_ops, old_chunk_hash)?;
             chunks.push(insert_chunk);
         }
 
@@ -316,7 +316,7 @@ impl DeltaGenerator {
                 .collect();
 
             // Create deletion chunk
-            let delete_chunk = self.create_operation_chunk(delete_ops, old_chunk_hash.clone())?;
+            let delete_chunk = self.create_operation_chunk(delete_ops, old_chunk_hash)?;
             chunks.push(delete_chunk);
         }
 

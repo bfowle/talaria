@@ -220,7 +220,7 @@ impl ReductionManifest {
                 .reference_chunks
                 .iter()
                 .map(|c| ManifestMetadata {
-                    hash: c.chunk_hash.clone(),
+                    hash: c.chunk_hash,
                     taxon_ids: Vec::new(),
                     sequence_count: c.sequence_ids.len(),
                     size: c.size,
@@ -238,7 +238,7 @@ impl ReductionManifest {
                 .delta_chunks
                 .iter()
                 .map(|c| ManifestMetadata {
-                    hash: c.chunk_hash.clone(),
+                    hash: c.chunk_hash,
                     taxon_ids: Vec::new(),
                     sequence_count: 1, // Delta chunks typically represent individual sequences
                     size: c.size,
@@ -336,11 +336,11 @@ impl ReductionManifest {
         let mut hashes = Vec::new();
 
         for chunk in &self.reference_chunks {
-            hashes.push(chunk.chunk_hash.clone());
+            hashes.push(chunk.chunk_hash);
         }
 
         for chunk in &self.delta_chunks {
-            hashes.push(chunk.chunk_hash.clone());
+            hashes.push(chunk.chunk_hash);
         }
 
         hashes
@@ -352,7 +352,7 @@ impl ReductionManifest {
 
         for delta_chunk in &self.delta_chunks {
             for child_id in &delta_chunk.child_ids {
-                map.insert(child_id.clone(), delta_chunk.reference_chunk_hash.clone());
+                map.insert(child_id.clone(), delta_chunk.reference_chunk_hash);
             }
         }
 

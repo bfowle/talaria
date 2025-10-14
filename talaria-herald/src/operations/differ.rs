@@ -154,13 +154,13 @@ impl StandardTemporalManifestDiffer {
         let old_chunks: HashMap<SHA256Hash, &ManifestMetadata> = old
             .chunk_index
             .iter()
-            .map(|c| (c.hash.clone(), c))
+            .map(|c| (c.hash, c))
             .collect();
 
         let new_chunks: HashMap<SHA256Hash, &ManifestMetadata> = new
             .chunk_index
             .iter()
-            .map(|c| (c.hash.clone(), c))
+            .map(|c| (c.hash, c))
             .collect();
 
         // Find removed and modified chunks

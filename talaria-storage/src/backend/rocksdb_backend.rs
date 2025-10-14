@@ -1242,7 +1242,7 @@ mod tests {
         // Store half of them
         for (i, hash) in hashes.iter().enumerate().take(50) {
             let sequence = CanonicalSequence {
-                sequence_hash: hash.clone(),
+                sequence_hash: *hash,
                 sequence: vec![i as u8],
                 length: 1,
                 sequence_type: SequenceType::DNA,

@@ -146,25 +146,25 @@ impl TaxonomyManifest {
         let self_chunks: HashMap<SHA256Hash, &TaxonomyChunkMetadata> = self
             .chunk_index
             .iter()
-            .map(|c| (c.hash.clone(), c))
+            .map(|c| (c.hash, c))
             .collect();
         let other_chunks: HashMap<SHA256Hash, &TaxonomyChunkMetadata> = other
             .chunk_index
             .iter()
-            .map(|c| (c.hash.clone(), c))
+            .map(|c| (c.hash, c))
             .collect();
 
         // Find new and modified chunks
         for chunk in &self.chunk_index {
             if !other_chunks.contains_key(&chunk.hash) {
-                new_chunks.push(chunk.hash.clone());
+                new_chunks.push(chunk.hash);
             }
         }
 
         // Find deleted chunks
         for chunk in &other.chunk_index {
             if !self_chunks.contains_key(&chunk.hash) {
-                deleted_chunks.push(chunk.hash.clone());
+                deleted_chunks.push(chunk.hash);
             }
         }
 

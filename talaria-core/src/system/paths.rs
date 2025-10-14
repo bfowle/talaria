@@ -251,6 +251,8 @@ pub fn describe_paths() -> String {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::bool_comparison)]
+
     use super::*;
 
     #[test]

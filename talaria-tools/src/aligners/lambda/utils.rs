@@ -74,6 +74,7 @@ pub(crate) fn safe_truncate(s: &str, max_chars: usize) -> &str {
 
 /// Helper function to stream output with proper carriage return handling
 /// This captures LAMBDA's progress updates that use \r for same-line updates
+#[allow(clippy::excessive_nesting)]
 pub(crate) fn stream_output_with_progress<R: Read + Send + 'static>(
     mut reader: R,
     prefix: &'static str,

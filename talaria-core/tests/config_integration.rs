@@ -1,3 +1,5 @@
+#![allow(clippy::bool_assert_comparison)]
+
 use std::fs;
 /// Integration tests for configuration loading and saving
 use talaria_core::config::{default_config, load_config, save_config, Config};

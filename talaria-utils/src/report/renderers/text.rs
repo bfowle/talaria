@@ -22,7 +22,7 @@ pub fn render_text(report: &Report) -> Result<String> {
     for (key, value) in &report.metadata {
         output.push_str(&format!("{}: {}\n", key, value));
     }
-    output.push_str("\n");
+    output.push('\n');
 
     // Sections
     for section in &report.sections {
@@ -45,7 +45,7 @@ fn render_section(output: &mut String, section: &Section) -> Result<()> {
         SectionContent::Text(text) => render_text_content(output, text),
     }
 
-    output.push_str("\n");
+    output.push('\n');
     Ok(())
 }
 
@@ -110,7 +110,7 @@ fn render_table(output: &mut String, table: &Table) {
             output.push_str("  ");
         }
     }
-    output.push_str("\n");
+    output.push('\n');
 
     // Rows
     for row in &table.rows {
@@ -133,7 +133,7 @@ fn render_table(output: &mut String, table: &Table) {
                 output.push_str("  ");
             }
         }
-        output.push_str("\n");
+        output.push('\n');
     }
 }
 
@@ -177,7 +177,7 @@ fn render_chart(output: &mut String, chart: &ChartData) {
                 }
             }
         }
-        output.push_str("\n");
+        output.push('\n');
     }
 }
 

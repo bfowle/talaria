@@ -600,9 +600,11 @@ mod tests {
 
     #[test]
     fn test_cluster_creation() {
-        let mut config = ClusteringConfig::default();
         // Set min_cluster_size to 1 for test with small number of sequences
-        config.min_cluster_size = 1;
+        let config = ClusteringConfig {
+            min_cluster_size: 1,
+            ..Default::default()
+        };
         let clusterer = PhylogeneticClusterer::new(config);
 
         // Create test sequences

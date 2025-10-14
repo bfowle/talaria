@@ -87,7 +87,7 @@ impl HeraldWorkspaceManager {
         let content_path = self.herald_root.join("content").join(hash);
 
         // Create hard link if possible, otherwise copy
-        if let Err(_) = fs::hard_link(&content_path, workspace_path) {
+        if fs::hard_link(&content_path, workspace_path).is_err() {
             fs::copy(&content_path, workspace_path)?;
         }
 
@@ -278,6 +278,12 @@ enum HeraldOperation {
     DeleteFile { path: PathBuf },
     CreateDir { path: PathBuf },
     DeleteDir { path: PathBuf },
+}
+
+impl Default for HeraldTransaction {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl HeraldTransaction {

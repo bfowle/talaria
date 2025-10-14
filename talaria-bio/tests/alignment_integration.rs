@@ -1,3 +1,5 @@
+#![allow(clippy::len_zero)]
+
 use std::time::Instant;
 /// Integration tests for sequence alignment functionality
 use talaria_bio::alignment::{
