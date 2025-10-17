@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-%E2%89%A51.70-orange.svg)](https://www.rust-lang.org/)
 [![Documentation](https://img.shields.io/badge/docs-mdBook-blue)](https://talaria.bioinformatics.io)
-[![CI](https://github.com/Andromeda-Tech/talaria/workflows/CI/badge.svg)](https://github.com/Andromeda-Tech/talaria/actions)
+[![CI](https://github.com/bfowle/talaria/workflows/CI/badge.svg)](https://github.com/bfowle/talaria/actions)
 [![codecov](https://codecov.io/gh/talaria/talaria/branch/main/graph/badge.svg)](https://codecov.io/gh/talaria/talaria)
 
 </div>
@@ -50,20 +50,20 @@ Download the latest release for your platform:
 
 ```bash
 # Linux x86_64
-curl -L https://github.com/Andromeda-Tech/talaria/releases/latest/download/talaria-linux-x86_64.tar.gz | tar xz
+curl -L https://github.com/bfowle/talaria/releases/latest/download/talaria-linux-x86_64.tar.gz | tar xz
 
 # macOS Apple Silicon
-curl -L https://github.com/Andromeda-Tech/talaria/releases/latest/download/talaria-darwin-aarch64.tar.gz | tar xz
+curl -L https://github.com/bfowle/talaria/releases/latest/download/talaria-darwin-aarch64.tar.gz | tar xz
 
 # macOS Intel
-curl -L https://github.com/Andromeda-Tech/talaria/releases/latest/download/talaria-darwin-x86_64.tar.gz | tar xz
+curl -L https://github.com/bfowle/talaria/releases/latest/download/talaria-darwin-x86_64.tar.gz | tar xz
 ```
 
 ### From Source
 
 ```bash
 # Clone repository
-git clone https://github.com/Andromeda-Tech/talaria
+git clone https://github.com/bfowle/talaria
 cd talaria
 
 # Build with optimizations
@@ -312,7 +312,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ```bash
 # Clone with submodules
-git clone --recursive https://github.com/Andromeda-Tech/talaria
+git clone --recursive https://github.com/bfowle/talaria
 cd talaria
 
 # Install development dependencies
@@ -342,7 +342,7 @@ If you use Talaria in your research, please cite:
   title = {Talaria: High-Performance Biological Sequence Database Reduction},
   author = {Talaria Contributors},
   year = {2024},
-  url = {https://github.com/Andromeda-Tech/talaria},
+  url = {https://github.com/bfowle/talaria},
   version = {0.1.0}
 }
 ```
@@ -358,10 +358,10 @@ See [CITATION.cff](CITATION.cff) for complete citation information.
 
 ## Links
 
-- **Documentation**: https://talaria.bioinformatics.io
-- **GitHub**: https://github.com/Andromeda-Tech/talaria
-- **Issues**: https://github.com/Andromeda-Tech/talaria/issues
-- **Discussions**: https://github.com/Andromeda-Tech/talaria/discussions
+- **Documentation**: https://bfowle.github.io/talaria
+- **GitHub**: https://github.com/bfowle/talaria
+- **Issues**: https://github.com/bfowle/talaria/issues
+- **Discussions**: https://github.com/bfowle/talaria/discussions
 
 ## Status
 

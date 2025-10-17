@@ -11,16 +11,11 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
-dirs = "5.0"
-once_cell = "1.18"
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "registry"] }
 toml = "0.8"
 semver = "1.0"
-indicatif = { workspace = true }
-rayon = { workspace = true }
 sha2 = { workspace = true }
-dashmap = { workspace = true }
 hex = { workspace = true }
 serde_bytes = "0.11"
 clap = { workspace = true, optional = true }

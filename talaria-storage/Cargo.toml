@@ -11,7 +11,6 @@ talaria-bio = { path = "../talaria-bio" }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-thiserror = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
 sha2 = { workspace = true }
@@ -21,13 +20,7 @@ flate2 = { workspace = true }
 dashmap = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
-bytes = "1.5"
 futures = "0.3"
-futures-util = "0.3"
-reqwest = { version = "0.11", features = ["json", "stream"] }
-url = "2.4"
-rusqlite = { version = "0.30", features = ["bundled"] }
-indexmap = "2.0"
 rocksdb = { version = "0.24", default-features = false, features = ["zstd", "multi-threaded-cf"] }
 zstd = "0.12"
 parking_lot = { version = "0.12", features = ["deadlock_detection"] }
