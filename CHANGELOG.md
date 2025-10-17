@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Incorrect taxonomy assignment for certain RefSeq entries
 - Race condition in parallel chunk processing
 
-## [0.1.0] - 2024-01-15
+## [0.1.0] - 2025-01-15
 
 ### Added
 - Initial release of Talaria
@@ -72,7 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 69% index size reduction with 99.8% coverage maintained
 - 2.7x faster query performance with reduced indices
 
-## [0.0.1-alpha] - 2023-12-01
+## [0.0.1-alpha] - 2024-12-01
 
 ### Added
 - Proof of concept implementation

@@ -135,7 +135,7 @@ talaria herald add --path /data/herald --input sequences.fasta
 
 # Query at specific time point
 talaria herald query --path /data/herald \
-  --time "2024-01-15T10:00:00Z" \
+  --time "2025-01-15T10:00:00Z" \
   --taxids "9606,10090"
 
 # Export reduced version
@@ -338,10 +338,10 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) for deta
 If you use Talaria in your research, please cite:
 
 ```bibtex
-@software{talaria2024,
+@software{talaria2025,
   title = {Talaria: High-Performance Biological Sequence Database Reduction},
   author = {Talaria Contributors},
-  year = {2024},
+  year = {2025},
   url = {https://github.com/bfowle/talaria},
   version = {0.1.0}
 }
@@ -367,6 +367,6 @@ See [CITATION.cff](CITATION.cff) for complete citation information.
 
 - **Current Version**: 0.1.0
 - **Status**: Beta - API stabilizing
-- **Next Release**: 0.2.0 (planned Q2 2024)
+- **Next Release**: 0.2.0 (planned Q2 2026)
 
 See [CHANGELOG.md](CHANGELOG.md) for version history.
