@@ -21,13 +21,17 @@ dashmap = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
 futures = "0.3"
-rocksdb = { version = "0.24", default-features = false, features = ["zstd", "multi-threaded-cf"] }
+rocksdb = { version = "0.24", optional = true, default-features = false, features = ["zstd", "multi-threaded-cf"] }
 zstd = "0.12"
 parking_lot = { version = "0.12", features = ["deadlock_detection"] }
 num_cpus = "1.16"
 sysinfo = "0.29"
 rmp-serde = "1.1"
 serde_bytes = "0.11"
+
+[features]
+default = ["rocksdb-backend"]
+rocksdb-backend = ["rocksdb"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

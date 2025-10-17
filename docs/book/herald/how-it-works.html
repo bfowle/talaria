@@ -1,0 +1,547 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>How HERALD Works - Talaria Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- MathJax Configuration -->
+        <script>
+        window.MathJax = {
+          tex2jax: {
+            inlineMath: [['$','$'], ['\\(','\\)']],
+            displayMath: [['$$','$$'], ['\\[','\\]']],
+            processEscapes: true,
+            processEnvironments: true
+          },
+          TeX: {
+            equationNumbers: { autoNumber: "AMS" },
+            extensions: ["AMSmath.js", "AMSsymbols.js"]
+          }
+        };
+        </script>
+        <meta name="description" content="Intelligent FASTA reduction for aligner index optimization">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../custom.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Talaria Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/bfowle/talaria" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/bfowle/talaria/edit/main/docs/src/herald/how-it-works.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
+<h1 id="how-herald-works"><a class="header" href="#how-herald-works">How HERALD Works</a></h1>
+<p>This guide walks through exactly how HERALD operates, step by step, with visual examples.</p>
+<h2 id="the-complete-herald-workflow"><a class="header" href="#the-complete-herald-workflow">The Complete HERALD Workflow</a></h2>
+<pre class="mermaid">graph TD
+    Start[New Database Version Available]
+    Check[Check Manifest]
+    Compare[Compare with Local]
+    Download[Download Only Changes]
+    Store[Store in Chunks]
+    Verify[Verify Integrity]
+    Ready[Database Ready]
+
+    Start --&gt; Check
+    Check --&gt; Compare
+    Compare --&gt; Download
+    Download --&gt; Store
+    Store --&gt; Verify
+    Verify --&gt; Ready
+
+    style Start stroke:#ff6b6b,stroke-width:2px
+    style Ready stroke:#51cf66,stroke-width:2px
+</pre>
+<h2 id="step-by-step-breakdown"><a class="header" href="#step-by-step-breakdown">Step-by-Step Breakdown</a></h2>
+<h3 id="step-1-initial-database-download"><a class="header" href="#step-1-initial-database-download">Step 1: Initial Database Download</a></h3>
+<p>When you first download a database, here’s what happens behind the scenes:</p>
+<pre class="mermaid">sequenceDiagram
+    participant User
+    participant Talaria
+    participant Remote
+    participant HERALD
+    participant Disk
+
+    User-&gt;&gt;Talaria: talaria database download uniprot/swissprot
+    Talaria-&gt;&gt;Remote: Request manifest
+    Remote--&gt;&gt;Talaria: Return manifest (1 KB)
+    Talaria-&gt;&gt;Talaria: Parse manifest
+
+    loop For each chunk in manifest
+        Talaria-&gt;&gt;HERALD: Check if chunk exists locally
+        HERALD--&gt;&gt;Talaria: Not found
+        Talaria-&gt;&gt;Remote: Download chunk
+        Remote--&gt;&gt;Talaria: Stream chunk data
+        Talaria-&gt;&gt;HERALD: Store chunk with hash
+        HERALD-&gt;&gt;Disk: Write chunk file
+    end
+
+    Talaria--&gt;&gt;User: Download complete!
+</pre>
+<p><strong>What’s Really Happening:</strong></p>
+<ol>
+<li><strong>Manifest First</strong>: Always download the tiny manifest (1-10 KB) first</li>
+<li><strong>Smart Checking</strong>: Check which chunks you already have</li>
+<li><strong>Parallel Downloads</strong>: Download multiple chunks simultaneously</li>
+<li><strong>Verification</strong>: Each chunk is verified against its hash</li>
+<li><strong>Storage</strong>: Chunks stored by their content hash</li>
+</ol>
+<h3 id="step-2-checking-for-updates"><a class="header" href="#step-2-checking-for-updates">Step 2: Checking for Updates</a></h3>
+<p>The magic happens when checking for updates:</p>
+<pre><code class="language-bash">talaria database update uniprot/swissprot
+</code></pre>
+<pre class="mermaid">graph LR
+    subgraph Local
+        LM[Local Manifest&lt;br/&gt;v2024-03-01]
+        LC1[Chunk abc123]
+        LC2[Chunk def456]
+        LC3[Chunk ghi789]
+    end
+
+    subgraph Remote
+        RM[Remote Manifest&lt;br/&gt;v2024-03-15]
+        RC1[Chunk abc123]
+        RC2[Chunk def456]
+        RC3[Chunk xyz999]
+    end
+
+    LM -.-&gt;|Compare| RM
+    LC1 --&gt;|Match ✓| RC1
+    LC2 --&gt;|Match ✓| RC2
+    LC3 --&gt;|Different ✗| RC3
+
+    style LC1 stroke:#51cf66,stroke-width:2px
+    style LC2 stroke:#51cf66,stroke-width:2px
+    style LC3 stroke:#ff6b6b,stroke-width:2px
+    style RC3 stroke:#ffd43b,stroke-width:2px
+</pre>
+<p><strong>Result</strong>: Only download chunk xyz999 (the new one)!</p>
+<h3 id="step-3-chunking-process"><a class="header" href="#step-3-chunking-process">Step 3: Chunking Process</a></h3>
+<p>How does HERALD decide what goes in each chunk?</p>
+<pre class="mermaid">graph TD
+    DB[Complete Database]
+    Tax[Group by Taxonomy]
+
+    subgraph Taxonomic Groups
+        Human[Human Proteins&lt;br/&gt;50,000 sequences]
+        Mouse[Mouse Proteins&lt;br/&gt;45,000 sequences]
+        Ecoli[E.coli Proteins&lt;br/&gt;4,500 sequences]
+        Other[Other Species&lt;br/&gt;...]
+    end
+
+    subgraph Smart Chunks
+        CH1[Chunk: Human-1&lt;br/&gt;200 MB]
+        CH2[Chunk: Human-2&lt;br/&gt;200 MB]
+        CM1[Chunk: Mouse-1&lt;br/&gt;180 MB]
+        CE1[Chunk: Ecoli-All&lt;br/&gt;45 MB]
+    end
+
+    DB --&gt; Tax
+    Tax --&gt; Human
+    Tax --&gt; Mouse
+    Tax --&gt; Ecoli
+    Tax --&gt; Other
+
+    Human --&gt; CH1
+    Human --&gt; CH2
+    Mouse --&gt; CM1
+    Ecoli --&gt; CE1
+
+    style Tax stroke:#4ecdc4,stroke-width:2px
+    style CH1 stroke:#51cf66,stroke-width:2px
+    style CH2 stroke:#51cf66,stroke-width:2px
+    style CM1 stroke:#51cf66,stroke-width:2px
+    style CE1 stroke:#51cf66,stroke-width:2px
+</pre>
+<p><strong>Why Taxonomic Chunking?</strong></p>
+<ul>
+<li>Similar organisms have similar proteins</li>
+<li>Better compression ratios</li>
+<li>Researchers often query specific species</li>
+<li>Updates often affect specific taxonomic groups</li>
+</ul>
+<h3 id="step-4-delta-compression-in-action"><a class="header" href="#step-4-delta-compression-in-action">Step 4: Delta Compression in Action</a></h3>
+<p>For similar sequences, HERALD uses delta compression:</p>
+<pre class="mermaid">graph TD
+    subgraph Input Sequences
+        S1[Sequence 1: MKTAYIAKQRQ...]
+        S2[Sequence 2: MKTAYIAKQEQ...]
+        S3[Sequence 3: MKTAYIAKQRQ...]
+    end
+
+    subgraph Processing
+        Ref[Reference Selection]
+        Delta[Delta Computation]
+    end
+
+    subgraph Storage
+        R[Reference: MKTAYIAKQRQ...]
+        D1[Delta: pos 10 R→E]
+        D2[Delta: identical]
+    end
+
+    S1 --&gt; Ref
+    S2 --&gt; Ref
+    S3 --&gt; Ref
+
+    Ref --&gt; R
+    Ref --&gt; Delta
+    Delta --&gt; D1
+    Delta --&gt; D2
+
+    style R stroke:#51cf66,stroke-width:3px
+    style D1 stroke:#4ecdc4,stroke-width:2px
+    style D2 stroke:#4ecdc4,stroke-width:2px
+</pre>
+<p><strong>Storage Savings</strong>: 3 sequences → 1 reference + 2 tiny deltas</p>
+<h3 id="step-5-verification-with-merkle-trees"><a class="header" href="#step-5-verification-with-merkle-trees">Step 5: Verification with Merkle Trees</a></h3>
+<p>How HERALD ensures data integrity:</p>
+<pre class="mermaid">graph TD
+    subgraph Verification Process
+        Root[Root Hash: 5a9b3c...]
+
+        Branch1[Branch 1: 8f2d1a...]
+        Branch2[Branch 2: 3c9e7b...]
+
+        C1[Chunk 1: abc123...]
+        C2[Chunk 2: def456...]
+        C3[Chunk 3: ghi789...]
+        C4[Chunk 4: jkl012...]
+    end
+
+    Root --&gt; Branch1
+    Root --&gt; Branch2
+    Branch1 --&gt; C1
+    Branch1 --&gt; C2
+    Branch2 --&gt; C3
+    Branch2 --&gt; C4
+
+    subgraph Verify Chunk 3
+        V1[1. Hash Chunk 3 → ghi789...]
+        V2[2. Hash with C4 → 3c9e7b...]
+        V3[3. Hash with Branch1 → 5a9b3c...]
+        V4[4. Compare with Root ✓]
+    end
+
+    C3 -.-&gt;|Verify| V1
+    V1 --&gt; V2
+    V2 --&gt; V3
+    V3 --&gt; V4
+
+    style Root stroke:#ff6b6b,stroke-width:3px
+    style V4 stroke:#51cf66,stroke-width:2px
+</pre>
+<h2 id="real-world-example-daily-uniprot-update"><a class="header" href="#real-world-example-daily-uniprot-update">Real-World Example: Daily UniProt Update</a></h2>
+<p>Let’s walk through an actual update scenario:</p>
+<h3 id="day-1-initial-download"><a class="header" href="#day-1-initial-download">Day 1: Initial Download</a></h3>
+<pre><code class="language-bash">$ talaria database download uniprot/swissprot
+</code></pre>
+<ul>
+<li>Downloads 571,282 sequences</li>
+<li>Creates 127 chunks (grouped by taxonomy)</li>
+<li>Total size: 204 MB compressed</li>
+<li>Time: ~5 minutes</li>
+</ul>
+<h3 id="day-7-weekly-update"><a class="header" href="#day-7-weekly-update">Day 7: Weekly Update</a></h3>
+<pre><code class="language-bash">$ talaria database update uniprot/swissprot
+</code></pre>
+<p>What happens:</p>
+<ol>
+<li>
+<p><strong>Check Manifest</strong> (0.1 seconds)</p>
+<ul>
+<li>Remote: 571,419 sequences</li>
+<li>Local: 571,282 sequences</li>
+<li>Difference: 137 new, 12 updated</li>
+</ul>
+</li>
+<li>
+<p><strong>Compare Chunks</strong> (0.2 seconds)</p>
+<ul>
+<li>124 chunks unchanged ✓</li>
+<li>3 chunks modified ✗</li>
+</ul>
+</li>
+<li>
+<p><strong>Download Changes</strong> (3 seconds)</p>
+<ul>
+<li>Only 3 chunks needed</li>
+<li>~2.4 MB download (not 204 MB!)</li>
+</ul>
+</li>
+<li>
+<p><strong>Update Complete</strong> (5 seconds total)</p>
+<ul>
+<li>99% bandwidth saved</li>
+<li>Perfect integrity verified</li>
+</ul>
+</li>
+</ol>
+<h2 id="performance-comparison"><a class="header" href="#performance-comparison">Performance Comparison</a></h2>
+<pre class="mermaid">graph LR
+    subgraph Traditional
+        T1[Download: 204 MB]
+        T2[Every Update: 204 MB]
+        T3[Bandwidth/Month: 6.1 GB]
+    end
+
+    subgraph With HERALD
+        C1[Initial: 204 MB]
+        C2[Updates: ~2 MB each]
+        C3[Bandwidth/Month: 264 MB]
+    end
+
+    style T3 stroke:#ff6b6b,stroke-width:2px
+    style C3 stroke:#51cf66,stroke-width:2px
+</pre>
+<p><strong>Savings</strong>: 96% reduction in bandwidth!</p>
+<h2 id="under-the-hood-file-structure"><a class="header" href="#under-the-hood-file-structure">Under the Hood: File Structure</a></h2>
+<p>Here’s how HERALD organizes files on disk:</p>
+<pre><code>~/.talaria/
+├── databases/
+│   ├── manifests/
+│   │   ├── uniprot_swissprot_2024-03-15.manifest
+│   │   └── ncbi_nr_2024-03-14.manifest
+│   └── chunks/
+│       ├── ab/
+│       │   └── abc123def456.chunk  # Human proteins
+│       ├── de/
+│       │   └── def789ghi012.chunk  # Mouse proteins
+│       └── ... (more chunks)
+└── cache/
+    └── indices/  # Optional index cache
+</code></pre>
+<p>Each chunk is stored in RocksDB column family with hash-based keys for efficient access.</p>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>HERALD works by:</p>
+<ol>
+<li><strong>Breaking databases into smart chunks</strong> based on biological relationships</li>
+<li><strong>Identifying each chunk uniquely</strong> with cryptographic hashes</li>
+<li><strong>Downloading only what changed</strong> during updates</li>
+<li><strong>Verifying everything</strong> with Merkle tree proofs</li>
+<li><strong>Storing efficiently</strong> with delta compression</li>
+</ol>
+<p>The result? Faster updates, less storage, perfect verification, and better science.</p>
+<p>Ready to try it yourself? Continue to <a href="./getting-started.html">Getting Started</a></p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../herald/concepts.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../herald/getting-started.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../herald/concepts.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../herald/getting-started.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../mermaid.min.js"></script>
+        <script src="../mermaid-init.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

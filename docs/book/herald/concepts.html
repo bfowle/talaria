@@ -1,0 +1,445 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Core Concepts - Talaria Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- MathJax Configuration -->
+        <script>
+        window.MathJax = {
+          tex2jax: {
+            inlineMath: [['$','$'], ['\\(','\\)']],
+            displayMath: [['$$','$$'], ['\\[','\\]']],
+            processEscapes: true,
+            processEnvironments: true
+          },
+          TeX: {
+            equationNumbers: { autoNumber: "AMS" },
+            extensions: ["AMSmath.js", "AMSsymbols.js"]
+          }
+        };
+        </script>
+        <meta name="description" content="Intelligent FASTA reduction for aligner index optimization">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../custom.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Talaria Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/bfowle/talaria" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/bfowle/talaria/edit/main/docs/src/herald/concepts.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
+<h1 id="core-herald-concepts"><a class="header" href="#core-herald-concepts">Core HERALD Concepts</a></h1>
+<p>This guide explains the fundamental concepts behind HERALD in plain language. No PhD required!</p>
+<h2 id="canonical-sequences"><a class="header" href="#canonical-sequences">Canonical Sequences</a></h2>
+<h3 id="the-problem-same-sequence-different-headers"><a class="header" href="#the-problem-same-sequence-different-headers">The Problem: Same Sequence, Different Headers</a></h3>
+<pre><code>UniProt:  &gt;sp|P0DSX6|MCEL_VARV OS=Variola virus GN=mcel
+NCBI:     &gt;gi|15618988|ref|NP_042163.1| mRNA capping enzyme
+Custom:   &gt;P0DSX6 Methyltransferase/RNA capping enzyme
+</code></pre>
+<p>All three are the SAME biological sequence with different headers!</p>
+<h3 id="heralds-solution-canonical-storage"><a class="header" href="#heralds-solution-canonical-storage">HERALD’s Solution: Canonical Storage</a></h3>
+<pre><code>Sequence: MSKGEELFTGVVPILVELDGDVNGH...
+Hash: SHA256(sequence only) = abc123...
+
+Stored once as: abc123.seq
+With representations:
+  - UniProt header
+  - NCBI header
+  - Custom header
+</code></pre>
+<p><strong>Key Innovation</strong>: Separate identity (the sequence) from representation (headers/metadata)</p>
+<h2 id="content-addressing"><a class="header" href="#content-addressing">Content Addressing</a></h2>
+<h3 id="traditional-approach-names-point-to-data"><a class="header" href="#traditional-approach-names-point-to-data">Traditional Approach: Names Point to Data</a></h3>
+<pre><code>database_v1.fasta → [data that can change]
+database_v2.fasta → [completely different data]
+</code></pre>
+<p>Problems:</p>
+<ul>
+<li>Same name might have different content</li>
+<li>No way to verify if data is correct</li>
+<li>Must trust the source completely</li>
+</ul>
+<h3 id="herald-approach-content-defines-the-name"><a class="header" href="#herald-approach-content-defines-the-name">HERALD Approach: Content Defines the Name</a></h3>
+<pre><code>SHA256(sequence) = abc123... → [sequence that never changes]
+</code></pre>
+<p>Benefits:</p>
+<ul>
+<li>Sequence content creates its own unique ID</li>
+<li>Any change creates a new ID</li>
+<li>Can verify data independently</li>
+<li><strong>Perfect cross-database deduplication</strong></li>
+</ul>
+<p><strong>Simple Analogy</strong>: It’s like using DNA fingerprints - the same person has the same DNA regardless of what name they use.</p>
+<h2 id="chunk-manifests"><a class="header" href="#chunk-manifests">Chunk Manifests</a></h2>
+<p>Instead of storing sequences in chunks, HERALD uses <strong>chunk manifests</strong> that reference canonical sequences.</p>
+<h3 id="old-way-chunks-contain-sequences"><a class="header" href="#old-way-chunks-contain-sequences">Old Way: Chunks Contain Sequences</a></h3>
+<pre><code>Chunk 1: [Seq A, Seq B, Seq C] - 100 MB
+Chunk 2: [Seq A, Seq D, Seq E] - 120 MB
+// Seq A stored twice!
+</code></pre>
+<h3 id="new-way-manifests-reference-sequences"><a class="header" href="#new-way-manifests-reference-sequences">New Way: Manifests Reference Sequences</a></h3>
+<pre><code>Canonical Storage:
+  Seq A: hash_A (stored once)
+  Seq B: hash_B
+  Seq C: hash_C
+  Seq D: hash_D
+  Seq E: hash_E
+
+Manifest 1: [hash_A, hash_B, hash_C] - 1 KB
+Manifest 2: [hash_A, hash_D, hash_E] - 1 KB
+// Seq A referenced twice, stored once!
+</code></pre>
+<h3 id="why-chunk-manifests"><a class="header" href="#why-chunk-manifests">Why Chunk Manifests?</a></h3>
+<ul>
+<li><strong>True Deduplication</strong>: Each sequence stored exactly once</li>
+<li><strong>Efficient Updates</strong>: Only download new sequences</li>
+<li><strong>Cross-Database Sharing</strong>: Same sequences referenced by multiple databases</li>
+<li><strong>Tiny Manifests</strong>: KB instead of MB/GB</li>
+<li><strong>Parallel Processing</strong>: Work on multiple manifests simultaneously</li>
+<li><strong>Better Caching</strong>: Keep frequently used sequences in memory</li>
+<li><strong>Fault Tolerance</strong>: One corrupted manifest doesn’t affect others</li>
+</ul>
+<pre class="mermaid">graph LR
+    DB[Giant Database&lt;br/&gt;500 GB] --&gt; C1[Chunk 1&lt;br/&gt;Human&lt;br/&gt;100 MB]
+    DB --&gt; C2[Chunk 2&lt;br/&gt;Mouse&lt;br/&gt;150 MB]
+    DB --&gt; C3[Chunk 3&lt;br/&gt;E.coli&lt;br/&gt;50 MB]
+    DB --&gt; C4[... more chunks]
+
+    style DB stroke:#ff6b6b,stroke-width:2px
+    style C1 stroke:#4ecdc4,stroke-width:2px
+    style C2 stroke:#4ecdc4,stroke-width:2px
+    style C3 stroke:#4ecdc4,stroke-width:2px
+</pre>
+<h2 id="manifests"><a class="header" href="#manifests">Manifests</a></h2>
+<p>A manifest is like a recipe or blueprint that tells HERALD how to reconstruct a complete database from chunks.</p>
+<h3 id="whats-in-a-manifest"><a class="header" href="#whats-in-a-manifest">What’s in a Manifest?</a></h3>
+<pre><code class="language-yaml">database: uniprot_swissprot
+version: 2024-03-15
+total_sequences: 571282
+chunks:
+  - hash: abc123def456...
+    taxon: 9606  # Human
+    size: 104857600
+  - hash: 789ghi012jkl...
+    taxon: 10090  # Mouse
+    size: 157286400
+</code></pre>
+<h3 id="manifest-benefits"><a class="header" href="#manifest-benefits">Manifest Benefits</a></h3>
+<ul>
+<li><strong>Version Tracking</strong>: Know exactly what’s in each version</li>
+<li><strong>Quick Updates</strong>: Compare manifests to find changes</li>
+<li><strong>Verification</strong>: Confirm all chunks are present and correct</li>
+<li><strong>Reproducibility</strong>: Recreate exact database state anytime</li>
+</ul>
+<h2 id="merkle-trees"><a class="header" href="#merkle-trees">Merkle Trees</a></h2>
+<p>Merkle trees provide cryptographic proof that data is correct without checking every single piece.</p>
+<h3 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h3>
+<pre class="mermaid">graph TD
+    Root[Root Hash&lt;br/&gt;Proves Everything]
+    L1[Left Branch&lt;br/&gt;Hash]
+    L2[Right Branch&lt;br/&gt;Hash]
+    C1[Chunk 1]
+    C2[Chunk 2]
+    C3[Chunk 3]
+    C4[Chunk 4]
+
+    Root --&gt; L1
+    Root --&gt; L2
+    L1 --&gt; C1
+    L1 --&gt; C2
+    L2 --&gt; C3
+    L2 --&gt; C4
+
+    style Root stroke:#ff6b6b,stroke-width:3px
+    style L1 stroke:#4ecdc4,stroke-width:2px
+    style L2 stroke:#4ecdc4,stroke-width:2px
+</pre>
+<p><strong>Benefits</strong>:</p>
+<ul>
+<li>Verify any chunk belongs to the database</li>
+<li>Detect tampering immediately</li>
+<li>Prove database integrity with just the root hash</li>
+</ul>
+<h2 id="bi-temporal-versioning"><a class="header" href="#bi-temporal-versioning">Bi-Temporal Versioning</a></h2>
+<p>Biological databases change in two independent ways:</p>
+<h3 id="1-sequence-time"><a class="header" href="#1-sequence-time">1. Sequence Time</a></h3>
+<p>When new sequences are added or existing ones updated:</p>
+<ul>
+<li>New protein discovered</li>
+<li>Sequence correction</li>
+<li>Additional annotations</li>
+</ul>
+<h3 id="2-taxonomy-time"><a class="header" href="#2-taxonomy-time">2. Taxonomy Time</a></h3>
+<p>When our understanding of relationships changes:</p>
+<ul>
+<li>Species reclassification</li>
+<li>New evolutionary insights</li>
+<li>Taxonomic corrections</li>
+</ul>
+<h3 id="why-it-matters"><a class="header" href="#why-it-matters">Why It Matters</a></h3>
+<pre class="mermaid">graph LR
+    S1[Sequences&lt;br/&gt;Jan 2024] --&gt; S2[Sequences&lt;br/&gt;Feb 2024]
+    T1[Taxonomy&lt;br/&gt;v2024.1] --&gt; T2[Taxonomy&lt;br/&gt;v2024.2]
+
+    S1 -.-&gt; T1
+    S1 -.-&gt; T2
+    S2 -.-&gt; T1
+    S2 -.-&gt; T2
+
+    style S1 stroke:#4ecdc4,stroke-width:2px
+    style S2 stroke:#4ecdc4,stroke-width:2px
+    style T1 stroke:#95e1d3,stroke-width:2px
+    style T2 stroke:#95e1d3,stroke-width:2px
+</pre>
+<p>You can:</p>
+<ul>
+<li>Use January sequences with February taxonomy</li>
+<li>Apply current taxonomy to historical sequences</li>
+<li>Track how classifications changed over time</li>
+</ul>
+<h2 id="delta-compression"><a class="header" href="#delta-compression">Delta Compression</a></h2>
+<p>Instead of storing similar sequences multiple times, HERALD stores one reference and the differences (deltas) for similar sequences.</p>
+<h3 id="example"><a class="header" href="#example">Example</a></h3>
+<pre><code>Reference: MKTAYIAKQRQISFVKSHFSRQ...  (Human insulin)
+Delta 1:   ----------E---------...     (Mouse: position 11 K→E)
+Delta 2:   ---S----------------...     (Rat: position 4 T→S)
+</code></pre>
+<p><strong>Storage Savings</strong>:</p>
+<ul>
+<li>Full storage: 3 complete sequences</li>
+<li>Delta storage: 1 sequence + 2 small changes</li>
+<li>Savings: ~70% for similar sequences</li>
+</ul>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>These concepts work together to create a storage system that’s:</p>
+<ul>
+<li><strong>Efficient</strong>: Minimal storage and bandwidth usage</li>
+<li><strong>Verifiable</strong>: Cryptographic proof of correctness</li>
+<li><strong>Flexible</strong>: Handle updates and versions elegantly</li>
+<li><strong>Scientific</strong>: Designed for biological data patterns</li>
+</ul>
+<p>Ready to see these concepts in action? Continue to <a href="./how-it-works.html">How HERALD Works</a></p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../herald/introduction.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../herald/how-it-works.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../herald/introduction.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../herald/how-it-works.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../mermaid.min.js"></script>
+        <script src="../mermaid-init.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

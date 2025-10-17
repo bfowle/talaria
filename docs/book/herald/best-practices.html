@@ -1,0 +1,543 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Best Practices - Talaria Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- MathJax Configuration -->
+        <script>
+        window.MathJax = {
+          tex2jax: {
+            inlineMath: [['$','$'], ['\\(','\\)']],
+            displayMath: [['$$','$$'], ['\\[','\\]']],
+            processEscapes: true,
+            processEnvironments: true
+          },
+          TeX: {
+            equationNumbers: { autoNumber: "AMS" },
+            extensions: ["AMSmath.js", "AMSsymbols.js"]
+          }
+        };
+        </script>
+        <meta name="description" content="Intelligent FASTA reduction for aligner index optimization">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../custom.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Talaria Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/bfowle/talaria" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/bfowle/talaria/edit/main/docs/src/herald/best-practices.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
+<h1 id="herald-best-practices"><a class="header" href="#herald-best-practices">HERALD Best Practices</a></h1>
+<p>This guide provides proven practices for getting the most out of HERALD in production environments.</p>
+<h2 id="storage-management"><a class="header" href="#storage-management">Storage Management</a></h2>
+<h3 id="choose-the-right-storage-location"><a class="header" href="#choose-the-right-storage-location">Choose the Right Storage Location</a></h3>
+<p><strong>DO:</strong> Use fast local storage for HERALD chunks</p>
+<pre><code class="language-bash"># Good: Fast NVMe storage
+export TALARIA_HOME=/nvme/talaria
+
+# Okay: Regular SSD
+export TALARIA_HOME=/home/user/.talaria
+
+# Avoid: Network storage for chunks (high latency)
+export TALARIA_HOME=/nfs/shared/talaria
+</code></pre>
+<p><strong>Exception:</strong> Network storage is fine for shared read-only access after initial download.</p>
+<h3 id="optimize-chunk-cache"><a class="header" href="#optimize-chunk-cache">Optimize Chunk Cache</a></h3>
+<p>For frequently accessed databases, keep chunks in memory:</p>
+<pre><code class="language-bash"># Prewarm cache for better performance
+talaria database cache uniprot/swissprot --prewarm
+
+# Configure cache size (default: 2GB)
+export TALARIA_CACHE_SIZE=8G
+</code></pre>
+<h3 id="regular-maintenance"><a class="header" href="#regular-maintenance">Regular Maintenance</a></h3>
+<pre><code class="language-bash"># Weekly: Verify integrity
+talaria database verify --all
+
+# Monthly: Clean old versions
+talaria database clean --keep-latest 3
+
+# Quarterly: Defragment chunk storage
+talaria herald defrag
+</code></pre>
+<h2 id="update-strategies"><a class="header" href="#update-strategies">Update Strategies</a></h2>
+<h3 id="automatic-updates"><a class="header" href="#automatic-updates">Automatic Updates</a></h3>
+<p>Set up automated updates for critical databases:</p>
+<pre><code class="language-bash">#!/bin/bash
+# /etc/cron.daily/talaria-update
+
+databases=(
+    "uniprot/swissprot"
+    "uniprot/trembl"
+    "ncbi/nr"
+)
+
+for db in "${databases[@]}"; do
+    talaria database update "$db" --quiet
+    if [ $? -eq 0 ]; then
+        logger "Talaria: Updated $db successfully"
+    else
+        logger "Talaria: Failed to update $db"
+    fi
+done
+</code></pre>
+<h3 id="staged-updates"><a class="header" href="#staged-updates">Staged Updates</a></h3>
+<p>For production systems, use staged updates:</p>
+<pre><code class="language-bash"># 1. Download to staging
+export TALARIA_HOME=/staging/talaria
+talaria database download uniprot/swissprot
+
+# 2. Verify in staging
+talaria database verify uniprot/swissprot
+./run_tests.sh
+
+# 3. Sync to production
+rsync -av /staging/talaria/ /production/talaria/
+</code></pre>
+<h3 id="network-optimization"><a class="header" href="#network-optimization">Network Optimization</a></h3>
+<p>For slow connections, use parallel downloads:</p>
+<pre><code class="language-bash"># Increase parallel chunk downloads (default: 4)
+export TALARIA_PARALLEL_DOWNLOADS=8
+
+# Use compression for transfers
+export TALARIA_COMPRESS_TRANSFER=true
+
+# Resume interrupted downloads
+talaria database download uniprot/swissprot --resume
+</code></pre>
+<h2 id="team-collaboration"><a class="header" href="#team-collaboration">Team Collaboration</a></h2>
+<h3 id="shared-herald-repository"><a class="header" href="#shared-herald-repository">Shared HERALD Repository</a></h3>
+<p>Set up a central HERALD repository for your team:</p>
+<pre><code class="language-bash"># On central server
+mkdir -p /shared/talaria/{databases,cache}
+chmod 755 /shared/talaria
+chmod 775 /shared/talaria/databases  # Allow team writes
+
+# Download databases as team lead
+export TALARIA_HOME=/shared/talaria
+talaria database download uniprot/swissprot
+
+# On team machines (read-only)
+export TALARIA_HOME=/shared/talaria
+export TALARIA_READONLY=true
+</code></pre>
+<h3 id="distributed-team-setup"><a class="header" href="#distributed-team-setup">Distributed Team Setup</a></h3>
+<p>For geographically distributed teams:</p>
+<pre class="mermaid">graph TD
+    Main[Main HERALD Server&lt;br/&gt;US-East]
+
+    Mirror1[Mirror 1&lt;br/&gt;EU-West]
+    Mirror2[Mirror 2&lt;br/&gt;Asia-Pacific]
+
+    Team1[Team US]
+    Team2[Team EU]
+    Team3[Team Asia]
+
+    Main --&gt;|Sync| Mirror1
+    Main --&gt;|Sync| Mirror2
+
+    Team1 --&gt;|Local Access| Main
+    Team2 --&gt;|Local Access| Mirror1
+    Team3 --&gt;|Local Access| Mirror2
+
+    style Main stroke:#ff6b6b,stroke-width:3px
+    style Mirror1 stroke:#4ecdc4,stroke-width:2px
+    style Mirror2 stroke:#4ecdc4,stroke-width:2px
+</pre>
+<pre><code class="language-bash"># Set up mirror sync (on mirror servers)
+*/6 * * * rsync -av main-server:/shared/talaria/ /local/talaria/
+</code></pre>
+<h2 id="performance-optimization"><a class="header" href="#performance-optimization">Performance Optimization</a></h2>
+<h3 id="database-specific-settings"><a class="header" href="#database-specific-settings">Database-Specific Settings</a></h3>
+<p>Different databases benefit from different configurations:</p>
+<pre><code class="language-bash"># For large databases (NCBI nr)
+export TALARIA_CHUNK_SIZE=500M
+export TALARIA_PARALLEL_DOWNLOADS=16
+export TALARIA_CACHE_SIZE=16G
+
+# For small databases (SwissProt)
+export TALARIA_CHUNK_SIZE=100M
+export TALARIA_PARALLEL_DOWNLOADS=4
+export TALARIA_CACHE_SIZE=2G
+</code></pre>
+<h3 id="memory-management"><a class="header" href="#memory-management">Memory Management</a></h3>
+<pre><code class="language-bash"># Monitor memory usage
+talaria herald stats --memory
+
+# Limit memory usage
+export TALARIA_MAX_MEMORY=32G
+
+# Use memory-mapped I/O for large operations
+export TALARIA_USE_MMAP=true
+</code></pre>
+<h3 id="io-optimization"><a class="header" href="#io-optimization">I/O Optimization</a></h3>
+<pre><code class="language-bash"># Increase read-ahead for sequential access
+echo 4096 &gt; /sys/block/nvme0n1/queue/read_ahead_kb
+
+# Use direct I/O to bypass page cache
+export TALARIA_DIRECT_IO=true
+
+# Tune for SSD
+export TALARIA_SSD_MODE=true
+</code></pre>
+<h2 id="reproducibility"><a class="header" href="#reproducibility">Reproducibility</a></h2>
+<h3 id="version-pinning"><a class="header" href="#version-pinning">Version Pinning</a></h3>
+<p>Always pin versions for reproducible research:</p>
+<pre><code class="language-bash"># Specify exact version
+talaria database download uniprot/swissprot --version 2024-03-15
+
+# Record version used
+talaria database status uniprot/swissprot &gt; experiment_database_version.txt
+
+# Include in publication methods
+echo "Database: UniProt SwissProt version 2024-03-15 (SHA: 5a9b3c...)"
+</code></pre>
+<h3 id="manifest-archiving"><a class="header" href="#manifest-archiving">Manifest Archiving</a></h3>
+<p>Archive manifests with your results:</p>
+<pre><code class="language-bash"># Save manifest with results
+cp ~/.talaria/databases/manifests/uniprot_swissprot_2024-03-15.manifest \
+   results/database_manifest.json
+
+# Recreate exact database state later
+talaria database restore --manifest results/database_manifest.json
+</code></pre>
+<h2 id="security-considerations"><a class="header" href="#security-considerations">Security Considerations</a></h2>
+<h3 id="verify-database-integrity"><a class="header" href="#verify-database-integrity">Verify Database Integrity</a></h3>
+<p>Always verify databases from untrusted sources:</p>
+<pre><code class="language-bash"># Verify against known good hash
+expected_hash="5a9b3c8f2d1a7e6b4c9d3f8a2b7e1c9d"
+actual_hash=$(talaria database hash uniprot/swissprot)
+
+if [ "$actual_hash" != "$expected_hash" ]; then
+    echo "WARNING: Database hash mismatch!"
+    exit 1
+fi
+</code></pre>
+<h3 id="access-control"><a class="header" href="#access-control">Access Control</a></h3>
+<p>Implement proper access controls:</p>
+<pre><code class="language-bash"># Read-only for most users
+chmod 755 ~/.talaria/databases/chunks
+chmod 644 ~/.talaria/databases/chunks/*
+
+# Write access only for updater service
+chown updater:talaria ~/.talaria/databases/manifests
+chmod 775 ~/.talaria/databases/manifests
+</code></pre>
+<h2 id="monitoring"><a class="header" href="#monitoring">Monitoring</a></h2>
+<h3 id="health-checks"><a class="header" href="#health-checks">Health Checks</a></h3>
+<p>Implement monitoring for production systems:</p>
+<pre><code class="language-bash">#!/bin/bash
+# health_check.sh
+
+# Check HERALD accessibility
+if ! talaria herald status &amp;&gt;/dev/null; then
+    alert "HERALD unavailable"
+    exit 1
+fi
+
+# Check database freshness
+for db in uniprot/swissprot ncbi/nr; do
+    age=$(talaria database age "$db")
+    if [ "$age" -gt 7 ]; then
+        alert "Database $db is $age days old"
+    fi
+done
+
+# Check storage usage
+usage=$(df -h ~/.talaria | awk 'NR==2 {print $5}' | sed 's/%//')
+if [ "$usage" -gt 90 ]; then
+    alert "HERALD storage at ${usage}%"
+fi
+</code></pre>
+<h3 id="performance-metrics"><a class="header" href="#performance-metrics">Performance Metrics</a></h3>
+<p>Track key metrics:</p>
+<pre><code class="language-bash"># Log download performance
+time talaria database update uniprot/swissprot 2&gt;&amp;1 | \
+    tee -a /var/log/talaria_performance.log
+
+# Monitor chunk cache hit rate
+talaria herald stats --cache
+
+# Track bandwidth usage
+vnstat -i eth0 -h
+</code></pre>
+<h2 id="disaster-recovery"><a class="header" href="#disaster-recovery">Disaster Recovery</a></h2>
+<h3 id="backup-strategy"><a class="header" href="#backup-strategy">Backup Strategy</a></h3>
+<pre><code class="language-bash"># Daily: Backup manifests (small, critical)
+tar -czf manifests_$(date +%Y%m%d).tar.gz \
+    ~/.talaria/databases/manifests/
+
+# Weekly: Backup chunk index
+talaria herald export --index-only &gt; \
+    chunk_index_$(date +%Y%m%d).json
+
+# Monthly: Full backup (if feasible)
+rsync -av ~/.talaria/databases/ \
+    /backup/talaria/databases/
+</code></pre>
+<h3 id="recovery-procedures"><a class="header" href="#recovery-procedures">Recovery Procedures</a></h3>
+<pre><code class="language-bash"># Recover from manifest backup
+tar -xzf manifests_20240315.tar.gz -C ~/.talaria/databases/
+
+# Re-download missing chunks
+talaria database repair --auto-download
+
+# Verify recovery
+talaria database verify --all
+</code></pre>
+<h2 id="common-pitfalls-to-avoid"><a class="header" href="#common-pitfalls-to-avoid">Common Pitfalls to Avoid</a></h2>
+<h3 id="-dont-mix-talaria_home-environments"><a class="header" href="#-dont-mix-talaria_home-environments">❌ DON’T: Mix TALARIA_HOME environments</a></h3>
+<pre><code class="language-bash"># BAD: Inconsistent environments
+TALARIA_HOME=/path1 talaria database download uniprot/swissprot
+TALARIA_HOME=/path2 talaria reduce ...  # Won't find database!
+</code></pre>
+<h3 id="-dont-ignore-verification-failures"><a class="header" href="#-dont-ignore-verification-failures">❌ DON’T: Ignore verification failures</a></h3>
+<pre><code class="language-bash"># BAD: Continuing after verification failure
+talaria database verify uniprot/swissprot || echo "Whatever, continuing..."
+</code></pre>
+<h3 id="-dont-manually-modify-chunk-files"><a class="header" href="#-dont-manually-modify-chunk-files">❌ DON’T: Manually modify chunk files</a></h3>
+<pre><code class="language-bash"># BAD: Manual chunk manipulation
+cd ~/.talaria/databases/chunks
+rm *.chunk  # Breaks everything!
+</code></pre>
+<h3 id="-do-use-herald-commands-for-all-operations"><a class="header" href="#-do-use-herald-commands-for-all-operations">✓ DO: Use HERALD commands for all operations</a></h3>
+<pre><code class="language-bash"># GOOD: Use provided tools
+talaria database list
+talaria database verify
+talaria database update uniprot/swissprot
+</code></pre>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>Following these best practices ensures:</p>
+<ul>
+<li><strong>Reliability</strong>: Verified, consistent database states</li>
+<li><strong>Performance</strong>: Optimal speed for your hardware</li>
+<li><strong>Collaboration</strong>: Efficient team-wide database sharing</li>
+<li><strong>Reproducibility</strong>: Perfect recreation of analysis conditions</li>
+<li><strong>Maintainability</strong>: Easy troubleshooting and recovery</li>
+</ul>
+<p>For performance benchmarks and metrics, see <a href="./performance.html">Performance Metrics</a></p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../herald/example-workflow.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../herald/performance.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../herald/example-workflow.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../herald/performance.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../mermaid.min.js"></script>
+        <script src="../mermaid-init.js"></script>
+
+
+
+    </div>
+    </body>
+</html>

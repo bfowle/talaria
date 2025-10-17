@@ -605,47 +605,50 @@ impl TaxonomyManager {
 
     /// Load version history from TaxonomyEvolution storage
     fn load_version_history(&mut self) -> Result<()> {
-        // Try to load from RocksDB first
-        use rocksdb::{Options, DB};
+        // Try to load from RocksDB first (if feature is enabled)
+        #[cfg(feature = "rocksdb-backend")]
+        {
+            use rocksdb::{Options, DB};
 
-        let evolution_db_path = self.base_path.join("evolution.db");
-        if evolution_db_path.exists() {
-            let mut opts = Options::default();
-            opts.create_if_missing(false);
+            let evolution_db_path = self.base_path.join("evolution.db");
+            if evolution_db_path.exists() {
+                let mut opts = Options::default();
+                opts.create_if_missing(false);
 
-            if let Ok(db) = DB::open_for_read_only(&opts, &evolution_db_path, false) {
-                // Load version history from RocksDB
-                let mut versions = Vec::new();
+                if let Ok(db) = DB::open_for_read_only(&opts, &evolution_db_path, false) {
+                    // Load version history from RocksDB
+                    let mut versions = Vec::new();
 
-                // Iterate through all keys with "version:" prefix
-                let prefix = b"version:";
-                let iter = db.iterator(rocksdb::IteratorMode::From(
-                    prefix,
-                    rocksdb::Direction::Forward,
-                ));
+                    // Iterate through all keys with "version:" prefix
+                    let prefix = b"version:";
+                    let iter = db.iterator(rocksdb::IteratorMode::From(
+                        prefix,
+                        rocksdb::Direction::Forward,
+                    ));
 
-                for item in iter {
-                    if let Ok((key, value)) = item {
-                        if !key.starts_with(prefix) {
-                            break; // We've moved past version keys
-                        }
+                    for item in iter {
+                        if let Ok((key, value)) = item {
+                            if !key.starts_with(prefix) {
+                                break; // We've moved past version keys
+                            }
 
-                        // Deserialize the version data
-                        if let Ok(version) = bincode::deserialize::<TaxonomyVersion>(&value) {
-                            versions.push(version);
-                        } else if let Ok(version) =
-                            serde_json::from_slice::<TaxonomyVersion>(&value)
-                        {
-                            versions.push(version);
+                            // Deserialize the version data
+                            if let Ok(version) = bincode::deserialize::<TaxonomyVersion>(&value) {
+                                versions.push(version);
+                            } else if let Ok(version) =
+                                serde_json::from_slice::<TaxonomyVersion>(&value)
+                            {
+                                versions.push(version);
+                            }
                         }
                     }
+
+                    // Sort by date
+                    versions.sort_by(|a, b| a.date.cmp(&b.date));
+                    self.version_history = versions;
+
+                    return Ok(());
                 }
-
-                // Sort by date
-                versions.sort_by(|a, b| a.date.cmp(&b.date));
-                self.version_history = versions;
-
-                return Ok(());
             }
         }
 
@@ -766,35 +769,47 @@ impl TaxonomyManager {
         old_version: &str,
         new_version: &str,
     ) -> Result<TaxonomyChanges> {
-        // Try to load from RocksDB using version store
-        let version_store_path = self.base_path.join("version_store.db");
-        if !version_store_path.exists() {
-            return Ok(TaxonomyChanges::default());
-        }
+        // Try to load from RocksDB using version store (if feature is enabled)
+        #[cfg(feature = "rocksdb-backend")]
+        {
+            let version_store_path = self.base_path.join("version_store.db");
+            if version_store_path.exists() {
+                // Access RocksDB directly to retrieve stored changes
+                use rocksdb::{Options, DB};
+                let mut opts = Options::default();
+                opts.create_if_missing(false);
 
-        // Access RocksDB directly to retrieve stored changes
-        use rocksdb::{Options, DB};
-        let mut opts = Options::default();
-        opts.create_if_missing(false);
-
-        match DB::open_for_read_only(&opts, &version_store_path, false) {
-            Ok(db) => {
-                // Try to find cached changes between these versions
-                let change_key = format!("changes:{}:{}", old_version, new_version);
-                match db.get(change_key.as_bytes()) {
-                    Ok(Some(data)) => {
-                        // Deserialize the changes
-                        Ok(bincode::deserialize(&data)
-                            .or_else(|_| serde_json::from_slice(&data))
-                            .unwrap_or_else(|_| TaxonomyChanges::default()))
+                match DB::open_for_read_only(&opts, &version_store_path, false) {
+                    Ok(db) => {
+                        // Try to find cached changes between these versions
+                        let change_key = format!("changes:{}:{}", old_version, new_version);
+                        match db.get(change_key.as_bytes()) {
+                            Ok(Some(data)) => {
+                                // Deserialize the changes
+                                return Ok(bincode::deserialize(&data)
+                                    .or_else(|_| serde_json::from_slice(&data))
+                                    .unwrap_or_else(|_| TaxonomyChanges::default()));
+                            }
+                            _ => {
+                                // No cached changes, compute them if possible
+                                return self.compute_changes_from_trees(old_version, new_version);
+                            }
+                        }
                     }
-                    _ => {
-                        // No cached changes, compute them if possible
-                        self.compute_changes_from_trees(old_version, new_version)
-                    }
+                    Err(_) => {}
                 }
             }
-            Err(_) => Ok(TaxonomyChanges::default()),
+        }
+
+        // Fallback: Return default or compute from trees
+        #[cfg(not(feature = "rocksdb-backend"))]
+        {
+            self.compute_changes_from_trees(old_version, new_version)
+                .or_else(|_| Ok(TaxonomyChanges::default()))
+        }
+        #[cfg(feature = "rocksdb-backend")]
+        {
+            Ok(TaxonomyChanges::default())
         }
     }
 
@@ -858,6 +873,7 @@ impl TaxonomyManager {
     }
 
     /// Compute changes by comparing taxonomy trees directly
+    #[cfg(feature = "rocksdb-backend")]
     fn compute_changes_from_trees(
         &self,
         old_version: &str,
@@ -958,6 +974,16 @@ impl TaxonomyManager {
         }
 
         Ok(changes)
+    }
+
+    /// Stub for when rocksdb-backend is not enabled
+    #[cfg(not(feature = "rocksdb-backend"))]
+    fn compute_changes_from_trees(
+        &self,
+        _old_version: &str,
+        _new_version: &str,
+    ) -> Result<TaxonomyChanges> {
+        Err(anyhow::anyhow!("Taxonomy tree comparison requires rocksdb-backend feature"))
     }
 }
 

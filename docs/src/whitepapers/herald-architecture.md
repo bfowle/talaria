@@ -6,7 +6,7 @@
 
 **Methods:** We present HERALD (Hierarchical Evolutionary Repository with Adaptive Lineage Deltas), a content-addressed storage system that fundamentally reimagines biological database management. HERALD stores each unique sequence only once using SHA-256 content addressing, tracks versions through lightweight manifests rather than full copies, and implements reference-based delta compression for both storage and aligner optimization. By identifying similar sequences and encoding children as deltas from reference sequences, HERALD creates compressed indices containing only the 10% unique references while maintaining full search sensitivity through on-demand reconstruction.
 
-**Results:** HERALD delivers transformative improvements across the entire data lifecycle. For distribution, incremental synchronization downloads only changed sequences (5GB vs 500GB weekly, 99% bandwidth reduction). For storage, content-addressed deduplication stores canonical sequences once across all versions and databases (26TB/year $\rightarrow$ 1.5TB/year for weekly snapshots). For computation, aligner indices compress 40-90% depending on database diversity: highly redundant databases (bacterial genomes) achieve 90% compression (BLAST: 2.4TB $\rightarrow$ 240GB), while diverse databases (RefSeq) achieve 40-60% compression (2.4TB $\rightarrow$ 800GB-1TB). Even with moderate compression, indices fit in RAM, yielding 2-12x faster searches and reducing hardware requirements from $50K HPC clusters to $5-25K workstations.
+**Results:** HERALD delivers transformative improvements across the entire data lifecycle. For distribution, incremental synchronization downloads only changed sequences (5GB vs 500GB weekly, 99% bandwidth reduction). For storage, content-addressed deduplication stores canonical sequences once across all versions and databases (26TB/year $\rightarrow$ 1.5TB/year for weekly snapshots). For computation, aligner indices compress 40-90% depending on database diversity: highly redundant databases (bacterial genomes) achieve 90% compression (BLAST: 2.4TB $\rightarrow$ 240GB), while diverse databases (RefSeq) achieve 40-60% compression (2.4TB $\rightarrow$ 800GB-1TB). Even with moderate compression, indices fit in RAM, yielding 2-12x faster searches and reducing hardware requirements from \$50K HPC clusters to \$5-25K workstations.
 
 **Conclusions:** By treating biological sequences as content-addressed objects with evolutionary relationships, HERALD solves three fundamental problems: inefficient distribution through repeated full downloads, storage explosion from version duplication, and computational bottlenecks from oversized indices. This unified approach transforms biological database infrastructure, enabling daily snapshots, perfect reproducibility through cryptographic verification, and democratized access to large-scale sequence analysis.
 
@@ -22,7 +22,7 @@ Current databases such as UniProt (570K curated sequences)^[8]^, NCBI nr (480M s
 
 **The Storage Crisis:** Maintaining reproducible research requires storing multiple database versions, each consuming hundreds of gigabytes. A laboratory keeping one year of weekly NCBI nr snapshots needs 26TB of storage for what amounts to perhaps 10% unique data. Storage systems struggle under this load, backup solutions fail, and costs become prohibitive for smaller institutions^[24,25]^.
 
-**The Computation Crisis:** Sequence alignment requires specialized indices that are 2-5x larger than the databases themselves. BLAST indices for NCBI nr consume 2.4TB, Lambda needs 800GB, Diamond requires 1.2TB. Building these indices takes 6-12 hours on high-end servers, must be completely redone after each update, and requires $40,000-80,000 computing infrastructure that most laboratories cannot afford. The indices contain 90% redundant sequences, yet no mechanism exists to share indices between institutions or verify their correspondence to specific database versions^[26]^.
+**The Computation Crisis:** Sequence alignment requires specialized indices that are 2-5x larger than the databases themselves. BLAST indices for NCBI nr consume 2.4TB, Lambda needs 800GB, Diamond requires 1.2TB. Building these indices takes 6-12 hours on high-end servers, must be completely redone after each update, and requires \$40,000-80,000 computing infrastructure that most laboratories cannot afford. The indices contain 90% redundant sequences, yet no mechanism exists to share indices between institutions or verify their correspondence to specific database versions^[26]^.
 
 These technical challenges translate to real-world impacts: delayed publications when reviewers cannot reproduce results, failed clinical diagnostics when database versions change mid-analysis, and entire research programs stalled waiting for computational resources. During disease outbreaks, these delays become critical: when a new SARS-CoV-2 variant is sequenced and added to NCBI, researchers must wait another week for download and index rebuilding before they can analyze it—delays that impede vaccine development, diagnostic design, and epidemiological tracking during a rapidly evolving pandemic. The situation is particularly acute for institutions in developing countries, smaller laboratories, and clinical settings where regulatory compliance demands perfect reproducibility.
 
@@ -34,7 +34,7 @@ The primary contributions of this work are:
 
 - **40-90% reduction in aligner index sizes** through reference-based compression (90% for redundant databases, 40-60% for diverse databases like RefSeq), enabling indices to fit in RAM
 - **2-12x faster index builds and searches** depending on database diversity, while maintaining full sensitivity through on-demand reconstruction
-- **Democratization of large-scale alignment** reducing hardware requirements from $50K HPC clusters to $5K workstations
+- **Democratization of large-scale alignment** reducing hardware requirements from \$50K HPC clusters to \$5K workstations
 - A content-addressed storage model that deduplicates identical sequences across all databases and versions
 - A Merkle DAG structure enabling incremental synchronization—downloading only changed chunks
 - Versioned, shareable aligner indices cryptographically tied to database states for perfect reproducibility
@@ -487,14 +487,14 @@ Traditional alignment of NCBI nr requires:
 - 2-3 TB SSD storage for database and indices
 - 256-512 GB RAM for efficient caching
 - 32-64 CPU cores for reasonable throughput
-- Total cost: $40,000-80,000 per server
+- Total cost: \$40,000-80,000 per server
 
 With HERALD's compressed indices:
 
 - 240 GB SSD storage (fits on laptop)
 - 32-64 GB RAM (entire index in memory)
 - 8-16 CPU cores sufficient
-- Total cost: $3,000-5,000 per workstation
+- Total cost: \$3,000-5,000 per workstation
 
 This 10-15x cost reduction democratizes large-scale sequence analysis, enabling smaller laboratories to perform analyses previously requiring institutional computing clusters.
 
@@ -679,7 +679,7 @@ Implementation: Integrate with regulatory APIs, automated compliance reports, cr
 
 We presented HERALD, a content-addressed storage system that fundamentally transforms sequence alignment from a high-performance computing challenge to a workstation-scale task. By leveraging reference-based delta compression, HERALD reduces aligner indices by 90%, enabling BLAST, Lambda, Diamond, and MMseqs2 to run 8-12x faster on hardware costing 10-15x less than traditional HPC infrastructure.
 
-The key insight is that the vast redundancy in biological sequences—where 90% are minor variants of core references—can be exploited for both compression and computational optimization. By indexing only reference sequences and reconstructing children on-demand, HERALD maintains full search sensitivity while dramatically reducing computational requirements. This democratizes large-scale sequence analysis, enabling any laboratory with a $5,000 workstation to perform analyses previously requiring $50,000+ HPC clusters.
+The key insight is that the vast redundancy in biological sequences—where 90% are minor variants of core references—can be exploited for both compression and computational optimization. By indexing only reference sequences and reconstructing children on-demand, HERALD maintains full search sensitivity while dramatically reducing computational requirements. This democratizes large-scale sequence analysis, enabling any laboratory with a \$5,000 workstation to perform analyses previously requiring \$50,000+ HPC clusters.
 
 Beyond performance, HERALD's content-addressed architecture enables perfect reproducibility through cryptographic verification, efficient incremental updates reducing bandwidth by 99%, and P2P distribution where institutions share both data chunks and pre-built indices. The combination of these features addresses the three critical challenges of modern sequence analysis: computational cost, reproducibility, and data distribution efficiency.
 

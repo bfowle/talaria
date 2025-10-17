@@ -8,7 +8,7 @@ license.workspace = true
 [dependencies]
 talaria-core = { path = "../talaria-core" }
 talaria-bio = { path = "../talaria-bio" }
-talaria-storage = { path = "../talaria-storage" }
+talaria-storage = { path = "../talaria-storage", default-features = false }
 talaria-utils = { path = "../talaria-utils" }
 talaria-tools = { path = "../talaria-tools" }
 anyhow = { workspace = true }
@@ -47,7 +47,7 @@ atty = "0.2"
 hostname = "0.3"
 libc = "0.2"
 lazy_static = "1.4"
-rocksdb = { version = "0.24", default-features = false, features = ["zstd", "multi-threaded-cf"] }
+rocksdb = { version = "0.24", optional = true, default-features = false, features = ["zstd", "multi-threaded-cf"] }
 toml = "0.8"
 sysinfo = "0.29"
 serde_bytes = "0.11"
@@ -65,7 +65,8 @@ mockall = "0.12"
 petgraph = "0.6"  # For graph benchmarks
 
 [features]
-default = []
+default = ["rocksdb-backend"]
+rocksdb-backend = ["rocksdb", "talaria-storage/rocksdb-backend"]
 deadlock_detection = ["parking_lot/deadlock_detection"]
 
 [[bench]]

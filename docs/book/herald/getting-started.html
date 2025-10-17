@@ -1,0 +1,486 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Getting Started - Talaria Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- MathJax Configuration -->
+        <script>
+        window.MathJax = {
+          tex2jax: {
+            inlineMath: [['$','$'], ['\\(','\\)']],
+            displayMath: [['$$','$$'], ['\\[','\\]']],
+            processEscapes: true,
+            processEnvironments: true
+          },
+          TeX: {
+            equationNumbers: { autoNumber: "AMS" },
+            extensions: ["AMSmath.js", "AMSsymbols.js"]
+          }
+        };
+        </script>
+        <meta name="description" content="Intelligent FASTA reduction for aligner index optimization">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../custom.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Talaria Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/bfowle/talaria" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/bfowle/talaria/edit/main/docs/src/herald/getting-started.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
+<h1 id="getting-started-with-herald"><a class="header" href="#getting-started-with-herald">Getting Started with HERALD</a></h1>
+<p>This tutorial will walk you through your first HERALD operations. In 10 minutes, you’ll understand how to use HERALD for efficient database management.</p>
+<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
+<p>Before starting, ensure you have:</p>
+<ul>
+<li>Talaria installed (<code>cargo install talaria</code> or download from releases)</li>
+<li>At least 10 GB free disk space for examples</li>
+<li>Internet connection for downloading databases</li>
+</ul>
+<h2 id="your-first-herald-download"><a class="header" href="#your-first-herald-download">Your First HERALD Download</a></h2>
+<p>Let’s start by downloading a small database to see HERALD in action:</p>
+<h3 id="step-1-download-uniprot-swissprot"><a class="header" href="#step-1-download-uniprot-swissprot">Step 1: Download UniProt SwissProt</a></h3>
+<pre><code class="language-bash">talaria database download uniprot/swissprot
+</code></pre>
+<p><strong>What You’ll See:</strong></p>
+<pre><code>[INFO] Fetching manifest for uniprot/swissprot...
+[INFO] Manifest retrieved: 571,282 sequences in 127 chunks
+[INFO] Checking local HERALD storage...
+[INFO] Need to download 127 chunks (204 MB total)
+[INFO] Downloading chunks... [████████████████] 127/127
+[INFO] Verifying chunk integrity...
+[SUCCESS] Database downloaded and verified!
+
+Statistics:
+  • Sequences: 571,282
+  • Chunks: 127
+  • Total size: 204 MB
+  • Download time: 4m 32s
+  • Storage saved: 67% (vs uncompressed)
+</code></pre>
+<h3 id="step-2-understand-what-just-happened"><a class="header" href="#step-2-understand-what-just-happened">Step 2: Understand What Just Happened</a></h3>
+<p>HERALD created this structure on your system:</p>
+<pre><code>~/.talaria/
+├── databases/
+│   ├── manifests/
+│   │   └── uniprot_swissprot_2024-03-15.manifest
+│   └── chunks/
+│       ├── [127 chunk files organized by hash]
+</code></pre>
+<p><strong>Key Points:</strong></p>
+<ul>
+<li>The manifest (1 KB) describes the entire database</li>
+<li>Each chunk contains related sequences (taxonomically grouped)</li>
+<li>Chunks are named by their content hash (ensures integrity)</li>
+</ul>
+<h2 id="checking-for-updates"><a class="header" href="#checking-for-updates">Checking for Updates</a></h2>
+<p>Now let’s see HERALD’s update efficiency:</p>
+<h3 id="step-3-check-for-updates-dry-run"><a class="header" href="#step-3-check-for-updates-dry-run">Step 3: Check for Updates (Dry Run)</a></h3>
+<pre><code class="language-bash">talaria database update uniprot/swissprot --dry-run
+</code></pre>
+<p><strong>What You’ll See:</strong></p>
+<pre><code>[INFO] Checking for updates to uniprot/swissprot...
+[INFO] Current version: 2024-03-15 (571,282 sequences)
+[INFO] Latest version: 2024-03-15 (571,282 sequences)
+[SUCCESS] Database is up to date!
+</code></pre>
+<p>If updates were available, you’d see:</p>
+<pre><code>[INFO] Updates available:
+  • New sequences: 137
+  • Modified sequences: 12
+  • Affected chunks: 3 of 127
+  • Download size: 2.4 MB (vs 204 MB full)
+  • Savings: 98.8%
+
+Run without --dry-run to apply updates
+</code></pre>
+<h3 id="step-4-perform-an-actual-update"><a class="header" href="#step-4-perform-an-actual-update">Step 4: Perform an Actual Update</a></h3>
+<p>When updates are available:</p>
+<pre><code class="language-bash">talaria database update uniprot/swissprot
+</code></pre>
+<p>HERALD will:</p>
+<ol>
+<li>Download only the changed chunks</li>
+<li>Verify their integrity</li>
+<li>Update the local manifest</li>
+<li>Keep the old version accessible</li>
+</ol>
+<h2 id="using-herald-with-reduction"><a class="header" href="#using-herald-with-reduction">Using HERALD with Reduction</a></h2>
+<p>HERALD integrates seamlessly with Talaria’s reduction capabilities:</p>
+<h3 id="step-5-reduce-a-herald-database"><a class="header" href="#step-5-reduce-a-herald-database">Step 5: Reduce a HERALD Database</a></h3>
+<pre><code class="language-bash">talaria reduce \
+    --database uniprot/swissprot \
+    --output reduced_swissprot.fasta \
+    --reduction-level 0.7
+</code></pre>
+<p><strong>What Happens:</strong></p>
+<pre><code>[INFO] Loading database from HERALD storage...
+[INFO] Loaded 571,282 sequences from 127 chunks
+[INFO] Selecting reference sequences...
+[INFO] Computing delta encodings...
+[SUCCESS] Reduction complete!
+
+Results:
+  • Input sequences: 571,282
+  • Reference sequences: 171,385 (30%)
+  • Delta sequences: 399,897 (70%)
+  • Size reduction: 68%
+  • Coverage maintained: 99.8%
+</code></pre>
+<h2 id="exploring-herald-commands"><a class="header" href="#exploring-herald-commands">Exploring HERALD Commands</a></h2>
+<h3 id="list-available-databases"><a class="header" href="#list-available-databases">List Available Databases</a></h3>
+<pre><code class="language-bash">talaria database list
+</code></pre>
+<p>Output:</p>
+<pre><code>Available HERALD Databases:
+  • uniprot/swissprot   [Local: v2024-03-15] [Remote: v2024-03-15] ✓
+  • uniprot/trembl      [Not downloaded] [Remote: v2024-03-14]
+  • ncbi/nr             [Not downloaded] [Remote: v2024-03-13]
+  • ncbi/nt             [Not downloaded] [Remote: v2024-03-13]
+</code></pre>
+<h3 id="check-database-status"><a class="header" href="#check-database-status">Check Database Status</a></h3>
+<pre><code class="language-bash">talaria database status uniprot/swissprot
+</code></pre>
+<p>Output:</p>
+<pre><code>Database: uniprot/swissprot
+Status: Downloaded and up-to-date
+
+Local Version:
+  • Date: 2024-03-15
+  • Sequences: 571,282
+  • Chunks: 127
+  • Size: 204 MB
+  • Hash: 5a9b3c8f2d1a...
+
+Remote Version:
+  • Date: 2024-03-15
+  • Status: Same as local ✓
+</code></pre>
+<h3 id="verify-database-integrity"><a class="header" href="#verify-database-integrity">Verify Database Integrity</a></h3>
+<pre><code class="language-bash">talaria database verify uniprot/swissprot
+</code></pre>
+<p>Output:</p>
+<pre><code>[INFO] Verifying uniprot/swissprot integrity...
+[INFO] Checking manifest...
+[INFO] Verifying 127 chunks...
+[████████████████] 127/127
+[SUCCESS] All chunks verified successfully!
+</code></pre>
+<h2 id="understanding-herald-benefits"><a class="header" href="#understanding-herald-benefits">Understanding HERALD Benefits</a></h2>
+<p>Let’s compare traditional vs HERALD approaches:</p>
+<h3 id="traditional-database-management"><a class="header" href="#traditional-database-management">Traditional Database Management</a></h3>
+<pre><code class="language-bash"># Traditional: Full download every time
+wget ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz
+# Downloads: 85 MB compressed, 260 MB uncompressed
+# Every update: Another 85 MB download
+</code></pre>
+<h3 id="herald-database-management"><a class="header" href="#herald-database-management">HERALD Database Management</a></h3>
+<pre><code class="language-bash"># HERALD: Smart incremental updates
+talaria database download uniprot/swissprot  # Initial: 204 MB
+talaria database update uniprot/swissprot    # Updates: ~2 MB typically
+</code></pre>
+<p><strong>Monthly Bandwidth Comparison</strong> (daily updates):</p>
+<ul>
+<li>Traditional: 30 × 85 MB = 2,550 MB</li>
+<li>HERALD: 204 MB + (29 × 2 MB) = 262 MB</li>
+<li><strong>Savings: 90%</strong></li>
+</ul>
+<h2 id="common-workflows"><a class="header" href="#common-workflows">Common Workflows</a></h2>
+<h3 id="workflow-1-daily-update-check"><a class="header" href="#workflow-1-daily-update-check">Workflow 1: Daily Update Check</a></h3>
+<p>Create a simple script for daily updates:</p>
+<pre><code class="language-bash">#!/bin/bash
+# daily_update.sh
+
+echo "Checking for database updates..."
+
+for db in uniprot/swissprot ncbi/nr; do
+    echo "Updating $db..."
+    talaria database update $db
+done
+
+echo "All databases updated!"
+</code></pre>
+<h3 id="workflow-2-space-efficient-multi-version-storage"><a class="header" href="#workflow-2-space-efficient-multi-version-storage">Workflow 2: Space-Efficient Multi-Version Storage</a></h3>
+<p>Keep multiple versions without duplicating data:</p>
+<pre><code class="language-bash"># Download specific version
+talaria database download uniprot/swissprot --version 2024-03-01
+
+# Download latest
+talaria database download uniprot/swissprot
+
+# Both versions share common chunks!
+# Only differences are stored separately
+</code></pre>
+<h3 id="workflow-3-team-synchronization"><a class="header" href="#workflow-3-team-synchronization">Workflow 3: Team Synchronization</a></h3>
+<p>Share HERALD storage across team:</p>
+<pre><code class="language-bash"># On server: Set up shared HERALD repository
+export TALARIA_HOME=/shared/talaria
+talaria database download uniprot/swissprot
+
+# On team machines: Point to shared storage
+export TALARIA_HOME=/mnt/shared/talaria
+talaria reduce --database uniprot/swissprot ...
+</code></pre>
+<h2 id="troubleshooting-common-issues"><a class="header" href="#troubleshooting-common-issues">Troubleshooting Common Issues</a></h2>
+<h3 id="issue-no-herald-data-found"><a class="header" href="#issue-no-herald-data-found">Issue: “No HERALD data found”</a></h3>
+<pre><code class="language-bash"># Initialize database repository if needed
+talaria database init
+
+# Verify TALARIA_HOME is set correctly
+echo $TALARIA_HOME
+</code></pre>
+<h3 id="issue-chunk-verification-failed"><a class="header" href="#issue-chunk-verification-failed">Issue: “Chunk verification failed”</a></h3>
+<pre><code class="language-bash"># Remove corrupted chunk and re-download
+talaria database repair uniprot/swissprot
+</code></pre>
+<h3 id="issue-out-of-disk-space-during-download"><a class="header" href="#issue-out-of-disk-space-during-download">Issue: “Out of disk space during download”</a></h3>
+<pre><code class="language-bash"># Check available space
+df -h ~/.talaria
+
+# Remove old versions (planned feature)
+# talaria database clean --keep-latest 2
+</code></pre>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>Now that you understand HERALD basics:</p>
+<ol>
+<li><strong>Learn Best Practices</strong>: Read <a href="./best-practices.html">HERALD Best Practices</a></li>
+<li><strong>Explore Advanced Features</strong>: See <a href="./workflows.html">Common Workflows</a></li>
+<li><strong>Understand Performance</strong>: Check <a href="./performance.html">Performance Metrics</a></li>
+<li><strong>Deep Dive</strong>: Read the <a href="../whitepapers/herald-architecture.html">Technical Architecture</a></li>
+</ol>
+<h2 id="quick-reference-card"><a class="header" href="#quick-reference-card">Quick Reference Card</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Command</th><th>Purpose</th></tr></thead><tbody>
+<tr><td><code>talaria database download &lt;db&gt;</code></td><td>Download database</td></tr>
+<tr><td><code>talaria database update &lt;db&gt;</code></td><td>Update to latest version</td></tr>
+<tr><td><code>talaria database list</code></td><td>List available databases</td></tr>
+<tr><td><code>talaria database status &lt;db&gt;</code></td><td>Check database status</td></tr>
+<tr><td><code>talaria database verify &lt;db&gt;</code></td><td>Verify integrity</td></tr>
+<tr><td><code>talaria database list</code></td><td>List databases</td></tr>
+<tr><td><code>talaria database init</code></td><td>Initialize database repository</td></tr>
+</tbody></table>
+</div>
+<p>Remember: HERALD makes database management efficient, verifiable, and reproducible!</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../herald/how-it-works.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../herald/workflows.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../herald/how-it-works.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../herald/workflows.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../mermaid.min.js"></script>
+        <script src="../mermaid-init.js"></script>
+
+
+
+    </div>
+    </body>
+</html>
