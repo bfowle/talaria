@@ -15,9 +15,12 @@ use tempfile::TempDir;
 fn test_cross_database_deduplication() -> Result<()> {
     let temp_dir = TempDir::new()?;
 
-    // Create sequence storage and indices
-    let storage = SequenceStorage::new(temp_dir.path())?;
-    let indices = SequenceIndices::new(temp_dir.path())?;
+    // Create sequence storage and indices with separate paths to avoid RocksDB lock conflicts
+    let storage_path = temp_dir.path().join("storage");
+    let indices_path = temp_dir.path().join("indices");
+
+    let storage = SequenceStorage::new(&storage_path)?;
+    let indices = SequenceIndices::new(&indices_path)?;
 
     // Create a common E. coli sequence that appears in all databases
     let common_sequence = "MSKGEELFTGVVPILVELDGDVNGHKFSVSGEGEGDATYGKLTLKFICTTGKLPVPWPTLVTTFSYGVQCFSRYPDHMKQHDFFKSAMPEGYVQERTIFFKDDGNYKTRAEVKFEGDTLVNRIELKGIDFKEDGNILGHKLEYNYNSHNVYIMADKQKNGIKVNFKIRHNIEDGSVQLADHYQQNTPIGDGPVLLPDNHYLSTQSALSKDPNEKRDHMVLLEFVTAAGITLGMDELYK";

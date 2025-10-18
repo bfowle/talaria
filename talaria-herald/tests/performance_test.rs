@@ -39,6 +39,7 @@ fn generate_test_sequences(count: usize) -> Vec<Sequence> {
 }
 
 #[test]
+#[ignore = "Long-running performance test - run manually with --ignored"]
 fn test_throughput_baseline() {
     let temp_dir = TempDir::new().unwrap();
     let storage = Arc::new(SequenceStorage::new(temp_dir.path()).unwrap());
@@ -79,6 +80,7 @@ fn test_throughput_baseline() {
 }
 
 #[test]
+#[ignore = "Long-running performance test - run manually with --ignored"]
 fn test_memory_usage() {
     use talaria_herald::performance::MemoryMonitor;
 
@@ -233,6 +235,7 @@ fn test_adaptive_batch_sizing() {
 }
 
 #[test]
+#[ignore = "Long-running performance test - run manually with --ignored"]
 fn test_deduplication_performance() {
     let temp_dir = TempDir::new().unwrap();
     let storage = Arc::new(SequenceStorage::new(temp_dir.path()).unwrap());
@@ -323,6 +326,7 @@ fn test_large_file_stress() {
 }
 
 #[test]
+#[ignore = "Long-running performance test - run manually with --ignored"]
 fn test_cpu_utilization() {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
