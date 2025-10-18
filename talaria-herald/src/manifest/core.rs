@@ -318,8 +318,7 @@ impl Manifest {
         // Build hash sets for efficient comparison
         use std::collections::HashSet;
 
-        let current_chunks: HashSet<_> =
-            current.chunk_index.iter().map(|c| c.hash).collect();
+        let current_chunks: HashSet<_> = current.chunk_index.iter().map(|c| c.hash).collect();
 
         let new_chunks: HashSet<_> = new.chunk_index.iter().map(|c| c.hash).collect();
 

@@ -56,10 +56,10 @@ mod tests {
     fn test_chunk_size_for_parallelism_basic() {
         // Test with various input sizes
         let chunk = chunk_size_for_parallelism(100, 4);
-        assert!(chunk >= 10 && chunk <= 1000);
+        assert!((10..=1000).contains(&chunk));
 
         let chunk = chunk_size_for_parallelism(10000, 4);
-        assert!(chunk >= 10 && chunk <= 1000);
+        assert!((10..=1000).contains(&chunk));
 
         let chunk = chunk_size_for_parallelism(50, 4);
         assert_eq!(chunk, 10); // Should clamp to minimum
@@ -69,7 +69,7 @@ mod tests {
     fn test_chunk_size_for_parallelism_auto_threads() {
         // Test with 0 threads (auto-detect)
         let chunk = chunk_size_for_parallelism(1000, 0);
-        assert!(chunk >= 10 && chunk <= 1000);
+        assert!((10..=1000).contains(&chunk));
     }
 
     #[test]
@@ -83,7 +83,7 @@ mod tests {
 
         // Single thread
         let chunk = chunk_size_for_parallelism(100, 1);
-        assert!(chunk >= 10 && chunk <= 1000);
+        assert!((10..=1000).contains(&chunk));
     }
 
     #[test]
@@ -155,7 +155,7 @@ mod tests {
 
             let chunk = chunk_size_for_parallelism(total_items, threads);
             assert!(
-                chunk >= 10 && chunk <= 1000,
+                (10..=1000).contains(&chunk),
                 "Chunk size {} out of bounds for {} items with {} threads",
                 chunk,
                 total_items,
@@ -191,7 +191,7 @@ mod tests {
         for (items, threads) in test_cases {
             let chunk = chunk_size_for_parallelism(items, threads);
             assert!(
-                chunk >= 10 && chunk <= 1000,
+                (10..=1000).contains(&chunk),
                 "Failed for {} items with {} threads: chunk = {}",
                 items,
                 threads,

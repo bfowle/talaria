@@ -6,6 +6,12 @@ pub struct VersionIdentifier {
     known_manifests: Vec<TemporalManifest>,
 }
 
+impl Default for VersionIdentifier {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VersionIdentifier {
     pub fn new() -> Self {
         Self {
@@ -77,7 +83,7 @@ impl VersionIdentifier {
             return SHA256Hash::compute(b"empty");
         }
         if chunks.len() == 1 {
-            return chunks[0].clone();
+            return chunks[0];
         }
 
         let mut level = chunks.to_vec();
@@ -90,24 +96,21 @@ impl VersionIdentifier {
                     combined.extend_from_slice(&pair[1].0);
                     next_level.push(SHA256Hash::compute(&combined));
                 } else {
-                    next_level.push(pair[0].clone());
+                    next_level.push(pair[0]);
                 }
             }
             level = next_level;
         }
 
-        level[0].clone()
+        level[0]
     }
 
     fn compute_similarities(&self, chunks: &[SHA256Hash]) -> Vec<(&TemporalManifest, f64)> {
         let mut similarities = Vec::new();
 
         for manifest in &self.known_manifests {
-            let manifest_chunks: Vec<SHA256Hash> = manifest
-                .chunk_index
-                .iter()
-                .map(|c| c.hash.clone())
-                .collect();
+            let manifest_chunks: Vec<SHA256Hash> =
+                manifest.chunk_index.iter().map(|c| c.hash).collect();
 
             let similarity = Self::calculate_similarity(chunks, &manifest_chunks);
             similarities.push((manifest, similarity));
@@ -141,11 +144,8 @@ impl VersionIdentifier {
         use std::collections::HashSet;
 
         let current_set: HashSet<_> = chunks.iter().collect();
-        let manifest_chunks: Vec<SHA256Hash> = manifest
-            .chunk_index
-            .iter()
-            .map(|c| c.hash.clone())
-            .collect();
+        let manifest_chunks: Vec<SHA256Hash> =
+            manifest.chunk_index.iter().map(|c| c.hash).collect();
         let manifest_set: HashSet<_> = manifest_chunks.iter().collect();
 
         let mut differences = Vec::new();
@@ -210,7 +210,7 @@ fn test_identify_exact_version() {
     // Compute the expected root for our sequences
     let chunk_data = VersionIdentifier::serialize_sequences(&sequences);
     let chunk_hash = SHA256Hash::compute(&chunk_data);
-    let sequence_root = chunk_hash.clone(); // Single chunk
+    let sequence_root = chunk_hash; // Single chunk
 
     let manifest = TemporalManifest {
         version: "v1.0.0".to_string(),
@@ -302,7 +302,7 @@ fn test_identify_modified_version() {
     let chunk2_hash = SHA256Hash::compute(&chunk2_data);
 
     // Compute sequence root from both chunks
-    let chunks = vec![chunk1_hash.clone(), chunk2_hash.clone()];
+    let chunks = vec![chunk1_hash, chunk2_hash];
     let sequence_root = VersionIdentifier::compute_merkle_root(&chunks);
 
     let manifest = TemporalManifest {
@@ -410,7 +410,7 @@ fn test_multi_taxon_version_identification() {
 
     // Create single chunk with both sequences (since chunking is now by groups of 10)
     let chunk_hash = SHA256Hash::compute(&VersionIdentifier::serialize_sequences(&sequences));
-    let sequence_root = chunk_hash.clone();
+    let sequence_root = chunk_hash;
 
     let manifest = TemporalManifest {
         version: "v2.0.0".to_string(),

@@ -1098,7 +1098,7 @@ pub fn run(args: InspectArgs) -> Result<()> {
     Ok(())
 }
 
-/// Parse database specification (database[@version][:profile])
+/// Parse database specification `database[@version][\:profile]`
 /// Handle profile manifest inspection
 fn handle_profile_manifest(
     db_path: &Path,

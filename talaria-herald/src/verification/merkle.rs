@@ -513,7 +513,7 @@ mod tests {
             chunks.into_iter().map(|data| TestChunk { data }).collect();
 
         let dag = MerkleDAG::build_from_items(test_chunks).unwrap();
-        let proof = dag.generate_proof(&b"chunk1".to_vec()).unwrap();
+        let proof = dag.generate_proof(b"chunk1".as_ref()).unwrap();
 
         assert!(MerkleDAG::verify_proof(&proof, b"chunk1"));
     }
@@ -527,7 +527,7 @@ mod tests {
             chunks.into_iter().map(|data| TestChunk { data }).collect();
 
         let dag = MerkleDAG::build_from_items(test_chunks).unwrap();
-        let mut proof = dag.generate_proof(&b"chunk1".to_vec()).unwrap();
+        let mut proof = dag.generate_proof(b"chunk1".as_ref()).unwrap();
 
         // Tamper with proof
         proof.leaf_hash = SHA256Hash::compute(b"tampered");

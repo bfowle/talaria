@@ -1224,7 +1224,7 @@ fn apply_reduction_filters(
     Ok((manifest_a, manifest_b))
 }
 
-/// Parse database spec with optional profile (format: "database/name:profile")
+/// Parse database spec with optional profile (format: `database/name\:profile`)
 fn parse_db_with_profile(spec: &str) -> (&str, Option<&str>) {
     if let Some(colon_pos) = spec.rfind(':') {
         // Check if this looks like a profile (not a path with C:/ etc)

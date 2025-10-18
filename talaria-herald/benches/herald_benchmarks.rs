@@ -15,7 +15,7 @@ use talaria_herald::{
     chunker::{ChunkingStrategy, HierarchicalTaxonomicChunker, TaxonomicChunker},
     storage::{HeraldStorage, SequenceStorage},
     temporal::bi_temporal::BiTemporalDatabase,
-    types::{DatabaseSource, ManifestMetadata},
+    types::ManifestMetadata,
     verification::merkle::MerkleDAG,
 };
 use talaria_test::fixtures::test_database_source;
@@ -185,7 +185,7 @@ fn bench_standard_chunking(c: &mut Criterion) {
             |b, sequences| {
                 b.iter_with_setup(
                     || {
-                        let storage = SequenceStorage::new(temp_dir.path()).unwrap();
+                        let storage = Arc::new(SequenceStorage::new(temp_dir.path()).unwrap());
                         let chunker = TaxonomicChunker::new(
                             ChunkingStrategy::default(),
                             storage,

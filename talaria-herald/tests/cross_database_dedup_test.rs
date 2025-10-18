@@ -36,10 +36,10 @@ fn test_cross_database_deduplication() -> Result<()> {
         "sp|P12345|GFP_ECOLI Green fluorescent protein OS=Escherichia coli OX=562",
         uniprot_source.clone(),
     )?;
-    canonical_hashes.insert(hash1.clone());
+    canonical_hashes.insert(hash1);
     indices
         .add_sequence(
-            hash1.clone(),
+            hash1,
             Some("sp|P12345|GFP_ECOLI".to_string()),
             Some(TaxonId(562)),
             Some(uniprot_source.clone()),
@@ -53,10 +53,10 @@ fn test_cross_database_deduplication() -> Result<()> {
         "sp|Q67890|UNIQUE_SWISS Unique to SwissProt OS=Homo sapiens OX=9606",
         uniprot_source.clone(),
     )?;
-    canonical_hashes.insert(hash_unique_uniprot.clone());
+    canonical_hashes.insert(hash_unique_uniprot);
     indices
         .add_sequence(
-            hash_unique_uniprot.clone(),
+            hash_unique_uniprot,
             Some("sp|Q67890|UNIQUE_SWISS".to_string()),
             Some(TaxonId(9606)),
             Some(uniprot_source.clone()),
@@ -78,7 +78,7 @@ fn test_cross_database_deduplication() -> Result<()> {
     assert_eq!(hash1, hash2, "Same sequence should have same hash");
     indices
         .add_sequence(
-            hash2.clone(),
+            hash2,
             Some("NP_123456.1".to_string()),
             Some(TaxonId(562)),
             Some(ncbi_source.clone()),
@@ -92,10 +92,10 @@ fn test_cross_database_deduplication() -> Result<()> {
         "NP_789012.1 Unique to NCBI [Mus musculus]",
         ncbi_source.clone(),
     )?;
-    canonical_hashes.insert(hash_unique_ncbi.clone());
+    canonical_hashes.insert(hash_unique_ncbi);
     indices
         .add_sequence(
-            hash_unique_ncbi.clone(),
+            hash_unique_ncbi,
             Some("NP_789012.1".to_string()),
             Some(TaxonId(10090)),
             Some(ncbi_source.clone()),
@@ -132,10 +132,10 @@ fn test_cross_database_deduplication() -> Result<()> {
         "YP_007890.1 Unique to RefSeq [Saccharomyces cerevisiae]",
         refseq_source.clone(),
     )?;
-    canonical_hashes.insert(hash_unique_refseq.clone());
+    canonical_hashes.insert(hash_unique_refseq);
     indices
         .add_sequence(
-            hash_unique_refseq.clone(),
+            hash_unique_refseq,
             Some("YP_007890.1".to_string()),
             Some(TaxonId(559292)),
             Some(refseq_source.clone()),

@@ -80,7 +80,7 @@ fn test_simple_cross_database_deduplication() {
 
     // Calculate space savings
     let traditional_storage = ecoli_seq.len() * 3; // Would store 3 copies traditionally
-    let herald_storage = stats.total_size as usize; // Actual storage used
+    let herald_storage = stats.total_size; // Actual storage used
 
     println!("\n=== Storage Efficiency ===");
     println!("Traditional: {} bytes (3 copies)", traditional_storage);

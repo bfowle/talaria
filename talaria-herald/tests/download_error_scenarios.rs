@@ -3,7 +3,7 @@
 use anyhow::Result;
 use serial_test::serial;
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 use talaria_core::system::paths::bypass_cache_for_tests;
 use talaria_core::{DatabaseSource, UniProtDatabase};
 use talaria_herald::download::{
@@ -25,7 +25,7 @@ fn init_test_env() {
 }
 
 /// Test helper to simulate disk full error
-fn simulate_disk_full(path: &PathBuf) -> Result<()> {
+fn simulate_disk_full(path: &Path) -> Result<()> {
     // Create a file that takes up most space (simulated)
     // In real scenario, we'd fill up the disk, but for testing we just create a marker
     let marker = path.join(".disk_full");
@@ -38,7 +38,7 @@ fn simulate_disk_full(path: &PathBuf) -> Result<()> {
 async fn test_recovery_from_corrupted_state_file() -> Result<()> {
     init_test_env();
     let temp_dir = TempDir::new()?;
-    std::env::set_var("TALARIA_DATA_DIR", &temp_dir.path());
+    std::env::set_var("TALARIA_DATA_DIR", temp_dir.path());
 
     let source = DatabaseSource::UniProt(UniProtDatabase::SwissProt);
     let workspace = get_download_workspace(&source);
@@ -76,7 +76,7 @@ async fn test_recovery_from_corrupted_state_file() -> Result<()> {
 async fn test_disk_full_during_decompression() -> Result<()> {
     init_test_env();
     let temp_dir = TempDir::new()?;
-    std::env::set_var("TALARIA_DATA_DIR", &temp_dir.path());
+    std::env::set_var("TALARIA_DATA_DIR", temp_dir.path());
 
     let source = DatabaseSource::UniProt(UniProtDatabase::SwissProt);
     let workspace = get_download_workspace(&source);
@@ -124,7 +124,7 @@ async fn test_disk_full_during_decompression() -> Result<()> {
 async fn test_lock_conflict_handling() -> Result<()> {
     init_test_env();
     let temp_dir = TempDir::new()?;
-    std::env::set_var("TALARIA_DATA_DIR", &temp_dir.path());
+    std::env::set_var("TALARIA_DATA_DIR", temp_dir.path());
 
     let source = DatabaseSource::UniProt(UniProtDatabase::SwissProt);
     let workspace = get_download_workspace(&source);
@@ -155,7 +155,7 @@ async fn test_lock_conflict_handling() -> Result<()> {
 async fn test_recovery_from_partial_download() -> Result<()> {
     init_test_env();
     let temp_dir = TempDir::new()?;
-    std::env::set_var("TALARIA_DATA_DIR", &temp_dir.path());
+    std::env::set_var("TALARIA_DATA_DIR", temp_dir.path());
     std::env::set_var("TALARIA_PRESERVE_ON_FAILURE", "1");
 
     let source = test_database_source("error_scenario");
@@ -212,7 +212,7 @@ async fn test_recovery_from_partial_download() -> Result<()> {
 async fn test_invalid_checksum_handling() -> Result<()> {
     init_test_env();
     let temp_dir = TempDir::new()?;
-    std::env::set_var("TALARIA_DATA_DIR", &temp_dir.path());
+    std::env::set_var("TALARIA_DATA_DIR", temp_dir.path());
 
     let source = test_database_source("error_scenario");
     let workspace = get_download_workspace(&source);
@@ -252,7 +252,7 @@ async fn test_invalid_checksum_handling() -> Result<()> {
 async fn test_processing_failure_recovery() -> Result<()> {
     init_test_env();
     let temp_dir = TempDir::new()?;
-    std::env::set_var("TALARIA_DATA_DIR", &temp_dir.path());
+    std::env::set_var("TALARIA_DATA_DIR", temp_dir.path());
 
     let source = test_database_source("error_scenario");
     let workspace = get_download_workspace(&source);
@@ -313,7 +313,7 @@ async fn test_processing_failure_recovery() -> Result<()> {
 async fn test_concurrent_download_attempt_rejection() -> Result<()> {
     init_test_env();
     let temp_dir = TempDir::new()?;
-    std::env::set_var("TALARIA_DATA_DIR", &temp_dir.path());
+    std::env::set_var("TALARIA_DATA_DIR", temp_dir.path());
 
     let source = test_database_source("error_scenario");
     let workspace = get_download_workspace(&source);
@@ -341,7 +341,7 @@ async fn test_concurrent_download_attempt_rejection() -> Result<()> {
 async fn test_cleanup_old_failed_downloads() -> Result<()> {
     init_test_env();
     let temp_dir = TempDir::new()?;
-    std::env::set_var("TALARIA_DATA_DIR", &temp_dir.path());
+    std::env::set_var("TALARIA_DATA_DIR", temp_dir.path());
 
     // Create multiple failed download states
     for i in 0..3 {

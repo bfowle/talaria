@@ -350,8 +350,8 @@ pub fn run(args: ReconstructArgs) -> anyhow::Result<()> {
 }
 
 /// Parse a database reference that may include a reduction profile
-/// Format: "source/dataset[:profile][@version]"
-/// Returns: (base_reference, Option<profile>)
+/// Format: `source/dataset[\:profile][@version]`
+/// Returns: `(base_reference, Option<String>)` where the Option contains the profile name
 #[allow(dead_code)]
 fn parse_database_with_profile(reference: &str) -> anyhow::Result<(String, Option<String>)> {
     // Check for reduction profile (colon separator)

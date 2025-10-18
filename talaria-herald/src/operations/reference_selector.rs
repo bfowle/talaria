@@ -235,7 +235,7 @@ impl ReferenceSelectorImpl {
 
                 // Update progress every 100 sequences
                 let count = counter_clone.fetch_add(1, Ordering::Relaxed);
-                if count % 100 == 0 {
+                if count.is_multiple_of(100) {
                     pb_clone.set_position(count as u64);
                 }
 

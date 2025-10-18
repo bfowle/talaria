@@ -9,7 +9,7 @@ use talaria_utils::database::database_ref::parse_database_reference;
 
 #[derive(Args)]
 pub struct DeleteArgs {
-    /// Database reference: source/dataset[@version][:profile]
+    /// Database reference: `source/dataset[@version][\:profile]`
     ///
     /// Examples:
     ///

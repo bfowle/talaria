@@ -983,7 +983,9 @@ impl TaxonomyManager {
         _old_version: &str,
         _new_version: &str,
     ) -> Result<TaxonomyChanges> {
-        Err(anyhow::anyhow!("Taxonomy tree comparison requires rocksdb-backend feature"))
+        Err(anyhow::anyhow!(
+            "Taxonomy tree comparison requires rocksdb-backend feature"
+        ))
     }
 }
 

@@ -518,11 +518,7 @@ impl DatabaseDiffer {
                 }
             } else {
                 // Non-streaming: use chunk_index
-                manifest_a
-                    .chunk_index
-                    .iter()
-                    .map(|m| m.hash)
-                    .collect()
+                manifest_a.chunk_index.iter().map(|m| m.hash).collect()
             };
 
             // Extract chunks from database B
@@ -548,11 +544,7 @@ impl DatabaseDiffer {
                 }
             } else {
                 // Non-streaming: use chunk_index
-                manifest_b
-                    .chunk_index
-                    .iter()
-                    .map(|m| m.hash)
-                    .collect()
+                manifest_b.chunk_index.iter().map(|m| m.hash).collect()
             };
 
             tracing::info!(
@@ -588,16 +580,8 @@ impl DatabaseDiffer {
         }
 
         // Non-streaming: can compare chunks normally
-        let chunks_a: Vec<_> = manifest_a
-            .chunk_index
-            .iter()
-            .map(|m| m.hash)
-            .collect();
-        let chunks_b: Vec<_> = manifest_b
-            .chunk_index
-            .iter()
-            .map(|m| m.hash)
-            .collect();
+        let chunks_a: Vec<_> = manifest_a.chunk_index.iter().map(|m| m.hash).collect();
+        let chunks_b: Vec<_> = manifest_b.chunk_index.iter().map(|m| m.hash).collect();
 
         let set_a: HashSet<_> = chunks_a.iter().cloned().collect();
         let set_b: HashSet<_> = chunks_b.iter().cloned().collect();
@@ -739,7 +723,7 @@ impl DatabaseDiffer {
                     let count = processed.fetch_add(1, Ordering::Relaxed);
                     consecutive_misses.store(0, Ordering::Relaxed);
 
-                    if count % 1000 == 0 {
+                    if count.is_multiple_of(1000) {
                         tracing::debug!(
                             "Loaded {} partials, {} unique chunks",
                             count,
@@ -817,7 +801,7 @@ impl DatabaseDiffer {
                     let count = processed.fetch_add(1, Ordering::Relaxed);
                     consecutive_misses.store(0, Ordering::Relaxed);
 
-                    if count % 1000 == 0 {
+                    if count.is_multiple_of(1000) {
                         tracing::debug!(
                             "Loaded {} partials, {} unique sequences",
                             count,
@@ -920,7 +904,7 @@ impl DatabaseDiffer {
                     let count = processed.fetch_add(1, Ordering::Relaxed);
                     consecutive_misses.store(0, Ordering::Relaxed);
 
-                    if count % 1000 == 0 {
+                    if count.is_multiple_of(1000) {
                         tracing::debug!(
                             "Processed {} partials from B: {} total, {} shared",
                             count,
@@ -1132,16 +1116,8 @@ impl DatabaseDiffer {
             .sum();
 
         // Calculate shared sequences based on shared chunks (INACCURATE)
-        let chunks_a: HashSet<_> = manifest_a
-            .chunk_index
-            .iter()
-            .map(|m| m.hash)
-            .collect();
-        let chunks_b: HashSet<_> = manifest_b
-            .chunk_index
-            .iter()
-            .map(|m| m.hash)
-            .collect();
+        let chunks_a: HashSet<_> = manifest_a.chunk_index.iter().map(|m| m.hash).collect();
+        let chunks_b: HashSet<_> = manifest_b.chunk_index.iter().map(|m| m.hash).collect();
         let shared_chunk_hashes: HashSet<_> = chunks_a.intersection(&chunks_b).cloned().collect();
 
         // Count sequences in shared chunks

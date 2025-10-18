@@ -36,10 +36,9 @@ pub fn init_test_logging() {
 /// Run a test with a clean environment
 ///
 /// # Example
-/// ```rust
+/// ```ignore
 /// use talaria_test::with_test_env;
 ///
-/// ```ignore
 /// #[test]
 /// fn test_something() {
 ///     with_test_env(|env| {

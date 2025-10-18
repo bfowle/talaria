@@ -219,7 +219,7 @@ impl ResumableDownloader {
             progress.set_current(state.bytes_downloaded as usize);
 
             // Periodically flush to disk and update state
-            if state.bytes_downloaded % (10 * 1024 * 1024) == 0 {
+            if state.bytes_downloaded.is_multiple_of(10 * 1024 * 1024) {
                 // Every 10MB
                 file.flush()?;
 

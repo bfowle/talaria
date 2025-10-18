@@ -261,7 +261,7 @@ impl UniProtDownloader {
             progress.set_current(downloaded as usize);
 
             // Periodically flush to disk for large files
-            if downloaded % (100 * 1024 * 1024) == 0 {
+            if downloaded.is_multiple_of(100 * 1024 * 1024) {
                 // Every 100MB
                 file.flush()?;
             }
@@ -462,7 +462,7 @@ impl UniProtDownloader {
             progress.set_current(downloaded as usize);
 
             // Periodically flush to disk for large files
-            if downloaded % (100 * 1024 * 1024) == 0 {
+            if downloaded.is_multiple_of(100 * 1024 * 1024) {
                 // Every 100MB
                 file.flush()?;
             }

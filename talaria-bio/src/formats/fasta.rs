@@ -444,7 +444,7 @@ fn write_fasta_to_writer<W: Write>(
                 // Update progress counter
                 let count = processed.fetch_add(1, Ordering::Relaxed);
                 if let Some(ref pb) = pb {
-                    if count % 100 == 0 {
+                    if count.is_multiple_of(100) {
                         pb.set_position(count as u64);
                     }
                 }

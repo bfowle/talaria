@@ -21,7 +21,7 @@ use talaria_utils::database::database_ref::{parse_database_reference, DatabaseRe
 #[derive(Args)]
 pub struct ExportArgs {
     /// Database reference with optional version and profile
-    /// Format: source/dataset[@version][:profile]
+    /// Format: `source/dataset[@version][\:profile]`
     /// Examples:
     ///   uniprot/swissprot                    (current version, auto-detect profile)
     ///   uniprot/swissprot@2024_04            (specific version)

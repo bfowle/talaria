@@ -431,6 +431,21 @@ impl ReductionManager {
     }
 }
 
+impl Default for ReductionParameters {
+    fn default() -> Self {
+        Self {
+            reduction_ratio: 0.0,
+            target_aligner: None,
+            min_length: 0,
+            similarity_threshold: 0.9,
+            taxonomy_aware: false,
+            align_select: false,
+            max_align_length: 10000,
+            no_deltas: false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -485,20 +500,5 @@ mod tests {
         // Verify we have non-zero roots
         assert_ne!(manifest.reference_merkle_root, SHA256Hash([0; 32]));
         assert_ne!(manifest.reduction_merkle_root, SHA256Hash([0; 32]));
-    }
-}
-
-impl Default for ReductionParameters {
-    fn default() -> Self {
-        Self {
-            reduction_ratio: 0.0,
-            target_aligner: None,
-            min_length: 0,
-            similarity_threshold: 0.9,
-            taxonomy_aware: false,
-            align_select: false,
-            max_align_length: 10000,
-            no_deltas: false,
-        }
     }
 }

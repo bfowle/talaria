@@ -637,11 +637,8 @@ impl DatabaseManager {
             let manifest_data = new_manifest
                 .get_data()
                 .ok_or_else(|| anyhow::anyhow!("No manifest data"))?;
-            let referenced_chunks: Vec<SHA256Hash> = manifest_data
-                .chunk_index
-                .iter()
-                .map(|c| c.hash)
-                .collect();
+            let referenced_chunks: Vec<SHA256Hash> =
+                manifest_data.chunk_index.iter().map(|c| c.hash).collect();
 
             // Run garbage collection
             let gc_result = self.repository.storage.gc(&referenced_chunks)?;
@@ -1584,7 +1581,7 @@ impl DatabaseManager {
         );
 
         // DEBUG: Show what key we're saving to
-        if batch_num == 0 || batch_num % 1000 == 0 {
+        if batch_num == 0 || batch_num.is_multiple_of(1000) {
             tracing::debug!(" Saving partial manifest to key: {}", key);
         }
 
@@ -4200,11 +4197,7 @@ impl DatabaseManager {
         let manifest = self.get_manifest(&database_name)?;
 
         // Get all chunk hashes
-        let chunk_hashes: Vec<_> = manifest
-            .chunk_index
-            .iter()
-            .map(|c| c.hash)
-            .collect();
+        let chunk_hashes: Vec<_> = manifest.chunk_index.iter().map(|c| c.hash).collect();
 
         // Assemble to output file
         let assembler = crate::FastaAssembler::new(&self.repository.storage);
@@ -4808,7 +4801,7 @@ impl DatabaseManager {
                     // Skip if we're still catching up to resume position
                     if sequences_seen <= sequences_to_skip {
                         // Just skip this sequence
-                        if sequences_seen % 100000 == 0 {
+                        if sequences_seen.is_multiple_of(100000) {
                             if let Some(cb) = progress_callback {
                                 cb(&format!(
                                     "Skipping already processed sequences... {}/{}",

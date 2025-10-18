@@ -32,7 +32,7 @@ fn test_taxonomy_query_performance() {
             let accession = format!("ACC_{:07}", sequence_count);
 
             indices
-                .add_sequence(hash.clone(), Some(accession.clone()), Some(*taxon_id), None)
+                .add_sequence(hash, Some(accession.clone()), Some(*taxon_id), None)
                 .unwrap();
 
             sequence_count += 1;
@@ -40,12 +40,7 @@ fn test_taxonomy_query_performance() {
             // Also add E. coli sequences to Bacteria
             if *taxon_id == TaxonId(562) {
                 indices
-                    .add_sequence(
-                        hash.clone(),
-                        Some(accession.clone()),
-                        Some(TaxonId(2)),
-                        None,
-                    )
+                    .add_sequence(hash, Some(accession.clone()), Some(TaxonId(2)), None)
                     .unwrap();
             }
         }

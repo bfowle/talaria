@@ -64,7 +64,7 @@ fn test_cross_database_deduplication_scale() -> Result<()> {
             &header,
             DatabaseSource::UniProt(talaria_core::UniProtDatabase::SwissProt),
         )?;
-        all_hashes.push(hash.clone());
+        all_hashes.push(hash);
         unique_hashes.insert(hash);
     }
     for (seq, desc) in &uniprot_specific {
@@ -74,7 +74,7 @@ fn test_cross_database_deduplication_scale() -> Result<()> {
             &header,
             DatabaseSource::UniProt(talaria_core::UniProtDatabase::SwissProt),
         )?;
-        all_hashes.push(hash.clone());
+        all_hashes.push(hash);
         unique_hashes.insert(hash);
     }
 
@@ -87,7 +87,7 @@ fn test_cross_database_deduplication_scale() -> Result<()> {
             &header,
             DatabaseSource::NCBI(talaria_core::NCBIDatabase::NR),
         )?;
-        all_hashes.push(hash.clone());
+        all_hashes.push(hash);
         unique_hashes.insert(hash);
     }
     for (seq, desc) in &ncbi_specific {
@@ -97,7 +97,7 @@ fn test_cross_database_deduplication_scale() -> Result<()> {
             &header,
             DatabaseSource::NCBI(talaria_core::NCBIDatabase::NR),
         )?;
-        all_hashes.push(hash.clone());
+        all_hashes.push(hash);
         unique_hashes.insert(hash);
     }
 
@@ -110,7 +110,7 @@ fn test_cross_database_deduplication_scale() -> Result<()> {
             &header,
             DatabaseSource::NCBI(talaria_core::NCBIDatabase::RefSeqProtein),
         )?;
-        all_hashes.push(hash.clone());
+        all_hashes.push(hash);
         unique_hashes.insert(hash);
     }
     for (seq, desc) in &refseq_specific {
@@ -120,7 +120,7 @@ fn test_cross_database_deduplication_scale() -> Result<()> {
             &header,
             DatabaseSource::NCBI(talaria_core::NCBIDatabase::RefSeqProtein),
         )?;
-        all_hashes.push(hash.clone());
+        all_hashes.push(hash);
         unique_hashes.insert(hash);
     }
 
@@ -209,7 +209,7 @@ fn test_large_scale_deduplication() -> Result<()> {
             );
             let header = format!(">{}|COMMON_{:06}", source, i);
             let hash = storage.store_sequence(&seq, &header, source.clone())?;
-            all_hashes.push(hash.clone());
+            all_hashes.push(hash);
             unique_hashes.insert(hash);
         }
 
@@ -221,7 +221,7 @@ fn test_large_scale_deduplication() -> Result<()> {
             );
             let header = format!(">{}|SPECIFIC_{:06}", source, i);
             let hash = storage.store_sequence(&seq, &header, source.clone())?;
-            all_hashes.push(hash.clone());
+            all_hashes.push(hash);
             unique_hashes.insert(hash);
         }
 

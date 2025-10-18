@@ -377,8 +377,8 @@ pub fn run(args: ValidateArgs) -> anyhow::Result<()> {
 }
 
 /// Parse a database reference that must include a reduction profile
-/// Format: "source/dataset[:profile][@version]"
-/// Returns: (base_reference, Option<profile>)
+/// Format: `source/dataset[\:profile][@version]`
+/// Returns: `(base_reference, Option<String>)` where the Option contains the profile name
 fn parse_database_with_profile(reference: &str) -> anyhow::Result<(String, Option<String>)> {
     // Check for reduction profile (colon separator)
     if let Some(colon_idx) = reference.find(':') {

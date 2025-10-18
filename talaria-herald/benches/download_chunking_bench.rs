@@ -20,7 +20,6 @@ use talaria_bio::sequence::Sequence;
 use talaria_herald::{
     chunker::{ChunkingStrategy, TaxonomicChunker},
     database::DatabaseManager,
-    download::DatabaseSource,
     storage::SequenceStorage,
 };
 use talaria_test::fixtures::test_database_source;
@@ -151,7 +150,7 @@ fn bench_chunking_throughput(c: &mut Criterion) {
             |b, sequences| {
                 b.iter_with_setup(
                     || {
-                        let storage = SequenceStorage::new(temp_dir.path()).unwrap();
+                        let storage = Arc::new(SequenceStorage::new(temp_dir.path()).unwrap());
                         let chunker = TaxonomicChunker::new(
                             ChunkingStrategy::default(),
                             storage,
@@ -351,13 +350,9 @@ fn bench_checkpoint_overhead(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("checkpoint_overhead");
 
-    let temp_dir = TempDir::new().unwrap();
-    let checkpoint_path = temp_dir.path().join("checkpoint.json");
-
     // Benchmark checkpoint saving
     group.bench_function("checkpoint_save", |b| {
-        let checkpoint =
-            ChunkingCheckpoint::new(checkpoint_path.clone(), "test_version".to_string());
+        let checkpoint = ChunkingCheckpoint::new("test_version".to_string(), 10_000_000);
 
         b.iter(|| {
             let mut cp = checkpoint.clone();
@@ -368,11 +363,10 @@ fn bench_checkpoint_overhead(c: &mut Criterion) {
 
     // Benchmark checkpoint loading
     group.bench_function("checkpoint_load", |b| {
-        let checkpoint =
-            ChunkingCheckpoint::new(checkpoint_path.clone(), "test_version".to_string());
+        let checkpoint = ChunkingCheckpoint::new("test_version".to_string(), 10_000_000);
         checkpoint.save().unwrap();
 
-        b.iter(|| ChunkingCheckpoint::load(&checkpoint_path).unwrap());
+        b.iter(|| ChunkingCheckpoint::load("test_version").unwrap());
     });
 
     group.finish();

@@ -321,7 +321,7 @@ mod tests {
                 .count();
 
             let similarity = matches as f64 / reference.len() as f64;
-            assert!(similarity >= 0.85 && similarity <= 0.95);
+            assert!((0.85..=0.95).contains(&similarity));
         }
     }
 

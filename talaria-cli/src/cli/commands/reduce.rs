@@ -1401,7 +1401,7 @@ fn store_reduction_in_herald(
 
             // Update progress every 10 chunks
             let count = counter_clone.fetch_add(1, Ordering::Relaxed);
-            if count % 10 == 0 {
+            if count.is_multiple_of(10) {
                 pb_clone.set_position(count as u64);
             }
 
@@ -1536,7 +1536,7 @@ fn store_reduction_in_herald(
 
                     // Update progress every 10 chunks
                     let count = delta_counter_clone.fetch_add(1, Ordering::Relaxed);
-                    if count % 10 == 0 {
+                    if count.is_multiple_of(10) {
                         delta_pb_clone.set_position(count as u64);
                     }
 

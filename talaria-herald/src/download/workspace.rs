@@ -440,12 +440,14 @@ impl DownloadState {
         const BYTE_INTERVAL: u64 = 1_000_000_000; // 1GB
 
         // Check sequence interval
-        if self.sequences_processed > 0 && self.sequences_processed % SEQUENCE_INTERVAL == 0 {
+        if self.sequences_processed > 0
+            && self.sequences_processed.is_multiple_of(SEQUENCE_INTERVAL)
+        {
             return true;
         }
 
         // Check byte interval
-        if self.file_offset > 0 && self.file_offset % BYTE_INTERVAL == 0 {
+        if self.file_offset > 0 && self.file_offset.is_multiple_of(BYTE_INTERVAL) {
             return true;
         }
 

@@ -10,5 +10,5 @@
 #[test]
 fn placeholder_test() {
     // Placeholder to avoid empty test module
-    assert!(true);
+    // (no assertions needed for placeholder)
 }

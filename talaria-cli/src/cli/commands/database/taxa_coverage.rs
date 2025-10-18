@@ -12,7 +12,7 @@ use talaria_bio::taxonomy::{ncbi, TaxonomyDB};
 #[derive(Args)]
 pub struct TaxaCoverageArgs {
     /// Database reference (e.g., "uniprot/swissprot" or path to FASTA file)
-    /// Supports full version/profile syntax: source/dataset[@version][:profile]
+    /// Supports full version/profile syntax: `source/dataset[@version][\:profile]`
     pub database: String,
 
     /// Second database for comparison (optional)

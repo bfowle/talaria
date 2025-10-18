@@ -130,7 +130,7 @@ async fn test_resumable_downloads_discovery() -> Result<()> {
     std::env::set_var("TALARIA_DATA_DIR", &test_data_dir);
 
     // Create multiple download states
-    let sources = vec![
+    let sources = [
         DatabaseSource::UniProt(UniProtDatabase::SwissProt),
         DatabaseSource::UniProt(UniProtDatabase::TrEMBL),
         DatabaseSource::NCBI(NCBIDatabase::NR),
@@ -202,7 +202,7 @@ async fn test_concurrent_downloads_different_databases() -> Result<()> {
             let _permit = sem.acquire().await.unwrap();
 
             // Get workspace and try to acquire lock
-            let workspace = get_download_workspace(&*source);
+            let workspace = get_download_workspace(&source);
             let lock = DownloadLock::try_acquire(&workspace);
 
             // Each should succeed since they're different databases

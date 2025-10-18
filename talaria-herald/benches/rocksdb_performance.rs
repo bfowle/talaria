@@ -1,5 +1,4 @@
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
-use rayon::prelude::*;
 use std::time::Duration;
 use talaria_core::DatabaseSource;
 use talaria_herald::storage::sequence::SequenceStorage;

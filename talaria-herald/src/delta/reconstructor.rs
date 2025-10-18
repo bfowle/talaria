@@ -389,6 +389,40 @@ impl DeltaChainManager {
     }
 }
 
+// Implement the DeltaReconstructor trait
+impl DeltaReconstructorTrait for DeltaReconstructor {
+    fn reconstruct(
+        &self,
+        delta_chunks: &[TemporalDeltaChunk],
+        reference_sequences: &[Sequence],
+    ) -> Result<Vec<Sequence>> {
+        // Reconstruct all sequences from the delta chunks
+        let mut result = Vec::new();
+        for chunk in delta_chunks {
+            let sequences = self.reconstruct_chunk(chunk, reference_sequences.to_vec())?;
+            result.extend(sequences);
+        }
+        Ok(result)
+    }
+
+    fn verify_reconstruction(
+        &self,
+        original: &[Sequence],
+        reconstructed: &[Sequence],
+    ) -> Result<bool> {
+        if original.len() != reconstructed.len() {
+            return Ok(false);
+        }
+
+        for (orig, recon) in original.iter().zip(reconstructed.iter()) {
+            if orig.id != recon.id || orig.sequence != recon.sequence {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -471,39 +505,5 @@ mod tests {
 
         manager.add_chunk(&chunk);
         assert!(!manager.needs_rebase(&chunk.content_hash));
-    }
-}
-
-// Implement the DeltaReconstructor trait
-impl DeltaReconstructorTrait for DeltaReconstructor {
-    fn reconstruct(
-        &self,
-        delta_chunks: &[TemporalDeltaChunk],
-        reference_sequences: &[Sequence],
-    ) -> Result<Vec<Sequence>> {
-        // Reconstruct all sequences from the delta chunks
-        let mut result = Vec::new();
-        for chunk in delta_chunks {
-            let sequences = self.reconstruct_chunk(chunk, reference_sequences.to_vec())?;
-            result.extend(sequences);
-        }
-        Ok(result)
-    }
-
-    fn verify_reconstruction(
-        &self,
-        original: &[Sequence],
-        reconstructed: &[Sequence],
-    ) -> Result<bool> {
-        if original.len() != reconstructed.len() {
-            return Ok(false);
-        }
-
-        for (orig, recon) in original.iter().zip(reconstructed.iter()) {
-            if orig.id != recon.id || orig.sequence != recon.sequence {
-                return Ok(false);
-            }
-        }
-        Ok(true)
     }
 }

@@ -179,7 +179,7 @@ pub fn sanitize_sequences(sequences: Vec<Sequence>) -> (Vec<Sequence>, usize) {
             // Update progress counter
             let count = processed_clone.fetch_add(1, Ordering::Relaxed);
             if let Some(ref pb) = pb {
-                if count % 100 == 0 {
+                if count.is_multiple_of(100) {
                     pb.set_position(count as u64);
                 }
             }

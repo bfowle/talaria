@@ -301,9 +301,7 @@ impl<'a> HeraldVerifier<'a> {
         let mut seen = HashSet::new();
         for chunk_meta in &self.manifest.chunk_index {
             if !seen.insert(chunk_meta.hash) {
-                issues.push(ConsistencyIssue::DuplicateReference(
-                    chunk_meta.hash,
-                ));
+                issues.push(ConsistencyIssue::DuplicateReference(chunk_meta.hash));
             }
         }
 
@@ -832,7 +830,7 @@ mod tests {
 
         // Generate proof for first chunk
         let chunk_hash = &manifest.chunk_index[0].hash;
-        let proof = verifier.generate_assembly_proof(&[chunk_hash]);
+        let proof = verifier.generate_assembly_proof(&[*chunk_hash]);
 
         assert!(proof.is_ok());
         let proof = proof.unwrap();
@@ -848,9 +846,7 @@ mod tests {
 
         // Generate and validate proof
         let chunk_hash = &manifest.chunk_index[0].hash;
-        let proof = verifier
-            .generate_assembly_proof(&[chunk_hash])
-            .unwrap();
+        let proof = verifier.generate_assembly_proof(&[*chunk_hash]).unwrap();
 
         let is_valid = verifier.verify_proof(&proof);
         assert!(is_valid);
@@ -864,9 +860,7 @@ mod tests {
 
         // Generate proof for one chunk but try to validate with different hash
         let chunk_hash = &manifest.chunk_index[0].hash;
-        let proof = verifier
-            .generate_assembly_proof(&[chunk_hash])
-            .unwrap();
+        let proof = verifier.generate_assembly_proof(&[*chunk_hash]).unwrap();
 
         // Note: Can't easily test with wrong hash without modifying proof
         // This test may need to be restructured
@@ -880,11 +874,7 @@ mod tests {
         let (storage, _temp_dir, manifest) = setup_test_storage();
         let verifier = HeraldVerifier::new(&storage, &manifest);
 
-        let _chunk_hashes: Vec<SHA256Hash> = manifest
-            .chunk_index
-            .iter()
-            .map(|m| m.hash)
-            .collect();
+        let _chunk_hashes: Vec<SHA256Hash> = manifest.chunk_index.iter().map(|m| m.hash).collect();
 
         let result = verifier.verify_all().unwrap();
         assert!(result.valid);
@@ -898,11 +888,7 @@ mod tests {
         let (storage, _temp_dir, manifest) = setup_test_storage();
         let verifier = HeraldVerifier::new(&storage, &manifest);
 
-        let _chunk_hashes: Vec<SHA256Hash> = manifest
-            .chunk_index
-            .iter()
-            .map(|m| m.hash)
-            .collect();
+        let _chunk_hashes: Vec<SHA256Hash> = manifest.chunk_index.iter().map(|m| m.hash).collect();
 
         // verify_parallel method doesn't exist, use verify_all instead
         let result = verifier.verify_all().unwrap();

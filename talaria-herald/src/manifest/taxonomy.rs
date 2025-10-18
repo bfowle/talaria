@@ -143,16 +143,10 @@ impl TaxonomyManifest {
         let mut deleted_chunks = Vec::new();
 
         // Build hash maps for efficient lookup
-        let self_chunks: HashMap<SHA256Hash, &TaxonomyChunkMetadata> = self
-            .chunk_index
-            .iter()
-            .map(|c| (c.hash, c))
-            .collect();
-        let other_chunks: HashMap<SHA256Hash, &TaxonomyChunkMetadata> = other
-            .chunk_index
-            .iter()
-            .map(|c| (c.hash, c))
-            .collect();
+        let self_chunks: HashMap<SHA256Hash, &TaxonomyChunkMetadata> =
+            self.chunk_index.iter().map(|c| (c.hash, c)).collect();
+        let other_chunks: HashMap<SHA256Hash, &TaxonomyChunkMetadata> =
+            other.chunk_index.iter().map(|c| (c.hash, c)).collect();
 
         // Find new and modified chunks
         for chunk in &self.chunk_index {

@@ -151,17 +151,11 @@ impl StandardTemporalManifestDiffer {
         let mut changes = Vec::new();
 
         // Build hash maps for efficient lookup
-        let old_chunks: HashMap<SHA256Hash, &ManifestMetadata> = old
-            .chunk_index
-            .iter()
-            .map(|c| (c.hash, c))
-            .collect();
+        let old_chunks: HashMap<SHA256Hash, &ManifestMetadata> =
+            old.chunk_index.iter().map(|c| (c.hash, c)).collect();
 
-        let new_chunks: HashMap<SHA256Hash, &ManifestMetadata> = new
-            .chunk_index
-            .iter()
-            .map(|c| (c.hash, c))
-            .collect();
+        let new_chunks: HashMap<SHA256Hash, &ManifestMetadata> =
+            new.chunk_index.iter().map(|c| (c.hash, c)).collect();
 
         // Find removed and modified chunks
         for (hash, old_chunk) in &old_chunks {

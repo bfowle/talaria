@@ -3,7 +3,6 @@
 /// IMPORTANT: These tests must run in separate processes to avoid OnceLock
 /// initialization conflicts. Each test uses TestEnvironment to create an
 /// isolated environment with its own environment variables.
-
 /// Helper to run a test in a completely isolated subprocess
 fn run_isolated_test<F>(_test_name: &str, test_fn: F)
 where
@@ -232,10 +231,10 @@ fn test_custom_data_dir_detection() {
 
         // This test checks the function returns a bool
         // The actual value depends on environment
-        let is_custom = is_custom_data_dir();
+        let _is_custom = is_custom_data_dir();
 
-        // Should return true or false
-        assert!(is_custom == true || is_custom == false);
+        // Just checking the function runs without panicking
+        // (the value itself depends on environment)
     });
 }
 

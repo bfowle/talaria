@@ -110,7 +110,7 @@ async fn test_sequence_only_update() {
     old_manifest.etag = "etag_v1".to_string();
 
     let mut new_manifest = create_test_manifest("v2", "2024.02", "2024.01");
-    new_manifest.taxonomy_root = old_manifest.taxonomy_root.clone(); // Unchanged
+    new_manifest.taxonomy_root = old_manifest.taxonomy_root; // Unchanged
     new_manifest.sequence_root = SHA256Hash::compute(b"seq_new"); // Changed
     new_manifest.chunk_index = vec![
         ManifestMetadata {
@@ -161,7 +161,7 @@ async fn test_taxonomy_only_update() {
 
     let mut new_manifest = create_test_manifest("v2", "2024.01", "2024.02");
     new_manifest.taxonomy_root = SHA256Hash::compute(b"tax_new"); // Changed
-    new_manifest.sequence_root = old_manifest.sequence_root.clone(); // Unchanged
+    new_manifest.sequence_root = old_manifest.sequence_root; // Unchanged
     new_manifest.chunk_index = vec![ManifestMetadata {
         hash: SHA256Hash::compute(b"chunk1"), // Same chunk
         taxon_ids: vec![TaxonId(563)],        // Reclassified taxon
@@ -293,12 +293,8 @@ fn test_partial_update_recovery() {
     manifest.previous_version = None;
 
     // Simulate that only chunk1 was downloaded successfully
-    let downloaded_chunks = vec![SHA256Hash::compute(b"chunk1")];
-    let all_chunks: Vec<_> = manifest
-        .chunk_index
-        .iter()
-        .map(|c| c.hash.clone())
-        .collect();
+    let downloaded_chunks = [SHA256Hash::compute(b"chunk1")];
+    let all_chunks: Vec<_> = manifest.chunk_index.iter().map(|c| c.hash).collect();
 
     let pending_chunks: Vec<_> = all_chunks
         .iter()
@@ -312,13 +308,13 @@ fn test_partial_update_recovery() {
 #[test]
 fn test_incremental_update_efficiency() {
     // Test that incremental updates only download changed chunks
-    let old_chunks = vec![
+    let old_chunks = [
         SHA256Hash::compute(b"chunk1"),
         SHA256Hash::compute(b"chunk2"),
         SHA256Hash::compute(b"chunk3"),
     ];
 
-    let new_chunks = vec![
+    let new_chunks = [
         SHA256Hash::compute(b"chunk1"), // Unchanged
         SHA256Hash::compute(b"chunk2"), // Unchanged
         SHA256Hash::compute(b"chunk4"), // New

@@ -239,9 +239,6 @@ fn bench_delta_extraction(c: &mut Criterion) {
     group.finish();
 }
 
-// Add rand dependency for mutations
-use rand;
-
 criterion_group!(
     benches,
     bench_dna_alignment,

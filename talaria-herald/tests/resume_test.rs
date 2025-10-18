@@ -27,7 +27,7 @@ fn test_resume_after_partial_download() -> Result<()> {
     // Start processing
     let _operation_id = storage.start_processing(
         OperationType::InitialDownload,
-        manifest_hash.clone(),
+        manifest_hash,
         manifest_version.clone(),
         total_chunks,
         source_info.clone(),
@@ -101,7 +101,7 @@ fn test_version_mismatch_prevents_resume() -> Result<()> {
     // Start processing with v1
     storage.start_processing(
         OperationType::IncrementalUpdate,
-        manifest_hash_v1.clone(),
+        manifest_hash_v1,
         manifest_version_v1.clone(),
         50,
         source_info.clone(),

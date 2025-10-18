@@ -167,6 +167,7 @@ impl ChunkSplitter {
 }
 
 /// Chunk metadata (without sequence data)
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ChunkMetadata {
     pub content_hash: SHA256Hash,

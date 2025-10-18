@@ -15,14 +15,8 @@ fn create_diverse_sequences() -> Vec<Sequence> {
         Sequence::new("ecoli_2".to_string(), b"GCTAGCTAGCTA".to_vec()).with_taxon(562),
         Sequence::new("human_1".to_string(), b"TTAATTAATTAA".to_vec()).with_taxon(9606),
         Sequence::new("human_2".to_string(), b"CCGGCCGGCCGG".to_vec()).with_taxon(9606),
-        Sequence::new(
-            "unknown_1".to_string(),
-            b"AAAATTTTGGGGCCCC".to_vec(),
-        ),
-        Sequence::new(
-            "unknown_2".to_string(),
-            b"TTTTAAAACCCCGGGG".to_vec(),
-        ),
+        Sequence::new("unknown_1".to_string(), b"AAAATTTTGGGGCCCC".to_vec()),
+        Sequence::new("unknown_2".to_string(), b"TTTTAAAACCCCGGGG".to_vec()),
     ]
 }
 

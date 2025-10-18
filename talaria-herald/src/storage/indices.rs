@@ -163,10 +163,10 @@ impl<'de> Deserialize<'de> for BloomFilter {
 pub struct SequenceIndices {
     /// RocksDB backend for all index operations
     /// Keys in INDICES column family:
-    /// - "acc:{accession}" → SHA256Hash
-    /// - "tax:{taxon_id}" → Vec<SHA256Hash>
-    /// - "db:{source}" → Vec<SHA256Hash>
-    /// - "bloom:filter" → Serialized BloomFilter
+    /// - `"acc:{accession}"` → SHA256Hash
+    /// - `"tax:{taxon_id}"` → `Vec<SHA256Hash>`
+    /// - `"db:{source}"` → `Vec<SHA256Hash>`
+    /// - `"bloom:filter"` → Serialized BloomFilter
     backend: Arc<RocksDBBackend>,
 
     /// Bloom filter for O(1) "do we have this sequence?" checks

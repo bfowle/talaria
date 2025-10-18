@@ -103,7 +103,7 @@ fn test_memory_usage() {
     let memory_used = final_memory.saturating_sub(initial_memory);
 
     // Scale to per-million sequences
-    let memory_per_million = (memory_used * 10) as u64;
+    let memory_per_million = memory_used * 10;
 
     println!("Memory used: {} MB for 100k sequences", memory_used);
     println!("Projected: {} MB per million sequences", memory_per_million);
@@ -360,5 +360,5 @@ fn test_cpu_utilization() {
 
     // Just verify the operation completed
     // Real CPU monitoring would check utilization percentage
-    assert!(true, "CPU utilization test completed");
+    // (test completion is implicit, no assertion needed)
 }

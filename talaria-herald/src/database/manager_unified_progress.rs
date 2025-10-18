@@ -247,7 +247,7 @@ impl DatabaseManager {
                         total_dedup += manifests.len() * 10; // Estimate
 
                         // Update storing progress periodically
-                        if batch_count % 5 == 0 {
+                        if batch_count.is_multiple_of(5) {
                             tracker.update_storing(total_sequences, total_new, total_dedup)?;
                         }
 

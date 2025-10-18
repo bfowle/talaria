@@ -228,7 +228,7 @@ mod tests {
     #[test]
     fn test_error_source_chain() {
         // Test that IO errors preserve their source
-        let io_err = io::Error::new(io::ErrorKind::Other, "underlying cause");
+        let io_err = io::Error::other("underlying cause");
         let talaria_err: TalariaError = io_err.into();
 
         // The error should be properly wrapped
