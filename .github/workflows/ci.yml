@@ -55,10 +55,22 @@ jobs:
           echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
           echo "DYLD_FALLBACK_LIBRARY_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
       - name: Run tests
+        env:
+          LLVM_CONFIG_PATH: /opt/homebrew/opt/llvm/bin/llvm-config
+          LIBCLANG_PATH: /opt/homebrew/opt/llvm/lib
+          DYLD_FALLBACK_LIBRARY_PATH: /opt/homebrew/opt/llvm/lib
         run: cargo test --all --verbose
       - name: Run tests with all features
+        env:
+          LLVM_CONFIG_PATH: /opt/homebrew/opt/llvm/bin/llvm-config
+          LIBCLANG_PATH: /opt/homebrew/opt/llvm/lib
+          DYLD_FALLBACK_LIBRARY_PATH: /opt/homebrew/opt/llvm/lib
         run: cargo test --all --all-features --verbose
       - name: Run doc tests
+        env:
+          LLVM_CONFIG_PATH: /opt/homebrew/opt/llvm/bin/llvm-config
+          LIBCLANG_PATH: /opt/homebrew/opt/llvm/lib
+          DYLD_FALLBACK_LIBRARY_PATH: /opt/homebrew/opt/llvm/lib
         run: cargo test --doc --all
 
   coverage:
@@ -123,8 +135,16 @@ jobs:
           echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
           echo "DYLD_FALLBACK_LIBRARY_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
       - name: Build
+        env:
+          LLVM_CONFIG_PATH: /opt/homebrew/opt/llvm/bin/llvm-config
+          LIBCLANG_PATH: /opt/homebrew/opt/llvm/lib
+          DYLD_FALLBACK_LIBRARY_PATH: /opt/homebrew/opt/llvm/lib
         run: cargo build --release --target ${{ matrix.target }}
       - name: Build all crates
+        env:
+          LLVM_CONFIG_PATH: /opt/homebrew/opt/llvm/bin/llvm-config
+          LIBCLANG_PATH: /opt/homebrew/opt/llvm/lib
+          DYLD_FALLBACK_LIBRARY_PATH: /opt/homebrew/opt/llvm/lib
         run: cargo build --all --release --target ${{ matrix.target }}
 
   security:
