@@ -1,3 +1,4 @@
+use serial_test::serial;
 use std::collections::HashSet;
 /// Tests for resumable processing operations in HERALD
 use talaria_herald::operations::state::{
@@ -8,6 +9,7 @@ use talaria_herald::types::SHA256Hash;
 use talaria_test::{Result, TestEnvironment};
 
 #[test]
+#[serial]
 fn test_resume_after_partial_download() -> Result<()> {
     let env = TestEnvironment::new()?;
     let storage = HeraldStorage::new(&env.sequences_dir())?;
@@ -84,6 +86,7 @@ fn test_resume_after_partial_download() -> Result<()> {
 }
 
 #[test]
+#[serial]
 fn test_version_mismatch_prevents_resume() -> Result<()> {
     let env = TestEnvironment::new()?;
     let storage = HeraldStorage::new(&env.sequences_dir())?;
@@ -194,6 +197,7 @@ fn test_expired_state_cleanup() -> Result<()> {
 }
 
 #[test]
+#[serial]
 fn test_multiple_operations_tracking() -> Result<()> {
     let env = TestEnvironment::new()?;
     let storage = HeraldStorage::new(&env.sequences_dir())?;
@@ -238,6 +242,7 @@ fn test_multiple_operations_tracking() -> Result<()> {
 }
 
 #[test]
+#[serial]
 fn test_get_remaining_chunks() -> Result<()> {
     let env = TestEnvironment::new()?;
     let storage = HeraldStorage::new(&env.sequences_dir())?;
