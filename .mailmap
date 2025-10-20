@@ -1,0 +1,9 @@
+# Git mailmap - consolidates contributor identities
+# Format: Proper Name <proper@email> Commit Name <commit@email>
+
+# Map Claude contributions to primary author
+Brett Fowle <brettfowle@gmail.com> Claude <noreply@anthropic.com>
+bfowle <brettfowle@gmail.com> Claude <noreply@anthropic.com>
+
+# Consolidate author name variations
+Brett Fowle <brettfowle@gmail.com> bfowle <brettfowle@gmail.com>
