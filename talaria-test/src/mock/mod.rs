@@ -5,6 +5,7 @@
 mod aligner;
 mod download;
 mod download_state;
+mod storage_backend;
 mod taxonomy;
 
 pub use aligner::{MockAligner, MockAlignerConfig};
@@ -13,4 +14,5 @@ pub use download_state::{
     create_completed_download_state, create_download_state_at_stage, create_mock_compressed_file,
     setup_test_download_workspace,
 };
+pub use storage_backend::InMemoryStorageBackend;
 pub use taxonomy::{MockTaxonomyEntry, MockTaxonomyManager};

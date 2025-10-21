@@ -3790,6 +3790,7 @@ name = "talaria-test"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "env_logger 0.11.8",
  "flate2",
  "once_cell",
@@ -3797,6 +3798,7 @@ dependencies = [
  "serial_test 3.2.0",
  "talaria-core",
  "talaria-herald",
+ "talaria-storage",
  "tempfile",
 ]
 

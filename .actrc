@@ -1,0 +1,35 @@
+# act configuration for local GitHub Actions testing
+# See: https://github.com/nektos/act
+
+# Use larger runner images for better compatibility (matches GitHub's ubuntu-latest)
+# Options: micro (~300MB), medium (~900MB), large (~5.5GB)
+# Using medium as a balance between speed and compatibility
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+-P ubuntu-22.04=catthehacker/ubuntu:act-22.04
+-P macos-latest=ghcr.io/catthehacker/ubuntu:runner-latest
+-P windows-latest=ghcr.io/catthehacker/ubuntu:runner-latest
+
+# Reuse Docker containers between runs for faster execution
+--reuse
+
+# Enable verbose output by default (can override with -q/--quiet)
+# Comment this out if you prefer quieter output
+# --verbose
+
+# Bind mount the workspace instead of copying (faster for large projects)
+--bind
+
+# Use the host network (helpful for downloading dependencies)
+--use-gitignore=false
+
+# Set artifact and cache server paths
+--artifact-server-path=/tmp/act-artifacts
+--cache-server-path=/tmp/act-cache
+
+# Container architecture (use native for better performance)
+--container-architecture=linux/amd64
+
+# Set default event type to 'push' (most common for testing)
+# Can be overridden with: act pull_request
+# Note: Commented out to avoid file reading issues - specify explicitly when needed
+# -e push

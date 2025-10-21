@@ -23,13 +23,44 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt, clippy
-      - name: Install libclang
-        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+      - name: Install LLVM and libclang
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-14 llvm-14-dev libclang-14-dev clang-14
+          # Create unversioned symlinks for clang-sys auto-discovery
+          sudo update-alternatives --install /usr/bin/llvm-config llvm-config /usr/bin/llvm-config-14 100
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-14 100
+      - name: Debug LLVM Installation
+        run: |
+          echo "=== Checking llvm-config ==="
+          which llvm-config || echo "llvm-config not in PATH"
+          llvm-config --version || echo "llvm-config failed"
+          llvm-config --libdir || echo "llvm-config --libdir failed"
+          echo ""
+          echo "=== Available LLVM binaries ==="
+          ls -la /usr/bin/llvm* || echo "No /usr/bin/llvm* files"
+          echo ""
+          echo "=== Available clang binaries ==="
+          ls -la /usr/bin/clang* || echo "No /usr/bin/clang* files"
+          echo ""
+          echo "=== libclang libraries ==="
+          find /usr/lib -name "libclang*.so*" 2>/dev/null || echo "No libclang*.so* found"
+          echo ""
+          echo "=== ldconfig libclang ==="
+          ldconfig -p | grep libclang || echo "No libclang in ldconfig"
+          echo ""
+          echo "=== Environment ==="
+          env | grep -i llvm || echo "No LLVM env vars"
+          env | grep -i clang || echo "No CLANG env vars"
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Run clippy
+        env:
+          LIBCLANG_PATH: /usr/lib/x86_64-linux-gnu
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Check documentation
+        env:
+          LIBCLANG_PATH: /usr/lib/x86_64-linux-gnu
         run: cargo doc --all --no-deps --document-private-items
 
   test:
@@ -44,33 +75,37 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: ${{ matrix.rust }}
-      - name: Install libclang (Linux)
+      - name: Install LLVM and libclang (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-14 llvm-14-dev libclang-14-dev clang-14
+          # Create unversioned symlinks for clang-sys auto-discovery
+          sudo update-alternatives --install /usr/bin/llvm-config llvm-config /usr/bin/llvm-config-14 100
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-14 100
+          # Verify installation
+          llvm-config --version
+          ldconfig -p | grep libclang
       - name: Install LLVM (macOS)
         if: runner.os == 'macOS'
+        shell: bash
         run: |
           brew install llvm
-          echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
-          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
-          echo "DYLD_FALLBACK_LIBRARY_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
+          LLVM_PREFIX="$(brew --prefix llvm)"
+          echo "LLVM_CONFIG_PATH=$LLVM_PREFIX/bin/llvm-config" >> $GITHUB_ENV
+          echo "LIBCLANG_PATH=$LLVM_PREFIX/lib" >> $GITHUB_ENV
+          echo "DYLD_FALLBACK_LIBRARY_PATH=$LLVM_PREFIX/lib" >> $GITHUB_ENV
       - name: Run tests
         env:
-          LLVM_CONFIG_PATH: /opt/homebrew/opt/llvm/bin/llvm-config
-          LIBCLANG_PATH: /opt/homebrew/opt/llvm/lib
-          DYLD_FALLBACK_LIBRARY_PATH: /opt/homebrew/opt/llvm/lib
+          LIBCLANG_PATH: ${{ runner.os == 'Linux' && '/usr/lib/x86_64-linux-gnu' || '' }}
         run: cargo test --all --verbose
       - name: Run tests with all features
         env:
-          LLVM_CONFIG_PATH: /opt/homebrew/opt/llvm/bin/llvm-config
-          LIBCLANG_PATH: /opt/homebrew/opt/llvm/lib
-          DYLD_FALLBACK_LIBRARY_PATH: /opt/homebrew/opt/llvm/lib
+          LIBCLANG_PATH: ${{ runner.os == 'Linux' && '/usr/lib/x86_64-linux-gnu' || '' }}
         run: cargo test --all --all-features --verbose
       - name: Run doc tests
         env:
-          LLVM_CONFIG_PATH: /opt/homebrew/opt/llvm/bin/llvm-config
-          LIBCLANG_PATH: /opt/homebrew/opt/llvm/lib
-          DYLD_FALLBACK_LIBRARY_PATH: /opt/homebrew/opt/llvm/lib
+          LIBCLANG_PATH: ${{ runner.os == 'Linux' && '/usr/lib/x86_64-linux-gnu' || '' }}
         run: cargo test --doc --all
 
   coverage:
@@ -79,12 +114,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - name: Install libclang
-        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+      - name: Install LLVM and libclang
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-14 llvm-14-dev libclang-14-dev clang-14
+          # Create unversioned symlinks for clang-sys auto-discovery
+          sudo update-alternatives --install /usr/bin/llvm-config llvm-config /usr/bin/llvm-config-14 100
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-14 100
+          # Verify installation
+          llvm-config --version
+          llvm-config --libdir
+          ldconfig -p | grep libclang
       - name: Install tarpaulin
+        env:
+          LIBCLANG_PATH: /usr/lib/x86_64-linux-gnu
         run: cargo install cargo-tarpaulin
       - name: Generate coverage
-        run: cargo tarpaulin --all --out xml --timeout 300
+        env:
+          LIBCLANG_PATH: /usr/lib/x86_64-linux-gnu
+        run: cargo tarpaulin --all --out xml --timeout 600
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v3
         with:
@@ -124,27 +172,39 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: ${{ matrix.target }}
-      - name: Install libclang (Linux)
+      - name: Install LLVM and libclang (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-14 llvm-14-dev libclang-14-dev clang-14
+          # Create unversioned symlinks for clang-sys auto-discovery
+          sudo update-alternatives --install /usr/bin/llvm-config llvm-config /usr/bin/llvm-config-14 100
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-14 100
+          # Verify installation
+          llvm-config --version
+          ldconfig -p | grep libclang
       - name: Install LLVM (macOS)
         if: runner.os == 'macOS'
+        shell: bash
         run: |
           brew install llvm
-          echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
-          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
-          echo "DYLD_FALLBACK_LIBRARY_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
+          LLVM_PREFIX="$(brew --prefix llvm)"
+          echo "LLVM_CONFIG_PATH=$LLVM_PREFIX/bin/llvm-config" >> $GITHUB_ENV
+          echo "LIBCLANG_PATH=$LLVM_PREFIX/lib" >> $GITHUB_ENV
+          echo "DYLD_FALLBACK_LIBRARY_PATH=$LLVM_PREFIX/lib" >> $GITHUB_ENV
+      - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install llvm -y
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
       - name: Build
         env:
-          LLVM_CONFIG_PATH: /opt/homebrew/opt/llvm/bin/llvm-config
-          LIBCLANG_PATH: /opt/homebrew/opt/llvm/lib
-          DYLD_FALLBACK_LIBRARY_PATH: /opt/homebrew/opt/llvm/lib
+          LIBCLANG_PATH: ${{ runner.os == 'Linux' && '/usr/lib/x86_64-linux-gnu' || '' }}
         run: cargo build --release --target ${{ matrix.target }}
       - name: Build all crates
         env:
-          LLVM_CONFIG_PATH: /opt/homebrew/opt/llvm/bin/llvm-config
-          LIBCLANG_PATH: /opt/homebrew/opt/llvm/lib
-          DYLD_FALLBACK_LIBRARY_PATH: /opt/homebrew/opt/llvm/lib
+          LIBCLANG_PATH: ${{ runner.os == 'Linux' && '/usr/lib/x86_64-linux-gnu' || '' }}
         run: cargo build --all --release --target ${{ matrix.target }}
 
   security:
@@ -194,7 +254,36 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: ${{ matrix.target }}
+      - name: Install LLVM and libclang (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-14 llvm-14-dev libclang-14-dev clang-14
+          # Create unversioned symlinks for clang-sys auto-discovery
+          sudo update-alternatives --install /usr/bin/llvm-config llvm-config /usr/bin/llvm-config-14 100
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-14 100
+          # Verify installation
+          llvm-config --version
+          llvm-config --libdir
+          ldconfig -p | grep libclang
+      - name: Install LLVM (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          brew install llvm
+          LLVM_PREFIX="$(brew --prefix llvm)"
+          echo "LLVM_CONFIG_PATH=$LLVM_PREFIX/bin/llvm-config" >> $GITHUB_ENV
+          echo "LIBCLANG_PATH=$LLVM_PREFIX/lib" >> $GITHUB_ENV
+          echo "DYLD_FALLBACK_LIBRARY_PATH=$LLVM_PREFIX/lib" >> $GITHUB_ENV
+      - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install llvm -y
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
       - name: Build release
+        env:
+          LIBCLANG_PATH: ${{ runner.os == 'Linux' && '/usr/lib/x86_64-linux-gnu' || '' }}
         run: cargo build --release --target ${{ matrix.target }}
       - name: Package release
         shell: bash

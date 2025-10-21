@@ -194,7 +194,7 @@ impl MemoryMonitor {
     /// Get system memory statistics (fallback for non-Linux)
     #[cfg(not(target_os = "linux"))]
     fn get_system_memory() -> Result<MemoryStats> {
-        use sysinfo::{PidExt, ProcessExt, System, SystemExt};
+        use sysinfo::{ProcessExt, System, SystemExt};
 
         let mut sys = System::new_all();
         sys.refresh_memory();
@@ -224,7 +224,7 @@ impl MemoryMonitor {
         })
     }
 
-    /// Get process RSS
+    /// Get process RSS (Linux)
     #[cfg(target_os = "linux")]
     fn get_process_rss() -> Result<u64> {
         use std::fs;
@@ -244,23 +244,6 @@ impl MemoryMonitor {
         }
 
         Ok(0)
-    }
-
-    /// Get process RSS (fallback)
-    #[cfg(not(target_os = "linux"))]
-    fn get_process_rss() -> Result<u64> {
-        use sysinfo::{PidExt, ProcessExt, System, SystemExt};
-
-        let mut sys = System::new_all();
-        sys.refresh_processes();
-
-        let pid = sysinfo::get_current_pid().unwrap_or(sysinfo::Pid::from(0));
-        let process_rss = sys
-            .process(pid)
-            .map(|p| p.memory() * 1024) // KB to bytes
-            .unwrap_or(0);
-
-        Ok(process_rss)
     }
 
     /// Estimate memory needed for batch processing

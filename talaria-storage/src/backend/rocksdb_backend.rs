@@ -1094,7 +1094,7 @@ impl SequenceStorageBackend for RocksDBBackend {
         let cf = self.cf_handle(cf_names::SEQUENCES)?;
 
         // Get approximate number of keys (very fast, O(1))
-        let total_sequences = self
+        let mut total_sequences = self
             .db
             .property_int_value_cf(&cf, properties::ESTIMATE_NUM_KEYS)?
             .unwrap_or(0) as usize;
@@ -1107,16 +1107,42 @@ impl SequenceStorageBackend for RocksDBBackend {
 
         // Get approximate count for representations
         let rep_cf = self.cf_handle(cf_names::REPRESENTATIONS)?;
-        let total_representations = self
+        let mut total_representations = self
             .db
             .property_int_value_cf(&rep_cf, properties::ESTIMATE_NUM_KEYS)?
             .unwrap_or(0) as usize;
+
+        // For small datasets (estimates return 0), fall back to exact counting
+        // This happens when data is still in memtables, not yet flushed to SST files
+        if total_sequences == 0 || total_representations == 0 {
+            // Count sequences exactly via iterator
+            let iter = self.db.iterator_cf(&cf, IteratorMode::Start);
+            total_sequences = iter.count();
+
+            // Count representations exactly by loading and summing
+            // Note: Each key in REPRESENTATIONS cf contains a SequenceRepresentations object
+            // which has multiple representations inside
+            let rep_iter = self.db.iterator_cf(&rep_cf, IteratorMode::Start);
+            total_representations = 0;
+            for (_key, value) in rep_iter.flatten() {
+                if let Ok(reps) = Self::deserialize::<SequenceRepresentations>(&value) {
+                    total_representations += reps.representations.len();
+                }
+            }
+        }
+
+        // Calculate deduplication ratio (representations per sequence)
+        let deduplication_ratio = if total_sequences > 0 && total_representations > 0 {
+            total_representations as f32 / total_sequences as f32
+        } else {
+            1.0
+        };
 
         Ok(StorageStats {
             total_chunks: total_sequences, // Each sequence is a "chunk" in RocksDB
             total_size,
             compressed_chunks: total_sequences, // All stored with compression
-            deduplication_ratio: 1.0,           // Will be calculated based on representations
+            deduplication_ratio,
             total_sequences: Some(total_sequences),
             total_representations: Some(total_representations),
         })

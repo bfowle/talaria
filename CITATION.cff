@@ -3,18 +3,18 @@ title: "Talaria: High-Performance Biological Sequence Database Reduction"
 message: "If you use this software, please cite it as below."
 type: software
 authors:
-  - given-names: Brett
+  - given-names: Brett Fowle
     family-names:
-    affiliation: Talaria Project
+    affiliation: Andromeda Tech, LLC
     orcid:
   - name: "Talaria Contributors"
 identifiers:
   - type: url
-    value: "https://github.com/talaria/talaria"
+    value: "https://github.com/bfowle/talaria"
     description: "GitHub Repository"
-repository-code: "https://github.com/talaria/talaria"
-url: "https://talaria.bioinformatics.io"
-repository-artifact: "https://github.com/talaria/talaria/releases"
+repository-code: "https://github.com/bfowle/talaria"
+url: "https://bfowle.github.io/talaria"
+repository-artifact: "https://github.com/bfowle/talaria/releases"
 abstract: >-
   Talaria is a high-performance bioinformatics tool that intelligently reduces
   biological sequence databases (FASTA files) to optimize them for indexing with
@@ -30,7 +30,6 @@ keywords:
   - fasta
   - protein-sequences
   - content-addressed-storage
-  - merkle-dag
   - rust
   - alignment
   - lambda
@@ -43,10 +42,10 @@ keywords:
 license: MIT
 commit:
 version: 0.1.0
-date-released: 2024-01-15
+date-released: 2025-10-15
 contact:
   - affiliation: "Talaria Project"
-    email: talaria-dev@lists.example.org
+    email: brettfowle@gmail.com
     name: "Talaria Development Team"
 references:
   - type: software

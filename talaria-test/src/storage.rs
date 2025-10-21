@@ -7,12 +7,11 @@ use crate::TestEnvironment;
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use talaria_core::types::SHA256Hash;
-use talaria_herald::storage::{HeraldStorage, SequenceStorage};
+use talaria_herald::storage::HeraldStorage;
 
 /// Test storage wrapper with helpers
 pub struct TestStorage {
     herald_storage: HeraldStorage,
-    sequence_storage: SequenceStorage,
     path: PathBuf,
 }
 
@@ -22,12 +21,9 @@ impl TestStorage {
         let path = env.sequences_dir();
         let herald_storage =
             HeraldStorage::new(&path).context("Failed to create HERALD storage")?;
-        let sequence_storage =
-            SequenceStorage::new(&path).context("Failed to create sequence storage")?;
 
         Ok(Self {
             herald_storage,
-            sequence_storage,
             path,
         })
     }
@@ -39,12 +35,9 @@ impl TestStorage {
 
         let herald_storage =
             HeraldStorage::new(&path).context("Failed to create HERALD storage")?;
-        let sequence_storage =
-            SequenceStorage::new(&path).context("Failed to create sequence storage")?;
 
         Ok(Self {
             herald_storage,
-            sequence_storage,
             path,
         })
     }
@@ -61,7 +54,7 @@ impl TestStorage {
 
     /// Store a test sequence
     pub fn store_sequence(&mut self, sequence: &str, header: &str) -> Result<SHA256Hash> {
-        let hash = self.sequence_storage.store_sequence(
+        let hash = self.herald_storage.sequence_storage.store_sequence(
             sequence,
             header,
             test_database_source("storage"),
@@ -80,7 +73,8 @@ impl TestStorage {
 
     /// Verify storage contains sequence
     pub fn contains(&self, hash: &SHA256Hash) -> bool {
-        self.sequence_storage
+        self.herald_storage
+            .sequence_storage
             .canonical_exists(hash)
             .unwrap_or(false)
     }
@@ -235,8 +229,10 @@ impl StorageFixture {
 mod tests {
     use super::*;
     use crate::TestEnvironment;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn test_storage_creation() {
         let env = TestEnvironment::new().unwrap();
         let storage = TestStorage::new(&env).unwrap();
@@ -244,6 +240,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_sequence_storage() {
         let env = TestEnvironment::new().unwrap();
         let mut storage = TestStorage::new(&env).unwrap();

@@ -21,7 +21,10 @@ pub mod storage;
 // Re-export commonly used items
 pub use environment::{TestConfig, TestEnvironment};
 pub use fixtures::{create_test_fasta, generate_sequences, TestSequence};
-pub use mock::{create_test_download_state, MockAligner, MockDownloadSource, MockTaxonomyManager};
+pub use mock::{
+    create_test_download_state, InMemoryStorageBackend, MockAligner, MockDownloadSource,
+    MockTaxonomyManager,
+};
 pub use storage::{StorageFixture, TestStorage};
 
 // Re-export test dependencies for convenience

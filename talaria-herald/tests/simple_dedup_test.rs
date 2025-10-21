@@ -49,6 +49,7 @@ fn test_simple_cross_database_deduplication() {
     assert_eq!(hash2, hash3, "Same sequence should produce same hash");
 
     // Get stats and verify
+    // Note: For small datasets, RocksDB estimates return 0 and we use exact counting
     let stats = storage.get_stats().unwrap();
 
     println!("\n=== Cross-Database Deduplication Test Results ===");

@@ -6,6 +6,8 @@ use talaria_herald::{indices::SequenceIndices, taxonomy_filter::TaxonomyFilter, 
 use tempfile::TempDir;
 
 #[test]
+#[ignore] // Performance benchmark - run manually with: cargo test -- --ignored
+          // Creates 1M sequences which takes too long for CI (6+ hours)
 fn test_taxonomy_query_performance() {
     let temp_dir = TempDir::new().unwrap();
     let indices_path = temp_dir.path();
