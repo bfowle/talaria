@@ -3,15 +3,20 @@
 //! Utilities for testing HERALD storage operations.
 
 use crate::fixtures::test_database_source;
+use crate::mock::InMemoryStorageBackend;
 use crate::TestEnvironment;
 use anyhow::{Context, Result};
+use chrono::Utc;
 use std::path::{Path, PathBuf};
-use talaria_core::types::SHA256Hash;
-use talaria_herald::storage::HeraldStorage;
+use std::sync::Arc;
+use talaria_core::types::{SHA256Hash, SequenceType};
+use talaria_storage::types::{CanonicalSequence, SequenceRepresentation, SequenceRepresentations};
 
 /// Test storage wrapper with helpers
+///
+/// Uses InMemoryStorageBackend for fast, isolated unit tests
 pub struct TestStorage {
-    herald_storage: HeraldStorage,
+    backend: Arc<InMemoryStorageBackend>,
     path: PathBuf,
 }
 
@@ -19,11 +24,10 @@ impl TestStorage {
     /// Create a new test storage in the given environment
     pub fn new(env: &TestEnvironment) -> Result<Self> {
         let path = env.sequences_dir();
-        let herald_storage =
-            HeraldStorage::new(&path).context("Failed to create HERALD storage")?;
+        std::fs::create_dir_all(&path)?;
 
         Ok(Self {
-            herald_storage,
+            backend: Arc::new(InMemoryStorageBackend::new()),
             path,
         })
     }
@@ -33,32 +37,57 @@ impl TestStorage {
         let path = path.as_ref().to_path_buf();
         std::fs::create_dir_all(&path)?;
 
-        let herald_storage =
-            HeraldStorage::new(&path).context("Failed to create HERALD storage")?;
-
         Ok(Self {
-            herald_storage,
+            backend: Arc::new(InMemoryStorageBackend::new()),
             path,
         })
     }
 
-    /// Get the HERALD storage
-    pub fn herald(&self) -> &HeraldStorage {
-        &self.herald_storage
-    }
-
-    /// Get mutable HERALD storage
-    pub fn herald_mut(&mut self) -> &mut HeraldStorage {
-        &mut self.herald_storage
+    /// Get the storage backend
+    pub fn backend(&self) -> &Arc<InMemoryStorageBackend> {
+        &self.backend
     }
 
     /// Store a test sequence
     pub fn store_sequence(&mut self, sequence: &str, header: &str) -> Result<SHA256Hash> {
-        let hash = self.herald_storage.sequence_storage.store_sequence(
-            sequence,
-            header,
-            test_database_source("storage"),
-        )?;
+        // Compute canonical hash
+        let hash = SHA256Hash::compute(sequence.as_bytes());
+
+        // Create canonical sequence
+        let canonical = CanonicalSequence {
+            sequence_hash: hash,
+            sequence: sequence.as_bytes().to_vec(),
+            length: sequence.len(),
+            sequence_type: SequenceType::DNA, // Simple default for tests
+            checksum: sequence.as_bytes().iter().map(|&b| b as u64).sum(),
+            first_seen: Utc::now(),
+            last_seen: Utc::now(),
+        };
+
+        // Store canonical sequence
+        self.backend.store_canonical(&canonical)?;
+
+        // Create and store representation
+        let representation = SequenceRepresentation {
+            source: test_database_source("storage"),
+            header: header.to_string(),
+            accessions: vec![],
+            description: None,
+            taxon_id: None,
+            metadata: Default::default(),
+            last_seen: Utc::now(),
+        };
+
+        let mut reps = self
+            .backend
+            .load_representations(&hash)
+            .unwrap_or_else(|_| SequenceRepresentations {
+                canonical_hash: hash,
+                representations: Vec::new(),
+            });
+        reps.add_representation(representation);
+        self.backend.store_representations(&reps)?;
+
         Ok(hash)
     }
 
@@ -73,68 +102,16 @@ impl TestStorage {
 
     /// Verify storage contains sequence
     pub fn contains(&self, hash: &SHA256Hash) -> bool {
-        self.herald_storage
-            .sequence_storage
-            .canonical_exists(hash)
-            .unwrap_or(false)
+        self.backend.sequence_exists(hash).unwrap_or(false)
     }
 
     /// Get storage statistics
     pub fn stats(&self) -> Result<StorageStats> {
-        let chunk_count = self.count_chunks()?;
-        let total_size = self.total_size()?;
-
         Ok(StorageStats {
-            chunk_count,
-            total_size,
+            chunk_count: self.backend.sequence_count(),
+            total_size: 0, // Mock doesn't track size
             path: self.path.clone(),
         })
-    }
-
-    /// Count chunks in storage
-    fn count_chunks(&self) -> Result<usize> {
-        let mut count = 0;
-
-        // Check for pack files in the packs subdirectory
-        let packs_dir = self.path.join("packs");
-        if packs_dir.exists() {
-            for entry in std::fs::read_dir(&packs_dir)? {
-                let entry = entry?;
-                if entry.path().extension().and_then(|s| s.to_str()) == Some("tal") {
-                    count += 1;
-                }
-            }
-        }
-
-        // Also check root directory for any .tal files
-        for entry in std::fs::read_dir(&self.path)? {
-            let entry = entry?;
-            if entry.path().extension().and_then(|s| s.to_str()) == Some("tal") {
-                count += 1;
-            }
-        }
-
-        // If still no chunks found, count any files as evidence of storage activity
-        if count == 0 {
-            for entry in std::fs::read_dir(&self.path)? {
-                let entry = entry?;
-                if entry.path().is_file() {
-                    count += 1;
-                }
-            }
-        }
-
-        Ok(count)
-    }
-
-    /// Get total storage size
-    fn total_size(&self) -> Result<u64> {
-        let mut size = 0;
-        for entry in std::fs::read_dir(&self.path)? {
-            let entry = entry?;
-            size += entry.metadata()?.len();
-        }
-        Ok(size)
     }
 }
 
@@ -229,10 +206,8 @@ impl StorageFixture {
 mod tests {
     use super::*;
     use crate::TestEnvironment;
-    use serial_test::serial;
 
     #[test]
-    #[serial]
     fn test_storage_creation() {
         let env = TestEnvironment::new().unwrap();
         let storage = TestStorage::new(&env).unwrap();
@@ -240,7 +215,6 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_sequence_storage() {
         let env = TestEnvironment::new().unwrap();
         let mut storage = TestStorage::new(&env).unwrap();
